@@ -58,11 +58,13 @@ impl App {
 
         let path = config_path;
 
+        let volume = config.volume_or_default(1.0) as f32;
+
         Self {
             config,
             path,
             player,
-            volume: 1.0,
+            volume,
             time: 0.0,
             cached_track_time: None,
             files,
@@ -91,6 +93,8 @@ impl epi::App for App {
         if self.player.has_ended() {
             self.player.play_next();
         }
+
+        self.player.set_volume(self.volume).unwrap();
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             let track_time = self.player.get_time();
@@ -132,7 +136,6 @@ impl epi::App for App {
 
                     let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
                         .show_value(false)
-                        .step_by(0.01)
                         .ui(ui);
 
                     // TODO: Fix here
@@ -167,7 +170,6 @@ impl epi::App for App {
                     }
 
                     if volume_slider.changed() {
-                        self.player.set_volume(self.volume).unwrap();
                         self.config.set_volume(self.volume as f64);
                         self.config.save(&self.path).unwrap();
                     }
@@ -180,11 +182,13 @@ impl epi::App for App {
             ScrollArea::vertical().show(ui, |ui| {
                 for (name, duration) in self.files.iter().sorted() {
                     ui.horizontal(|ui| {
+                        let mut frame = false;
                         if self.player.is_playing() && &self.player.get_current_track_name() == name
                         {
                             ui.add_space(10.0);
+                            frame = true;
                         }
-                        let button = Button::new(name).frame(false).ui(ui);
+                        let button = Button::new(name).frame(frame).ui(ui);
                         ui.add(Label::new(format!(
                             "{:02}:{:02}",
                             duration / 60,
