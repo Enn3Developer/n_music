@@ -1,0 +1,16 @@
+[package]
+name = "n_player"
+version = "1.0.0"
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eframe = "0.17.0"
+toml = "0.5"
+serde = "1.0"
+serde_derive = "1.0"
+n_audio = { path = "../n_audio", features = ["shuffle"] }
+infer = "0.7.0"
+itertools = "0.10.3"

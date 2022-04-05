@@ -1,0 +1,23 @@
+[package]
+name = "n_audio"
+version = "1.0.0"
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+shuffle = ["rand"]
+
+[dependencies]
+rand = { version = "0.8.5", optional = true }
+symphonia = { version = "0.5.0", features = ["aac", "alac", "isomp4", "mp3"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libpulse-binding = "2.26.0"
+libpulse-simple-binding = "2.25.0"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rb = "0.4.0"
+cpal = "0.13.5"
+dasp = "0.11.0"
