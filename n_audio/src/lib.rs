@@ -102,8 +102,8 @@ pub struct Player {
     index_playing: usize,
     is_first: bool,
     is_paused: bool,
+    // Only used for Pulse Audio
     app_name: String,
-    // <- Only used for Pulse Audio
     cached_get_time: Option<TrackTime>,
     thread: Option<JoinHandle<()>>,
     tx: Option<Sender<Message>>,
