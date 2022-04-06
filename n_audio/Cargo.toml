@@ -4,8 +4,6 @@ version = "1.0.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [features]
 shuffle = ["rand"]
 

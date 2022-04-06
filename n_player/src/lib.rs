@@ -1,5 +1,3 @@
-#![feature(in_band_lifetimes)]
-
 use std::error::Error;
 use std::fs;
 use std::fs::DirEntry;
@@ -7,7 +5,7 @@ use std::path::Path;
 
 use serde_derive::{Deserialize, Serialize};
 
-use n_audio::Player;
+use n_audio::player::Player;
 
 pub mod app;
 

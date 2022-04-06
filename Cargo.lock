@@ -738,7 +738,17 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
 dependencies = [
- "dirs-sys",
+    "dirs-sys",
+]
+
+[[package]]
+name = "dirs-next"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b98cf8ebf19c3d1b223e151f99a4f9f0690dca41414773390fc824184ac833e1"
+dependencies = [
+    "cfg-if 1.0.0",
+    "dirs-sys-next",
 ]
 
 [[package]]
@@ -747,9 +757,20 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
 dependencies = [
- "libc",
- "redox_users",
- "winapi",
+    "libc",
+    "redox_users",
+    "winapi",
+]
+
+[[package]]
+name = "dirs-sys-next"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ebda144c4fe02d1f7ea1a7d9641b6fc6b580adcfa024ae48797ecdeb6825b4d"
+dependencies = [
+    "libc",
+    "redox_users",
+    "winapi",
 ]
 
 [[package]]
@@ -1446,13 +1467,34 @@ dependencies = [
 name = "n_player"
 version = "1.0.0"
 dependencies = [
- "eframe",
- "infer",
- "itertools",
- "n_audio",
- "serde",
- "serde_derive",
- "toml",
+    "eframe",
+    "infer",
+    "itertools",
+    "n_audio",
+    "native-dialog",
+    "serde",
+    "serde_derive",
+    "toml",
+]
+
+[[package]]
+name = "native-dialog"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ab637f328b31bd0855c43bd38a4a4455e74324d9e74e0aac6a803422f43abc6"
+dependencies = [
+    "block",
+    "cocoa",
+    "dirs-next",
+    "objc",
+    "objc-foundation",
+    "objc_id",
+    "once_cell",
+    "raw-window-handle",
+    "thiserror",
+    "wfd",
+    "which",
+    "winapi",
 ]
 
 [[package]]
@@ -1461,9 +1503,9 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96d868f654c72e75f8687572699cdabe755f03effbb62542768e995d5b8d699d"
 dependencies = [
- "bitflags",
- "jni-sys",
- "ndk-sys 0.2.2",
+    "bitflags",
+    "jni-sys",
+    "ndk-sys 0.2.2",
  "num_enum",
  "thiserror",
 ]
@@ -2637,7 +2679,28 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d743fdedc5c64377b5fc2bc036b01c7fd642205a0d96356034ae3404d49eb7fb"
 dependencies = [
- "cc",
+    "cc",
+]
+
+[[package]]
+name = "wfd"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e713040b67aae5bf1a0ae3e1ebba8cc29ab2b90da9aa1bff6e09031a8a41d7a8"
+dependencies = [
+    "libc",
+    "winapi",
+]
+
+[[package]]
+name = "which"
+version = "4.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c4fb54e6113b6a8772ee41c3404fb0301ac79604489467e0a9ce1f3e97c24ae"
+dependencies = [
+    "either",
+    "lazy_static",
+    "libc",
 ]
 
 [[package]]

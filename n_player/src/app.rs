@@ -8,7 +8,8 @@ use eframe::egui::{
 use eframe::{egui, epi};
 use itertools::Itertools;
 
-use n_audio::{Player, TrackTime};
+use n_audio::player::Player;
+use n_audio::{from_path_to_name_without_ext, TrackTime};
 
 use crate::Config;
 
@@ -40,16 +41,7 @@ impl App {
                     .mime_type()
                     .contains("audio")
             {
-                let split: Vec<String> = entry
-                    .path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .split('.')
-                    .map(String::from)
-                    .collect();
-                let name = split[..split.len() - 1].to_vec().join(".");
+                let name = from_path_to_name_without_ext(&entry.path());
                 let duration =
                     player.get_duration_for_track(player.get_index_from_track_name(&name).unwrap());
                 files.insert(name, duration.dur_secs);
@@ -97,6 +89,8 @@ impl epi::App for App {
         self.player.set_volume(self.volume).unwrap();
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
+            ui.set_min_height(40.0);
+
             let track_time = self.player.get_time();
             self.time = if let Some(track_time) = &track_time {
                 let value = (track_time.ts_secs as f64 + track_time.ts_frac)
@@ -111,15 +105,34 @@ impl epi::App for App {
             };
 
             ui.horizontal(|ui| {
-                ui.set_min_height(40.0);
+                // TODO: Fix here
+                let track_time = if let Some(time) = &track_time {
+                    Some(time)
+                } else {
+                    None
+                };
+
+                let slider = Slider::new(&mut self.time, 0.0..=1.0)
+                    .orientation(SliderOrientation::Horizontal)
+                    .show_value(false)
+                    .ui(ui);
+                ui.add_space(10.0);
+
+                let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
+                    .show_value(false)
+                    .ui(ui);
+
+                self.slider_seek(slider, track_time);
+
+                if volume_slider.changed() {
+                    self.config.set_volume(self.volume as f64);
+                    self.config.save(&self.path).unwrap();
+                }
+            });
+
+            ui.horizontal(|ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-
-                    let slider = Slider::new(&mut self.time, 0.0..=1.0)
-                        .orientation(SliderOrientation::Horizontal)
-                        .show_value(false)
-                        .ui(ui);
-                    ui.add_space(10.0);
 
                     ui.label(self.player.get_current_track_name());
                     ui.add_space(10.0);
@@ -133,19 +146,6 @@ impl epi::App for App {
                     let previous = Button::new("⏮").frame(false).ui(ui);
                     let toggle = Button::new(text_toggle).frame(false).ui(ui);
                     let next = Button::new("⏭").frame(false).ui(ui);
-
-                    let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
-                        .show_value(false)
-                        .ui(ui);
-
-                    // TODO: Fix here
-                    let track_time = if let Some(time) = &track_time {
-                        Some(time)
-                    } else {
-                        None
-                    };
-
-                    self.slider_seek(slider, track_time);
 
                     if previous.clicked() {
                         if let Some(cached_track_time) = &self.cached_track_time {
@@ -167,11 +167,6 @@ impl epi::App for App {
                     }
                     if next.clicked() {
                         self.player.play_next();
-                    }
-
-                    if volume_slider.changed() {
-                        self.config.set_volume(self.volume as f64);
-                        self.config.save(&self.path).unwrap();
                     }
                 });
             });
@@ -217,6 +212,12 @@ impl epi::App for App {
         _frame: &epi::Frame,
         _storage: Option<&dyn epi::Storage>,
     ) {
+    }
+
+    fn on_exit_event(&mut self) -> bool {
+        self.player.end_current().unwrap();
+        self.config.save(&self.path).unwrap();
+        true
     }
 
     fn name(&self) -> &str {
