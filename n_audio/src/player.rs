@@ -65,6 +65,16 @@ impl Player {
         &self.tracks
     }
 
+    pub fn clear_tracks(&mut self) {
+        self.tracks.clear();
+        self.index = 0;
+        self.index_playing = 0;
+    }
+
+    pub fn remove_track(&mut self, index: usize) {
+        self.tracks.remove(index);
+    }
+
     pub fn pause(&mut self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Pause)?;
