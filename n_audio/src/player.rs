@@ -15,6 +15,8 @@ use symphonia::core::units::Time;
 use crate::music_track::MusicTrack;
 use crate::{output, Message, NError, TrackTime};
 
+/// The main actor for everything.
+/// Using this struct is really easy, just add a file you want to play (be sure of it being an audio file supported by Symphonia) and call `Player::play_next` and you've done everything!
 pub struct Player {
     tracks: Vec<MusicTrack>,
     index: usize,
@@ -31,6 +33,8 @@ pub struct Player {
 }
 
 impl Player {
+    /// Instance a new `Player`
+    /// `app_name` is a Linux-only feature but it is required for all platforms nonetheless
     pub fn new(app_name: String) -> Self {
         Player {
             tracks: vec![],

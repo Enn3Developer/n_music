@@ -9,39 +9,6 @@ use n_player::{add_all_tracks_to_player, Config};
 
 const PATH: &str = "./.nmusic.toml";
 
-// fn open_window_asking_path() -> String {
-//     let mut path = String::new();
-//
-//     let mut wind = Window::new(100, 100, 400, 150, "Choose music dir");
-//
-//     Frame::new(
-//         125,
-//         10,
-//         150,
-//         50,
-//         "Please choose a directory where the music is stored",
-//     );
-//     let mut button = Button::new(135, 60, 130, 50, "Select directory");
-//     let mut dialog = FileDialog::new(FileDialogType::BrowseDir);
-//
-//     wind.end();
-//     wind.show();
-//
-//     button.set_callback(move |_| {
-//         dialog.show();
-//         tx.send(dialog.filename().to_str().unwrap().to_string());
-//     });
-//
-//     while app.wait() {
-//         if let Some(message) = rx.recv() {
-//             path = message;
-//             app::quit();
-//         }
-//     }
-//
-//     path
-// }
-
 fn main() {
     let mut config = if Config::exists(PATH) {
         Config::load(PATH).expect("Can't load config file")

@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -11,6 +10,7 @@ use symphonia::core::probe::Hint;
 
 use crate::from_path_to_name_without_ext;
 
+/// The basics where everything is built upon
 pub struct MusicTrack {
     file: File,
     name: String,
@@ -24,7 +24,6 @@ impl MusicTrack {
     {
         let path = Path::new(&path);
         let file = File::open(path)?;
-        file.metadata().unwrap().file_type().type_id();
         Ok(MusicTrack {
             file,
             name: from_path_to_name_without_ext(path),
@@ -36,6 +35,7 @@ impl MusicTrack {
         &self.name
     }
 
+    /// Returns the `FormatReader` provided by Symphonia
     pub fn get_format(&self) -> Box<dyn FormatReader> {
         let file = self.file.try_clone().expect("Can't copy file");
         let media_stream = MediaSourceStream::new(Box::new(file), std::default::Default::default());

@@ -63,7 +63,7 @@ impl App {
         }
     }
 
-    fn slider_seek(&mut self, slider: Response, track_time: Option<&TrackTime>) {
+    fn slider_seek(&mut self, slider: Response, track_time: Option<TrackTime>) {
         if let Some(track_time) = track_time {
             if slider.drag_released() || slider.clicked() {
                 self.player.pause().unwrap();
@@ -105,13 +105,6 @@ impl epi::App for App {
             };
 
             ui.horizontal(|ui| {
-                // TODO: Fix here
-                let track_time = if let Some(time) = &track_time {
-                    Some(time)
-                } else {
-                    None
-                };
-
                 let slider = Slider::new(&mut self.time, 0.0..=1.0)
                     .orientation(SliderOrientation::Horizontal)
                     .show_value(false)
