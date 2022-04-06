@@ -144,8 +144,10 @@ impl epi::App for App {
                         if let Some(cached_track_time) = &self.cached_track_time {
                             if cached_track_time.ts_secs < 2 {
                                 self.player.seek_to(0, 0.0).unwrap();
+                            } else {
+                                self.player.end_current().unwrap();
+                                self.player.play_previous();
                             }
-                            self.player.play_previous();
                         }
                     }
                     if toggle.clicked() {
@@ -159,6 +161,7 @@ impl epi::App for App {
                         }
                     }
                     if next.clicked() {
+                        self.player.end_current().unwrap();
                         self.player.play_next();
                     }
                 });

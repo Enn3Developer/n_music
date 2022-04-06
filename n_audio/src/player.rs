@@ -286,8 +286,6 @@ impl Player {
             self.index = index;
         }
 
-        self.end_current().unwrap();
-
         let (tx, rx) = mpsc::channel();
         let (tx_t, rx_t) = mpsc::channel();
         let (tx_e, rx_e) = mpsc::channel();
