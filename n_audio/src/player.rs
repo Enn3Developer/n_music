@@ -56,25 +56,31 @@ impl Player {
         Ok(())
     }
 
+    /// Shuffles the `tracks` vector using the `rand` crate
     #[cfg(feature = "shuffle")]
     pub fn shuffle(&mut self) {
         self.tracks.shuffle(&mut rand::thread_rng());
     }
 
+    /// Returns the `tracks` vector
     pub fn tracks(&self) -> &Vec<MusicTrack> {
         &self.tracks
     }
 
+    /// Clears the `tracks` vector and sets both `index` and `index_playing` to 0
     pub fn clear_tracks(&mut self) {
         self.tracks.clear();
         self.index = 0;
         self.index_playing = 0;
     }
 
+    /// Removes a specific track from the `tracks` vector
     pub fn remove_track(&mut self, index: usize) {
         self.tracks.remove(index);
     }
 
+    /// Pauses the current playing track, if any
+    /// It only errors if it can't send the message (so something serious may have happened)
     pub fn pause(&mut self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Pause)?;
@@ -83,6 +89,8 @@ impl Player {
         Ok(())
     }
 
+    /// Unpauses the current playing track, if any
+    /// It only errors if it can't send the message (so something serious may have happened)
     pub fn unpause(&mut self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Play)?;
@@ -91,6 +99,8 @@ impl Player {
         Ok(())
     }
 
+    /// Returns whether the current track is paused
+    /// It'll always return `false` if there isn't any track playing
     pub fn is_paused(&self) -> bool {
         if let Some(_tx) = &self.tx {
             return self.is_paused;
@@ -98,6 +108,8 @@ impl Player {
         false
     }
 
+    /// Sets the output volume
+    /// It only errors if it can't send the message (so something serious may have happened)
     pub fn set_volume(&self, volume: f32) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Volume(volume))?;
@@ -105,6 +117,9 @@ impl Player {
         Ok(())
     }
 
+    /// Seeks to the set timestamp
+    /// Be aware that if the timestamp isn't valid the track thread will panic
+    /// It only errors if it can't send the message (so something serious may have happened)
     pub fn seek_to(&self, secs: u64, frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             if let Some(current_duration) = &self.cached_get_time {
@@ -127,6 +142,7 @@ impl Player {
         Ok(())
     }
 
+    /// Returns the timestamp that was lastly sent by the track thread
     pub fn get_time(&mut self) -> Option<TrackTime> {
         let mut last = None;
         if let Some(rx_t) = &self.rx_t {
@@ -140,6 +156,8 @@ impl Player {
         last
     }
 
+    /// Returns whether the track thread has sent `Message::End`, thus stopping the execution by itself
+    /// This will return `false` if you called `Player::end_current` beforehand
     pub fn has_ended(&self) -> bool {
         if let Some(rx_e) = &self.rx_e {
             while let Ok(message) = rx_e.try_recv() {
@@ -151,6 +169,9 @@ impl Player {
         false
     }
 
+    /// This will return the current playing track's name
+    /// Note that this function will return a value even if there isn't any track playing
+    /// Note that this function returns the track's name at index 0 by default
     pub fn get_current_track_name(&self) -> String {
         return self
             .tracks
@@ -160,10 +181,15 @@ impl Player {
             .to_string(); // <- Why calling to_string to circumvent the borrow checker?!
     }
 
+    /// Returns the index of the current track playing
+    /// Note that this function will return a value even if there isn't any track playing
+    /// Note that this function returns 0 by default
     pub fn get_index_current_track(&self) -> usize {
         self.index_playing
     }
 
+    /// Returns the duration for a certain track
+    /// `panic!`s if you passed an invalid index
     pub fn get_duration_for_track(&self, index: usize) -> TrackTime {
         let format = self.tracks.get(index).unwrap().get_format();
         let track = format.default_track().expect("Can't load tracks");
@@ -182,6 +208,8 @@ impl Player {
         }
     }
 
+    /// Returns the name for a certain track
+    /// `panic!`s if you passed an invalid index
     pub fn get_index_from_track_name(&self, name: &str) -> Result<usize, NError> {
         for i in 0..self.tracks.len() {
             if self.tracks.get(i).unwrap().name() == name {
@@ -191,10 +219,14 @@ impl Player {
         Err(NError::NoTrack)
     }
 
+    /// Returns whether if any track is playing
+    /// Note that this function doesn't check if the track is paused or not
     pub fn is_playing(&self) -> bool {
         self.thread.is_some()
     }
 
+    /// Ends the current track playing, if any
+    /// It only errors if it can't send the message (so something serious may have happened)
     pub fn end_current(&self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Exit)?;
@@ -202,6 +234,8 @@ impl Player {
         Ok(())
     }
 
+    /// Plays the track next in queue
+    /// If it already played all the tracks it will restart from 0
     pub fn play_next(&mut self) {
         if !self.is_first {
             self.index += 1;
@@ -217,6 +251,8 @@ impl Player {
         self.play(self.index, false);
     }
 
+    /// Plays the track that was previous in line
+    /// If the current `index` is 0 it'll wrap to the last track in queue
     pub fn play_previous(&mut self) {
         if self.index > 0 {
             self.index -= 1;
@@ -228,6 +264,9 @@ impl Player {
         self.play(self.index, false);
     }
 
+    /// Plays a certain track
+    /// If `set_new_index` is true it'll set `index` to the given index
+    /// `panic!`s if the index is invalid
     pub fn play(&mut self, index: usize, set_new_index: bool) {
         let app_name = self.app_name.clone();
 
@@ -266,6 +305,9 @@ impl Player {
                 .make(&track.codec_params, &DecoderOptions::default())
                 .expect("Can't load decoder");
             let mut audio_output = None;
+
+            let mut spec = None;
+            let mut dur = None;
 
             // Vars used to control audio output
             let mut is_paused = false;
@@ -348,12 +390,23 @@ impl Player {
                     match decoder.decode(&packet) {
                         Ok(decoded) => {
                             if audio_output.is_none() {
-                                let spec = *decoded.spec();
-                                let duration = decoded.capacity() as u64;
-                                audio_output =
-                                    Some(output::try_open(spec, duration, &app_name).unwrap());
+                                spec = Some(*decoded.spec());
+                                dur = Some(decoded.capacity() as u64);
+                                audio_output = Some(
+                                    output::try_open(spec.unwrap(), dur.unwrap(), &app_name)
+                                        .unwrap(),
+                                );
                             } else {
-                                // TODO: Check if the audio spec. and duration haven't changed.
+                                let new_spec = *decoded.spec();
+                                let new_dur = decoded.capacity() as u64;
+
+                                if new_spec != spec.unwrap() {
+                                    spec = Some(new_spec);
+                                }
+
+                                if new_dur != dur.unwrap() {
+                                    dur = Some(new_dur);
+                                }
                             }
 
                             if let Some(audio_output) = &mut audio_output {
