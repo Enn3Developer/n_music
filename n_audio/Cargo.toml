@@ -1,21 +1,21 @@
 [package]
 name = "n_audio"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Simple audio player"
 homepage = "https://github.com/Enn3Developer/n_music"
 repository = "https://github.com/Enn3Developer/n_music"
-documentation = "https://docs.rs/crate/n_audio/1.0.0"
+documentation = "https://docs.rs/crate/n_audio/1.1.0"
 readme = "README.md"
 
-[features]
-shuffle = ["rand"]
+[dev-dependencies]
+nconsole = "0.4.0"
 
 [dependencies]
-rand = { version = "0.8.5", optional = true }
-symphonia = { version = "0.5.0", features = ["aac", "alac", "isomp4", "mp3"] }
+symphonia = { version = "0.5.1", features = ["aac", "alac", "isomp4", "mp3"] }
+rand = "0.8.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libpulse-binding = "2.26.0"
@@ -23,5 +23,5 @@ libpulse-simple-binding = "2.25.0"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 rb = "0.4.0"
-cpal = "0.13.5"
+cpal = "0.14.0"
 dasp = "0.11.0"

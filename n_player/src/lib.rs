@@ -5,20 +5,17 @@ use std::path::Path;
 
 use serde_derive::{Deserialize, Serialize};
 
-use n_audio::player::Player;
+use n_audio::queue::QueuePlayer;
 
 pub mod app;
 
-pub fn add_all_tracks_to_player(player: &mut Player, config: &Config) {
+pub fn add_all_tracks_to_player(player: &mut QueuePlayer, config: &Config) {
     let path = config.path();
     let mut files: Vec<DirEntry> = vec![];
 
     if let Some(path) = path {
         let paths = fs::read_dir(path).expect("Can't read files in the chosen directory");
-        files = paths
-            .filter(|item| item.is_ok())
-            .map(|item| item.unwrap())
-            .collect()
+        files = paths.filter_map(|item| item.ok()).collect()
     }
 
     for file in &files {
@@ -29,7 +26,7 @@ pub fn add_all_tracks_to_player(player: &mut Player, config: &Config) {
                 .mime_type()
                 .contains("audio")
         {
-            player.add_to_queue(file.path()).unwrap();
+            player.add(file.path()).unwrap();
         }
     }
 

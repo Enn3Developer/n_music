@@ -3,7 +3,7 @@
 use eframe::emath::Vec2;
 use native_dialog::FileDialog;
 
-use n_audio::player::Player;
+use n_audio::queue::QueuePlayer;
 use n_player::app::App;
 use n_player::{add_all_tracks_to_player, Config};
 
@@ -26,7 +26,7 @@ fn main() {
         config.save(PATH).expect("Can't save config file");
     }
 
-    let mut player = Player::new("N Music".to_string());
+    let mut player = QueuePlayer::new("N Music".to_string());
 
     add_all_tracks_to_player(&mut player, &config);
 

@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
@@ -11,7 +11,7 @@ eframe = { version = "0.17.0" }
 toml = "0.5"
 serde = "1.0"
 serde_derive = "1.0"
-n_audio = { path = "../n_audio", features = ["shuffle"] }
+n_audio = { path = "../n_audio" }
 infer = "0.7.0"
 itertools = "0.10.3"
 native-dialog = "0.6.3"

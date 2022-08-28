@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/n_audio/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/n_player/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/n_audio/examples" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_audio/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_player/target" />

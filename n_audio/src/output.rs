@@ -174,7 +174,6 @@ mod pulseaudio {
 
 #[cfg(not(target_os = "linux"))]
 mod cpal {
-    use cpal;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use dasp::Sample;
     use rb::*;
@@ -186,10 +185,7 @@ mod cpal {
 
     pub struct CpalAudioOutput;
 
-    trait AudioOutputSample:
-        cpal::Sample + ConvertibleSample + RawSample + std::marker::Send + 'static
-    {
-    }
+    trait AudioOutputSample: cpal::Sample + ConvertibleSample + RawSample + Send + 'static {}
 
     impl AudioOutputSample for f32 {}
 
@@ -214,7 +210,10 @@ mod cpal {
             let config = match device.default_output_config() {
                 Ok(config) => config,
                 Err(err) => {
-                    eprintln!("Failed to get default audio output device config: {}", err);
+                    eprintln!(
+                        "Failed to get default audio output device config: {:?}",
+                        err
+                    );
                     return Err(AudioOutputError::OpenStreamError);
                 }
             };
@@ -238,7 +237,7 @@ mod cpal {
     where
         T: AudioOutputSample,
     {
-        ring_buf_producer: rb::Producer<T>,
+        ring_buf_producer: Producer<T>,
         sample_buf: SampleBuffer<T>,
         stream: cpal::Stream,
     }
@@ -273,11 +272,11 @@ mod cpal {
                     // Mute any remaining samples.
                     data[written..].iter_mut().for_each(|s| *s = T::MID);
                 },
-                move |err| eprintln!("audio output error: {}", err),
+                move |err| eprintln!("audio output error: {:?}", err),
             );
 
             if let Err(err) = stream_result {
-                eprintln!("audio output stream open error: {}", err);
+                eprintln!("audio output stream open error: {:?}", err);
 
                 return Err(AudioOutputError::OpenStreamError);
             }
@@ -286,7 +285,7 @@ mod cpal {
 
             // Start the output stream.
             if let Err(err) = stream.play() {
-                eprintln!("audio output stream play error: {}", err);
+                eprintln!("audio output stream play error: {:?}", err);
 
                 return Err(AudioOutputError::PlayStreamError);
             }
@@ -319,7 +318,7 @@ mod cpal {
             }
 
             while let Some(written) = self.ring_buf_producer.write_blocking(&samples) {
-                samples = (&samples[written..]).to_vec();
+                samples = (samples[written..]).to_vec();
             }
 
             Ok(())

@@ -5,8 +5,8 @@ use symphonia::core::units::Time;
 mod music_track;
 mod output;
 pub mod player;
+pub mod queue;
 
-/// Internal errors of the library
 #[derive(Debug)]
 pub enum NError {
     NoTrack,
@@ -21,6 +21,7 @@ pub enum Message {
     Seek(Time),
     Time(TrackTime),
     Volume(f32),
+    PlaybackSpeed(f32),
 }
 
 /// Returns the file name without its extension
@@ -29,8 +30,8 @@ pub enum Message {
 /// ```
 /// use std::path::Path;
 /// use n_audio::from_path_to_name_without_ext;
-/// let filename = "file.txt";
-/// assert_eq!(from_path_to_name_without_ext(Path::new(filename)), "file");
+/// let filename = "file.1.txt";
+/// assert_eq!(from_path_to_name_without_ext(Path::new(filename)), "file.1");
 /// ```
 pub fn from_path_to_name_without_ext(path: &Path) -> String {
     let split: Vec<String> = path

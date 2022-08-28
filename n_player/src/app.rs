@@ -8,7 +8,7 @@ use eframe::egui::{
 use eframe::{egui, epi};
 use itertools::Itertools;
 
-use n_audio::player::Player;
+use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 
 use crate::Config;
@@ -16,21 +16,19 @@ use crate::Config;
 pub struct App {
     config: Config,
     path: String,
-    player: Player,
+    player: QueuePlayer,
     volume: f32,
     time: f64,
     cached_track_time: Option<TrackTime>,
     files: HashMap<String, u64>,
+    title: String,
 }
 
 impl App {
-    pub fn new(config: Config, config_path: String, player: Player) -> Self {
+    pub fn new(config: Config, config_path: String, player: QueuePlayer) -> Self {
         let path = config.path().clone().unwrap();
         let paths = fs::read_dir(path).expect("Can't read files in the chosen directory");
-        let entries: Vec<DirEntry> = paths
-            .filter(|item| item.is_ok())
-            .map(|item| item.unwrap())
-            .collect();
+        let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
         let mut files = HashMap::new();
 
         for entry in &entries {
@@ -60,6 +58,7 @@ impl App {
             time: 0.0,
             cached_track_time: None,
             files,
+            title: String::from("N Music"),
         }
     }
 
@@ -127,7 +126,7 @@ impl epi::App for App {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
 
-                    ui.label(self.player.get_current_track_name());
+                    ui.label(self.player.current_track_name());
                     ui.add_space(10.0);
 
                     let text_toggle = if !self.player.is_playing() || self.player.is_paused() {
@@ -174,8 +173,7 @@ impl epi::App for App {
                 for (name, duration) in self.files.iter().sorted() {
                     ui.horizontal(|ui| {
                         let mut frame = false;
-                        if self.player.is_playing() && &self.player.get_current_track_name() == name
-                        {
+                        if self.player.is_playing() && self.player.current_track_name() == name {
                             ui.add_space(10.0);
                             frame = true;
                         }
@@ -189,7 +187,7 @@ impl epi::App for App {
                         if button.clicked() {
                             let index = self.player.get_index_from_track_name(name).unwrap();
                             self.player.end_current().unwrap();
-                            self.player.play(index, true);
+                            self.player.play(index);
                         }
                     });
                 }
@@ -197,7 +195,7 @@ impl epi::App for App {
             });
         });
 
-        // self.title = format!("N Music - {}", self.player.get_current_track_name());
+        self.title = format!("N Music - {}", self.player.current_track_name());
 
         ctx.request_repaint();
     }
@@ -217,6 +215,6 @@ impl epi::App for App {
     }
 
     fn name(&self) -> &str {
-        "N Music"
+        &self.title
     }
 }
