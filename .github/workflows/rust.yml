@@ -28,7 +28,7 @@ jobs:
           rustup target add ${{ matrix.target }}
       - name: Build ${{ matrix.target }}
         run: |
-          cargo build -Z build-std=std --target=${{ matrix.target }} --release --features "audiopus/dynamic" -vv
+          cargo build -Z build-std=std --target=${{ matrix.target }} --release --features "audiopus_sys/dynamic" -vv
           cd target\${{ matrix.target }}\release && tar -cavf "$env:CRATE_NAME-${{ matrix.target }}.zip" "$env:CRATE_NAME.exe"  && cd ../../..
       - name: Upload n_music-${{ matrix.target }}
         uses: actions/upload-artifact@v3
@@ -67,7 +67,7 @@ jobs:
           TARGET_LDFLAGS: "--target=${{ matrix.target }}"
           TARGET_CFLAGS: "--target=${{ matrix.target }}"
         run: |
-          cargo build -Z build-std=std --release --target=${{ matrix.target }} --features "audiopus/dynamic" -vv
+          cargo build -Z build-std=std --release --target=${{ matrix.target }} --features "audiopus_sys/dynamic" -vv
           upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
           cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
       - name: Upload n_music-${{ matrix.target }}.tar.gz
@@ -111,7 +111,7 @@ jobs:
           }
           
           sudo apt update
-          sudo apt install mold upx
+          sudo apt install mold upx libpulse-dev
           
           if ! [[ -z "${{ matrix.host_cc }}" ]]; then
               export HOST_CC="${{ matrix.host_cc }}-gcc"

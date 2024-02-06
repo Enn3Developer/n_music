@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "n_audio"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "audiopus",
  "cpal",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "n_player"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "crossbeam-queue",
  "eframe",
