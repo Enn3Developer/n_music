@@ -16,6 +16,8 @@ jobs:
         uses: actions/checkout@v3
       - name: Cache build
         uses: Swatinem/rust-cache@v2
+      - name: Set up Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.14
         with:
@@ -26,6 +28,7 @@ jobs:
           rustup component add rust-src --toolchain nightly
           rustup default nightly
           rustup target add ${{ matrix.target }}
+          cargo add cmake
       - name: Build ${{ matrix.target }}
         run: |
           cargo build -Z build-std=std --target=${{ matrix.target }} --release --package n_player -vv
