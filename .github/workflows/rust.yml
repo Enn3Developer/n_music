@@ -24,7 +24,7 @@ jobs:
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: ${{ matrix.target_cc }}
-          toolset: 17.8.5
+          toolset: 17.8.34511.84
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.14
         with:
@@ -121,7 +121,7 @@ jobs:
             echo "$1=$(eval echo \$$1)" >> $GITHUB_ENV
           }
           
-          sudo deb http://bg.ports.ubuntu.com/ jammy main restricted
+          sudo echo "deb http://bg.ports.ubuntu.com/ jammy main restricted" >> /etc/apt/sources.lst
           sudo dpkg --add-architecture ${{ matrix.arch }}
           sudo apt update
           sudo apt install -y mold upx libpulse-dev:${{ matrix.arch }}
