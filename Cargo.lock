@@ -2310,6 +2310,7 @@ name = "n_audio"
 version = "1.2.1"
 dependencies = [
  "audiopus",
+ "audiopus_sys",
  "cpal",
  "dasp",
  "libpulse-binding",

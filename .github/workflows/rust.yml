@@ -10,7 +10,7 @@ jobs:
       matrix:
         target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
     env:
-      CRATE_NAME: "n_music"
+      CRATE_NAME: "n_player"
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -28,7 +28,7 @@ jobs:
           rustup target add ${{ matrix.target }}
       - name: Build ${{ matrix.target }}
         run: |
-          cargo build -Z build-std=std --target=${{ matrix.target }} --release --features "audiopus_sys/dynamic" -vv
+          cargo build -Z build-std=std --target=${{ matrix.target }} --release --package n_player -vv
           cd target\${{ matrix.target }}\release && tar -cavf "$env:CRATE_NAME-${{ matrix.target }}.zip" "$env:CRATE_NAME.exe"  && cd ../../..
       - name: Upload n_music-${{ matrix.target }}
         uses: actions/upload-artifact@v3
@@ -49,7 +49,7 @@ jobs:
       matrix:
         target: [x86_64-apple-darwin, aarch64-apple-darwin]
     env:
-      CRATE_NAME: "n_music"
+      CRATE_NAME: "n_player"
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -67,7 +67,7 @@ jobs:
           TARGET_LDFLAGS: "--target=${{ matrix.target }}"
           TARGET_CFLAGS: "--target=${{ matrix.target }}"
         run: |
-          cargo build -Z build-std=std --release --target=${{ matrix.target }} --features "audiopus_sys/dynamic" -vv
+          cargo build -Z build-std=std --release --target=${{ matrix.target }} --features --package n_player -vv
           upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
           cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
       - name: Upload n_music-${{ matrix.target }}.tar.gz
@@ -93,7 +93,7 @@ jobs:
             host_cc: ""
             target_cc: aarch64-linux-gnu
     env:
-      CRATE_NAME: "n_music"
+      CRATE_NAME: "n_player"
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -130,7 +130,7 @@ jobs:
           sudo ln -fs /usr/bin/mold /usr/bin/ld
       - name: Build ${{ matrix.target }}
         run: |
-          PKG_CONFIG_SYSROOT_DIR=/ cargo build -Z build-std=std --target=${{ matrix.target }} --release -vv
+          PKG_CONFIG_SYSROOT_DIR=/ cargo build -Z build-std=std --target=${{ matrix.target }} --package n_player --release -vv
           upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
           cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
       - name: Upload n_music-${{ matrix.target }}.tar.gz
