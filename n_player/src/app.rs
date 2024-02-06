@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::DirEntry;
+#[cfg(windows)]
+use std::path::PathBuf;
 
 use eframe::egui;
 use eframe::egui::{
