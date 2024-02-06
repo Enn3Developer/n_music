@@ -318,7 +318,7 @@ mod cpal {
             // Write all the interleaved samples to the ring buffer.
             let mut samples: Vec<T> = self.sample_buf.samples().to_vec();
             for sample in samples.iter_mut() {
-                *sample = sample.mul_amp(volume.to_float_sample());
+                *sample = sample.to_float_sample().mul_amp(volume);
             }
 
             while let Some(written) = self.ring_buf_producer.write_blocking(samples.as_slice()) {
