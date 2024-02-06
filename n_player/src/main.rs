@@ -26,7 +26,7 @@ fn main() {
         config.save(PATH).expect("Can't save config file");
     }
 
-    let mut player = QueuePlayer::new("N Music".to_string());
+    let mut player = QueuePlayer::new();
 
     add_all_tracks_to_player(&mut player, &config);
 

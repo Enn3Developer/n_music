@@ -24,8 +24,6 @@ pub struct Player {
     is_paused: bool,
     volume: f32,
     playback_speed: f32,
-    // Only used for Pulse Audio
-    app_name: String,
     cached_get_time: Option<TrackTime>,
     thread: Option<JoinHandle<()>>,
     tx: Option<Sender<Message>>,
@@ -36,12 +34,11 @@ pub struct Player {
 impl Player {
     /// Instance a new `Player`
     /// `app_name` is a Linux-only feature, but it is required for all platforms nonetheless
-    pub fn new(app_name: String, volume: f32, playback_speed: f32) -> Self {
+    pub fn new(volume: f32, playback_speed: f32) -> Self {
         Player {
             is_paused: false,
             volume,
             playback_speed,
-            app_name,
             cached_get_time: None,
             thread: None,
             tx: None,
@@ -186,7 +183,6 @@ impl Player {
 
     /// Plays a certain track given its format
     pub fn play(&mut self, format: Arc<Mutex<Box<dyn FormatReader>>>) {
-        let app_name = self.app_name.clone();
         let volume = self.volume;
         let playback_speed = self.playback_speed;
 
@@ -194,9 +190,8 @@ impl Player {
         let (tx_t, rx_t) = mpsc::channel();
         let (tx_e, rx_e) = mpsc::channel();
 
-        let thread = thread::spawn(move || {
-            Self::thread_fn(format, rx, tx_t, tx_e, app_name, volume, playback_speed)
-        });
+        let thread =
+            thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
 
         self.rx_e = Some(rx_e);
         self.rx_t = Some(rx_t);
@@ -209,7 +204,6 @@ impl Player {
         rx: Receiver<Message>,
         tx_t: Sender<Message>,
         tx_e: Sender<Message>,
-        app_name: String,
         mut volume: f32,
         mut playback_speed: f32,
     ) {
@@ -318,9 +312,8 @@ impl Player {
                             tmp_spec.rate = (tmp_spec.rate as f32 * playback_speed).round() as u32;
                             spec = Some(tmp_spec);
                             dur = Some(decoded.capacity() as u64);
-                            audio_output = Some(
-                                output::try_open(spec.unwrap(), dur.unwrap(), &app_name).unwrap(),
-                            );
+                            audio_output =
+                                Some(output::try_open(spec.unwrap(), dur.unwrap()).unwrap());
                         } else {
                             let mut new_spec = *decoded.spec();
                             new_spec.rate = (new_spec.rate as f32 * playback_speed).round() as u32;
@@ -340,10 +333,8 @@ impl Player {
                             }
 
                             if changed {
-                                audio_output = Some(
-                                    output::try_open(spec.unwrap(), dur.unwrap(), &app_name)
-                                        .unwrap(),
-                                );
+                                audio_output =
+                                    Some(output::try_open(spec.unwrap(), dur.unwrap()).unwrap());
                             }
                         }
 
@@ -381,6 +372,6 @@ impl Player {
 
 impl Default for Player {
     fn default() -> Self {
-        Self::new("N Audio".to_string(), 1.0, 1.0)
+        Self::new(1.0, 1.0)
     }
 }

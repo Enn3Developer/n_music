@@ -34,8 +34,8 @@ pub struct QueuePlayer {
 }
 
 impl QueuePlayer {
-    pub fn new(app_name: String) -> Self {
-        let player = Player::new(app_name, 1.0, 1.0);
+    pub fn new() -> Self {
+        let player = Player::new(1.0, 1.0);
 
         QueuePlayer {
             queue: vec![],
