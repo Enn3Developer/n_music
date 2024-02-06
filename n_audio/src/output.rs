@@ -305,7 +305,7 @@ mod cpal {
         }
     }
 
-    impl<T: AudioOutputSample + MulAssign> AudioOutput for CpalAudioOutputImpl<T> {
+    impl<T: AudioOutputSample + MulAssign + From<f32>> AudioOutput for CpalAudioOutputImpl<T> {
         fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()> {
             // Do nothing if there are no audio frames.
             if decoded.frames() == 0 {
