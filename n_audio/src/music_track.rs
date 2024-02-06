@@ -8,7 +8,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::{from_path_to_name_without_ext, PROBE};
+use crate::{from_path_to_name_without_ext, TrackTime, PROBE};
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
@@ -50,5 +50,25 @@ impl MusicTrack {
             .format(&hint, media_stream, &fmt_ops, &meta_ops)
             .expect("Format not supported");
         probed.format
+    }
+
+    pub fn get_duration(&self) -> TrackTime {
+        let format = self.get_format();
+        let track = format.default_track().expect("Can't load tracks");
+        let time_base = track.codec_params.time_base.unwrap();
+
+        let duration = track
+            .codec_params
+            .n_frames
+            .map(|frames| track.codec_params.start_ts + frames)
+            .unwrap();
+        let time = time_base.calc_time(duration);
+
+        TrackTime {
+            ts_secs: 0,
+            ts_frac: 0.0,
+            dur_secs: time.seconds,
+            dur_frac: time.frac,
+        }
     }
 }

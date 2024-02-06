@@ -1,7 +1,8 @@
-use std::ffi::OsStr;
 use std::fs;
 use std::fs::DirEntry;
+#[cfg(windows)]
 use std::path::Path;
+use std::path::PathBuf;
 
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
@@ -14,15 +15,11 @@ use eframe::{egui, Storage};
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 
-use crate::{vec_contains, Config, FileTrack, FileTracks};
+use crate::{add_all_tracks_to_player, vec_contains, FileTrack, FileTracks};
 
-pub struct App<P: AsRef<Path>>
-where
-    P: AsRef<OsStr>,
-{
-    config: Config,
-    path: String,
-    player: QueuePlayer<P>,
+pub struct App {
+    path: Option<String>,
+    player: QueuePlayer<String>,
     volume: f32,
     time: f64,
     cached_track_time: Option<TrackTime>,
@@ -30,63 +27,47 @@ where
     title: String,
 }
 
-impl<P: AsRef<Path>> App<P>
-where
-    P: AsRef<OsStr>,
-{
-    pub fn new(
-        config: Config,
-        config_path: String,
-        player: QueuePlayer<P>,
-        cc: &eframe::CreationContext<'_>,
-    ) -> Self {
+impl App {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
 
-        let path = config.path().clone().unwrap();
-        let paths = fs::read_dir(path).expect("Can't read files in the chosen directory");
-        let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
-        let mut files = FileTracks {
-            tracks: Vec::with_capacity(entries.len()),
-        };
+        let mut player: QueuePlayer<String> = QueuePlayer::new();
+
+        let mut files = FileTracks { tracks: vec![] };
+        let mut saved_files = FileTracks { tracks: vec![] };
+        let mut volume = 1.0;
+
+        let mut maybe_path = None;
 
         if let Some(storage) = cc.storage {
             if let Some(data) = storage.get_string("durations") {
                 if let Ok(read_data) = toml::from_str(&data) {
-                    files = read_data;
+                    saved_files = read_data;
                 }
+            }
+            if let Some(data_v) = storage.get_string("volume") {
+                volume = data_v.parse().unwrap_or(1.0);
+            }
+
+            if let Some(path) = storage.get_string("path") {
+                add_all_tracks_to_player(&mut player, path.clone());
+                maybe_path = Some(path);
             }
         }
 
-        for entry in &entries {
-            if entry.metadata().unwrap().is_file()
-                && infer::get_from_path(entry.path())
-                    .unwrap()
-                    .unwrap()
-                    .mime_type()
-                    .contains("audio")
-            {
-                let name = from_path_to_name_without_ext(&entry.path());
-                if vec_contains(&files, &name) {
-                    continue;
-                }
-                let duration =
-                    player.get_duration_for_track(player.get_index_from_track_name(&name).unwrap());
-                files.push(FileTrack {
-                    name,
-                    duration: duration.dur_secs,
-                });
-            }
+        player.set_volume(volume).unwrap();
+
+        if let Some(path) = &maybe_path {
+            Self::init(
+                PathBuf::new().join(path),
+                &mut player,
+                &mut files,
+                &mut saved_files,
+            );
         }
-
-        files.sort_by(|a, b| a.cmp(b));
-
-        let path = config_path;
-
-        let volume = config.volume_or_default(1.0) as f32;
 
         Self {
-            config,
-            path,
+            path: maybe_path,
             player,
             volume,
             time: 0.0,
@@ -162,20 +143,70 @@ where
             Some(font_file)
         }
     }
+
+    fn finish_init(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.label("Add music folder");
+
+            if ui.button("Open folder…").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    let saved = FileTracks { tracks: vec![] };
+                    ui.label("Loading...");
+                    Self::init(path.clone(), &mut self.player, &mut self.files, &saved);
+                    self.path = Some(path.to_str().unwrap().to_string());
+                }
+            }
+        });
+    }
+
+    fn init(
+        path: PathBuf,
+        player: &mut QueuePlayer<String>,
+        files: &mut FileTracks,
+        saved_files: &FileTracks,
+    ) {
+        let paths = fs::read_dir(&path).expect("Can't read files in the chosen directory");
+        let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
+
+        add_all_tracks_to_player(player, path.to_str().unwrap().to_string());
+
+        for entry in &entries {
+            if entry.metadata().unwrap().is_file()
+                && infer::get_from_path(entry.path())
+                    .unwrap()
+                    .unwrap()
+                    .mime_type()
+                    .contains("audio")
+            {
+                let name = from_path_to_name_without_ext(&entry.path());
+                let contains = vec_contains(&saved_files, &name);
+                let duration = if contains.0 {
+                    saved_files[contains.1].duration
+                } else {
+                    player
+                        .get_duration_for_track(player.get_index_from_track_name(&name).unwrap())
+                        .dur_secs
+                };
+                files.push(FileTrack { name, duration });
+            }
+        }
+
+        files.sort_by(|a, b| a.cmp(b));
+    }
 }
 
-impl<P: AsRef<Path>> eframe::App for App<P>
-where
-    P: AsRef<OsStr>,
-{
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
+
+        if self.path.is_none() {
+            self.finish_init(ctx);
+            return;
+        }
 
         if self.player.has_ended() {
             self.player.play_next();
         }
-
-        self.player.set_volume(self.volume).unwrap();
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(40.0);
@@ -207,8 +238,7 @@ where
                 self.slider_seek(slider, track_time);
 
                 if volume_slider.changed() {
-                    self.config.set_volume(self.volume as f64);
-                    self.config.save(&self.path).unwrap();
+                    self.player.set_volume(self.volume).unwrap();
                 }
             });
 
@@ -294,11 +324,14 @@ where
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {
-        storage.set_string("durations", toml::to_string(&self.files).unwrap())
+        storage.set_string("durations", toml::to_string(&self.files).unwrap());
+        storage.set_string("volume", self.volume.to_string());
+        if let Some(path) = &self.path {
+            storage.set_string("path", path.to_string());
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&Context>) {
         self.player.end_current().unwrap();
-        self.config.save(&self.path).unwrap();
     }
 }

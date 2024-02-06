@@ -13,4 +13,4 @@ serde = "1.0"
 serde_derive = "1.0"
 n_audio = { path = "../n_audio" }
 infer = "0.15.0"
-native-dialog = "0.7.0"
+rfd = "0.13.0"

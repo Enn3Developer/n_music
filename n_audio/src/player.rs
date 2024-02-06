@@ -81,8 +81,8 @@ impl Player {
     pub fn set_volume(&mut self, volume: f32) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             tx.send(Message::Volume(volume))?;
-            self.volume = volume;
         }
+        self.volume = volume;
         Ok(())
     }
 
