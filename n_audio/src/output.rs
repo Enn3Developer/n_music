@@ -246,7 +246,7 @@ mod cpal {
         stream: cpal::Stream,
     }
 
-    impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
+    impl<T: AudioOutputSample + cpal::SizedSample + MulAssign> CpalAudioOutputImpl<T> {
         pub fn try_open(
             spec: SignalSpec,
             duration: Duration,
