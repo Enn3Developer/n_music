@@ -9,9 +9,11 @@ use std::thread::JoinHandle;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
+use symphonia_core::errors::Error::SeekError;
+use symphonia_core::errors::SeekErrorKind;
 
 use crate::music_track::MusicTrack;
-use crate::{output, Message, TrackTime};
+use crate::{output, Message, TrackTime, CODEC_REGISTRY};
 
 // TODO: update docs
 
@@ -33,7 +35,7 @@ pub struct Player {
 
 impl Player {
     /// Instance a new `Player`
-    /// `app_name` is a Linux-only feature but it is required for all platforms nonetheless
+    /// `app_name` is a Linux-only feature, but it is required for all platforms nonetheless
     pub fn new(app_name: String, volume: f32, playback_speed: f32) -> Self {
         Player {
             is_paused: false,
@@ -223,7 +225,7 @@ impl Player {
             .map(|frames| track.codec_params.start_ts + frames)
             .unwrap();
 
-        let mut decoder = symphonia::default::get_codecs()
+        let mut decoder = CODEC_REGISTRY
             .make(&track.codec_params, &DecoderOptions::default())
             .expect("Can't load decoder");
         let mut audio_output = None;
@@ -248,12 +250,13 @@ impl Player {
                     }
                     Message::Seek(time) => {
                         if let Err(err) = format.seek(
-                            SeekMode::Coarse,
+                            SeekMode::Accurate,
                             SeekTo::Time {
                                 time,
                                 track_id: Some(track_id),
                             },
                         ) {
+                            println!("error seeking");
                             if !err.to_string().contains("end of stream") {
                                 eprintln!(
                                     "Couldn't seek to position {}+{}\nError: {}",
@@ -361,18 +364,18 @@ impl Player {
         if !exit {
             tx_e.send(Message::End).expect("Can't send End message");
         }
-        format
-            .seek(
-                SeekMode::Coarse,
-                SeekTo::Time {
-                    time: Time {
-                        seconds: 0,
-                        frac: 0.0,
-                    },
-                    track_id: None,
+        if let Err(SeekError(SeekErrorKind::OutOfRange)) = format.seek(
+            SeekMode::Coarse,
+            SeekTo::Time {
+                time: Time {
+                    seconds: 0,
+                    frac: 0.0,
                 },
-            )
-            .unwrap();
+                track_id: None,
+            },
+        ) {
+            println!("skippin out of range seek error")
+        }
     }
 }
 

@@ -8,7 +8,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::from_path_to_name_without_ext;
+use crate::{from_path_to_name_without_ext, PROBE};
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
@@ -46,7 +46,7 @@ impl MusicTrack {
             enable_gapless: true,
             ..Default::default()
         };
-        let probed = symphonia::default::get_probe()
+        let probed = PROBE
             .format(&hint, media_stream, &fmt_ops, &meta_ops)
             .expect("Format not supported");
         probed.format
