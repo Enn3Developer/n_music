@@ -321,7 +321,7 @@ mod cpal {
                 *sample *= volume;
             }
 
-            while let Some(written) = self.ring_buf_producer.write_blocking(&samples) {
+            while let Some(written) = self.ring_buf_producer.write_blocking(samples.as_slice()) {
                 samples = samples[written..].to_vec();
             }
 
