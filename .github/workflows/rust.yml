@@ -137,7 +137,7 @@ jobs:
           sudo ln -fs /usr/bin/mold /usr/bin/ld
       - name: Build ${{ matrix.target }}
         run: |
-          cargo build -Z build-std=std --target=${{ matrix.target }} --package n_player --release -vv
+          PKG_CONFIG_SYSROOT_DIR=/ cargo build -Z build-std=std --target=${{ matrix.target }} --package n_player --release -vv
           upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
           cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
       - name: Upload n_music-${{ matrix.target }}.tar.gz
