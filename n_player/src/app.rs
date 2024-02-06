@@ -4,7 +4,8 @@ use std::fs::DirEntry;
 
 use eframe::egui;
 use eframe::egui::{
-    Button, Label, Response, ScrollArea, Slider, SliderOrientation, Visuals, Widget,
+    Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
+    Widget,
 };
 use eframe::glow::Context;
 use itertools::Itertools;
@@ -197,6 +198,7 @@ impl eframe::App for App {
         });
 
         self.title = format!("N Music - {}", self.player.current_track_name());
+        ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
 
         ctx.request_repaint();
     }
@@ -205,17 +207,4 @@ impl eframe::App for App {
         self.player.end_current().unwrap();
         self.config.save(&self.path).unwrap();
     }
-
-    // fn setup(
-    //     &mut self,
-    //     _ctx: &egui::Context,
-    //     _frame: &egui::Frame,
-    //     _storage: Option<&dyn egui::Storage>,
-    // ) {
-    // }
-
-    //
-    // fn name(&self) -> &str {
-    //     &self.title
-    // }
 }
