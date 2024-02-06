@@ -1,60 +1,81 @@
-use crossbeam_queue::ArrayQueue;
-use rayon::iter::ParallelIterator;
-use rayon::prelude::IntoParallelRefIterator;
-use std::error::Error;
-use std::fs;
-use std::fs::DirEntry;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
-
-use n_audio::music_track::MusicTrack;
 use serde_derive::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::error::Error;
+use std::ffi::OsStr;
+use std::fs;
+use std::ops::{Deref, DerefMut};
+use std::path::Path;
 
-use n_audio::queue::{QueuePlayer, QueueTrack};
+use n_audio::queue::QueuePlayer;
 
 pub mod app;
 
-pub fn add_all_tracks_to_player(player: &mut QueuePlayer, config: &Config) {
-    let path = config.path();
-    let mut files: Vec<DirEntry> = vec![];
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct FileTrack {
+    name: String,
+    duration: u64,
+}
 
-    if let Some(path) = path {
-        let paths = fs::read_dir(path).expect("Can't read files in the chosen directory");
-        files = paths.filter_map(|item| item.ok()).collect()
+impl PartialEq<Self> for FileTrack {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+
+impl PartialOrd<Self> for FileTrack {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl Eq for FileTrack {}
+
+impl Ord for FileTrack {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct FileTracks {
+    tracks: Vec<FileTrack>,
+}
+
+impl Deref for FileTracks {
+    type Target = Vec<FileTrack>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.tracks
+    }
+}
+
+impl DerefMut for FileTracks {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.tracks
+    }
+}
+
+fn vec_contains(tracks: &FileTracks, name: &String) -> bool {
+    for track in tracks.tracks.iter() {
+        if &track.name == name {
+            return true;
+        }
     }
 
-    let mut n = 0;
-    let q = Arc::new(Mutex::new(0));
+    false
+}
 
-    let queue = ArrayQueue::new(files.len());
-    files.par_iter().for_each(|file| {
-        if file.metadata().unwrap().is_file()
-            && infer::get_from_path(file.path())
-                .unwrap()
-                .unwrap()
-                .mime_type()
-                .contains("audio")
-        {
-            {
-                let q = q.clone();
-                let mut q = q.lock().unwrap();
-                *q += 1;
-                println!("Getting track from number {q}");
-            }
-            let track = MusicTrack::new(file.path()).unwrap();
-            let format = Arc::new(Mutex::new(track.get_format()));
-            let name = track.name().to_string();
-            let queue_track = QueueTrack::new(format, name);
-            if let Err(e) = queue.push(queue_track) {
-                eprintln!("Can't add track {} to queue", e.name());
-            }
-        }
-    });
+pub fn add_all_tracks_to_player<P: AsRef<Path>>(player: &mut QueuePlayer<P>, config: &Config)
+where
+    P: AsRef<OsStr> + From<String>,
+{
+    let path = config.path();
 
-    for queue_track in queue {
-        n += 1;
-        println!("Adding track number {n}");
-        player.add_queue_track(queue_track);
+    if let Some(path) = path {
+        let dir = fs::read_dir(path).expect("Can't read files in the chosen directory");
+        dir.filter_map(|item| item.ok()).for_each(|file| {
+            player.add(file.path().to_str().unwrap().to_string().into());
+        });
     }
 
     player.shuffle();
@@ -99,7 +120,7 @@ impl Config {
     }
 
     pub fn volume_or_default(&self, default: f64) -> f64 {
-        if let Some(volume) = self.volume.clone() {
+        if let Some(volume) = self.volume {
             return volume;
         }
         default

@@ -1,39 +1,43 @@
-use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::fs::DirEntry;
-#[cfg(windows)]
-use std::path::PathBuf;
+use std::path::Path;
 
-use eframe::egui;
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
     Widget,
 };
 use eframe::epaint::FontFamily;
 use eframe::glow::Context;
-use itertools::Itertools;
+use eframe::{egui, Storage};
 
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 
-use crate::Config;
+use crate::{vec_contains, Config, FileTrack, FileTracks};
 
-pub struct App {
+pub struct App<P: AsRef<Path>>
+where
+    P: AsRef<OsStr>,
+{
     config: Config,
     path: String,
-    player: QueuePlayer,
+    player: QueuePlayer<P>,
     volume: f32,
     time: f64,
     cached_track_time: Option<TrackTime>,
-    files: HashMap<String, u64>,
+    files: FileTracks,
     title: String,
 }
 
-impl App {
+impl<P: AsRef<Path>> App<P>
+where
+    P: AsRef<OsStr>,
+{
     pub fn new(
         config: Config,
         config_path: String,
-        player: QueuePlayer,
+        player: QueuePlayer<P>,
         cc: &eframe::CreationContext<'_>,
     ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
@@ -41,7 +45,17 @@ impl App {
         let path = config.path().clone().unwrap();
         let paths = fs::read_dir(path).expect("Can't read files in the chosen directory");
         let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
-        let mut files = HashMap::new();
+        let mut files = FileTracks {
+            tracks: Vec::with_capacity(entries.len()),
+        };
+
+        if let Some(storage) = cc.storage {
+            if let Some(data) = storage.get_string("durations") {
+                if let Ok(read_data) = toml::from_str(&data) {
+                    files = read_data;
+                }
+            }
+        }
 
         for entry in &entries {
             if entry.metadata().unwrap().is_file()
@@ -52,11 +66,19 @@ impl App {
                     .contains("audio")
             {
                 let name = from_path_to_name_without_ext(&entry.path());
+                if vec_contains(&files, &name) {
+                    continue;
+                }
                 let duration =
                     player.get_duration_for_track(player.get_index_from_track_name(&name).unwrap());
-                files.insert(name, duration.dur_secs);
+                files.push(FileTrack {
+                    name,
+                    duration: duration.dur_secs,
+                });
             }
         }
+
+        files.sort_by(|a, b| a.cmp(b));
 
         let path = config_path;
 
@@ -142,7 +164,10 @@ impl App {
     }
 }
 
-impl eframe::App for App {
+impl<P: AsRef<Path>> eframe::App for App<P>
+where
+    P: AsRef<OsStr>,
+{
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
 
@@ -235,10 +260,12 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
             ScrollArea::vertical().show(ui, |ui| {
-                for (name, duration) in self.files.iter().sorted() {
+                for track in self.files.iter() {
+                    let name = &track.name;
+                    let duration = &track.duration;
                     ui.horizontal(|ui| {
                         let mut frame = false;
-                        if self.player.is_playing() && self.player.current_track_name() == name {
+                        if self.player.is_playing() && &self.player.current_track_name() == name {
                             ui.add_space(10.0);
                             frame = true;
                         }
@@ -264,6 +291,10 @@ impl eframe::App for App {
         ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
 
         ctx.request_repaint();
+    }
+
+    fn save(&mut self, storage: &mut dyn Storage) {
+        storage.set_string("durations", toml::to_string(&self.files).unwrap())
     }
 
     fn on_exit(&mut self, _gl: Option<&Context>) {

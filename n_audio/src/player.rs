@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
+use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, SendError, Sender};
-use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -171,18 +171,18 @@ impl Player {
         P: AsRef<OsStr>,
     {
         let music_track = MusicTrack::new(path)?;
-        self.play(Arc::new(Mutex::new(music_track.get_format())));
+        self.play(music_track.get_format());
 
         Ok(())
     }
 
     /// Plays a certain track
     pub fn play_from_track(&mut self, track: &MusicTrack) {
-        self.play(Arc::new(Mutex::new(track.get_format())));
+        self.play(track.get_format());
     }
 
     /// Plays a certain track given its format
-    pub fn play(&mut self, format: Arc<Mutex<Box<dyn FormatReader>>>) {
+    pub fn play(&mut self, format: Box<dyn FormatReader>) {
         let volume = self.volume;
         let playback_speed = self.playback_speed;
 
@@ -200,15 +200,13 @@ impl Player {
     }
 
     fn thread_fn(
-        format: Arc<Mutex<Box<dyn FormatReader>>>,
+        mut format: Box<dyn FormatReader>,
         rx: Receiver<Message>,
         tx_t: Sender<Message>,
         tx_e: Sender<Message>,
         mut volume: f32,
         mut playback_speed: f32,
     ) {
-        let mut format = format.lock().unwrap();
-
         // Vars used for audio output
         let track = format.default_track().expect("Can't load tracks");
         let track_id = track.id;
@@ -243,8 +241,9 @@ impl Player {
                         break;
                     }
                     Message::Seek(time) => {
+                        println!("seeking");
                         if let Err(err) = format.seek(
-                            SeekMode::Accurate,
+                            SeekMode::Coarse,
                             SeekTo::Time {
                                 time,
                                 track_id: Some(track_id),
@@ -292,7 +291,7 @@ impl Player {
                     dur_secs: dur_time.seconds,
                     dur_frac: dur_time.frac,
                 })) {
-                    while let Ok(message) = rx.try_recv() {
+                    if let Ok(message) = rx.try_recv() {
                         if let Message::Exit = message {
                             exit = true;
                             break;

@@ -1,11 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
 use eframe::{egui, HardwareAcceleration};
-use native_dialog::FileDialog;
-
 use n_audio::queue::QueuePlayer;
 use n_player::app::App;
 use n_player::{add_all_tracks_to_player, Config};
+use native_dialog::FileDialog;
 
 const PATH: &str = "./.nmusic.toml";
 
@@ -26,7 +25,7 @@ fn main() {
         config.save(PATH).expect("Can't save config file");
     }
 
-    let mut player = QueuePlayer::new();
+    let mut player: QueuePlayer<String> = QueuePlayer::new();
 
     add_all_tracks_to_player(&mut player, &config);
 
