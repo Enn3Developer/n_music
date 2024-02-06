@@ -67,7 +67,7 @@ jobs:
           TARGET_LDFLAGS: "--target=${{ matrix.target }}"
           TARGET_CFLAGS: "--target=${{ matrix.target }}"
         run: |
-          cargo build -Z build-std=std --release --target=${{ matrix.target }} --features --package n_player -vv
+          cargo build -Z build-std=std --release --target=${{ matrix.target }} --package n_player -vv
           upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
           cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
       - name: Upload n_music-${{ matrix.target }}.tar.gz
