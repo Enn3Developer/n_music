@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
-use eframe::emath::Vec2;
+use eframe::egui;
 use native_dialog::FileDialog;
 
 use n_audio::queue::QueuePlayer;
@@ -33,9 +33,10 @@ fn main() {
     let app = App::new(config, PATH.to_string(), player);
 
     let native_options = eframe::NativeOptions {
-        initial_window_size: Some(Vec2::new(400.0, 600.0)),
+        viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 600.0]),
         ..Default::default()
     };
 
-    eframe::run_native(Box::new(app), native_options);
+    eframe::run_native("N Music", native_options, Box::new(|_cc| Box::new(app)))
+        .expect("Can't start app");
 }

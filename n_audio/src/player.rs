@@ -17,6 +17,7 @@ use crate::{output, Message, TrackTime};
 
 /// The main actor for everything.
 /// Using this struct is really easy, just add a file you want to play (be sure of it being an audio file supported by Symphonia) and call `Player::play_next` and you've done everything!
+#[derive(Debug)]
 pub struct Player {
     is_paused: bool,
     volume: f32,

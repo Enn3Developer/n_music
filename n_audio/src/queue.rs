@@ -12,9 +12,19 @@ use crate::music_track::MusicTrack;
 use crate::player::Player;
 use crate::{NError, TrackTime};
 
-struct QueueTrack {
+pub struct QueueTrack {
     format: Arc<Mutex<Box<dyn FormatReader>>>,
     name: String,
+}
+
+impl QueueTrack {
+    pub fn new(format: Arc<Mutex<Box<dyn FormatReader>>>, name: String) -> Self {
+        Self { format, name }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 pub struct QueuePlayer {
@@ -34,29 +44,47 @@ impl QueuePlayer {
         }
     }
 
+    #[inline]
+    pub fn add_queue_track(&mut self, track: QueueTrack) {
+        self.queue.push(track);
+    }
+
+    #[inline]
+    pub fn add_format(&mut self, format: Arc<Mutex<Box<dyn FormatReader>>>, name: String) {
+        self.add_queue_track(QueueTrack { format, name });
+    }
+
+    #[inline]
+    pub fn add_track(&mut self, track: MusicTrack) {
+        let format = Arc::new(Mutex::new(track.get_format()));
+        let name = track.name().to_string();
+        self.add_format(format, name);
+    }
+
+    #[inline]
     pub fn add<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Box<dyn Error>>
     where
         P: AsRef<OsStr>,
     {
         let track = MusicTrack::new(path)?;
 
-        self.queue.push(QueueTrack {
-            format: Arc::new(Mutex::new(track.get_format())),
-            name: track.name().to_string(),
-        });
+        self.add_track(track);
 
         Ok(())
     }
 
+    #[inline]
     pub fn remove(&mut self, index: usize) {
         self.queue.remove(index);
     }
 
+    #[inline]
     pub fn clear(&mut self) {
         self.queue.clear();
         self.index = usize::MAX - 1;
     }
 
+    #[inline]
     pub fn shuffle(&mut self) {
         self.queue.shuffle(&mut thread_rng());
     }

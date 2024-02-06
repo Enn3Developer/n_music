@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::DirEntry;
 
+use eframe::egui;
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, Visuals, Widget,
 };
-use eframe::{egui, epi};
+use eframe::glow::Context;
 use itertools::Itertools;
 
 use n_audio::queue::QueuePlayer;
@@ -77,8 +78,8 @@ impl App {
     }
 }
 
-impl epi::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &epi::Frame) {
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
 
         if self.player.has_ended() {
@@ -200,21 +201,21 @@ impl epi::App for App {
         ctx.request_repaint();
     }
 
-    fn setup(
-        &mut self,
-        _ctx: &egui::Context,
-        _frame: &epi::Frame,
-        _storage: Option<&dyn epi::Storage>,
-    ) {
-    }
-
-    fn on_exit_event(&mut self) -> bool {
+    fn on_exit(&mut self, _gl: Option<&Context>) {
         self.player.end_current().unwrap();
         self.config.save(&self.path).unwrap();
-        true
     }
 
-    fn name(&self) -> &str {
-        &self.title
-    }
+    // fn setup(
+    //     &mut self,
+    //     _ctx: &egui::Context,
+    //     _frame: &egui::Frame,
+    //     _storage: Option<&dyn egui::Storage>,
+    // ) {
+    // }
+
+    //
+    // fn name(&self) -> &str {
+    //     &self.title
+    // }
 }

@@ -1,4 +1,5 @@
 [package]
+resolver = "2"
 name = "n_player"
 version = "1.1.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
@@ -7,11 +8,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-eframe = { version = "0.17.0" }
-toml = "0.5"
+eframe = { version = "0.26.0" }
+toml = "0.8.10"
 serde = "1.0"
 serde_derive = "1.0"
 n_audio = { path = "../n_audio" }
-infer = "0.7.0"
-itertools = "0.10.3"
-native-dialog = "0.6.3"
+infer = "0.15.0"
+itertools = "0.12.1"
+native-dialog = "0.7.0"
+rayon = "1.7.0"
+crossbeam-queue = "0.3.8"
