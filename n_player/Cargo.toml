@@ -1,7 +1,7 @@
 [package]
 resolver = "2"
 name = "n_player"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
