@@ -30,14 +30,16 @@ fn main() {
 
     add_all_tracks_to_player(&mut player, &config);
 
-    let app = App::new(config, PATH.to_string(), player);
-
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 600.0]),
         hardware_acceleration: HardwareAcceleration::Preferred,
         ..Default::default()
     };
 
-    eframe::run_native("N Music", native_options, Box::new(|_cc| Box::new(app)))
-        .expect("Can't start app");
+    eframe::run_native(
+        "N Music",
+        native_options,
+        Box::new(|cc| Box::new(App::new(config, PATH.to_string(), player, cc))),
+    )
+    .expect("Can't start app");
 }
