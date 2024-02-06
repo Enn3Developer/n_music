@@ -28,7 +28,6 @@ jobs:
           rustup component add rust-src --toolchain nightly
           rustup default nightly
           rustup target add ${{ matrix.target }}
-          cargo add cmake
       - name: Build ${{ matrix.target }}
         run: |
           cargo build -Z build-std=std --target=${{ matrix.target }} --release --package n_player -vv
