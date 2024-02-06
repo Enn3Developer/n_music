@@ -229,6 +229,9 @@ mod cpal {
                 cpal::SampleFormat::U16 => {
                     CpalAudioOutputImpl::<u16>::try_open(spec, duration, &device)
                 }
+                _ => {
+                    unimplemented!("sample format not yet implemented")
+                }
             }
         }
     }
@@ -273,6 +276,7 @@ mod cpal {
                     data[written..].iter_mut().for_each(|s| *s = T::MID);
                 },
                 move |err| eprintln!("audio output error: {:?}", err),
+                None,
             );
 
             if let Err(err) = stream_result {
