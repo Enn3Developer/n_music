@@ -24,7 +24,7 @@ jobs:
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: ${{ matrix.target_cc }}
-          toolset: 17
+          toolset: 17.0
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.14
         with:
@@ -98,9 +98,11 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             host_cc: ""
             target_cc: ""
+            arch: amd64
           - target: aarch64-unknown-linux-gnu
             host_cc: ""
             target_cc: aarch64-linux-gnu
+            arch: arm64
     env:
       CRATE_NAME: "n_player"
     steps:
@@ -119,8 +121,9 @@ jobs:
             echo "$1=$(eval echo \$$1)" >> $GITHUB_ENV
           }
           
+          sudo dpkg --add-architecture ${{ matrix.arch }}
           sudo apt update
-          sudo apt install -y mold upx libpulse-dev
+          sudo apt install -y mold upx libpulse-dev:${{ matrix.arch }}
           
           if ! [[ -z "${{ matrix.host_cc }}" ]]; then
               export HOST_CC="${{ matrix.host_cc }}-gcc"

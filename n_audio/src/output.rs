@@ -177,6 +177,7 @@ mod cpal {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use dasp::Sample;
     use rb::*;
+    use std::ops::MulAssign;
     use symphonia::core::audio::{AudioBufferRef, RawSample, SampleBuffer, SignalSpec};
     use symphonia::core::conv::ConvertibleSample;
     use symphonia::core::units::Duration;
@@ -304,7 +305,7 @@ mod cpal {
         }
     }
 
-    impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
+    impl<T: AudioOutputSample + MulAssign> AudioOutput for CpalAudioOutputImpl<T> {
         fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()> {
             // Do nothing if there are no audio frames.
             if decoded.frames() == 0 {
