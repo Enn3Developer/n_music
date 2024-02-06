@@ -1,0 +1,142 @@
+name: Build
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    env:
+      CRATE_NAME: "n_music"
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Cache build
+        uses: Swatinem/rust-cache@v2
+      - name: Setup
+        run: |
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly
+          rustup default nightly
+          rustup target add ${{ matrix.target }}
+      - name: Build ${{ matrix.target }}
+        run: |
+          cargo build -Z build-std=std --target=${{ matrix.target }} --release -vv
+          cd target\${{ matrix.target }}\release && tar -cavf "$env:CRATE_NAME-${{ matrix.target }}.zip" "$env:CRATE_NAME.exe"  && cd ../../..
+      - name: Upload n_music-${{ matrix.target }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.CRATE_NAME }}-${{ matrix.target }}.zip
+          path: target\${{ matrix.target }}\release\${{ env.CRATE_NAME }}-${{ matrix.target }}.zip
+
+      - name: Publish in release
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}-${{ matrix.target }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    env:
+      CRATE_NAME: "n_music"
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Cache build
+        uses: Swatinem/rust-cache@v2
+      - name: Setup
+        run: |
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly
+          rustup default nightly
+          rustup target add ${{ matrix.target }}
+          brew install llvm upx
+      - name: Build ${{ matrix.target }}
+        env:
+          TARGET_LDFLAGS: "--target=${{ matrix.target }}"
+          TARGET_CFLAGS: "--target=${{ matrix.target }}"
+        run: |
+          cargo build -Z build-std=std --release --target=${{ matrix.target }} -vv
+          upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
+          cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
+      - name: Upload n_music-${{ matrix.target }}.tar.gz
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.CRATE_NAME }}-${{ matrix.target }}.tar.gz
+          path: target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}-${{ matrix.target }}.tar.gz
+      - name: Publish in release
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            target/${{ matrix.target }}/release/${{ env.CRATE_NAME }}-${{ matrix.target }}.tar.gz
+  build-gnu-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            host_cc: ""
+            target_cc: ""
+          - target: aarch64-unknown-linux-gnu
+            host_cc: ""
+            target_cc: aarch64-linux-gnu
+    env:
+      CRATE_NAME: "n_music"
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Cache build
+        uses: Swatinem/rust-cache@v2
+      - name: Setup
+        run: |
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly
+          rustup default nightly
+          rustup target add ${{ matrix.target }}
+          
+          write_var(){
+            echo "$1=$(eval echo \$$1)" >> $GITHUB_ENV
+          }
+          
+          sudo apt update
+          sudo apt install mold upx
+          
+          if ! [[ -z "${{ matrix.host_cc }}" ]]; then
+              export HOST_CC="${{ matrix.host_cc }}-gcc"
+              write_var HOST_CC
+              sudo apt install -y -qq gcc-${{ matrix.host_cc }}
+          fi
+          if ! [[ -z "${{ matrix.target_cc }}" ]]; then
+              export TARGET_CC="${{ matrix.target_cc }}-gcc"
+              write_var TARGET_CC
+              sudo apt install -y -qq gcc-${{ matrix.target_cc }}
+              mkdir -p .cargo
+              echo '[target.${{ matrix.target }}]'>>.cargo/config
+              echo "linker = \"$TARGET_CC\"">>.cargo/config
+          fi
+          
+          sudo ln -fs /usr/bin/mold /usr/bin/ld
+      - name: Build ${{ matrix.target }}
+        run: |
+          cargo build -Z build-std=std --target=${{ matrix.target }} --release -vv
+          upx --best --lzma "target/${{ matrix.target }}/release/$CRATE_NAME"
+          cd target/${{ matrix.target }}/release/ && tar -cvf "$CRATE_NAME-${{ matrix.target }}.tar.gz" "$CRATE_NAME" && cd ../../..
+      - name: Upload n_music-${{ matrix.target }}.tar.gz
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.CRATE_NAME }}-${{ matrix.target }}.tar.gz
+          path: target/${{ matrix.target }}/release/*.tar.gz
+      - name: Publish in release
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            target/${{ matrix.target }}/release/*.tar.gz
