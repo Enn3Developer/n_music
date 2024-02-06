@@ -28,7 +28,7 @@ jobs:
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v1.14
         with:
-          cmake-version: '3.16.x'
+          cmake-version: '3.28.x'
       - name: Setup
         run: |
           rustup toolchain install nightly
@@ -120,7 +120,8 @@ jobs:
             echo "$1=$(eval echo \$$1)" >> $GITHUB_ENV
           }
           
-          sudo echo "deb http://bg.ports.ubuntu.com/ jammy main restricted" >> sudo /etc/apt/sources.lst
+          sudo echo "deb [arch=arm64] http://bg.ports.ubuntu.com/ jammy main restricted" >> sudo /etc/apt/sources.lst
+          sudo apt update
           sudo dpkg --add-architecture ${{ matrix.arch }}
           sudo apt update
           sudo apt install -y mold upx libpulse-dev:${{ matrix.arch }}
