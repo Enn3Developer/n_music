@@ -18,6 +18,7 @@ nconsole = "0.4.0"
 symphonia = { version = "0.5.3", features = ["all"] }
 symphonia-core = "0.5.3"
 audiopus = "0.3.0-rc.0"
+audiopus_sys = { version = "0.2.2", features = ["dynamic"] }
 rand = "0.8.5"
 once_cell = "1.19.0"
 serde = { version = "1.0.196", features = ["derive"] }
@@ -25,6 +26,3 @@ serde_json = "1.0.113"
 rb = "0.4.0"
 cpal = "0.15.2"
 dasp = "0.11.0"
-
-[dependencies.audiopus_sys]
-features = ["dynamic"]
