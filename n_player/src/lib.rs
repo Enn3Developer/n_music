@@ -13,7 +13,7 @@ pub mod app;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     for (i, track) in tracks.iter().enumerate() {
-        if let Ok(music_track) = MusicTrack::new(&track) {
+        if let Ok(music_track) = MusicTrack::new(track) {
             let duration = music_track.get_duration();
             tx.send(Message::Duration(i, duration.dur_secs))
                 .expect("can't send back loaded times");
@@ -87,7 +87,9 @@ where
 {
     let dir = fs::read_dir(path).expect("Can't read files in the chosen directory");
     dir.filter_map(|item| item.ok()).for_each(|file| {
-        player.add(file.path().to_str().unwrap().to_string().into());
+        let mut p = file.path().to_str().unwrap().to_string();
+        p.shrink_to_fit();
+        player.add(p.into());
     });
 
     player.shuffle();

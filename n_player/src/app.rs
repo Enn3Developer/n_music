@@ -188,7 +188,8 @@ impl App {
                     .mime_type()
                     .contains("audio")
             {
-                let name = from_path_to_name_without_ext(&entry.path());
+                let mut name = from_path_to_name_without_ext(&entry.path());
+                name.shrink_to_fit();
                 let contains = vec_contains(saved_files, &name);
                 let duration = if contains.0 {
                     saved_files[contains.1].duration
