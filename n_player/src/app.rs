@@ -3,6 +3,7 @@ use std::fs::DirEntry;
 #[cfg(windows)]
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
@@ -205,6 +206,9 @@ impl eframe::App for App {
 
         if self.player.has_ended() {
             self.player.play_next();
+
+            self.title = format!("N Music - {}", self.player.current_track_name());
+            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
         }
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
@@ -266,6 +270,10 @@ impl eframe::App for App {
                             } else {
                                 self.player.end_current().unwrap();
                                 self.player.play_previous();
+
+                                self.title =
+                                    format!("N Music - {}", self.player.current_track_name());
+                                ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
                             }
                         }
                     }
@@ -277,11 +285,17 @@ impl eframe::App for App {
                         }
                         if !self.player.is_playing() {
                             self.player.play_next();
+
+                            self.title = format!("N Music - {}", self.player.current_track_name());
+                            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
                         }
                     }
                     if next.clicked() {
                         self.player.end_current().unwrap();
                         self.player.play_next();
+
+                        self.title = format!("N Music - {}", self.player.current_track_name());
+                        ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
                     }
                 });
             });
@@ -290,6 +304,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
             ScrollArea::vertical().show(ui, |ui| {
+                // TODO: implement culling (maybe using ui.is_rect_visible())
                 for track in self.files.iter() {
                     let name = &track.name;
                     let duration = &track.duration;
@@ -310,6 +325,9 @@ impl eframe::App for App {
                             let index = self.player.get_index_from_track_name(name).unwrap();
                             self.player.end_current().unwrap();
                             self.player.play(index);
+
+                            self.title = format!("N Music - {}", self.player.current_track_name());
+                            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
                         }
                     });
                 }
@@ -317,10 +335,9 @@ impl eframe::App for App {
             });
         });
 
-        self.title = format!("N Music - {}", self.player.current_track_name());
-        ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
-
-        ctx.request_repaint();
+        if !self.player.is_paused() {
+            ctx.request_repaint_after(Duration::from_millis(750));
+        }
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {

@@ -227,7 +227,14 @@ impl Player {
         let mut exit = false;
 
         loop {
-            while let Ok(message) = rx.try_recv() {
+            let recv = |rx: &Receiver<Message>| {
+                if is_paused {
+                    rx.recv().ok()
+                } else {
+                    rx.try_recv().ok()
+                }
+            };
+            if let Some(message) = recv(&rx) {
                 match message {
                     Message::Play => is_paused = false,
                     Message::Pause => is_paused = true,
