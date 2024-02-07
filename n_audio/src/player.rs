@@ -15,7 +15,7 @@ use symphonia::core::units::Time;
 // TODO: update docs
 
 /// The main actor for everything.
-/// Using this struct is really easy, just add a file you want to play (be sure of it being an audio file supported by Symphonia) and call `Player::play_next` and you've done everything!
+/// Using this struct is really easy, just add a file you want to play (be sure of it being an audio file supported by Symphonia or it being an opus file) and call `Player::play` and you've done everything!
 #[derive(Debug)]
 pub struct Player {
     is_paused: bool,
@@ -30,7 +30,6 @@ pub struct Player {
 
 impl Player {
     /// Instance a new `Player`
-    /// `app_name` is a Linux-only feature, but it is required for all platforms nonetheless
     pub fn new(volume: f32, playback_speed: f32) -> Self {
         Player {
             is_paused: false,
@@ -83,7 +82,7 @@ impl Player {
         Ok(())
     }
 
-    /// Sets the output volume
+    /// Sets the playback speed
     /// It only errors if it can't send the message (so something serious may have happened)
     pub fn set_playback_speed(&mut self, playback_speed: f32) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {

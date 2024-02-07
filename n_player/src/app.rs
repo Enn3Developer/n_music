@@ -304,7 +304,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
             ScrollArea::vertical().show(ui, |ui| {
-                // TODO: implement culling (maybe using ui.is_rect_visible())
+                // TODO: implement culling (maybe using ui.is_rect_visible()); total height is 20
                 for track in self.files.iter() {
                     let name = &track.name;
                     let duration = &track.duration;
