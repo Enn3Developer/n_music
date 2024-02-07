@@ -115,24 +115,7 @@ where
 
     pub fn get_duration_for_track(&self, index: usize) -> TrackTime {
         let track = MusicTrack::new(&self.queue[index]).unwrap();
-        let format = track.get_format();
-
-        let track = format.default_track().expect("Can't load tracks");
-        let time_base = track.codec_params.time_base.unwrap();
-
-        let duration = track
-            .codec_params
-            .n_frames
-            .map(|frames| track.codec_params.start_ts + frames)
-            .unwrap();
-        let time = time_base.calc_time(duration);
-
-        TrackTime {
-            ts_secs: 0,
-            ts_frac: 0.0,
-            dur_secs: time.seconds,
-            dur_frac: time.frac,
-        }
+        track.get_duration()
     }
 }
 

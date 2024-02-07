@@ -1,9 +1,11 @@
-use std::fs;
 use std::fs::DirEntry;
 #[cfg(windows)]
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
 use std::time::Duration;
+use std::{fs, thread};
 
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
@@ -15,7 +17,9 @@ use eframe::{egui, Storage};
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 
-use crate::{add_all_tracks_to_player, vec_contains, FileTrack, FileTracks};
+use crate::{
+    add_all_tracks_to_player, loader_thread, vec_contains, FileTrack, FileTracks, Message,
+};
 
 pub struct App {
     path: Option<String>,
@@ -25,6 +29,7 @@ pub struct App {
     cached_track_time: Option<TrackTime>,
     files: FileTracks,
     title: String,
+    rx: Option<Receiver<Message>>,
 }
 
 impl App {
@@ -57,13 +62,15 @@ impl App {
 
         player.set_volume(volume).unwrap();
 
+        let mut rx = None;
+
         if let Some(path) = &maybe_path {
-            Self::init(
+            rx = Some(Self::init(
                 PathBuf::new().join(path),
                 &mut player,
                 &mut files,
                 &saved_files,
-            );
+            ));
         }
 
         Self {
@@ -74,6 +81,7 @@ impl App {
             cached_track_time: None,
             files,
             title: String::from("N Music"),
+            rx,
         }
     }
 
@@ -152,8 +160,9 @@ impl App {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     let saved = FileTracks { tracks: vec![] };
                     ui.label("Loading...");
-                    Self::init(path.clone(), &mut self.player, &mut self.files, &saved);
+                    let rx = Self::init(path.clone(), &mut self.player, &mut self.files, &saved);
                     self.path = Some(path.to_str().unwrap().to_string());
+                    self.rx = Some(rx);
                 }
             }
         });
@@ -164,9 +173,10 @@ impl App {
         player: &mut QueuePlayer<String>,
         files: &mut FileTracks,
         saved_files: &FileTracks,
-    ) {
+    ) -> Receiver<Message> {
         let paths = fs::read_dir(&path).expect("Can't read files in the chosen directory");
         let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
+        let mut indexing_files = Vec::with_capacity(entries.len());
 
         add_all_tracks_to_player(player, path.to_str().unwrap().to_string());
 
@@ -183,15 +193,20 @@ impl App {
                 let duration = if contains.0 {
                     saved_files[contains.1].duration
                 } else {
-                    player
-                        .get_duration_for_track(player.get_index_from_track_name(&name).unwrap())
-                        .dur_secs
+                    0
                 };
                 files.push(FileTrack { name, duration });
+                indexing_files.push(entry.path());
             }
         }
 
         files.sort();
+        indexing_files.sort();
+
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(|| loader_thread(tx, indexing_files));
+
+        rx
     }
 }
 
@@ -202,6 +217,17 @@ impl eframe::App for App {
         if self.path.is_none() {
             self.finish_init(ctx);
             return;
+        }
+
+        if let Some(rx) = &self.rx {
+            while let Ok(message) = rx.try_recv() {
+                match message {
+                    Message::Duration(i, dur) => {
+                        self.files[i].duration = dur;
+                    }
+                    Message::Image => {}
+                }
+            }
         }
 
         if self.player.has_ended() {
@@ -306,7 +332,6 @@ impl eframe::App for App {
             let row_height = ui.spacing().interact_size.y;
             let total_rows = self.files.len();
             ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, rows_range| {
-                // TODO: implement culling (maybe using ui.is_rect_visible()); total height is 20
                 for i in rows_range {
                     let track = &self.files[i];
                     let name = &track.name;

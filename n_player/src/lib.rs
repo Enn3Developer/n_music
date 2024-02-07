@@ -1,13 +1,30 @@
+use n_audio::music_track::MusicTrack;
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 
 use n_audio::queue::QueuePlayer;
 
 pub mod app;
+
+fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
+    for (i, track) in tracks.iter().enumerate() {
+        if let Ok(music_track) = MusicTrack::new(&track) {
+            let duration = music_track.get_duration();
+            tx.send(Message::Duration(i, duration.dur_secs))
+                .expect("can't send back loaded times");
+        }
+    }
+}
+
+enum Message {
+    Duration(usize, u64),
+    Image, // TODO
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct FileTrack {
