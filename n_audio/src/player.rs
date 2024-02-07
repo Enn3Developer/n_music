@@ -6,14 +6,11 @@ use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::thread;
 use std::thread::JoinHandle;
 
+use crate::music_track::MusicTrack;
+use crate::{output, Message, TrackTime, CODEC_REGISTRY};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
-use symphonia_core::errors::Error::SeekError;
-use symphonia_core::errors::SeekErrorKind;
-
-use crate::music_track::MusicTrack;
-use crate::{output, Message, TrackTime, CODEC_REGISTRY};
 
 // TODO: update docs
 
@@ -241,7 +238,6 @@ impl Player {
                         break;
                     }
                     Message::Seek(time) => {
-                        println!("seeking");
                         if let Err(err) = format.seek(
                             SeekMode::Coarse,
                             SeekTo::Time {
@@ -316,21 +312,16 @@ impl Player {
                         } else {
                             let mut new_spec = *decoded.spec();
                             new_spec.rate = (new_spec.rate as f32 * playback_speed).round() as u32;
-
                             let new_dur = decoded.capacity() as u64;
-
                             let mut changed = false;
-
                             if new_spec != spec.unwrap() {
                                 spec = Some(new_spec);
                                 changed = true;
                             }
-
                             if new_dur != dur.unwrap() {
                                 dur = Some(new_dur);
                                 changed = true
                             }
-
                             if changed {
                                 audio_output =
                                     Some(output::try_open(spec.unwrap(), dur.unwrap()).unwrap());
@@ -353,18 +344,6 @@ impl Player {
         }
         if !exit {
             tx_e.send(Message::End).expect("Can't send End message");
-        }
-        if let Err(SeekError(SeekErrorKind::OutOfRange)) = format.seek(
-            SeekMode::Coarse,
-            SeekTo::Time {
-                time: Time {
-                    seconds: 0,
-                    frac: 0.0,
-                },
-                track_id: None,
-            },
-        ) {
-            println!("skippin out of range seek error")
         }
     }
 }

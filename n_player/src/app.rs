@@ -11,7 +11,6 @@ use eframe::egui::{
 use eframe::epaint::FontFamily;
 use eframe::glow::Context;
 use eframe::{egui, Storage};
-
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 
@@ -62,7 +61,7 @@ impl App {
                 PathBuf::new().join(path),
                 &mut player,
                 &mut files,
-                &mut saved_files,
+                &saved_files,
             );
         }
 
@@ -79,7 +78,7 @@ impl App {
 
     fn slider_seek(&mut self, slider: Response, track_time: Option<TrackTime>) {
         if let Some(track_time) = track_time {
-            if slider.drag_released() || slider.clicked() {
+            if slider.changed() {
                 self.player.pause().unwrap();
                 let total_time = track_time.dur_secs as f64 + track_time.dur_frac;
                 let seek_time = total_time * self.time;
@@ -179,7 +178,7 @@ impl App {
                     .contains("audio")
             {
                 let name = from_path_to_name_without_ext(&entry.path());
-                let contains = vec_contains(&saved_files, &name);
+                let contains = vec_contains(saved_files, &name);
                 let duration = if contains.0 {
                     saved_files[contains.1].duration
                 } else {
@@ -191,7 +190,7 @@ impl App {
             }
         }
 
-        files.sort_by(|a, b| a.cmp(b));
+        files.sort();
     }
 }
 
@@ -212,17 +211,6 @@ impl eframe::App for App {
             ui.set_min_height(40.0);
 
             let track_time = self.player.get_time();
-            self.time = if let Some(track_time) = &track_time {
-                let value = (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac);
-                self.cached_track_time = Some(track_time.clone());
-                value
-            } else if let Some(track_time) = &self.cached_track_time {
-                (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac)
-            } else {
-                0.0
-            };
 
             ui.horizontal(|ui| {
                 let slider = Slider::new(&mut self.time, 0.0..=1.0)
@@ -235,12 +223,24 @@ impl eframe::App for App {
                     .show_value(false)
                     .ui(ui);
 
-                self.slider_seek(slider, track_time);
+                self.slider_seek(slider, track_time.clone());
 
                 if volume_slider.changed() {
                     self.player.set_volume(self.volume).unwrap();
                 }
             });
+
+            self.time = if let Some(track_time) = &track_time {
+                let value = (track_time.ts_secs as f64 + track_time.ts_frac)
+                    / (track_time.dur_secs as f64 + track_time.dur_frac);
+                self.cached_track_time = Some(track_time.clone());
+                value
+            } else if let Some(track_time) = &self.cached_track_time {
+                (track_time.ts_secs as f64 + track_time.ts_frac)
+                    / (track_time.dur_secs as f64 + track_time.dur_frac)
+            } else {
+                0.0
+            };
 
             ui.horizontal(|ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
