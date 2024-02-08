@@ -191,12 +191,21 @@ impl App {
                 let mut name = from_path_to_name_without_ext(&entry.path());
                 name.shrink_to_fit();
                 let contains = vec_contains(saved_files, &name);
-                let duration = if contains.0 {
-                    saved_files[contains.1].duration
+                let (duration, artist, cover) = if contains.0 {
+                    (
+                        saved_files[contains.1].duration,
+                        saved_files[contains.1].artist.clone(),
+                        saved_files[contains.1].cover.clone(),
+                    )
                 } else {
-                    0
+                    (0, "ARTIST".to_string(), vec![])
                 };
-                files.push(FileTrack { name, duration });
+                files.push(FileTrack {
+                    name,
+                    duration,
+                    artist,
+                    cover,
+                });
                 indexing_files.push(entry.path());
             }
         }
@@ -226,7 +235,12 @@ impl eframe::App for App {
                     Message::Duration(i, dur) => {
                         self.files[i].duration = dur;
                     }
-                    Message::Image => {}
+                    Message::Artist(i, artist) => {
+                        self.files[i].artist = artist;
+                    }
+                    Message::Image(i, data) => {
+                        self.files[i].cover = data;
+                    }
                 }
             }
         }
@@ -330,7 +344,7 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
-            let row_height = ui.spacing().interact_size.y;
+            let row_height = 37.0;
             let total_rows = self.files.len();
             ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, rows_range| {
                 for i in rows_range {
@@ -343,21 +357,24 @@ impl eframe::App for App {
                             ui.add_space(10.0);
                             frame = true;
                         }
-                        let button = Button::new(name).frame(frame).ui(ui);
+                        ui.vertical(|ui| {
+                            let button = Button::new(name).frame(frame).ui(ui);
+                            if button.clicked() {
+                                let index = self.player.get_index_from_track_name(name).unwrap();
+                                self.player.end_current().unwrap();
+                                self.player.play(index);
+
+                                self.title =
+                                    format!("N Music - {}", self.player.current_track_name());
+                                ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+                            }
+                            ui.label("ARTIST");
+                        });
                         ui.add(Label::new(format!(
                             "{:02}:{:02}",
                             duration / 60,
                             duration % 60
                         )));
-
-                        if button.clicked() {
-                            let index = self.player.get_index_from_track_name(name).unwrap();
-                            self.player.end_current().unwrap();
-                            self.player.play(index);
-
-                            self.title = format!("N Music - {}", self.player.current_track_name());
-                            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
-                        }
                     });
                 }
                 ui.allocate_space(ui.available_size());
