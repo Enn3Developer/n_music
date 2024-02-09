@@ -2,6 +2,10 @@
 
 use eframe::egui;
 use n_player::app::App;
+use std::alloc::System;
+
+#[global_allocator]
+static GLOBAL: System = System;
 
 fn main() {
     let native_options = eframe::NativeOptions {

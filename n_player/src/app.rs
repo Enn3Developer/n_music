@@ -12,7 +12,6 @@ use eframe::egui::{
     Widget,
 };
 use eframe::epaint::FontFamily;
-use eframe::glow::Context;
 use eframe::{egui, Storage};
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
@@ -23,7 +22,7 @@ use crate::{
 
 pub struct App {
     path: Option<String>,
-    player: QueuePlayer<String>,
+    player: QueuePlayer,
     volume: f32,
     time: f64,
     cached_track_time: Option<TrackTime>,
@@ -36,7 +35,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
 
-        let mut player: QueuePlayer<String> = QueuePlayer::new();
+        let mut player = QueuePlayer::new(String::new());
 
         let mut files = FileTracks { tracks: vec![] };
         let mut saved_files = FileTracks { tracks: vec![] };
@@ -55,6 +54,7 @@ impl App {
             }
 
             if let Some(path) = storage.get_string("path") {
+                player.set_path(path.clone());
                 add_all_tracks_to_player(&mut player, path.clone());
                 maybe_path = Some(path);
             }
@@ -170,7 +170,7 @@ impl App {
 
     fn init(
         path: PathBuf,
-        player: &mut QueuePlayer<String>,
+        player: &mut QueuePlayer,
         files: &mut FileTracks,
         saved_files: &FileTracks,
     ) -> Receiver<Message> {
@@ -191,7 +191,7 @@ impl App {
                 let mut name = from_path_to_name_without_ext(&entry.path());
                 name.shrink_to_fit();
                 let contains = vec_contains(saved_files, &name);
-                let (duration, artist, cover) = if contains.0 {
+                let (duration, mut artist, cover) = if contains.0 {
                     (
                         saved_files[contains.1].duration,
                         saved_files[contains.1].artist.clone(),
@@ -200,6 +200,7 @@ impl App {
                 } else {
                     (0, "ARTIST".to_string(), vec![])
                 };
+                artist.shrink_to_fit();
                 files.push(FileTrack {
                     name,
                     duration,
@@ -291,7 +292,9 @@ impl eframe::App for App {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
 
-                    ui.label(self.player.current_track_name());
+                    ui.label(from_path_to_name_without_ext(
+                        self.player.current_track_name(),
+                    ));
                     ui.add_space(10.0);
 
                     let text_toggle = if !self.player.is_playing() || self.player.is_paused() {
@@ -362,13 +365,13 @@ impl eframe::App for App {
                             if button.clicked() {
                                 let index = self.player.get_index_from_track_name(name).unwrap();
                                 self.player.end_current().unwrap();
-                                self.player.play(index);
+                                self.player.play_index(index);
 
                                 self.title =
                                     format!("N Music - {}", self.player.current_track_name());
                                 ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
                             }
-                            ui.label("ARTIST");
+                            ui.label(&track.artist);
                         });
                         ui.add(Label::new(format!(
                             "{:02}:{:02}",
@@ -394,7 +397,7 @@ impl eframe::App for App {
         }
     }
 
-    fn on_exit(&mut self, _gl: Option<&Context>) {
+    fn on_exit(&mut self) {
         self.player.end_current().unwrap();
     }
 }

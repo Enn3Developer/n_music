@@ -1,5 +1,6 @@
 use audiotags::Tag;
 use n_audio::music_track::MusicTrack;
+use n_audio::queue::QueuePlayer;
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ffi::OsStr;
@@ -7,8 +8,6 @@ use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
-
-use n_audio::queue::QueuePlayer;
 
 pub mod app;
 
@@ -99,7 +98,7 @@ fn vec_contains(tracks: &FileTracks, name: &String) -> (bool, usize) {
     (false, 0)
 }
 
-pub fn add_all_tracks_to_player<P: AsRef<Path>>(player: &mut QueuePlayer<P>, path: P)
+pub fn add_all_tracks_to_player<P: AsRef<Path>>(player: &mut QueuePlayer, path: P)
 where
     P: AsRef<OsStr> + From<String>,
 {
@@ -107,7 +106,7 @@ where
     dir.filter_map(|item| item.ok()).for_each(|file| {
         let mut p = file.path().to_str().unwrap().to_string();
         p.shrink_to_fit();
-        player.add(p.into());
+        player.add(p.to_string());
     });
 
     player.shuffle();
