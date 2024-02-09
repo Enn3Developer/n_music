@@ -1,47 +1,68 @@
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use std::ffi::OsStr;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::music_track::MusicTrack;
 use crate::player::Player;
 use crate::{from_path_to_name_without_ext, NError, TrackTime};
 
-pub struct QueuePlayer<P: AsRef<Path>>
-where
-    P: AsRef<OsStr>,
-{
-    queue: Vec<P>,
+pub struct QueuePlayer {
+    queue: Vec<String>,
+    path: String,
     player: Player,
     index: usize,
 }
 
-impl<P: AsRef<Path>> Default for QueuePlayer<P>
-where
-    P: AsRef<OsStr>,
-{
+impl Default for QueuePlayer {
     fn default() -> Self {
-        Self::new()
+        Self::new(String::new())
     }
 }
-impl<P: AsRef<Path>> QueuePlayer<P>
-where
-    P: AsRef<OsStr>,
-{
-    pub fn new() -> Self {
+impl QueuePlayer {
+    pub fn new(path: String) -> Self {
         let player = Player::new(1.0, 1.0);
 
         QueuePlayer {
             queue: vec![],
             player,
             index: usize::MAX - 1,
+            path,
         }
     }
 
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn set_path(&mut self, path: String) {
+        self.path = path;
+    }
+
+    pub fn get_path_for_file(&self, i: usize) -> PathBuf {
+        PathBuf::from(&self.path).join(&self.queue[i])
+    }
+
+    fn strip_absolute_path(path: String) -> String {
+        let mut s = path
+            .split(std::path::MAIN_SEPARATOR)
+            .last()
+            .unwrap()
+            .to_string();
+        s.shrink_to_fit();
+
+        s
+    }
+
+    pub fn queue(&self) -> &Vec<String> {
+        &self.queue
+    }
+
     #[inline]
-    pub fn add(&mut self, path: P) {
-        self.queue.push(path);
+    pub fn add<P: AsRef<Path>>(&mut self, path: P) {
+        self.queue.push(Self::strip_absolute_path(
+            path.as_ref().to_str().unwrap().to_string(),
+        ));
     }
 
     #[inline]
@@ -62,19 +83,23 @@ where
 
     pub fn current_track_name(&self) -> String {
         if self.index == usize::MAX - 1 {
-            return from_path_to_name_without_ext(self.queue.first().unwrap());
+            self.queue.first().unwrap().clone()
+        } else {
+            self.queue.get(self.index).unwrap().clone()
         }
-
-        from_path_to_name_without_ext(self.queue.get(self.index).unwrap())
     }
 
-    pub fn play(&mut self, index: usize) {
-        self.index = index;
-
-        let track = MusicTrack::new(&self.queue[self.index]).unwrap();
+    pub fn play(&mut self) {
+        let track = MusicTrack::new(self.get_path_for_file(self.index)).unwrap();
         let format = track.get_format();
 
         self.player.play(format);
+    }
+
+    pub fn play_index(&mut self, index: usize) {
+        self.index = index;
+
+        self.play();
     }
 
     pub fn play_next(&mut self) {
@@ -84,10 +109,7 @@ where
             self.index = 0;
         }
 
-        let track = MusicTrack::new(&self.queue[self.index]).unwrap();
-        let format = track.get_format();
-
-        self.player.play(format);
+        self.play();
     }
 
     pub fn play_previous(&mut self) {
@@ -97,10 +119,7 @@ where
 
         self.index -= 1;
 
-        let track = MusicTrack::new(&self.queue[self.index]).unwrap();
-        let format = track.get_format();
-
-        self.player.play(format);
+        self.play();
     }
 
     pub fn get_index_from_track_name(&self, name: &str) -> Result<usize, NError> {
@@ -119,10 +138,7 @@ where
     }
 }
 
-impl<P: AsRef<Path>> Deref for QueuePlayer<P>
-where
-    P: AsRef<OsStr>,
-{
+impl Deref for QueuePlayer {
     type Target = Player;
 
     fn deref(&self) -> &Self::Target {
@@ -130,10 +146,7 @@ where
     }
 }
 
-impl<P: AsRef<Path>> DerefMut for QueuePlayer<P>
-where
-    P: AsRef<OsStr>,
-{
+impl DerefMut for QueuePlayer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.player
     }

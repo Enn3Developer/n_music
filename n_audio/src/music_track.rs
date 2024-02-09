@@ -27,7 +27,12 @@ impl MusicTrack {
         Ok(MusicTrack {
             file,
             name: from_path_to_name_without_ext(path),
-            ext: path.extension().unwrap().to_str().unwrap().to_string(),
+            ext: path
+                .extension()
+                .ok_or(String::from("no extension"))?
+                .to_str()
+                .unwrap()
+                .to_string(),
         })
     }
 
