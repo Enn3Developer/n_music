@@ -19,6 +19,7 @@ impl Default for QueuePlayer {
         Self::new(String::new())
     }
 }
+
 impl QueuePlayer {
     pub fn new(path: String) -> Self {
         let player = Player::new(1.0, 1.0);
