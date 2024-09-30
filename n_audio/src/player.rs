@@ -1,13 +1,11 @@
+use crate::music_track::MusicTrack;
+use crate::{output, Message, TrackTime, CODEC_REGISTRY};
+use flume::{Receiver, SendError, Sender};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-
-use crate::music_track::MusicTrack;
-use crate::{output, Message, TrackTime, CODEC_REGISTRY};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
@@ -182,9 +180,9 @@ impl Player {
         let volume = self.volume;
         let playback_speed = self.playback_speed;
 
-        let (tx, rx) = mpsc::channel();
-        let (tx_t, rx_t) = mpsc::channel();
-        let (tx_e, rx_e) = mpsc::channel();
+        let (tx, rx) = flume::unbounded();
+        let (tx_t, rx_t) = flume::unbounded();
+        let (tx_e, rx_e) = flume::unbounded();
 
         let thread =
             thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));

@@ -1,4 +1,5 @@
 use audiotags::Tag;
+use flume::Sender;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use serde_derive::{Deserialize, Serialize};
@@ -7,7 +8,6 @@ use std::ffi::OsStr;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 
 pub mod app;
 

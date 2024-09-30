@@ -1,24 +1,28 @@
-use std::fs::DirEntry;
-#[cfg(windows)]
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-use std::time::Duration;
-use std::{fs, thread};
-
+use crate::{
+    add_all_tracks_to_player, loader_thread, vec_contains, FileTrack, FileTracks, Message,
+};
 use eframe::egui::{
     Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
     Widget,
 };
 use eframe::epaint::FontFamily;
 use eframe::{egui, Storage};
+use flume::Receiver;
+#[cfg(target_os = "linux")]
+use mpris_server::RootInterface;
+use mpris_server::{
+    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Time, TrackId, Volume,
+};
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
-
-use crate::{
-    add_all_tracks_to_player, loader_thread, vec_contains, FileTrack, FileTracks, Message,
-};
+use std::fs::DirEntry;
+use std::future::Future;
+#[cfg(target_os = "windows")]
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
+use std::{fs, thread};
 
 pub struct App {
     path: Option<String>,
@@ -214,7 +218,7 @@ impl App {
         files.sort();
         indexing_files.sort();
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = flume::unbounded();
         thread::spawn(|| loader_thread(tx, indexing_files));
 
         rx
@@ -225,6 +229,33 @@ impl App {
             "N Music - {}",
             self.player.current_track_name().rsplit_once('.').unwrap().0
         )));
+    }
+
+    fn toggle_pause(&mut self) {
+        if self.player.is_paused() {
+            self.player.unpause().unwrap();
+        } else {
+            self.player.pause().unwrap();
+        }
+        if !self.player.is_playing() {
+            self.player.play_next();
+        }
+    }
+
+    fn play_next(&mut self) {
+        self.player.end_current().unwrap();
+        self.player.play_next();
+    }
+
+    fn play_previous(&mut self) {
+        if let Some(cached_track_time) = &self.cached_track_time {
+            if cached_track_time.ts_secs < 2 {
+                self.player.seek_to(0, 0.0).unwrap();
+            } else {
+                self.player.end_current().unwrap();
+                self.player.play_previous();
+            }
+        }
     }
 }
 
@@ -314,34 +345,13 @@ impl eframe::App for App {
                     let next = Button::new("⏭").frame(false).ui(ui);
 
                     if previous.clicked() {
-                        if let Some(cached_track_time) = &self.cached_track_time {
-                            if cached_track_time.ts_secs < 2 {
-                                self.player.seek_to(0, 0.0).unwrap();
-                            } else {
-                                self.player.end_current().unwrap();
-                                self.player.play_previous();
-
-                                self.update_title(ctx);
-                            }
-                        }
+                        self.play_previous();
                     }
                     if toggle.clicked() {
-                        if self.player.is_paused() {
-                            self.player.unpause().unwrap();
-                        } else {
-                            self.player.pause().unwrap();
-                        }
-                        if !self.player.is_playing() {
-                            self.player.play_next();
-
-                            self.update_title(ctx);
-                        }
+                        self.toggle_pause();
                     }
                     if next.clicked() {
-                        self.player.end_current().unwrap();
-                        self.player.play_next();
-
-                        self.update_title(ctx);
+                        self.play_next();
                     }
                 });
             });
@@ -404,5 +414,175 @@ impl eframe::App for App {
 
     fn on_exit(&mut self) {
         self.player.end_current().unwrap();
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl RootInterface for App {
+    async fn raise(&self) -> mpris_server::zbus::fdo::Result<()> {
+        Ok(())
+    }
+
+    async fn quit(&self) -> mpris_server::zbus::fdo::Result<()> {
+        Ok(())
+    }
+
+    async fn can_quit(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn fullscreen(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn set_fullscreen(&self, fullscreen: bool) -> mpris_server::zbus::Result<()> {
+        Ok(())
+    }
+
+    async fn can_set_fullscreen(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_raise(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn has_track_list(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn identity(&self) -> mpris_server::zbus::fdo::Result<String> {
+        Ok(String::from("N Music"))
+    }
+
+    async fn desktop_entry(&self) -> mpris_server::zbus::fdo::Result<String> {
+        Ok(String::from("N Music.desktop"))
+    }
+
+    async fn supported_uri_schemes(&self) -> mpris_server::zbus::fdo::Result<Vec<String>> {
+        Ok(vec![])
+    }
+
+    async fn supported_mime_types(&self) -> mpris_server::zbus::fdo::Result<Vec<String>> {
+        Ok(vec![])
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl PlayerInterface for App {
+    async fn next(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn previous(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn pause(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn play_pause(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn stop(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn play(&self) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn seek(&self, offset: Time) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn set_position(
+        &self,
+        track_id: TrackId,
+        position: Time,
+    ) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn open_uri(&self, uri: String) -> mpris_server::zbus::fdo::Result<()> {
+        todo!()
+    }
+
+    async fn playback_status(&self) -> mpris_server::zbus::fdo::Result<PlaybackStatus> {
+        todo!()
+    }
+
+    async fn loop_status(&self) -> mpris_server::zbus::fdo::Result<LoopStatus> {
+        todo!()
+    }
+
+    async fn set_loop_status(&self, loop_status: LoopStatus) -> mpris_server::zbus::Result<()> {
+        todo!()
+    }
+
+    async fn rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
+        todo!()
+    }
+
+    async fn set_rate(&self, rate: PlaybackRate) -> mpris_server::zbus::Result<()> {
+        todo!()
+    }
+
+    async fn shuffle(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        todo!()
+    }
+
+    async fn set_shuffle(&self, shuffle: bool) -> mpris_server::zbus::Result<()> {
+        todo!()
+    }
+
+    async fn metadata(&self) -> mpris_server::zbus::fdo::Result<Metadata> {
+        todo!()
+    }
+
+    async fn volume(&self) -> mpris_server::zbus::fdo::Result<Volume> {
+        todo!()
+    }
+
+    async fn set_volume(&self, volume: Volume) -> mpris_server::zbus::Result<()> {
+        todo!()
+    }
+
+    async fn position(&self) -> mpris_server::zbus::fdo::Result<Time> {
+        todo!()
+    }
+
+    async fn minimum_rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
+        todo!()
+    }
+
+    async fn maximum_rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
+        todo!()
+    }
+
+    async fn can_go_next(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_go_previous(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_play(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_pause(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_seek(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
+    }
+
+    async fn can_control(&self) -> mpris_server::zbus::fdo::Result<bool> {
+        Ok(false)
     }
 }
