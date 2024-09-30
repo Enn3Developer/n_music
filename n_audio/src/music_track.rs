@@ -79,7 +79,7 @@ impl MusicTrack {
         let mut artist = String::from("ARTIST");
 
         for tag in format.metadata().current().unwrap().tags() {
-            if &tag.key == "ARTIST" {
+            if &tag.key.to_lowercase() == "artist" {
                 artist = tag.value.to_string();
                 break;
             }
