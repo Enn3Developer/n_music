@@ -44,7 +44,7 @@ impl App {
         let mut maybe_path = None;
 
         if let Some(storage) = cc.storage {
-            if let Some(data) = storage.get_string("durations") {
+            if let Some(data) = storage.get_string("track_files") {
                 if let Ok(read_data) = toml::from_str(&data) {
                     saved_files = read_data;
                 }
@@ -105,7 +105,7 @@ impl App {
         let font_file_bytes = fs::read(font_file).ok()?;
 
         let font_data = egui::FontData::from_owned(font_file_bytes);
-        let mut font_def = eframe::egui::FontDefinitions::default();
+        let mut font_def = egui::FontDefinitions::default();
         font_def.font_data.insert(font_name.to_string(), font_data);
 
         font_def
@@ -219,6 +219,13 @@ impl App {
 
         rx
     }
+
+    fn update_title(&self, ctx: &egui::Context) {
+        ctx.send_viewport_cmd(ViewportCommand::Title(format!(
+            "N Music - {}",
+            self.player.current_track_name().rsplit_once('.').unwrap().0
+        )));
+    }
 }
 
 impl eframe::App for App {
@@ -249,8 +256,7 @@ impl eframe::App for App {
         if self.player.has_ended() {
             self.player.play_next();
 
-            self.title = format!("N Music - {}", self.player.current_track_name());
-            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+            self.update_title(ctx);
         }
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
@@ -315,9 +321,7 @@ impl eframe::App for App {
                                 self.player.end_current().unwrap();
                                 self.player.play_previous();
 
-                                self.title =
-                                    format!("N Music - {}", self.player.current_track_name());
-                                ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+                                self.update_title(ctx);
                             }
                         }
                     }
@@ -330,16 +334,14 @@ impl eframe::App for App {
                         if !self.player.is_playing() {
                             self.player.play_next();
 
-                            self.title = format!("N Music - {}", self.player.current_track_name());
-                            ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+                            self.update_title(ctx);
                         }
                     }
                     if next.clicked() {
                         self.player.end_current().unwrap();
                         self.player.play_next();
 
-                        self.title = format!("N Music - {}", self.player.current_track_name());
-                        ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+                        self.update_title(ctx);
                     }
                 });
             });
@@ -354,6 +356,7 @@ impl eframe::App for App {
                     let track = &self.files[i];
                     let name = &track.name;
                     let duration = &track.duration;
+                    let mut update_title = false;
                     ui.horizontal(|ui| {
                         let mut frame = false;
                         if self.player.is_playing() && &self.player.current_track_name() == name {
@@ -367,9 +370,7 @@ impl eframe::App for App {
                                 self.player.end_current().unwrap();
                                 self.player.play_index(index);
 
-                                self.title =
-                                    format!("N Music - {}", self.player.current_track_name());
-                                ctx.send_viewport_cmd(ViewportCommand::Title(self.title.clone()));
+                                update_title = true;
                             }
                             ui.label(&track.artist);
                         });
@@ -379,6 +380,10 @@ impl eframe::App for App {
                             duration % 60
                         )));
                     });
+
+                    if update_title {
+                        self.update_title(ctx);
+                    }
                 }
                 ui.allocate_space(ui.available_size());
             });
@@ -390,7 +395,7 @@ impl eframe::App for App {
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {
-        storage.set_string("durations", toml::to_string(&self.files).unwrap());
+        storage.set_string("track_files", toml::to_string(&self.files).unwrap());
         storage.set_string("volume", self.volume.to_string());
         if let Some(path) = &self.path {
             storage.set_string("path", path.to_string());

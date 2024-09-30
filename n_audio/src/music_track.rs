@@ -8,7 +8,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::{from_path_to_name_without_ext, TrackTime, PROBE};
+use crate::{from_path_to_name_without_ext, Metadata, TrackTime, PROBE};
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
@@ -57,8 +57,40 @@ impl MusicTrack {
         probed.format
     }
 
+    pub fn get_meta(&self) -> Metadata {
+        let mut format = self.get_format();
+        let track = format.default_track().expect("Can't load tracks");
+        let time_base = track.codec_params.time_base.unwrap();
+
+        let duration = track
+            .codec_params
+            .n_frames
+            .map(|frames| track.codec_params.start_ts + frames)
+            .unwrap();
+        let time = time_base.calc_time(duration);
+
+        let time = TrackTime {
+            ts_secs: 0,
+            ts_frac: 0.0,
+            dur_secs: time.seconds,
+            dur_frac: time.frac,
+        };
+
+        let mut artist = String::from("ARTIST");
+
+        for tag in format.metadata().current().unwrap().tags() {
+            if &tag.key == "ARTIST" {
+                artist = tag.value.to_string();
+                break;
+            }
+        }
+
+        Metadata { time, artist }
+    }
+
     pub fn get_duration(&self) -> TrackTime {
-        let format = self.get_format();
+        let mut format = self.get_format();
+        println!("{:?}", format.metadata().current().unwrap().tags());
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 

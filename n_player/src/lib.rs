@@ -14,23 +14,11 @@ pub mod app;
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     for (i, track) in tracks.iter().enumerate() {
         if let Ok(music_track) = MusicTrack::new(track) {
-            let duration = music_track.get_duration();
-            tx.send(Message::Duration(i, duration.dur_secs))
+            let metadata = music_track.get_meta();
+            tx.send(Message::Duration(i, metadata.time.dur_secs))
                 .expect("can't send back loaded times");
-        }
-        if let Ok(tag) = Tag::new().read_from_path(track) {
-            if let Some(artists) = tag.artists() {
-                tx.send(Message::Artist(i, artists.join(", ").to_string()))
-                    .expect("can't send back artist");
-            } else if let Some(artist) = tag.artist() {
-                tx.send(Message::Artist(i, artist.to_string()))
-                    .expect("can't send back artist");
-            }
-
-            if let Some(cover) = tag.album_cover() {
-                tx.send(Message::Image(i, cover.data.to_vec()))
-                    .expect("can't send back cover");
-            }
+            tx.send(Message::Artist(i, metadata.artist))
+                .expect("can't send back artist");
         }
     }
 }

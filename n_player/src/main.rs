@@ -16,7 +16,7 @@ fn main() {
     eframe::run_native(
         "N Music",
         native_options,
-        Box::new(|cc| Box::new(App::new(cc))),
+        Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
     .expect("Can't start app");
 }

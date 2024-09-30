@@ -82,3 +82,9 @@ pub struct TrackTime {
     pub dur_secs: u64,
     pub dur_frac: f64,
 }
+
+#[derive(Clone, Debug)]
+pub struct Metadata {
+    pub time: TrackTime,
+    pub artist: String,
+}
