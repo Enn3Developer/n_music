@@ -384,7 +384,7 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
-            let row_height = 37.0;
+            let row_height = 40.0;
             let total_rows = self.files.len();
             ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, rows_range| {
                 for i in rows_range {
@@ -415,6 +415,10 @@ impl eframe::App for App {
                             duration % 60
                         )));
                     });
+
+                    if i + 1 != total_rows {
+                        ui.separator();
+                    }
 
                     if update_title {
                         self.update_title(ctx);
