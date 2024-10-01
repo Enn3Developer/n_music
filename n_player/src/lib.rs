@@ -12,6 +12,8 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 pub mod app;
+#[cfg(target_os = "linux")]
+pub mod mpris_server;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
@@ -29,6 +31,22 @@ enum Message {
     Duration(usize, u64),
     Artist(usize, String),
     // Image(usize, Vec<u8>),
+}
+
+pub enum ServerMessage {
+    PlayNext,
+    PlayPrevious,
+    TogglePause,
+    SetVolume(f64),
+    AskVolume,
+    AskPlayback,
+    AskMetadata,
+}
+
+pub enum ClientMessage {
+    Volume(f64),
+    Playback(bool),
+    Metadata(Option<String>, Option<Vec<String>>, u64, String),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

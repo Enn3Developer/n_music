@@ -1995,6 +1995,7 @@ dependencies = [
  "infer",
  "mpris-server",
  "n_audio",
+ "pollster",
  "rayon",
  "rfd",
  "serde",

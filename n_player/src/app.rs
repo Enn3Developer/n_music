@@ -1,5 +1,8 @@
+#[cfg(target_os = "linux")]
+use crate::mpris_server::MPRISServer;
 use crate::{
-    add_all_tracks_to_player, loader_thread, vec_contains, FileTrack, FileTracks, Message,
+    add_all_tracks_to_player, loader_thread, vec_contains, ClientMessage, FileTrack, FileTracks,
+    Message, ServerMessage,
 };
 use eframe::egui::{
     Button, Event, Key, Label, Modifiers, Response, ScrollArea, Slider, SliderOrientation,
@@ -7,14 +10,14 @@ use eframe::egui::{
 };
 use eframe::epaint::FontFamily;
 use eframe::{egui, Storage};
-use flume::Receiver;
+use flume::{Receiver, Sender};
 #[cfg(target_os = "linux")]
-use mpris_server::RootInterface;
-use mpris_server::{
-    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Time, TrackId, Volume,
-};
+use mpris_server::Server;
+#[cfg(target_os = "linux")]
+use mpris_server::{PlaybackStatus, Property};
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
+use pollster::FutureExt;
 use std::fs::DirEntry;
 #[cfg(target_os = "windows")]
 use std::path::Path;
@@ -30,10 +33,19 @@ pub struct App {
     cached_track_time: Option<TrackTime>,
     files: FileTracks,
     rx: Option<Receiver<Message>>,
+    rx_server: Receiver<ServerMessage>,
+    tx_server: Sender<ClientMessage>,
+    #[cfg(target_os = "linux")]
+    server: Server<MPRISServer>,
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        rx_server: Receiver<ServerMessage>,
+        tx_server: Sender<ClientMessage>,
+        #[cfg(target_os = "linux")] server: Server<MPRISServer>,
+    ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
         let mut player = QueuePlayer::new(String::new());
         let mut files = FileTracks { tracks: vec![] };
@@ -73,6 +85,10 @@ impl App {
             cached_track_time: None,
             files,
             rx,
+            rx_server,
+            tx_server,
+            #[cfg(target_os = "linux")]
+            server,
         }
     }
 
@@ -215,12 +231,19 @@ impl App {
     fn toggle_pause(&mut self, ctx: &egui::Context) {
         if self.player.is_paused() {
             self.player.unpause().unwrap();
+            self.server
+                .properties_changed([Property::PlaybackStatus(PlaybackStatus::Playing)])
+                .block_on()
+                .unwrap();
         } else {
             self.player.pause().unwrap();
+            self.server
+                .properties_changed([Property::PlaybackStatus(PlaybackStatus::Paused)])
+                .block_on()
+                .unwrap();
         }
         if !self.player.is_playing() {
-            self.player.play_next();
-            self.update_title(ctx);
+            self.play_next(ctx);
         }
     }
 
@@ -271,6 +294,48 @@ impl eframe::App for App {
         let mut pause = false;
         let mut next = false;
         let mut previous = false;
+
+        while let Ok(message) = self.rx_server.try_recv() {
+            match message {
+                ServerMessage::PlayNext => next = true,
+                ServerMessage::PlayPrevious => previous = true,
+                ServerMessage::TogglePause => pause = true,
+                ServerMessage::SetVolume(volume) => {
+                    self.volume = volume as f32;
+                    self.player.set_volume(self.volume).unwrap();
+                }
+                ServerMessage::AskVolume => self
+                    .tx_server
+                    .send(ClientMessage::Volume(self.volume as f64))
+                    .unwrap(),
+                ServerMessage::AskPlayback => self
+                    .tx_server
+                    .send(ClientMessage::Playback(self.player.is_playing()))
+                    .unwrap(),
+                ServerMessage::AskMetadata => {
+                    let mut track = None;
+                    for file_track in &self.files.tracks {
+                        if self.player.current_track_name().rsplit_once('.').unwrap().0
+                            == file_track.name
+                        {
+                            track = Some(file_track.clone());
+                        }
+                    }
+                    let metadata = match track {
+                        None => ClientMessage::Metadata(None, None, 0, String::from("/empty")),
+                        Some(track) => ClientMessage::Metadata(
+                            Some(track.name.clone()),
+                            Some(vec![track.artist]),
+                            track.duration,
+                            format!("/n_music/{}", track.name),
+                        ),
+                    };
+
+                    self.tx_server.send(metadata).unwrap()
+                }
+            }
+        }
+
         ctx.input(|i| {
             for event in &i.events {
                 match event {
@@ -351,6 +416,10 @@ impl eframe::App for App {
                 self.slider_seek(slider, track_time.clone());
                 if volume_slider.changed() {
                     self.player.set_volume(self.volume).unwrap();
+                    self.server
+                        .properties_changed([Property::Volume(self.volume as f64)])
+                        .block_on()
+                        .unwrap();
                 }
             });
             ui.horizontal(|ui| {
@@ -448,175 +517,5 @@ impl eframe::App for App {
 
     fn on_exit(&mut self, _ctx: Option<&eframe::glow::Context>) {
         self.player.end_current().unwrap();
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl RootInterface for App {
-    async fn raise(&self) -> mpris_server::zbus::fdo::Result<()> {
-        Ok(())
-    }
-
-    async fn quit(&self) -> mpris_server::zbus::fdo::Result<()> {
-        Ok(())
-    }
-
-    async fn can_quit(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn fullscreen(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn set_fullscreen(&self, fullscreen: bool) -> mpris_server::zbus::Result<()> {
-        Ok(())
-    }
-
-    async fn can_set_fullscreen(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_raise(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn has_track_list(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn identity(&self) -> mpris_server::zbus::fdo::Result<String> {
-        Ok(String::from("N Music"))
-    }
-
-    async fn desktop_entry(&self) -> mpris_server::zbus::fdo::Result<String> {
-        Ok(String::from("N Music.desktop"))
-    }
-
-    async fn supported_uri_schemes(&self) -> mpris_server::zbus::fdo::Result<Vec<String>> {
-        Ok(vec![])
-    }
-
-    async fn supported_mime_types(&self) -> mpris_server::zbus::fdo::Result<Vec<String>> {
-        Ok(vec![])
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl PlayerInterface for App {
-    async fn next(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn previous(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn pause(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn play_pause(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn stop(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn play(&self) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn seek(&self, offset: Time) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn set_position(
-        &self,
-        track_id: TrackId,
-        position: Time,
-    ) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn open_uri(&self, uri: String) -> mpris_server::zbus::fdo::Result<()> {
-        todo!()
-    }
-
-    async fn playback_status(&self) -> mpris_server::zbus::fdo::Result<PlaybackStatus> {
-        todo!()
-    }
-
-    async fn loop_status(&self) -> mpris_server::zbus::fdo::Result<LoopStatus> {
-        todo!()
-    }
-
-    async fn set_loop_status(&self, loop_status: LoopStatus) -> mpris_server::zbus::Result<()> {
-        todo!()
-    }
-
-    async fn rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
-        todo!()
-    }
-
-    async fn set_rate(&self, rate: PlaybackRate) -> mpris_server::zbus::Result<()> {
-        todo!()
-    }
-
-    async fn shuffle(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        todo!()
-    }
-
-    async fn set_shuffle(&self, shuffle: bool) -> mpris_server::zbus::Result<()> {
-        todo!()
-    }
-
-    async fn metadata(&self) -> mpris_server::zbus::fdo::Result<Metadata> {
-        todo!()
-    }
-
-    async fn volume(&self) -> mpris_server::zbus::fdo::Result<Volume> {
-        todo!()
-    }
-
-    async fn set_volume(&self, volume: Volume) -> mpris_server::zbus::Result<()> {
-        todo!()
-    }
-
-    async fn position(&self) -> mpris_server::zbus::fdo::Result<Time> {
-        todo!()
-    }
-
-    async fn minimum_rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
-        todo!()
-    }
-
-    async fn maximum_rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
-        todo!()
-    }
-
-    async fn can_go_next(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_go_previous(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_play(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_pause(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_seek(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
-    }
-
-    async fn can_control(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
     }
 }
