@@ -35,15 +35,11 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
-
         let mut player = QueuePlayer::new(String::new());
-
         let mut files = FileTracks { tracks: vec![] };
         let mut saved_files = FileTracks { tracks: vec![] };
         let mut volume = 1.0;
-
         let mut maybe_path = None;
-
         if let Some(storage) = cc.storage {
             if let Some(data) = storage.get_string("track_files") {
                 if let Ok(read_data) = toml::from_str(&data) {
@@ -53,18 +49,14 @@ impl App {
             if let Some(data_v) = storage.get_string("volume") {
                 volume = data_v.parse().unwrap_or(1.0);
             }
-
             if let Some(path) = storage.get_string("path") {
                 player.set_path(path.clone());
                 add_all_tracks_to_player(&mut player, path.clone());
                 maybe_path = Some(path);
             }
         }
-
         player.set_volume(volume).unwrap();
-
         let mut rx = None;
-
         if let Some(path) = &maybe_path {
             rx = Some(Self::init(
                 PathBuf::new().join(path),
@@ -73,7 +65,6 @@ impl App {
                 &saved_files,
             ));
         }
-
         Self {
             path: maybe_path,
             player,
@@ -155,7 +146,6 @@ impl App {
     fn finish_init(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.label("Add music folder");
-
             if ui.button("Open folder…").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     let saved = FileTracks { tracks: vec![] };
@@ -177,9 +167,7 @@ impl App {
         let paths = fs::read_dir(&path).expect("Can't read files in the chosen directory");
         let entries: Vec<DirEntry> = paths.filter_map(|item| item.ok()).collect();
         let mut indexing_files = Vec::with_capacity(entries.len());
-
         add_all_tracks_to_player(player, path.to_str().unwrap().to_string());
-
         for entry in &entries {
             if entry.metadata().unwrap().is_file()
                 && infer::get_from_path(entry.path())
@@ -210,13 +198,10 @@ impl App {
                 indexing_files.push(entry.path());
             }
         }
-
         files.sort();
         indexing_files.sort();
-
         let (tx, rx) = flume::unbounded();
         thread::spawn(|| loader_thread(tx, indexing_files));
-
         rx
     }
 
@@ -261,12 +246,10 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::dark());
-
         if self.path.is_none() {
             self.finish_init(ctx);
             return;
         }
-
         if let Some(rx) = &self.rx {
             while let Ok(message) = rx.try_recv() {
                 match message {
@@ -281,13 +264,10 @@ impl eframe::App for App {
                 }
             }
         }
-
         if self.player.has_ended() {
             self.player.play_next();
-
             self.update_title(ctx);
         }
-
         let mut pause = false;
         let mut next = false;
         let mut previous = false;
@@ -318,24 +298,11 @@ impl eframe::App for App {
                 };
             }
         });
-
-        if pause {
-            self.toggle_pause(ctx);
-        }
-        if next {
-            self.play_next(ctx);
-        }
-        if previous {
-            self.play_previous(ctx);
-        }
-
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(40.0);
-
             let track_time = self.player.get_time();
             let current_time: String;
             let total_time: String;
-
             self.time = if let Some(track_time) = &track_time {
                 let value = (track_time.ts_secs as f64 + track_time.ts_frac)
                     / (track_time.dur_secs as f64 + track_time.dur_frac);
@@ -369,7 +336,6 @@ impl eframe::App for App {
                 total_time = String::from("00:00");
                 0.0
             };
-
             ui.horizontal(|ui| {
                 ui.label(current_time);
                 let slider = Slider::new(&mut self.time, 0.0..=1.0)
@@ -378,51 +344,51 @@ impl eframe::App for App {
                     .ui(ui);
                 ui.label(total_time);
                 ui.add_space(10.0);
-
                 let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
                     .show_value(false)
                     .ui(ui);
                 ui.label(format!("{}%", (self.volume * 100.0).round() as usize));
-
                 self.slider_seek(slider, track_time.clone());
-
                 if volume_slider.changed() {
                     self.player.set_volume(self.volume).unwrap();
                 }
             });
-
             ui.horizontal(|ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-
                     ui.label(from_path_to_name_without_ext(
                         self.player.current_track_name(),
                     ));
                     ui.add_space(10.0);
-
                     let text_toggle = if !self.player.is_playing() || self.player.is_paused() {
                         "▶"
                     } else {
                         "⏸"
                     };
-
-                    let previous = Button::new("⏮").frame(false).ui(ui);
-                    let toggle = Button::new(text_toggle).frame(false).ui(ui);
-                    let next = Button::new("⏭").frame(false).ui(ui);
-
-                    if previous.clicked() {
-                        self.play_previous(ctx);
+                    let previous_btn = Button::new("⏮").frame(false).ui(ui);
+                    let toggle_btn = Button::new(text_toggle).frame(false).ui(ui);
+                    let next_btn = Button::new("⏭").frame(false).ui(ui);
+                    if previous_btn.clicked() {
+                        previous = true;
                     }
-                    if toggle.clicked() {
-                        self.toggle_pause(ctx);
+                    if toggle_btn.clicked() {
+                        pause = true;
                     }
-                    if next.clicked() {
-                        self.play_next(ctx);
+                    if next_btn.clicked() {
+                        next = true;
                     }
                 });
             });
         });
-
+        if pause {
+            self.toggle_pause(ctx);
+        }
+        if next {
+            self.play_next(ctx);
+        }
+        if previous {
+            self.play_previous(ctx);
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
             let row_height = 40.0;
@@ -447,7 +413,6 @@ impl eframe::App for App {
                                 let index = self.player.get_index_from_track_name(name).unwrap();
                                 self.player.end_current().unwrap();
                                 self.player.play_index(index);
-
                                 update_title = true;
                             }
                             ui.label(&track.artist);
@@ -458,11 +423,9 @@ impl eframe::App for App {
                             duration % 60
                         )));
                     });
-
                     if i + 1 != total_rows {
                         ui.separator();
                     }
-
                     if update_title {
                         self.update_title(ctx);
                     }
@@ -470,7 +433,6 @@ impl eframe::App for App {
                 ui.allocate_space(ui.available_size());
             });
         });
-
         if !self.player.is_paused() {
             ctx.request_repaint_after(Duration::from_millis(750));
         }
