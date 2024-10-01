@@ -400,9 +400,7 @@ impl eframe::App for App {
                 meta.set_artist(artist);
                 meta.set_title(title);
                 meta.set_length(Some(mpris_server::Time::from_secs(time as i64)));
-                meta.set_trackid(Some(ObjectPath::from_string_unchecked(
-                    path.replace(" ", "_"),
-                )));
+                meta.set_trackid(Some(ObjectPath::from_string_unchecked(path)));
                 meta.set_art_url(image_path);
                 self.server
                     .properties_changed([
@@ -486,7 +484,21 @@ impl eframe::App for App {
                     / (track_time.len_secs as f64 + track_time.len_frac)
             } else {
                 current_time = String::from("00:00");
-                total_time = String::from("00:00");
+                let mut track = None;
+                for file_track in &self.files.tracks {
+                    if remove_ext(self.player.current_track_name()) == file_track.name {
+                        track = Some(file_track.clone());
+                    }
+                }
+                if let Some(track) = track {
+                    total_time = format!(
+                        "{:02}:{:02}",
+                        ((track.length as f64) / 60.0).floor() as u64,
+                        track.length % 60
+                    )
+                } else {
+                    total_time = String::from("00:00");
+                }
                 if send_time {
                     self.tx_server.send(ClientMessage::Time(0)).unwrap();
                 }
