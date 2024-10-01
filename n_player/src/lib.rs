@@ -33,20 +33,26 @@ enum Message {
     // Image(usize, Vec<u8>),
 }
 
+#[derive(Debug)]
 pub enum ServerMessage {
     PlayNext,
     PlayPrevious,
     TogglePause,
+    Pause,
+    Play,
     SetVolume(f64),
     AskVolume,
     AskPlayback,
     AskMetadata,
+    AskTime,
 }
 
+#[derive(Debug)]
 pub enum ClientMessage {
     Volume(f64),
     Playback(bool),
     Metadata(Option<String>, Option<Vec<String>>, u64, String),
+    Time(u64),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

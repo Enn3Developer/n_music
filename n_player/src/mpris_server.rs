@@ -1,4 +1,4 @@
-use crate::ServerMessage::SetVolume;
+use crate::ServerMessage::{AskTime, SetVolume};
 use crate::{ClientMessage, ServerMessage};
 use flume::{Receiver, Sender};
 use mpris_server::zbus::zvariant::ObjectPath;
@@ -70,21 +70,28 @@ impl RootInterface for MPRISServer {
 
 impl PlayerInterface for MPRISServer {
     async fn next(&self) -> mpris_server::zbus::fdo::Result<()> {
-        self.tx.send(ServerMessage::PlayNext).unwrap();
+        self.tx.send_async(ServerMessage::PlayNext).await.unwrap();
         Ok(())
     }
 
     async fn previous(&self) -> mpris_server::zbus::fdo::Result<()> {
-        self.tx.send(ServerMessage::PlayPrevious).unwrap();
+        self.tx
+            .send_async(ServerMessage::PlayPrevious)
+            .await
+            .unwrap();
         Ok(())
     }
 
     async fn pause(&self) -> mpris_server::zbus::fdo::Result<()> {
+        self.tx.send_async(ServerMessage::Pause).await.unwrap();
         Ok(())
     }
 
     async fn play_pause(&self) -> mpris_server::zbus::fdo::Result<()> {
-        self.tx.send(ServerMessage::TogglePause).unwrap();
+        self.tx
+            .send_async(ServerMessage::TogglePause)
+            .await
+            .unwrap();
         Ok(())
     }
 
@@ -93,6 +100,7 @@ impl PlayerInterface for MPRISServer {
     }
 
     async fn play(&self) -> mpris_server::zbus::fdo::Result<()> {
+        self.tx.send_async(ServerMessage::Play).await.unwrap();
         Ok(())
     }
 
@@ -113,7 +121,10 @@ impl PlayerInterface for MPRISServer {
     }
 
     async fn playback_status(&self) -> mpris_server::zbus::fdo::Result<PlaybackStatus> {
-        self.tx.send(ServerMessage::AskPlayback).unwrap();
+        self.tx
+            .send_async(ServerMessage::AskPlayback)
+            .await
+            .unwrap();
         while let Ok(message) = self.rx.recv() {
             if let ClientMessage::Playback(playback) = message {
                 return if playback {
@@ -153,7 +164,10 @@ impl PlayerInterface for MPRISServer {
 
     async fn metadata(&self) -> mpris_server::zbus::fdo::Result<Metadata> {
         let mut metadata = Metadata::new();
-        self.tx.send(ServerMessage::AskMetadata).unwrap();
+        self.tx
+            .send_async(ServerMessage::AskMetadata)
+            .await
+            .unwrap();
 
         metadata.set_trackid(Some(ObjectPath::from_static_str("/empty").unwrap()));
 
@@ -163,6 +177,7 @@ impl PlayerInterface for MPRISServer {
                 metadata.set_artist(artist);
                 metadata.set_length(Some(Time::from_secs(time as i64)));
                 metadata.set_trackid(Some(ObjectPath::from_string_unchecked(path)));
+                break;
             }
         }
 
@@ -170,7 +185,7 @@ impl PlayerInterface for MPRISServer {
     }
 
     async fn volume(&self) -> mpris_server::zbus::fdo::Result<Volume> {
-        self.tx.send(ServerMessage::AskVolume).unwrap();
+        self.tx.send_async(ServerMessage::AskVolume).await.unwrap();
         while let Ok(message) = self.rx.recv() {
             if let ClientMessage::Volume(volume) = message {
                 return Ok(volume);
@@ -181,12 +196,20 @@ impl PlayerInterface for MPRISServer {
     }
 
     async fn set_volume(&self, volume: Volume) -> mpris_server::zbus::Result<()> {
-        self.tx.send(SetVolume(volume)).unwrap();
+        self.tx.send_async(SetVolume(volume)).await.unwrap();
         Ok(())
     }
 
     async fn position(&self) -> mpris_server::zbus::fdo::Result<Time> {
-        Ok(Time::from_millis(0))
+        self.tx.send_async(AskTime).await.unwrap();
+
+        while let Ok(message) = self.rx.recv() {
+            if let ClientMessage::Time(time) = message {
+                return Ok(Time::from_secs(time as i64));
+            }
+        }
+
+        Ok(Time::from_secs(0))
     }
 
     async fn minimum_rate(&self) -> mpris_server::zbus::fdo::Result<PlaybackRate> {
@@ -214,10 +237,10 @@ impl PlayerInterface for MPRISServer {
     }
 
     async fn can_seek(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
+        Ok(true)
     }
 
     async fn can_control(&self) -> mpris_server::zbus::fdo::Result<bool> {
-        Ok(false)
+        Ok(true)
     }
 }

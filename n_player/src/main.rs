@@ -3,6 +3,8 @@
 use eframe::egui;
 #[cfg(target_os = "linux")]
 use mpris_server::Server;
+#[cfg(target_os = "linux")]
+use mpris_server::{PlaybackStatus, Property};
 use n_player::app::App;
 #[cfg(target_os = "linux")]
 use n_player::mpris_server::MPRISServer;
@@ -19,7 +21,7 @@ fn main() {
     let (tx_c, rx_c) = flume::unbounded();
 
     #[cfg(target_os = "linux")]
-    let server = Server::new("com.enn3developer.n_music", MPRISServer::new(tx, rx_c))
+    let server = Server::new("n_music", MPRISServer::new(tx, rx_c))
         .block_on()
         .unwrap();
 

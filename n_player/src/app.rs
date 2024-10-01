@@ -12,6 +12,8 @@ use eframe::epaint::FontFamily;
 use eframe::{egui, Storage};
 use flume::{Receiver, Sender};
 #[cfg(target_os = "linux")]
+use mpris_server::zbus::zvariant::ObjectPath;
+#[cfg(target_os = "linux")]
 use mpris_server::Server;
 #[cfg(target_os = "linux")]
 use mpris_server::{PlaybackStatus, Property};
@@ -30,6 +32,7 @@ pub struct App {
     player: QueuePlayer,
     volume: f32,
     time: f64,
+    check_metadata: bool,
     cached_track_time: Option<TrackTime>,
     files: FileTracks,
     rx: Option<Receiver<Message>>,
@@ -82,6 +85,7 @@ impl App {
             player,
             volume,
             time: 0.0,
+            check_metadata: false,
             cached_track_time: None,
             files,
             rx,
@@ -231,12 +235,14 @@ impl App {
     fn toggle_pause(&mut self, ctx: &egui::Context) {
         if self.player.is_paused() {
             self.player.unpause().unwrap();
+            #[cfg(target_os = "linux")]
             self.server
                 .properties_changed([Property::PlaybackStatus(PlaybackStatus::Playing)])
                 .block_on()
                 .unwrap();
         } else {
             self.player.pause().unwrap();
+            #[cfg(target_os = "linux")]
             self.server
                 .properties_changed([Property::PlaybackStatus(PlaybackStatus::Paused)])
                 .block_on()
@@ -251,6 +257,7 @@ impl App {
         self.player.end_current().unwrap();
         self.player.play_next();
         self.update_title(ctx);
+        self.check_metadata = true;
     }
 
     fn play_previous(&mut self, ctx: &egui::Context) {
@@ -261,6 +268,7 @@ impl App {
                 self.player.end_current().unwrap();
                 self.player.play_previous();
                 self.update_title(ctx);
+                self.check_metadata = true;
             }
         }
     }
@@ -294,6 +302,8 @@ impl eframe::App for App {
         let mut pause = false;
         let mut next = false;
         let mut previous = false;
+        let mut send_time = false;
+        let mut send_server = false;
 
         while let Ok(message) = self.rx_server.try_recv() {
             match message {
@@ -313,26 +323,67 @@ impl eframe::App for App {
                     .send(ClientMessage::Playback(self.player.is_playing()))
                     .unwrap(),
                 ServerMessage::AskMetadata => {
-                    let mut track = None;
-                    for file_track in &self.files.tracks {
-                        if self.player.current_track_name().rsplit_once('.').unwrap().0
-                            == file_track.name
-                        {
-                            track = Some(file_track.clone());
-                        }
-                    }
-                    let metadata = match track {
-                        None => ClientMessage::Metadata(None, None, 0, String::from("/empty")),
-                        Some(track) => ClientMessage::Metadata(
-                            Some(track.name.clone()),
-                            Some(vec![track.artist]),
-                            track.duration,
-                            format!("/n_music/{}", track.name),
-                        ),
-                    };
-
-                    self.tx_server.send(metadata).unwrap()
+                    self.check_metadata = true;
+                    send_server = true;
                 }
+                ServerMessage::AskTime => send_time = true,
+                ServerMessage::Pause => {
+                    if self.player.is_playing() {
+                        pause = true;
+                    }
+                }
+                ServerMessage::Play => {
+                    if self.player.is_paused() || !self.player.is_playing() {
+                        pause = true;
+                    }
+                }
+            }
+        }
+
+        if self.check_metadata {
+            self.check_metadata = false;
+            let mut track = None;
+            for file_track in &self.files.tracks {
+                if self.player.current_track_name().rsplit_once('.').unwrap().0 == file_track.name {
+                    track = Some(file_track.clone());
+                }
+            }
+            let (title, artist, time, path) = match track {
+                None => (None, None, 0, String::from("/empty")),
+                Some(track) => (
+                    Some(track.name.clone()),
+                    Some(vec![track.artist]),
+                    track.duration,
+                    "/n_music".to_string(),
+                ),
+            };
+
+            if send_server {
+                self.tx_server
+                    .send(ClientMessage::Metadata(
+                        title.clone(),
+                        artist.clone(),
+                        time,
+                        path.clone(),
+                    ))
+                    .unwrap();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut meta = mpris_server::Metadata::new();
+                meta.set_artist(artist);
+                meta.set_title(title);
+                meta.set_length(Some(mpris_server::Time::from_secs(time as i64)));
+                meta.set_trackid(Some(ObjectPath::from_string_unchecked(
+                    path.replace(" ", "_"),
+                )));
+                self.server
+                    .properties_changed([
+                        Property::Metadata(meta),
+                        Property::PlaybackStatus(PlaybackStatus::Playing),
+                    ])
+                    .block_on()
+                    .unwrap();
             }
         }
 
@@ -372,26 +423,36 @@ impl eframe::App for App {
                 let value = (track_time.ts_secs as f64 + track_time.ts_frac)
                     / (track_time.dur_secs as f64 + track_time.dur_frac);
                 self.cached_track_time = Some(track_time.clone());
+                if send_time {
+                    self.tx_server
+                        .send(ClientMessage::Time(track_time.ts_secs))
+                        .unwrap();
+                }
                 current_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).round() as u64,
+                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).floor() as u64,
                     track_time.ts_secs % 60
                 );
                 total_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).round() as u64,
+                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).floor() as u64,
                     track_time.dur_secs % 60
                 );
                 value
             } else if let Some(track_time) = &self.cached_track_time {
+                if send_time {
+                    self.tx_server
+                        .send(ClientMessage::Time(track_time.ts_secs))
+                        .unwrap();
+                }
                 current_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).round() as u64,
+                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).floor() as u64,
                     track_time.ts_secs % 60
                 );
                 total_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).round() as u64,
+                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).floor() as u64,
                     track_time.dur_secs % 60
                 );
                 (track_time.ts_secs as f64 + track_time.ts_frac)
@@ -399,6 +460,9 @@ impl eframe::App for App {
             } else {
                 current_time = String::from("00:00");
                 total_time = String::from("00:00");
+                if send_time {
+                    self.tx_server.send(ClientMessage::Time(0)).unwrap();
+                }
                 0.0
             };
             ui.horizontal(|ui| {
@@ -483,6 +547,7 @@ impl eframe::App for App {
                                 self.player.end_current().unwrap();
                                 self.player.play_index(index);
                                 update_title = true;
+                                self.check_metadata = true;
                             }
                             ui.label(&track.artist);
                         });
@@ -502,9 +567,8 @@ impl eframe::App for App {
                 ui.allocate_space(ui.available_size());
             });
         });
-        if !self.player.is_paused() {
-            ctx.request_repaint_after(Duration::from_millis(750));
-        }
+
+        ctx.request_repaint();
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {
