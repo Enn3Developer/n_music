@@ -519,6 +519,7 @@ impl eframe::App for App {
                 self.slider_seek(slider, track_time.clone());
                 if volume_slider.changed() {
                     self.player.set_volume(self.volume).unwrap();
+                    #[cfg(target_os = "linux")]
                     self.server
                         .properties_changed([Property::Volume(self.volume as f64)])
                         .block_on()
