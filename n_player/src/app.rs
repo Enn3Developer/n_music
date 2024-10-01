@@ -18,13 +18,12 @@ use mpris_server::Server;
 #[cfg(target_os = "linux")]
 use mpris_server::{PlaybackStatus, Property};
 use n_audio::queue::QueuePlayer;
-use n_audio::{from_path_to_name_without_ext, TrackTime};
+use n_audio::{remove_ext, TrackTime};
 use pollster::FutureExt;
 use std::fs::DirEntry;
 #[cfg(target_os = "windows")]
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::Duration;
 use std::{fs, thread};
 
 pub struct App {
@@ -100,7 +99,7 @@ impl App {
         if let Some(track_time) = track_time {
             if slider.changed() {
                 self.player.pause().unwrap();
-                let total_time = track_time.dur_secs as f64 + track_time.dur_frac;
+                let total_time = track_time.len_secs as f64 + track_time.len_frac;
                 let seek_time = total_time * self.time;
                 self.player
                     .seek_to(seek_time.floor() as u64, seek_time.fract())
@@ -196,12 +195,12 @@ impl App {
                     .mime_type()
                     .contains("audio")
             {
-                let mut name = from_path_to_name_without_ext(&entry.path());
+                let mut name = remove_ext(&entry.path());
                 name.shrink_to_fit();
                 let contains = vec_contains(saved_files, &name);
                 let (duration, mut artist, cover) = if contains.0 {
                     (
-                        saved_files[contains.1].duration,
+                        saved_files[contains.1].length,
                         saved_files[contains.1].artist.clone(),
                         saved_files[contains.1].cover.clone(),
                     )
@@ -211,7 +210,7 @@ impl App {
                 artist.shrink_to_fit();
                 files.push(FileTrack {
                     name,
-                    duration,
+                    length: duration,
                     artist,
                     cover,
                 });
@@ -262,7 +261,7 @@ impl App {
 
     fn play_previous(&mut self, ctx: &egui::Context) {
         if let Some(cached_track_time) = &self.cached_track_time {
-            if cached_track_time.ts_secs < 2 {
+            if cached_track_time.pos_secs < 2 {
                 self.player.seek_to(0, 0.0).unwrap();
             } else {
                 self.player.end_current().unwrap();
@@ -285,7 +284,7 @@ impl eframe::App for App {
             while let Ok(message) = rx.try_recv() {
                 match message {
                     Message::Duration(i, dur) => {
-                        self.files[i].duration = dur;
+                        self.files[i].length = dur;
                     }
                     Message::Artist(i, artist) => {
                         self.files[i].artist = artist;
@@ -299,6 +298,7 @@ impl eframe::App for App {
             self.player.play_next();
             self.update_title(ctx);
         }
+
         let mut pause = false;
         let mut next = false;
         let mut previous = false;
@@ -344,7 +344,7 @@ impl eframe::App for App {
             self.check_metadata = false;
             let mut track = None;
             for file_track in &self.files.tracks {
-                if self.player.current_track_name().rsplit_once('.').unwrap().0 == file_track.name {
+                if remove_ext(self.player.current_track_name()) == file_track.name {
                     track = Some(file_track.clone());
                 }
             }
@@ -353,7 +353,7 @@ impl eframe::App for App {
                 Some(track) => (
                     Some(track.name.clone()),
                     Some(vec![track.artist]),
-                    track.duration,
+                    track.length,
                     "/n_music".to_string(),
                 ),
             };
@@ -420,43 +420,43 @@ impl eframe::App for App {
             let current_time: String;
             let total_time: String;
             self.time = if let Some(track_time) = &track_time {
-                let value = (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac);
+                let value = (track_time.pos_secs as f64 + track_time.pos_frac)
+                    / (track_time.len_secs as f64 + track_time.len_frac);
                 self.cached_track_time = Some(track_time.clone());
                 if send_time {
                     self.tx_server
-                        .send(ClientMessage::Time(track_time.ts_secs))
+                        .send(ClientMessage::Time(track_time.pos_secs))
                         .unwrap();
                 }
                 current_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).floor() as u64,
-                    track_time.ts_secs % 60
+                    ((track_time.pos_secs as f64 + track_time.pos_frac) / 60.0).floor() as u64,
+                    track_time.pos_secs % 60
                 );
                 total_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).floor() as u64,
-                    track_time.dur_secs % 60
+                    ((track_time.len_secs as f64 + track_time.len_frac) / 60.0).floor() as u64,
+                    track_time.len_secs % 60
                 );
                 value
             } else if let Some(track_time) = &self.cached_track_time {
                 if send_time {
                     self.tx_server
-                        .send(ClientMessage::Time(track_time.ts_secs))
+                        .send(ClientMessage::Time(track_time.pos_secs))
                         .unwrap();
                 }
                 current_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).floor() as u64,
-                    track_time.ts_secs % 60
+                    ((track_time.pos_secs as f64 + track_time.pos_frac) / 60.0).floor() as u64,
+                    track_time.pos_secs % 60
                 );
                 total_time = format!(
                     "{:02}:{:02}",
-                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).floor() as u64,
-                    track_time.dur_secs % 60
+                    ((track_time.len_secs as f64 + track_time.len_frac) / 60.0).floor() as u64,
+                    track_time.len_secs % 60
                 );
-                (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac)
+                (track_time.pos_secs as f64 + track_time.pos_frac)
+                    / (track_time.len_secs as f64 + track_time.len_frac)
             } else {
                 current_time = String::from("00:00");
                 total_time = String::from("00:00");
@@ -489,9 +489,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.label(from_path_to_name_without_ext(
-                        self.player.current_track_name(),
-                    ));
+                    ui.label(remove_ext(self.player.current_track_name()));
                     ui.add_space(10.0);
                     let text_toggle = if !self.player.is_playing() || self.player.is_paused() {
                         "▶"
@@ -530,12 +528,12 @@ impl eframe::App for App {
                 for i in rows_range {
                     let track = &self.files[i];
                     let name = &track.name;
-                    let duration = &track.duration;
+                    let length = &track.length;
                     let mut update_title = false;
                     ui.horizontal(|ui| {
                         let mut frame = false;
                         if self.player.is_playing()
-                            && &self.player.current_track_name().rsplit_once('.').unwrap().0 == name
+                            && &remove_ext(self.player.current_track_name()) == name
                         {
                             ui.add_space(10.0);
                             frame = true;
@@ -551,11 +549,7 @@ impl eframe::App for App {
                             }
                             ui.label(&track.artist);
                         });
-                        ui.add(Label::new(format!(
-                            "{:02}:{:02}",
-                            duration / 60,
-                            duration % 60
-                        )));
+                        ui.add(Label::new(format!("{:02}:{:02}", length / 60, length % 60)));
                     });
                     if i + 1 != total_rows {
                         ui.separator();
@@ -567,6 +561,14 @@ impl eframe::App for App {
                 ui.allocate_space(ui.available_size());
             });
         });
+
+        #[cfg(target_os = "linux")]
+        if !self.player.is_playing() {
+            self.server
+                .properties_changed([Property::PlaybackStatus(PlaybackStatus::Paused)])
+                .block_on()
+                .unwrap();
+        }
 
         ctx.request_repaint();
     }

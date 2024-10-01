@@ -55,11 +55,11 @@ pub enum Message {
 /// # Example
 /// ```
 /// use std::path::Path;
-/// use n_audio::from_path_to_name_without_ext;
+/// use n_audio::remove_ext;
 /// let filename = "file.1.txt";
-/// assert_eq!(from_path_to_name_without_ext(filename), "file.1");
+/// assert_eq!(remove_ext(filename), "file.1");
 /// ```
-pub fn from_path_to_name_without_ext<P: AsRef<Path>>(path: P) -> String {
+pub fn remove_ext<P: AsRef<Path>>(path: P) -> String {
     let split: Vec<String> = path
         .as_ref()
         .file_name()
@@ -77,10 +77,10 @@ pub fn from_path_to_name_without_ext<P: AsRef<Path>>(path: P) -> String {
 /// dur_* is used to represent the *entire* timestamp (as is how long is the track)
 #[derive(Clone, Debug)]
 pub struct TrackTime {
-    pub ts_secs: u64,
-    pub ts_frac: f64,
-    pub dur_secs: u64,
-    pub dur_frac: f64,
+    pub pos_secs: u64,
+    pub pos_frac: f64,
+    pub len_secs: u64,
+    pub len_frac: f64,
 }
 
 #[derive(Clone, Debug)]

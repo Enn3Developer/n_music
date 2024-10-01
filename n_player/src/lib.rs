@@ -19,7 +19,7 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
         if let Ok(music_track) = MusicTrack::new(track) {
             let metadata = music_track.get_meta();
-            tx.send(Message::Duration(i, metadata.time.dur_secs))
+            tx.send(Message::Duration(i, metadata.time.len_secs))
                 .expect("can't send back loaded times");
             tx.send(Message::Artist(i, metadata.artist))
                 .expect("can't send back artist");
@@ -59,7 +59,7 @@ pub enum ClientMessage {
 pub struct FileTrack {
     name: String,
     artist: String,
-    duration: u64,
+    length: u64,
     cover: Vec<u8>,
 }
 

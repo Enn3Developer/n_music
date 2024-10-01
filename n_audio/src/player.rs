@@ -97,7 +97,7 @@ impl Player {
         if let Some(tx) = &self.tx {
             if let Some(current_duration) = &self.cached_get_time {
                 let min_value = if secs as f64 + frac
-                    <= current_duration.dur_secs as f64 + current_duration.dur_frac
+                    <= current_duration.len_secs as f64 + current_duration.len_frac
                 {
                     Time {
                         seconds: secs,
@@ -105,8 +105,8 @@ impl Player {
                     }
                 } else {
                     Time {
-                        seconds: current_duration.dur_secs,
-                        frac: current_duration.dur_frac,
+                        seconds: current_duration.len_secs,
+                        frac: current_duration.len_frac,
                     }
                 };
                 tx.send(Message::Seek(min_value))?;
@@ -286,10 +286,10 @@ impl Player {
                 let ts_time = time_base.calc_time(packet.ts());
                 let dur_time = time_base.calc_time(duration);
                 if let Err(err) = tx_t.send(Message::Time(TrackTime {
-                    ts_secs: ts_time.seconds,
-                    ts_frac: ts_time.frac,
-                    dur_secs: dur_time.seconds,
-                    dur_frac: dur_time.frac,
+                    pos_secs: ts_time.seconds,
+                    pos_frac: ts_time.frac,
+                    len_secs: dur_time.seconds,
+                    len_frac: dur_time.frac,
                 })) {
                     if let Ok(message) = rx.try_recv() {
                         if let Message::Exit = message {

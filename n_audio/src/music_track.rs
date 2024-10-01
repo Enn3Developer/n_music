@@ -8,7 +8,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-use crate::{from_path_to_name_without_ext, Metadata, TrackTime, PROBE};
+use crate::{remove_ext, Metadata, TrackTime, PROBE};
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
@@ -26,7 +26,7 @@ impl MusicTrack {
         let file = File::open(path)?;
         Ok(MusicTrack {
             file,
-            name: from_path_to_name_without_ext(path),
+            name: remove_ext(path),
             ext: path
                 .extension()
                 .ok_or(String::from("no extension"))?
@@ -70,10 +70,10 @@ impl MusicTrack {
         let time = time_base.calc_time(duration);
 
         let time = TrackTime {
-            ts_secs: 0,
-            ts_frac: 0.0,
-            dur_secs: time.seconds,
-            dur_frac: time.frac,
+            pos_secs: 0,
+            pos_frac: 0.0,
+            len_secs: time.seconds,
+            len_frac: time.frac,
         };
 
         let mut artist = String::from("ARTIST");
@@ -102,10 +102,10 @@ impl MusicTrack {
         let time = time_base.calc_time(duration);
 
         TrackTime {
-            ts_secs: 0,
-            ts_frac: 0.0,
-            dur_secs: time.seconds,
-            dur_frac: time.frac,
+            pos_secs: 0,
+            pos_frac: 0.0,
+            len_secs: time.seconds,
+            len_frac: time.frac,
         }
     }
 }

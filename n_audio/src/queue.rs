@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::music_track::MusicTrack;
 use crate::player::Player;
-use crate::{from_path_to_name_without_ext, NError, TrackTime};
+use crate::{remove_ext, NError, TrackTime};
 
 pub struct QueuePlayer {
     queue: Vec<String>,
@@ -131,7 +131,7 @@ impl QueuePlayer {
 
     pub fn get_index_from_track_name(&self, name: &str) -> Result<usize, NError> {
         for (index, track) in self.queue.iter().enumerate() {
-            if from_path_to_name_without_ext(track) == name {
+            if remove_ext(track) == name {
                 return Ok(index);
             }
         }
