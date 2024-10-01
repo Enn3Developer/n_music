@@ -7,12 +7,15 @@ use n_player::app::App;
 #[cfg(target_os = "linux")]
 use n_player::mpris_server::MPRISServer;
 use pollster::FutureExt;
+use tempfile::NamedTempFile;
 
 fn main() {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 600.0]),
         ..Default::default()
     };
+
+    let tmp = NamedTempFile::new().unwrap();
 
     let (tx, rx) = flume::unbounded();
     let (tx_c, rx_c) = flume::unbounded();
@@ -30,6 +33,7 @@ fn main() {
                 cc,
                 rx,
                 tx_c,
+                tmp,
                 #[cfg(target_os = "linux")]
                 server,
             )))

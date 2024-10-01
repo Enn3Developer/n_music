@@ -2,10 +2,10 @@ use crate::ServerMessage::{AskTime, SetVolume};
 use crate::{ClientMessage, ServerMessage};
 use flume::{Receiver, Sender};
 use mpris_server::zbus::zvariant::ObjectPath;
-use mpris_server::RootInterface;
 use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Time, TrackId, Volume,
 };
+use mpris_server::{RootInterface, Uri};
 
 pub struct MPRISServer {
     tx: Sender<ServerMessage>,
@@ -172,11 +172,12 @@ impl PlayerInterface for MPRISServer {
         metadata.set_trackid(Some(ObjectPath::from_static_str("/empty").unwrap()));
 
         while let Ok(message) = self.rx.recv() {
-            if let ClientMessage::Metadata(title, artist, time, path) = message {
+            if let ClientMessage::Metadata(title, artist, time, path, image_path) = message {
                 metadata.set_title(title);
                 metadata.set_artist(artist);
                 metadata.set_length(Some(Time::from_secs(time as i64)));
                 metadata.set_trackid(Some(ObjectPath::from_string_unchecked(path)));
+                metadata.set_art_url(image_path);
                 break;
             }
         }

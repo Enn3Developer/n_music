@@ -64,7 +64,13 @@ pub enum ServerMessage {
 pub enum ClientMessage {
     Volume(f64),
     Playback(bool),
-    Metadata(Option<String>, Option<Vec<String>>, u64, String),
+    Metadata(
+        Option<String>,
+        Option<Vec<String>>,
+        u64,
+        String,
+        Option<String>,
+    ),
     Time(u64),
 }
 

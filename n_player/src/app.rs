@@ -13,7 +13,7 @@ use eframe::{egui, Storage};
 use flume::{Receiver, Sender};
 use hashbrown::HashMap;
 use image::imageops::FilterType;
-use image::{ImageFormat, ImageReader};
+use image::ImageFormat;
 #[cfg(target_os = "linux")]
 use mpris_server::zbus::zvariant::ObjectPath;
 #[cfg(target_os = "linux")]
@@ -24,12 +24,13 @@ use n_audio::queue::QueuePlayer;
 use n_audio::{remove_ext, TrackTime};
 use pollster::FutureExt;
 use std::fs::DirEntry;
-use std::io::Cursor;
+use std::io::{Cursor, Seek, Write};
 #[cfg(target_os = "windows")]
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{fs, thread};
+use tempfile::NamedTempFile;
 
 pub struct App {
     path: Option<String>,
@@ -43,6 +44,7 @@ pub struct App {
     rx_server: Receiver<ServerMessage>,
     tx_server: Sender<ClientMessage>,
     loaded_images: HashMap<usize, Vec<u8>>,
+    tmp: NamedTempFile,
     #[cfg(target_os = "linux")]
     server: Server<MPRISServer>,
 }
@@ -52,6 +54,7 @@ impl App {
         cc: &eframe::CreationContext<'_>,
         rx_server: Receiver<ServerMessage>,
         tx_server: Sender<ClientMessage>,
+        tmp: NamedTempFile,
         #[cfg(target_os = "linux")] server: Server<MPRISServer>,
     ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
@@ -98,6 +101,7 @@ impl App {
             rx_server,
             tx_server,
             loaded_images: HashMap::new(),
+            tmp,
             #[cfg(target_os = "linux")]
             server,
         }
@@ -353,13 +357,29 @@ impl eframe::App for App {
                     track = Some(file_track.clone());
                 }
             }
-            let (title, artist, time, path) = match track {
-                None => (None, None, 0, String::from("/empty")),
+            let image = get_image(self.player.get_path_for_file(
+                if self.player.index() == usize::MAX - 1 {
+                    0
+                } else {
+                    self.player.index()
+                },
+            ));
+            if !image.is_empty() {
+                self.tmp.rewind().unwrap();
+                self.tmp.write_all(&image).unwrap();
+            }
+            let (title, artist, time, path, image_path) = match track {
+                None => (None, None, 0, String::from("/empty"), None),
                 Some(track) => (
                     Some(track.name.clone()),
                     Some(vec![track.artist]),
                     track.length,
                     "/n_music".to_string(),
+                    if image.is_empty() {
+                        None
+                    } else {
+                        Some(self.tmp.path().to_str().unwrap().to_string())
+                    },
                 ),
             };
 
@@ -370,6 +390,7 @@ impl eframe::App for App {
                         artist.clone(),
                         time,
                         path.clone(),
+                        image_path.clone(),
                     ))
                     .unwrap();
             }
@@ -382,6 +403,7 @@ impl eframe::App for App {
                 meta.set_trackid(Some(ObjectPath::from_string_unchecked(
                     path.replace(" ", "_"),
                 )));
+                meta.set_art_url(image_path);
                 self.server
                     .properties_changed([
                         Property::Metadata(meta),
