@@ -2,8 +2,8 @@ use crate::{
     add_all_tracks_to_player, loader_thread, vec_contains, FileTrack, FileTracks, Message,
 };
 use eframe::egui::{
-    Button, Label, Response, ScrollArea, Slider, SliderOrientation, ViewportCommand, Visuals,
-    Widget,
+    Button, Event, Key, Label, Modifiers, Response, ScrollArea, Slider, SliderOrientation,
+    ViewportCommand, Visuals, Widget,
 };
 use eframe::epaint::FontFamily;
 use eframe::{egui, Storage};
@@ -288,6 +288,47 @@ impl eframe::App for App {
             self.update_title(ctx);
         }
 
+        let mut pause = false;
+        let mut next = false;
+        let mut previous = false;
+        ctx.input(|i| {
+            for event in &i.events {
+                match event {
+                    Event::Key {
+                        key: Key::Space,
+                        pressed: true,
+                        repeat: false,
+                        ..
+                    } => pause = true,
+                    Event::Key {
+                        key: Key::ArrowRight,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Modifiers { ctrl: true, .. },
+                        ..
+                    } => next = true,
+                    Event::Key {
+                        key: Key::ArrowLeft,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Modifiers { ctrl: true, .. },
+                        ..
+                    } => previous = true,
+                    _ => {}
+                };
+            }
+        });
+
+        if pause {
+            self.toggle_pause(ctx);
+        }
+        if next {
+            self.play_next(ctx);
+        }
+        if previous {
+            self.play_previous(ctx);
+        }
+
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(40.0);
 
@@ -394,7 +435,9 @@ impl eframe::App for App {
                     let mut update_title = false;
                     ui.horizontal(|ui| {
                         let mut frame = false;
-                        if self.player.is_playing() && &self.player.current_track_name() == name {
+                        if self.player.is_playing()
+                            && &self.player.current_track_name().rsplit_once('.').unwrap().0 == name
+                        {
                             ui.add_space(10.0);
                             frame = true;
                         }
