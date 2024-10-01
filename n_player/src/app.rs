@@ -1,16 +1,19 @@
 #[cfg(target_os = "linux")]
 use crate::mpris_server::MPRISServer;
 use crate::{
-    add_all_tracks_to_player, loader_thread, vec_contains, ClientMessage, FileTrack, FileTracks,
-    Message, ServerMessage,
+    add_all_tracks_to_player, get_image, loader_thread, vec_contains, ClientMessage, FileTrack,
+    FileTracks, Message, ServerMessage,
 };
 use eframe::egui::{
-    Button, Event, Key, Label, Modifiers, Response, ScrollArea, Slider, SliderOrientation,
+    Button, Event, Image, Key, Label, Modifiers, Response, ScrollArea, Slider, SliderOrientation,
     ViewportCommand, Visuals, Widget,
 };
 use eframe::epaint::FontFamily;
 use eframe::{egui, Storage};
 use flume::{Receiver, Sender};
+use hashbrown::HashMap;
+use image::imageops::FilterType;
+use image::{ImageFormat, ImageReader};
 #[cfg(target_os = "linux")]
 use mpris_server::zbus::zvariant::ObjectPath;
 #[cfg(target_os = "linux")]
@@ -21,9 +24,11 @@ use n_audio::queue::QueuePlayer;
 use n_audio::{remove_ext, TrackTime};
 use pollster::FutureExt;
 use std::fs::DirEntry;
+use std::io::Cursor;
 #[cfg(target_os = "windows")]
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{fs, thread};
 
 pub struct App {
@@ -37,6 +42,7 @@ pub struct App {
     rx: Option<Receiver<Message>>,
     rx_server: Receiver<ServerMessage>,
     tx_server: Sender<ClientMessage>,
+    loaded_images: HashMap<usize, Vec<u8>>,
     #[cfg(target_os = "linux")]
     server: Server<MPRISServer>,
 }
@@ -49,6 +55,7 @@ impl App {
         #[cfg(target_os = "linux")] server: Server<MPRISServer>,
     ) -> Self {
         Self::configure_fonts(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut player = QueuePlayer::new(String::new());
         let mut files = FileTracks { tracks: vec![] };
         let mut saved_files = FileTracks { tracks: vec![] };
@@ -90,6 +97,7 @@ impl App {
             rx,
             rx_server,
             tx_server,
+            loaded_images: HashMap::new(),
             #[cfg(target_os = "linux")]
             server,
         }
@@ -198,21 +206,19 @@ impl App {
                 let mut name = remove_ext(&entry.path());
                 name.shrink_to_fit();
                 let contains = vec_contains(saved_files, &name);
-                let (duration, mut artist, cover) = if contains.0 {
+                let (duration, mut artist) = if contains.0 {
                     (
                         saved_files[contains.1].length,
                         saved_files[contains.1].artist.clone(),
-                        saved_files[contains.1].cover.clone(),
                     )
                 } else {
-                    (0, "ARTIST".to_string(), vec![])
+                    (0, "ARTIST".to_string())
                 };
                 artist.shrink_to_fit();
                 files.push(FileTrack {
                     name,
                     length: duration,
                     artist,
-                    cover,
                 });
                 indexing_files.push(entry.path());
             }
@@ -288,15 +294,14 @@ impl eframe::App for App {
                     }
                     Message::Artist(i, artist) => {
                         self.files[i].artist = artist;
-                    } // Message::Image(i, data) => {
-                      //     self.files[i].cover = data;
-                      // }
+                    }
                 }
             }
         }
         if self.player.has_ended() {
             self.player.play_next();
             self.update_title(ctx);
+            self.check_metadata = true;
         }
 
         let mut pause = false;
@@ -525,12 +530,45 @@ impl eframe::App for App {
             let row_height = 40.0;
             let total_rows = self.files.len();
             ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, rows_range| {
+                let mut keys = vec![];
+                for loaded in self.loaded_images.keys() {
+                    if !rows_range.contains(loaded) {
+                        keys.push(loaded.clone());
+                    }
+                }
+                for key in keys {
+                    self.loaded_images.remove(&key);
+                }
                 for i in rows_range {
                     let track = &self.files[i];
                     let name = &track.name;
                     let length = &track.length;
                     let mut update_title = false;
+
+                    if !self.loaded_images.contains_key(&i) {
+                        let mut image = get_image(self.player.get_path_for_file(
+                            self.player.get_index_from_track_name(name).unwrap(),
+                        ));
+                        if !image.is_empty() {
+                            image::load_from_memory(&image)
+                                .unwrap()
+                                .resize(32, 32, FilterType::Lanczos3)
+                                .write_to(&mut Cursor::new(&mut image), ImageFormat::Png)
+                                .unwrap();
+                        }
+                        self.loaded_images.insert(i, image.clone());
+                    }
+
                     ui.horizontal(|ui| {
+                        let cover = self.loaded_images.get(&i).unwrap();
+                        if !cover.is_empty() {
+                            Image::from_bytes(
+                                format!("bytes://{}", name.escape_default()),
+                                cover.clone(),
+                            )
+                            .fit_to_original_size(1.0)
+                            .ui(ui);
+                        }
                         let mut frame = false;
                         if self.player.is_playing()
                             && &remove_ext(self.player.current_track_name()) == name
@@ -570,7 +608,7 @@ impl eframe::App for App {
                 .unwrap();
         }
 
-        ctx.request_repaint();
+        ctx.request_repaint_after(Duration::from_millis(300));
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {

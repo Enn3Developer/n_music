@@ -1,4 +1,5 @@
 use flume::Sender;
+use multitag::Tag;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use rayon::iter::IndexedParallelIterator;
@@ -27,10 +28,22 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     });
 }
 
+pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
+    if let Ok(tag) = Tag::read_from_path(path) {
+        if let Some(album) = tag.get_album_info() {
+            if let Some(cover) = album.cover {
+                return cover.data;
+            }
+        }
+    }
+
+    vec![]
+}
+
+#[derive(Debug)]
 enum Message {
     Duration(usize, u64),
     Artist(usize, String),
-    // Image(usize, Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -60,7 +73,6 @@ pub struct FileTrack {
     name: String,
     artist: String,
     length: u64,
-    cover: Vec<u8>,
 }
 
 impl PartialEq<Self> for FileTrack {

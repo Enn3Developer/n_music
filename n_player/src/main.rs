@@ -3,12 +3,9 @@
 use eframe::egui;
 #[cfg(target_os = "linux")]
 use mpris_server::Server;
-#[cfg(target_os = "linux")]
-use mpris_server::{PlaybackStatus, Property};
 use n_player::app::App;
 #[cfg(target_os = "linux")]
 use n_player::mpris_server::MPRISServer;
-#[cfg(target_os = "linux")]
 use pollster::FutureExt;
 
 fn main() {

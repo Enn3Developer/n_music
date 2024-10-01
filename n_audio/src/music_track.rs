@@ -3,12 +3,12 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
 
+use crate::{remove_ext, Metadata, TrackTime, PROBE};
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-
-use crate::{remove_ext, Metadata, TrackTime, PROBE};
+use symphonia_core::meta::StandardTagKey;
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
@@ -79,7 +79,7 @@ impl MusicTrack {
         let mut artist = String::from("ARTIST");
 
         for tag in format.metadata().current().unwrap().tags() {
-            if &tag.key.to_lowercase() == "artist" {
+            if let Some(StandardTagKey::Artist) = tag.std_key {
                 artist = tag.value.to_string();
                 break;
             }
