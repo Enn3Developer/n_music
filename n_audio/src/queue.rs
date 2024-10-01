@@ -60,6 +60,12 @@ impl QueuePlayer {
     }
 
     #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        self.queue.shrink_to_fit();
+        self.path.shrink_to_fit();
+    }
+
+    #[inline]
     pub fn add<P: AsRef<Path>>(&mut self, path: P) {
         self.queue.push(Self::strip_absolute_path(
             path.as_ref().to_str().unwrap().to_string(),

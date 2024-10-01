@@ -1,7 +1,9 @@
-use audiotags::Tag;
 use flume::Sender;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
+use rayon::iter::IndexedParallelIterator;
+use rayon::iter::ParallelIterator;
+use rayon::prelude::IntoParallelRefIterator;
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ffi::OsStr;
@@ -12,7 +14,7 @@ use std::path::{Path, PathBuf};
 pub mod app;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
-    for (i, track) in tracks.iter().enumerate() {
+    tracks.par_iter().enumerate().for_each(|(i, track)| {
         if let Ok(music_track) = MusicTrack::new(track) {
             let metadata = music_track.get_meta();
             tx.send(Message::Duration(i, metadata.time.dur_secs))
@@ -20,13 +22,13 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
             tx.send(Message::Artist(i, metadata.artist))
                 .expect("can't send back artist");
         }
-    }
+    });
 }
 
 enum Message {
     Duration(usize, u64),
     Artist(usize, String),
-    Image(usize, Vec<u8>),
+    // Image(usize, Vec<u8>),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -96,6 +98,7 @@ where
         p.shrink_to_fit();
         player.add(p.to_string());
     });
+    player.shrink_to_fit();
 
     player.shuffle();
 }

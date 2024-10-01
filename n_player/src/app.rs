@@ -16,11 +16,9 @@ use mpris_server::{
 use n_audio::queue::QueuePlayer;
 use n_audio::{from_path_to_name_without_ext, TrackTime};
 use std::fs::DirEntry;
-use std::future::Future;
 #[cfg(target_os = "windows")]
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::time::Duration;
 use std::{fs, thread};
 
@@ -31,7 +29,6 @@ pub struct App {
     time: f64,
     cached_track_time: Option<TrackTime>,
     files: FileTracks,
-    title: String,
     rx: Option<Receiver<Message>>,
 }
 
@@ -84,7 +81,6 @@ impl App {
             time: 0.0,
             cached_track_time: None,
             files,
-            title: String::from("N Music"),
             rx,
         }
     }
@@ -231,7 +227,7 @@ impl App {
         )));
     }
 
-    fn toggle_pause(&mut self) {
+    fn toggle_pause(&mut self, ctx: &egui::Context) {
         if self.player.is_paused() {
             self.player.unpause().unwrap();
         } else {
@@ -239,21 +235,24 @@ impl App {
         }
         if !self.player.is_playing() {
             self.player.play_next();
+            self.update_title(ctx);
         }
     }
 
-    fn play_next(&mut self) {
+    fn play_next(&mut self, ctx: &egui::Context) {
         self.player.end_current().unwrap();
         self.player.play_next();
+        self.update_title(ctx);
     }
 
-    fn play_previous(&mut self) {
+    fn play_previous(&mut self, ctx: &egui::Context) {
         if let Some(cached_track_time) = &self.cached_track_time {
             if cached_track_time.ts_secs < 2 {
                 self.player.seek_to(0, 0.0).unwrap();
             } else {
                 self.player.end_current().unwrap();
                 self.player.play_previous();
+                self.update_title(ctx);
             }
         }
     }
@@ -276,10 +275,9 @@ impl eframe::App for App {
                     }
                     Message::Artist(i, artist) => {
                         self.files[i].artist = artist;
-                    }
-                    Message::Image(i, data) => {
-                        self.files[i].cover = data;
-                    }
+                    } // Message::Image(i, data) => {
+                      //     self.files[i].cover = data;
+                      // }
                 }
             }
         }
@@ -294,17 +292,56 @@ impl eframe::App for App {
             ui.set_min_height(40.0);
 
             let track_time = self.player.get_time();
+            let current_time: String;
+            let total_time: String;
+
+            self.time = if let Some(track_time) = &track_time {
+                let value = (track_time.ts_secs as f64 + track_time.ts_frac)
+                    / (track_time.dur_secs as f64 + track_time.dur_frac);
+                self.cached_track_time = Some(track_time.clone());
+                current_time = format!(
+                    "{:02}:{:02}",
+                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).round() as u64,
+                    track_time.ts_secs % 60
+                );
+                total_time = format!(
+                    "{:02}:{:02}",
+                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).round() as u64,
+                    track_time.dur_secs % 60
+                );
+                value
+            } else if let Some(track_time) = &self.cached_track_time {
+                current_time = format!(
+                    "{:02}:{:02}",
+                    ((track_time.ts_secs as f64 + track_time.ts_frac) / 60.0).round() as u64,
+                    track_time.ts_secs % 60
+                );
+                total_time = format!(
+                    "{:02}:{:02}",
+                    ((track_time.dur_secs as f64 + track_time.dur_frac) / 60.0).round() as u64,
+                    track_time.dur_secs % 60
+                );
+                (track_time.ts_secs as f64 + track_time.ts_frac)
+                    / (track_time.dur_secs as f64 + track_time.dur_frac)
+            } else {
+                current_time = String::from("00:00");
+                total_time = String::from("00:00");
+                0.0
+            };
 
             ui.horizontal(|ui| {
+                ui.label(current_time);
                 let slider = Slider::new(&mut self.time, 0.0..=1.0)
                     .orientation(SliderOrientation::Horizontal)
                     .show_value(false)
                     .ui(ui);
+                ui.label(total_time);
                 ui.add_space(10.0);
 
                 let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
                     .show_value(false)
                     .ui(ui);
+                ui.label(format!("{}%", (self.volume * 100.0).round() as usize));
 
                 self.slider_seek(slider, track_time.clone());
 
@@ -312,18 +349,6 @@ impl eframe::App for App {
                     self.player.set_volume(self.volume).unwrap();
                 }
             });
-
-            self.time = if let Some(track_time) = &track_time {
-                let value = (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac);
-                self.cached_track_time = Some(track_time.clone());
-                value
-            } else if let Some(track_time) = &self.cached_track_time {
-                (track_time.ts_secs as f64 + track_time.ts_frac)
-                    / (track_time.dur_secs as f64 + track_time.dur_frac)
-            } else {
-                0.0
-            };
 
             ui.horizontal(|ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
@@ -345,13 +370,13 @@ impl eframe::App for App {
                     let next = Button::new("⏭").frame(false).ui(ui);
 
                     if previous.clicked() {
-                        self.play_previous();
+                        self.play_previous(ctx);
                     }
                     if toggle.clicked() {
-                        self.toggle_pause();
+                        self.toggle_pause(ctx);
                     }
                     if next.clicked() {
-                        self.play_next();
+                        self.play_next(ctx);
                     }
                 });
             });
@@ -412,7 +437,7 @@ impl eframe::App for App {
         }
     }
 
-    fn on_exit(&mut self) {
+    fn on_exit(&mut self, _ctx: Option<&eframe::glow::Context>) {
         self.player.end_current().unwrap();
     }
 }
