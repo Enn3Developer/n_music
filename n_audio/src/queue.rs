@@ -36,6 +36,10 @@ impl QueuePlayer {
         self.index
     }
 
+    pub fn path(&self) -> String {
+        self.path.clone()
+    }
+
     pub fn set_path(&mut self, path: String) {
         self.path = path;
     }
@@ -55,8 +59,8 @@ impl QueuePlayer {
         s
     }
 
-    pub fn queue(&self) -> &Vec<String> {
-        &self.queue
+    pub fn queue(&self) -> Vec<String> {
+        self.queue.clone()
     }
 
     #[inline]

@@ -18,27 +18,19 @@ async fn main() {
 
     let tmp = NamedTempFile::new().unwrap();
 
-    let (tx, rx) = flume::unbounded();
-    let (tx_c, rx_c) = flume::unbounded();
-
-    #[cfg(target_os = "linux")]
-    let server = Server::new("n_music", MPRISServer::new(tx, rx_c))
-        .block_on()
-        .unwrap();
-
-    eframe::run_native(
-        "N Music",
-        native_options,
-        Box::new(|cc| {
-            Ok(Box::new(App::new(
-                cc,
-                rx,
-                tx_c,
-                tmp,
-                #[cfg(target_os = "linux")]
-                server,
-            )))
-        }),
-    )
-    .expect("Can't start app");
+    // eframe::run_native(
+    //     "N Music",
+    //     native_options,
+    //     Box::new(|cc| {
+    //         Ok(Box::new(App::new(
+    //             cc,
+    //             rx,
+    //             tx_c,
+    //             tmp,
+    //             #[cfg(target_os = "linux")]
+    //             server,
+    //         )))
+    //     }),
+    // )
+    // .expect("Can't start app");
 }

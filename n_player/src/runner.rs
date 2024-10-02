@@ -119,4 +119,12 @@ impl Runner {
     pub fn time(&self) -> TrackTime {
         self.current_time
     }
+
+    pub fn path(&self) -> String {
+        self.player.path()
+    }
+
+    pub fn queue(&self) -> Vec<String> {
+        self.player.queue()
+    }
 }

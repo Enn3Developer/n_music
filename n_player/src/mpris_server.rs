@@ -2,10 +2,10 @@ use crate::ServerMessage::{AskTime, SetVolume};
 use crate::{ClientMessage, ServerMessage};
 use flume::{Receiver, Sender};
 use mpris_server::zbus::zvariant::ObjectPath;
+use mpris_server::RootInterface;
 use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, Time, TrackId, Volume,
 };
-use mpris_server::{RootInterface, Uri};
 
 pub struct MPRISServer {
     tx: Sender<ServerMessage>,
