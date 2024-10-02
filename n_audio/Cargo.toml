@@ -1,6 +1,6 @@
 [package]
 name = "n_audio"
-version = "1.6.0"
+version = "1.7.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -26,3 +26,4 @@ rb = "0.4.1"
 cpal = "0.15.3"
 dasp = "0.11.0"
 flume = "0.11.0"
+tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread"] }

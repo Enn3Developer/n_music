@@ -4,12 +4,10 @@ use flume::{Receiver, SendError, Sender};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::thread;
-use std::thread::JoinHandle;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
-
+use tokio::task::JoinHandle;
 // TODO: update docs
 
 /// The main actor for everything.
@@ -43,9 +41,9 @@ impl Player {
 
     /// Pauses the current playing track, if any
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn pause(&mut self) -> Result<(), SendError<Message>> {
+    pub async fn pause(&mut self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            tx.send(Message::Pause)?;
+            tx.send_async(Message::Pause).await?;
             self.is_paused = true;
         }
         Ok(())
@@ -53,9 +51,9 @@ impl Player {
 
     /// Unpauses the current playing track, if any
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn unpause(&mut self) -> Result<(), SendError<Message>> {
+    pub async fn unpause(&mut self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            tx.send(Message::Play)?;
+            tx.send_async(Message::Play).await?;
             self.is_paused = false;
         }
         Ok(())
@@ -70,11 +68,15 @@ impl Player {
         false
     }
 
+    pub fn get_volume(&self) -> f32 {
+        self.volume
+    }
+
     /// Sets the output volume
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn set_volume(&mut self, volume: f32) -> Result<(), SendError<Message>> {
+    pub async fn set_volume(&mut self, volume: f32) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            tx.send(Message::Volume(volume))?;
+            tx.send_async(Message::Volume(volume)).await?;
         }
         self.volume = volume;
         Ok(())
@@ -82,9 +84,13 @@ impl Player {
 
     /// Sets the playback speed
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn set_playback_speed(&mut self, playback_speed: f32) -> Result<(), SendError<Message>> {
+    pub async fn set_playback_speed(
+        &mut self,
+        playback_speed: f32,
+    ) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            tx.send(Message::PlaybackSpeed(playback_speed))?;
+            tx.send_async(Message::PlaybackSpeed(playback_speed))
+                .await?;
             self.playback_speed = playback_speed;
         }
         Ok(())
@@ -93,7 +99,7 @@ impl Player {
     /// Seeks to the set timestamp
     /// Be aware that if the timestamp isn't valid the track thread will panic
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn seek_to(&self, secs: u64, frac: f64) -> Result<(), SendError<Message>> {
+    pub async fn seek_to(&self, secs: u64, frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             if let Some(current_duration) = &self.cached_get_time {
                 let min_value = if secs as f64 + frac
@@ -109,7 +115,7 @@ impl Player {
                         frac: current_duration.len_frac,
                     }
                 };
-                tx.send(Message::Seek(min_value))?;
+                tx.send_async(Message::Seek(min_value)).await?;
             }
         }
         Ok(())
@@ -152,9 +158,9 @@ impl Player {
 
     /// Ends the current track playing, if any
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub fn end_current(&self) -> Result<(), SendError<Message>> {
+    pub async fn end_current(&self) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            tx.send(Message::Exit)?;
+            tx.send_async(Message::Exit).await?;
         }
         Ok(())
     }
@@ -185,7 +191,7 @@ impl Player {
         let (tx_e, rx_e) = flume::unbounded();
 
         let thread =
-            thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
+            tokio::spawn(|| Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
 
         self.rx_e = Some(rx_e);
         self.rx_t = Some(rx_t);
@@ -193,7 +199,7 @@ impl Player {
         self.thread = Some(thread);
     }
 
-    fn thread_fn(
+    async fn thread_fn(
         mut format: Box<dyn FormatReader>,
         rx: Receiver<Message>,
         tx_t: Sender<Message>,
@@ -224,14 +230,11 @@ impl Player {
         let mut exit = false;
 
         loop {
-            let recv = |rx: &Receiver<Message>| {
-                if is_paused {
-                    rx.recv().ok()
-                } else {
-                    rx.try_recv().ok()
-                }
-            };
-            if let Some(message) = recv(&rx) {
+            if let Some(message) = if is_paused {
+                rx.recv_async().await.ok()
+            } else {
+                rx.try_recv().ok()
+            } {
                 match message {
                     Message::Play => is_paused = false,
                     Message::Pause => is_paused = true,
@@ -283,14 +286,17 @@ impl Player {
                 while !format.metadata().is_latest() {
                     format.metadata().pop();
                 }
-                let ts_time = time_base.calc_time(packet.ts());
-                let dur_time = time_base.calc_time(duration);
-                if let Err(err) = tx_t.send(Message::Time(TrackTime {
-                    pos_secs: ts_time.seconds,
-                    pos_frac: ts_time.frac,
-                    len_secs: dur_time.seconds,
-                    len_frac: dur_time.frac,
-                })) {
+                let position = time_base.calc_time(packet.ts());
+                let length = time_base.calc_time(duration);
+                if let Err(err) = tx_t
+                    .send_async(Message::Time(TrackTime {
+                        pos_secs: position.seconds,
+                        pos_frac: position.frac,
+                        len_secs: length.seconds,
+                        len_frac: length.frac,
+                    }))
+                    .await
+                {
                     if let Ok(message) = rx.try_recv() {
                         if let Message::Exit = message {
                             exit = true;
@@ -333,7 +339,7 @@ impl Player {
                         }
 
                         if let Some(audio_output) = &mut audio_output {
-                            audio_output.write(decoded, volume).unwrap()
+                            audio_output.write(decoded, volume).await.unwrap()
                         }
                     }
                     Err(symphonia::core::errors::Error::DecodeError(err)) => {
@@ -347,7 +353,9 @@ impl Player {
             }
         }
         if !exit {
-            tx_e.send(Message::End).expect("Can't send End message");
+            tx_e.send_async(Message::End)
+                .await
+                .expect("Can't send End message");
         }
     }
 }

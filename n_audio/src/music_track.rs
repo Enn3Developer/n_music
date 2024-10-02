@@ -88,7 +88,7 @@ impl MusicTrack {
         Metadata { time, artist }
     }
 
-    pub fn get_duration(&self) -> TrackTime {
+    pub fn get_length(&self) -> TrackTime {
         let mut format = self.get_format();
         println!("{:?}", format.metadata().current().unwrap().tags());
         let track = format.default_track().expect("Can't load tracks");

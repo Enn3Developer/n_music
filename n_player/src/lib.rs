@@ -13,8 +13,10 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 pub mod app;
+pub mod bus_server;
 #[cfg(target_os = "linux")]
 pub mod mpris_server;
+pub mod runner;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {

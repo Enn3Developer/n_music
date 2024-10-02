@@ -73,9 +73,9 @@ pub fn remove_ext<P: AsRef<Path>>(path: P) -> String {
 }
 
 /// Used to represent the timestamp
-/// ts_* is used to represent the *current* timestamp (as in where is currently the player playing inside the track)
-/// dur_* is used to represent the *entire* timestamp (as is how long is the track)
-#[derive(Clone, Debug)]
+/// pos_* is used to represent the *current* timestamp (as in where is currently the player playing inside the track)
+/// len_* is used to represent the *entire* timestamp (as is how long is the track)
+#[derive(Copy, Clone, Debug, Default)]
 pub struct TrackTime {
     pub pos_secs: u64,
     pub pos_frac: f64,

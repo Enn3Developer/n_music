@@ -9,7 +9,8 @@ use n_player::mpris_server::MPRISServer;
 use pollster::FutureExt;
 use tempfile::NamedTempFile;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 600.0]),
         ..Default::default()

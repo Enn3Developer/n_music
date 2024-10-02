@@ -139,9 +139,9 @@ impl QueuePlayer {
         Err(NError::NoTrack)
     }
 
-    pub fn get_duration_for_track(&self, index: usize) -> TrackTime {
+    pub fn get_length_for_track(&self, index: usize) -> TrackTime {
         let track = MusicTrack::new(&self.queue[index]).unwrap();
-        track.get_duration()
+        track.get_length()
     }
 }
 
