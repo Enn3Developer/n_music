@@ -167,19 +167,19 @@ impl Player {
     }
 
     /// Plays a certain track given its file path
-    pub async fn play_from_path<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
+    pub fn play_from_path<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
         &mut self,
         path: P,
     ) -> Result<(), Box<dyn Error>> {
         let music_track = MusicTrack::new(path)?;
-        self.play(music_track.get_format().await);
+        self.play(music_track.get_format());
 
         Ok(())
     }
 
     /// Plays a certain track
-    pub async fn play_from_track(&mut self, track: &MusicTrack) {
-        self.play(track.get_format().await);
+    pub fn play_from_track(&mut self, track: &MusicTrack) {
+        self.play(track.get_format());
     }
 
     /// Plays a certain track given its format

@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ffi::OsStr;
+use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
@@ -40,8 +41,8 @@ impl MusicTrack {
     }
 
     /// Returns the `FormatReader` provided by Symphonia
-    pub async fn get_format(&self) -> Box<dyn FormatReader> {
-        let file = tokio::fs::read(&self.path).await.expect("can't read file");
+    pub fn get_format(&self) -> Box<dyn FormatReader> {
+        let file = fs::read(&self.path).expect("can't read file");
         let media_stream = MediaSourceStream::new(
             Box::new(Cursor::new(file)),
             std::default::Default::default(),
@@ -59,8 +60,8 @@ impl MusicTrack {
         probed.format
     }
 
-    pub async fn get_meta(&self) -> Metadata {
-        let mut format = self.get_format().await;
+    pub fn get_meta(&self) -> Metadata {
+        let mut format = self.get_format();
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 
@@ -96,9 +97,8 @@ impl MusicTrack {
         }
     }
 
-    pub async fn get_length(&self) -> TrackTime {
-        let mut format = self.get_format().await;
-        println!("{:?}", format.metadata().current().unwrap().tags());
+    pub fn get_length(&self) -> TrackTime {
+        let mut format = self.get_format();
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 

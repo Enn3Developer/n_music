@@ -13,6 +13,7 @@ pub async fn run(runner: Arc<RwLock<Runner>>) {
     }
 }
 
+#[derive(Debug)]
 pub enum RunnerMessage {
     PlayNext,
     PlayPrevious,
@@ -24,6 +25,7 @@ pub enum RunnerMessage {
     Seek(Seek),
 }
 
+#[derive(Debug)]
 pub enum Seek {
     Absolute(f64),
     Relative(f64),
@@ -49,7 +51,9 @@ impl Runner {
             self.parse_command(message).await;
         }
 
-        self.current_time = self.player.get_time().unwrap();
+        if let Some(time) = self.player.get_time() {
+            self.current_time = time;
+        }
 
         if self.player.has_ended() {
             self.player.play_next();
@@ -57,6 +61,7 @@ impl Runner {
     }
 
     async fn parse_command(&mut self, message: RunnerMessage) {
+        println!("{message:?}");
         match message {
             RunnerMessage::PlayNext => {
                 self.player.end_current().await.unwrap();
@@ -85,6 +90,9 @@ impl Runner {
             }
             RunnerMessage::Play => {
                 self.player.unpause().await.unwrap();
+                if !self.player.is_playing() {
+                    self.player.play_next();
+                }
             }
             RunnerMessage::SetVolume(volume) => {
                 self.player.set_volume(volume as f32).await.unwrap();
@@ -109,7 +117,7 @@ impl Runner {
     }
 
     pub fn playback(&self) -> bool {
-        self.player.is_paused() && self.player.is_playing()
+        !self.player.is_paused() && self.player.is_playing()
     }
 
     pub fn volume(&self) -> f64 {

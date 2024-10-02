@@ -1,5 +1,6 @@
 use crate::bus_server::{BusServer, Property};
-use crate::runner::{Runner, RunnerMessage, Seek};
+use crate::runner::{Runner, RunnerMessage};
+use crate::{get_image, runner};
 use flume::Sender;
 use mpris_server::zbus::fdo;
 use mpris_server::zbus::zvariant::ObjectPath;
@@ -7,7 +8,12 @@ use mpris_server::{
     zbus, LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface,
     Server, Time, TrackId, Volume,
 };
+use n_audio::music_track::MusicTrack;
+use n_audio::remove_ext;
+use std::io::{Seek, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
 
 impl<T: PlayerInterface + 'static> BusServer for Server<T> {
@@ -141,7 +147,7 @@ impl PlayerInterface for MPRISBridge {
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
         self.tx
-            .send_async(RunnerMessage::Seek(Seek::Relative(
+            .send_async(RunnerMessage::Seek(runner::Seek::Relative(
                 offset.as_secs() as f64 + (offset.as_millis() as f64 / 1000.0),
             )))
             .await
@@ -149,7 +155,13 @@ impl PlayerInterface for MPRISBridge {
         Ok(())
     }
 
-    async fn set_position(&self, _track_id: TrackId, _position: Time) -> fdo::Result<()> {
+    async fn set_position(&self, _track_id: TrackId, position: Time) -> fdo::Result<()> {
+        self.tx
+            .send_async(RunnerMessage::Seek(runner::Seek::Absolute(
+                position.as_millis() as f64 / 1000.0,
+            )))
+            .await
+            .unwrap();
         Ok(())
     }
 
@@ -191,7 +203,46 @@ impl PlayerInterface for MPRISBridge {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        todo!()
+        let mut index = self.runner.read().await.index();
+        let path = self.runner.read().await.path();
+        let queue = self.runner.read().await.queue();
+        if index > queue.len() {
+            index = 0;
+        }
+        let track_name = &queue[index];
+        let mut path_buf = PathBuf::new();
+        path_buf.push(&path);
+        path_buf.push(track_name);
+        let track = MusicTrack::new(path_buf.to_str().unwrap())
+            .expect("can't get track for currently playing song");
+        let meta = track.get_meta();
+        let image = get_image(path_buf);
+        let mut tmp = NamedTempFile::new().expect("can't create tmp file for mpris bridge");
+        let image_path = if image.is_empty() {
+            None
+        } else {
+            tmp.rewind().expect("can't rewind tmp file");
+            tmp.write_all(&image)
+                .expect("can't write image data to tmp file");
+            Some(tmp.path().to_str().unwrap().to_string())
+        };
+
+        let mut metadata = Metadata::new();
+        metadata.set_title(Some(if !meta.title.is_empty() {
+            meta.title
+        } else {
+            remove_ext(track_name)
+        }));
+        metadata.set_artist(if meta.artist.is_empty() {
+            None
+        } else {
+            Some(vec![meta.artist])
+        });
+        metadata.set_length(Some(Time::from_secs(meta.time.len_secs as i64)));
+        metadata.set_trackid(Some(ObjectPath::from_static_str_unchecked("/n_music")));
+        metadata.set_art_url(image_path);
+
+        Ok(metadata)
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {

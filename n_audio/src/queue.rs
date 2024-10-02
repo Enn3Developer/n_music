@@ -100,9 +100,9 @@ impl QueuePlayer {
         }
     }
 
-    pub async fn play(&mut self) {
+    pub fn play(&mut self) {
         let track = MusicTrack::new(self.get_path_for_file(self.index).to_str().unwrap()).unwrap();
-        let format = track.get_format().await;
+        let format = track.get_format();
 
         self.player.play(format);
     }
@@ -143,9 +143,9 @@ impl QueuePlayer {
         Err(NError::NoTrack)
     }
 
-    pub async fn get_length_for_track(&self, index: usize) -> TrackTime {
+    pub fn get_length_for_track(&self, index: usize) -> TrackTime {
         let track = MusicTrack::new(&self.queue[index]).unwrap();
-        track.get_length().await
+        track.get_length()
     }
 }
 

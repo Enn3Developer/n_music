@@ -34,7 +34,11 @@ pub trait BusServer {
     ) -> Result<(), String>;
 }
 
-pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: NamedTempFile) {
+pub async fn run<B: BusServer>(
+    server: Option<B>,
+    runner: Arc<RwLock<Runner>>,
+    mut tmp: NamedTempFile,
+) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     let mut properties = vec![];
     let mut playback = false;
@@ -64,7 +68,7 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
             path_buf.push(track_name);
             let track = MusicTrack::new(path_buf.to_str().unwrap())
                 .expect("can't get track for currently playing song");
-            let meta = track.get_meta().await;
+            let meta = track.get_meta();
             let image = tokio::task::spawn_blocking(|| get_image(path_buf))
                 .await
                 .unwrap();
@@ -94,10 +98,14 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
         }
 
         if !properties.is_empty() {
-            server
-                .properties_changed(mem::take(&mut properties))
-                .await
-                .unwrap();
+            if let Some(server) = &server {
+                server
+                    .properties_changed(mem::take(&mut properties))
+                    .await
+                    .unwrap();
+            } else {
+                properties.clear();
+            }
         }
     }
 }
