@@ -10,31 +10,35 @@ use mpris_server::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-impl<T> BusServer for Server<T> {
+impl<T: PlayerInterface + 'static> BusServer for Server<T> {
     async fn properties_changed<P: IntoIterator<Item = Property>>(
         &self,
         properties: P,
     ) -> Result<(), String> {
-        self.properties_changed(properties.into_iter().map(|p| match p {
-            Property::Playing(playing) => mpris_server::Property::PlaybackStatus(if playing {
-                PlaybackStatus::Playing
-            } else {
-                PlaybackStatus::Paused
+        Server::properties_changed(
+            self,
+            properties.into_iter().map(|p| match p {
+                Property::Playing(playing) => mpris_server::Property::PlaybackStatus(if playing {
+                    PlaybackStatus::Playing
+                } else {
+                    PlaybackStatus::Paused
+                }),
+                Property::Metadata(metadata) => {
+                    let mut meta = Metadata::new();
+
+                    meta.set_title(metadata.title);
+                    meta.set_artist(metadata.artists);
+                    meta.set_length(Some(Time::from_secs(metadata.length as i64)));
+                    meta.set_art_url(metadata.image_path);
+                    meta.set_trackid(Some(ObjectPath::from_string_unchecked(metadata.id)));
+
+                    mpris_server::Property::Metadata(meta)
+                }
+                Property::Volume(volume) => mpris_server::Property::Volume(volume),
             }),
-            Property::Metadata(metadata) => {
-                let mut meta = Metadata::new();
-
-                meta.set_title(metadata.title);
-                meta.set_artist(metadata.artists);
-                meta.set_length(Some(Time::from_secs(metadata.length as i64)));
-                meta.set_art_url(metadata.image_path);
-                meta.set_trackid(Some(ObjectPath::from_string_unchecked(metadata.id)));
-
-                mpris_server::Property::Metadata(meta)
-            }
-            Property::Volume(volume) => mpris_server::Property::Volume(volume),
-        }))
+        )
         .await
+        .map_err(|e| e.to_string())
     }
 }
 

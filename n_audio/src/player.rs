@@ -4,10 +4,11 @@ use flume::{Receiver, SendError, Sender};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
+use std::thread;
+use std::thread::JoinHandle;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
-use tokio::task::JoinHandle;
 // TODO: update docs
 
 /// The main actor for everything.
@@ -166,19 +167,19 @@ impl Player {
     }
 
     /// Plays a certain track given its file path
-    pub fn play_from_path<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Box<dyn Error>>
-    where
-        P: AsRef<OsStr>,
-    {
+    pub async fn play_from_path<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
+        &mut self,
+        path: P,
+    ) -> Result<(), Box<dyn Error>> {
         let music_track = MusicTrack::new(path)?;
-        self.play(music_track.get_format());
+        self.play(music_track.get_format().await);
 
         Ok(())
     }
 
     /// Plays a certain track
-    pub fn play_from_track(&mut self, track: &MusicTrack) {
-        self.play(track.get_format());
+    pub async fn play_from_track(&mut self, track: &MusicTrack) {
+        self.play(track.get_format().await);
     }
 
     /// Plays a certain track given its format
@@ -191,7 +192,7 @@ impl Player {
         let (tx_e, rx_e) = flume::unbounded();
 
         let thread =
-            tokio::spawn(|| Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
+            thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
 
         self.rx_e = Some(rx_e);
         self.rx_t = Some(rx_t);
@@ -199,7 +200,7 @@ impl Player {
         self.thread = Some(thread);
     }
 
-    async fn thread_fn(
+    fn thread_fn(
         mut format: Box<dyn FormatReader>,
         rx: Receiver<Message>,
         tx_t: Sender<Message>,
@@ -231,7 +232,7 @@ impl Player {
 
         loop {
             if let Some(message) = if is_paused {
-                rx.recv_async().await.ok()
+                rx.recv().ok()
             } else {
                 rx.try_recv().ok()
             } {
@@ -288,15 +289,12 @@ impl Player {
                 }
                 let position = time_base.calc_time(packet.ts());
                 let length = time_base.calc_time(duration);
-                if let Err(err) = tx_t
-                    .send_async(Message::Time(TrackTime {
-                        pos_secs: position.seconds,
-                        pos_frac: position.frac,
-                        len_secs: length.seconds,
-                        len_frac: length.frac,
-                    }))
-                    .await
-                {
+                if let Err(err) = tx_t.send(Message::Time(TrackTime {
+                    pos_secs: position.seconds,
+                    pos_frac: position.frac,
+                    len_secs: length.seconds,
+                    len_frac: length.frac,
+                })) {
                     if let Ok(message) = rx.try_recv() {
                         if let Message::Exit = message {
                             exit = true;
@@ -339,7 +337,7 @@ impl Player {
                         }
 
                         if let Some(audio_output) = &mut audio_output {
-                            audio_output.write(decoded, volume).await.unwrap()
+                            audio_output.write(decoded, volume).unwrap()
                         }
                     }
                     Err(symphonia::core::errors::Error::DecodeError(err)) => {
@@ -353,9 +351,7 @@ impl Player {
             }
         }
         if !exit {
-            tx_e.send_async(Message::End)
-                .await
-                .expect("Can't send End message");
+            tx_e.send(Message::End).expect("Can't send End message");
         }
     }
 }

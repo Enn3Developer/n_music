@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs::File;
+use std::io::Cursor;
 use std::path::Path;
 
 use crate::{remove_ext, Metadata, TrackTime, PROBE};
@@ -12,22 +12,21 @@ use symphonia_core::meta::StandardTagKey;
 
 /// The basics where everything is built upon
 pub struct MusicTrack {
-    file: File,
+    path: String,
     name: String,
     ext: String,
 }
 
 impl MusicTrack {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn Error>>
-    where
-        P: AsRef<OsStr>,
-    {
-        let path = Path::new(&path);
-        let file = File::open(path)?;
+    pub fn new<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
+        path: P,
+    ) -> Result<Self, Box<dyn Error>> {
+        let p = path.clone();
+        let p = Path::new(&p);
         Ok(MusicTrack {
-            file,
-            name: remove_ext(path),
-            ext: path
+            path: path.into(),
+            name: remove_ext(p),
+            ext: p
                 .extension()
                 .ok_or(String::from("no extension"))?
                 .to_str()
@@ -41,9 +40,12 @@ impl MusicTrack {
     }
 
     /// Returns the `FormatReader` provided by Symphonia
-    pub fn get_format(&self) -> Box<dyn FormatReader> {
-        let file = self.file.try_clone().expect("Can't copy file");
-        let media_stream = MediaSourceStream::new(Box::new(file), std::default::Default::default());
+    pub async fn get_format(&self) -> Box<dyn FormatReader> {
+        let file = tokio::fs::read(&self.path).await.expect("can't read file");
+        let media_stream = MediaSourceStream::new(
+            Box::new(Cursor::new(file)),
+            std::default::Default::default(),
+        );
         let mut hint = Hint::new();
         hint.with_extension(self.ext.as_ref());
         let meta_ops = MetadataOptions::default();
@@ -57,8 +59,8 @@ impl MusicTrack {
         probed.format
     }
 
-    pub fn get_meta(&self) -> Metadata {
-        let mut format = self.get_format();
+    pub async fn get_meta(&self) -> Metadata {
+        let mut format = self.get_format().await;
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 
@@ -76,20 +78,26 @@ impl MusicTrack {
             len_frac: time.frac,
         };
 
-        let mut artist = String::from("ARTIST");
+        let mut artist = String::new();
+        let mut title = String::new();
 
         for tag in format.metadata().current().unwrap().tags() {
             if let Some(StandardTagKey::Artist) = tag.std_key {
                 artist = tag.value.to_string();
-                break;
+            } else if let Some(StandardTagKey::TrackTitle) = tag.std_key {
+                title = tag.value.to_string();
             }
         }
 
-        Metadata { time, artist }
+        Metadata {
+            time,
+            artist,
+            title,
+        }
     }
 
-    pub fn get_length(&self) -> TrackTime {
-        let mut format = self.get_format();
+    pub async fn get_length(&self) -> TrackTime {
+        let mut format = self.get_format().await;
         println!("{:?}", format.metadata().current().unwrap().tags());
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();

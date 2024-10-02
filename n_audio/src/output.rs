@@ -15,7 +15,7 @@ use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::units::Duration;
 
 pub trait AudioOutput {
-    async fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()>;
+    fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()>;
     fn flush(&mut self);
 }
 
@@ -152,7 +152,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
 }
 
 impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
-    async fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()> {
+    fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()> {
         // Do nothing if there are no audio frames.
         if decoded.frames() == 0 {
             return Ok(());
@@ -168,11 +168,7 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
             *sample = sample.mul_amp(volume.to_sample());
         }
 
-        while let Some(written) = tokio::task::spawn_blocking(|| {
-            self.ring_buf_producer.write_blocking(samples.as_slice())
-        })
-        .await
-        {
+        while let Some(written) = self.ring_buf_producer.write_blocking(samples.as_slice()) {
             samples = samples[written..].to_vec();
         }
 

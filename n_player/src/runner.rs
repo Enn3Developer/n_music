@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-pub async fn run(mut runner: Arc<RwLock<Runner>>) {
+pub async fn run(runner: Arc<RwLock<Runner>>) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     loop {
         interval.tick().await;
@@ -126,5 +126,9 @@ impl Runner {
 
     pub fn queue(&self) -> Vec<String> {
         self.player.queue()
+    }
+
+    pub fn index(&self) -> usize {
+        self.player.index()
     }
 }

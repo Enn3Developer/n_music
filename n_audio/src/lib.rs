@@ -87,4 +87,5 @@ pub struct TrackTime {
 pub struct Metadata {
     pub time: TrackTime,
     pub artist: String,
+    pub title: String,
 }

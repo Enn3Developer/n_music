@@ -12,22 +12,21 @@ use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-pub mod app;
 pub mod bus_server;
 #[cfg(target_os = "linux")]
 pub mod mpris_server;
 pub mod runner;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
-    tracks.par_iter().enumerate().for_each(|(i, track)| {
-        if let Ok(music_track) = MusicTrack::new(track) {
-            let metadata = music_track.get_meta();
-            tx.send(Message::Duration(i, metadata.time.len_secs))
-                .expect("can't send back loaded times");
-            tx.send(Message::Artist(i, metadata.artist))
-                .expect("can't send back artist");
-        }
-    });
+    // tracks.par_iter().enumerate().for_each(|(i, track)| {
+    //     if let Ok(music_track) = MusicTrack::new(track) {
+    //         let metadata = music_track.get_meta();
+    //         tx.send(Message::Duration(i, metadata.time.len_secs))
+    //             .expect("can't send back loaded times");
+    //         tx.send(Message::Artist(i, metadata.artist))
+    //             .expect("can't send back artist");
+    //     }
+    // });
 }
 
 pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {

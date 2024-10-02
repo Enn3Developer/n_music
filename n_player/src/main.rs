@@ -1,12 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
 use eframe::egui;
-#[cfg(target_os = "linux")]
-use mpris_server::Server;
-use n_player::app::App;
-#[cfg(target_os = "linux")]
-use n_player::mpris_server::MPRISServer;
-use pollster::FutureExt;
 use tempfile::NamedTempFile;
 
 #[tokio::main]
