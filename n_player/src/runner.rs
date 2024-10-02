@@ -68,7 +68,7 @@ impl Runner {
                 self.player.play_next();
             }
             RunnerMessage::PlayPrevious => {
-                if self.current_time.pos_secs < 2 {
+                if self.current_time.pos_secs > 2 {
                     self.player.seek_to(0, 0.0).await.unwrap();
                 } else {
                     self.player.end_current().await.unwrap();
