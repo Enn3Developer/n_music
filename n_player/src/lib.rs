@@ -54,34 +54,6 @@ pub enum Message {
     Title(usize, String),
 }
 
-#[derive(Debug)]
-pub enum ServerMessage {
-    PlayNext,
-    PlayPrevious,
-    TogglePause,
-    Pause,
-    Play,
-    SetVolume(f64),
-    AskVolume,
-    AskPlayback,
-    AskMetadata,
-    AskTime,
-}
-
-#[derive(Debug)]
-pub enum ClientMessage {
-    Volume(f64),
-    Playback(bool),
-    Metadata(
-        Option<String>,
-        Option<Vec<String>>,
-        u64,
-        String,
-        Option<String>,
-    ),
-    Time(u64),
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FileTrack {
     title: String,
@@ -142,16 +114,6 @@ impl From<Vec<FileTrack>> for FileTracks {
     fn from(value: Vec<FileTrack>) -> Self {
         Self { tracks: value }
     }
-}
-
-fn vec_contains(tracks: &FileTracks, name: &String) -> (bool, usize) {
-    for (i, track) in tracks.tracks.iter().enumerate() {
-        if &track.title == name {
-            return (true, i);
-        }
-    }
-
-    (false, 0)
 }
 
 pub fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
