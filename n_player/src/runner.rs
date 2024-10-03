@@ -143,6 +143,10 @@ impl Runner {
         self.player.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.player.is_empty()
+    }
+
     pub fn get_path_for_file(&self, i: usize) -> PathBuf {
         self.player.get_path_for_file(i)
     }

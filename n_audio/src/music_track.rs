@@ -99,7 +99,7 @@ impl MusicTrack {
     }
 
     pub fn get_length(&self) -> TrackTime {
-        let mut format = self.get_format();
+        let format = self.get_format();
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 

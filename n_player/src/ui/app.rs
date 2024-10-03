@@ -35,7 +35,6 @@ impl App {
     ) -> Self {
         let len = runner.blocking_read().len();
         let tracks: FileTracks = (0..len)
-            .into_iter()
             .map(|i| {
                 let track_path = runner.blocking_read().get_path_for_file(i);
                 FileTrack::new(remove_ext(track_path), String::new(), 0.0)
@@ -159,7 +158,7 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(60.0);
-            ui.add_space(10.0);
+            ui.add_space(5.0);
             let mut index = self.runner.blocking_read().index();
             if index > self.tracks.len() {
                 index = 0;
@@ -202,7 +201,10 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ScrollArea::horizontal().show(ui, |ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
-                            ui.label(&self.tracks[index].title);
+                            ui.vertical(|ui| {
+                                ui.label(&self.tracks[index].title);
+                                ui.label(&self.tracks[index].artist);
+                            });
                             ui.add_space(10.0);
                             let text_toggle = if !self.playback { "▶" } else { "⏸" };
                             if Button::new("⏮").frame(false).ui(ui).clicked() {
@@ -261,7 +263,7 @@ impl eframe::App for App {
             });
         });
 
-        ctx.request_repaint_after(Duration::from_millis(250));
+        ctx.request_repaint_after(Duration::from_millis(300));
     }
 
     fn persist_egui_memory(&self) -> bool {

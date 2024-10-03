@@ -77,6 +77,6 @@ fn load_image(tx: Sender<ImageLoadedMessage>, loading_images: LoadingImages) {
             tx.send((loading.0, image)).unwrap();
         }
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
     }
 }

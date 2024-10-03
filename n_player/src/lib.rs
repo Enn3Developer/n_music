@@ -14,8 +14,6 @@ use std::path::Path;
 
 pub mod bus_server;
 pub mod image;
-#[cfg(target_os = "linux")]
-pub mod mpris_server;
 pub mod runner;
 pub mod ui;
 
@@ -156,15 +154,15 @@ fn vec_contains(tracks: &FileTracks, name: &String) -> (bool, usize) {
     (false, 0)
 }
 
-pub fn add_all_tracks_to_player<P: AsRef<Path>>(player: &mut QueuePlayer, path: P)
-where
-    P: AsRef<OsStr> + From<String>,
-{
+pub fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
+    player: &mut QueuePlayer,
+    path: P,
+) {
     let dir = fs::read_dir(path).expect("Can't read files in the chosen directory");
     dir.filter_map(|item| item.ok()).for_each(|file| {
         let mut p = file.path().to_str().unwrap().to_string();
         p.shrink_to_fit();
-        player.add(p.to_string());
+        player.add(p);
     });
     player.shrink_to_fit();
 
