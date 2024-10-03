@@ -1,17 +1,19 @@
 use crate::runner::{Runner, RunnerMessage};
-use crate::{FileTrack, FileTracks};
+use crate::{loader_thread, FileTrack, FileTracks, Message};
 use eframe::egui::{Button, Context, ScrollArea, Visuals, Widget};
 use eframe::{egui, CreationContext, Frame};
-use flume::Sender;
-use n_audio::music_track::MusicTrack;
+use flume::{Receiver, Sender};
 use n_audio::{remove_ext, TrackTime};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub struct App {
     runner: Arc<RwLock<Runner>>,
     tx: Sender<RunnerMessage>,
+    rx: Receiver<Message>,
     len: usize,
     playback: bool,
     volume: f64,
@@ -30,24 +32,31 @@ impl App {
             .into_iter()
             .map(|i| {
                 let track_path = runner.blocking_read().get_path_for_file(i);
-                let track = MusicTrack::new(track_path.to_string_lossy().to_string()).unwrap();
-                let metadata = track.get_meta();
-                FileTrack::new(
-                    if !metadata.title.is_empty() {
-                        metadata.title
-                    } else {
-                        remove_ext(track_path)
-                    },
-                    metadata.artist,
-                    metadata.time.len_secs,
-                )
+                FileTrack::new(remove_ext(track_path), String::new(), 0)
             })
             .collect::<Vec<_>>()
             .into();
 
+        let queue = runner.blocking_read().queue();
+        let path = runner.blocking_read().path();
+        let (tx_l, rx_l) = flume::unbounded();
+        thread::spawn(move || {
+            let paths = queue
+                .into_iter()
+                .map(|file_name| {
+                    let mut path_buf = PathBuf::new();
+                    path_buf.push(&path);
+                    path_buf.push(file_name);
+                    path_buf.to_str().unwrap().to_string()
+                })
+                .collect::<Vec<_>>();
+            loader_thread(tx_l, paths);
+        });
+
         Self {
             runner,
             tx,
+            rx: rx_l,
             len,
             playback: false,
             volume: 1.0,
@@ -86,6 +95,14 @@ impl eframe::App for App {
             self.playback = guard.playback();
             self.volume = guard.volume();
             self.time = guard.time();
+        }
+
+        while let Ok(message) = self.rx.try_recv() {
+            match message {
+                Message::Length(index, length) => self.tracks[index].length = length,
+                Message::Artist(index, artist) => self.tracks[index].artist = artist,
+                Message::Title(index, title) => self.tracks[index].title = title,
+            }
         }
 
         ctx.input(|input| {});

@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs;
 use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub mod bus_server;
 #[cfg(target_os = "linux")]
@@ -18,14 +18,20 @@ pub mod mpris_server;
 pub mod runner;
 pub mod ui;
 
-fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
+fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
-        if let Ok(music_track) = MusicTrack::new(track.to_str().unwrap()) {
+        if let Ok(music_track) = MusicTrack::new(track) {
             let metadata = music_track.get_meta();
-            tx.send(Message::Duration(i, metadata.time.len_secs))
+            tx.send(Message::Length(i, metadata.time.len_secs))
                 .expect("can't send back loaded times");
-            tx.send(Message::Artist(i, metadata.artist))
-                .expect("can't send back artist");
+            if !metadata.artist.is_empty() {
+                tx.send(Message::Artist(i, metadata.artist))
+                    .expect("can't send back artist");
+            }
+            if !metadata.title.is_empty() {
+                tx.send(Message::Title(i, metadata.title))
+                    .expect("can't send back title");
+            }
         }
     });
 }
@@ -44,8 +50,9 @@ pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
 
 #[derive(Debug)]
 enum Message {
-    Duration(usize, u64),
+    Length(usize, u64),
     Artist(usize, String),
+    Title(usize, String),
 }
 
 #[derive(Debug)]
