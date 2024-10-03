@@ -265,8 +265,4 @@ impl eframe::App for App {
 
         ctx.request_repaint_after(Duration::from_millis(300));
     }
-
-    fn persist_egui_memory(&self) -> bool {
-        false
-    }
 }
