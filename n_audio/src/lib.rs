@@ -72,6 +72,17 @@ pub fn remove_ext<P: AsRef<Path>>(path: P) -> String {
     split[..split.len() - 1].to_vec().join(".")
 }
 
+pub fn strip_absolute_path(path: String) -> String {
+    let mut s = path
+        .split(std::path::MAIN_SEPARATOR)
+        .last()
+        .unwrap()
+        .to_string();
+    s.shrink_to_fit();
+
+    s
+}
+
 /// Used to represent the timestamp
 /// pos_* is used to represent the *current* timestamp (as in where is currently the player playing inside the track)
 /// len_* is used to represent the *entire* timestamp (as is how long is the track)

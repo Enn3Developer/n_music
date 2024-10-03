@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::music_track::MusicTrack;
 use crate::player::Player;
-use crate::{remove_ext, NError, TrackTime};
+use crate::{remove_ext, strip_absolute_path, NError, TrackTime};
 
 pub struct QueuePlayer {
     queue: Vec<String>,
@@ -36,6 +36,10 @@ impl QueuePlayer {
         self.index
     }
 
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
     pub fn path(&self) -> String {
         self.path.clone()
     }
@@ -46,17 +50,6 @@ impl QueuePlayer {
 
     pub fn get_path_for_file(&self, i: usize) -> PathBuf {
         PathBuf::from(&self.path).join(&self.queue[i])
-    }
-
-    fn strip_absolute_path(path: String) -> String {
-        let mut s = path
-            .split(std::path::MAIN_SEPARATOR)
-            .last()
-            .unwrap()
-            .to_string();
-        s.shrink_to_fit();
-
-        s
     }
 
     pub fn queue(&self) -> Vec<String> {
@@ -71,7 +64,7 @@ impl QueuePlayer {
 
     #[inline]
     pub fn add<P: AsRef<Path>>(&mut self, path: P) {
-        self.queue.push(Self::strip_absolute_path(
+        self.queue.push(strip_absolute_path(
             path.as_ref().to_str().unwrap().to_string(),
         ));
     }

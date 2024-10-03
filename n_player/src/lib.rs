@@ -16,17 +16,18 @@ pub mod bus_server;
 #[cfg(target_os = "linux")]
 pub mod mpris_server;
 pub mod runner;
+pub mod ui;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<PathBuf>) {
-    // tracks.par_iter().enumerate().for_each(|(i, track)| {
-    //     if let Ok(music_track) = MusicTrack::new(track) {
-    //         let metadata = music_track.get_meta();
-    //         tx.send(Message::Duration(i, metadata.time.len_secs))
-    //             .expect("can't send back loaded times");
-    //         tx.send(Message::Artist(i, metadata.artist))
-    //             .expect("can't send back artist");
-    //     }
-    // });
+    tracks.par_iter().enumerate().for_each(|(i, track)| {
+        if let Ok(music_track) = MusicTrack::new(track.to_str().unwrap()) {
+            let metadata = music_track.get_meta();
+            tx.send(Message::Duration(i, metadata.time.len_secs))
+                .expect("can't send back loaded times");
+            tx.send(Message::Artist(i, metadata.artist))
+                .expect("can't send back artist");
+        }
+    });
 }
 
 pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
@@ -77,14 +78,24 @@ pub enum ClientMessage {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FileTrack {
-    name: String,
+    title: String,
     artist: String,
     length: u64,
 }
 
+impl FileTrack {
+    pub fn new(title: String, artist: String, length: u64) -> Self {
+        Self {
+            title,
+            artist,
+            length,
+        }
+    }
+}
+
 impl PartialEq<Self> for FileTrack {
     fn eq(&self, other: &Self) -> bool {
-        self.name.eq(&other.name)
+        self.title.eq(&other.title)
     }
 }
 
@@ -98,11 +109,11 @@ impl Eq for FileTrack {}
 
 impl Ord for FileTrack {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.name.cmp(&other.name)
+        self.title.cmp(&other.title)
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct FileTracks {
     pub tracks: Vec<FileTrack>,
 }
@@ -121,9 +132,15 @@ impl DerefMut for FileTracks {
     }
 }
 
+impl From<Vec<FileTrack>> for FileTracks {
+    fn from(value: Vec<FileTrack>) -> Self {
+        Self { tracks: value }
+    }
+}
+
 fn vec_contains(tracks: &FileTracks, name: &String) -> (bool, usize) {
     for (i, track) in tracks.tracks.iter().enumerate() {
-        if &track.name == name {
+        if &track.title == name {
             return (true, i);
         }
     }
@@ -144,4 +161,38 @@ where
     player.shrink_to_fit();
 
     player.shuffle();
+}
+
+pub fn find_cjk_font() -> Option<String> {
+    #[cfg(target_family = "unix")]
+    {
+        use std::process::Command;
+        // linux/macOS command: fc-list
+        let output = Command::new("sh").arg("-c").arg("fc-list").output().ok()?;
+        let stdout = std::str::from_utf8(&output.stdout).ok()?;
+        #[cfg(target_os = "macos")]
+        let font_line = stdout
+            .lines()
+            .find(|line| line.contains("Regular") && line.contains("Hiragino Sans GB"))
+            .unwrap_or("/System/Library/Fonts/Hiragino Sans GB.ttc");
+        #[cfg(target_os = "linux")]
+        let font_line = stdout
+            .lines()
+            .find(|line| line.contains("Regular") && line.contains("CJK"))
+            .unwrap_or("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
+
+        let font_path = font_line.split(':').next()?.trim();
+        Some(font_path.to_string())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let font_file = {
+            // c:/Windows/Fonts/msyh.ttc
+            let mut font_path = PathBuf::from(std::env::var("SystemRoot").ok()?);
+            font_path.push("Fonts");
+            font_path.push("msyh.ttc");
+            font_path.to_str()?.to_string().replace("\\", "/")
+        };
+        Some(font_file)
+    }
 }

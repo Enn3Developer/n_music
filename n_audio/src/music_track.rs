@@ -29,7 +29,10 @@ impl MusicTrack {
             name: remove_ext(p),
             ext: p
                 .extension()
-                .ok_or(String::from("no extension"))?
+                .ok_or_else(|| {
+                    println!("{p:?}");
+                    String::from("no extension")
+                })?
                 .to_str()
                 .unwrap()
                 .to_string(),

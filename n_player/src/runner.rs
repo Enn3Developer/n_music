@@ -1,6 +1,7 @@
 use flume::Receiver;
 use n_audio::queue::QueuePlayer;
 use n_audio::TrackTime;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -21,7 +22,7 @@ pub enum RunnerMessage {
     Pause,
     Play,
     SetVolume(f64),
-    PlayTrack(String),
+    PlayTrack(usize),
     Seek(Seek),
 }
 
@@ -97,9 +98,9 @@ impl Runner {
             RunnerMessage::SetVolume(volume) => {
                 self.player.set_volume(volume as f32).await.unwrap();
             }
-            RunnerMessage::PlayTrack(name) => {
-                self.player
-                    .play_index(self.player.get_index_from_track_name(&name).unwrap());
+            RunnerMessage::PlayTrack(index) => {
+                self.player.end_current().await.unwrap();
+                self.player.play_index(index);
             }
             RunnerMessage::Seek(seek) => {
                 let seek = match seek {
@@ -138,5 +139,17 @@ impl Runner {
 
     pub fn index(&self) -> usize {
         self.player.index()
+    }
+
+    pub fn len(&self) -> usize {
+        self.player.len()
+    }
+
+    pub fn get_path_for_file(&self, i: usize) -> PathBuf {
+        self.player.get_path_for_file(i)
+    }
+
+    pub fn current_track(&self) -> String {
+        self.player.current_track_name()
     }
 }
