@@ -1,6 +1,8 @@
-use crate::runner::{Runner, RunnerMessage};
+use crate::runner::{Runner, RunnerMessage, Seek};
 use crate::{loader_thread, FileTrack, FileTracks, Message};
-use eframe::egui::{Button, Context, Event, Key, Modifiers, ScrollArea, Visuals, Widget};
+use eframe::egui::{
+    Button, Context, Event, Key, Modifiers, ScrollArea, Slider, SliderOrientation, Visuals, Widget,
+};
 use eframe::{egui, CreationContext, Frame};
 use flume::{Receiver, Sender};
 use n_audio::{remove_ext, TrackTime};
@@ -19,6 +21,7 @@ pub struct App {
     volume: f64,
     time: TrackTime,
     tracks: FileTracks,
+    slider_time: f64,
 }
 
 impl App {
@@ -62,6 +65,7 @@ impl App {
             volume: 1.0,
             time: TrackTime::default(),
             tracks,
+            slider_time: 0.0,
         }
     }
 
@@ -81,6 +85,17 @@ impl App {
         self.tx.send(RunnerMessage::SetVolume(self.volume)).unwrap();
     }
 
+    pub fn seek(&self) {
+        if self.time.len_secs == 0 {
+            return;
+        }
+        self.tx
+            .send(RunnerMessage::Seek(Seek::Absolute(
+                self.slider_time * (self.time.len_secs as f64 + self.time.len_frac),
+            )))
+            .unwrap();
+    }
+
     pub fn play_track(&self, i: usize) {
         self.tx.send(RunnerMessage::PlayTrack(i)).unwrap();
     }
@@ -96,6 +111,8 @@ impl eframe::App for App {
             self.volume = guard.volume();
             self.time = guard.time();
         }
+        self.slider_time = (self.time.pos_secs as f64 + self.time.pos_frac)
+            / (self.time.len_secs as f64 + self.time.len_frac);
 
         while let Ok(message) = self.rx.try_recv() {
             match message {
@@ -141,11 +158,27 @@ impl eframe::App for App {
             }
             ui.horizontal(|ui| {
                 ui.label(self.time.format_pos());
+                let time_slider = Slider::new(&mut self.slider_time, 0.0..=1.0)
+                    .orientation(SliderOrientation::Horizontal)
+                    .show_value(false)
+                    .ui(ui);
                 ui.label(format!(
                     "{:02}:{:02}",
                     (self.tracks[index].length as f64 / 60.0).floor() as u64,
                     self.tracks[index].length % 60
                 ));
+                ui.add_space(10.0);
+                let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
+                    .show_value(false)
+                    .ui(ui);
+                ui.label(format!("{}%", (self.volume * 100.0).round() as usize));
+
+                if time_slider.changed() {
+                    self.seek();
+                }
+                if volume_slider.changed() {
+                    self.set_volume();
+                }
             });
         });
 
