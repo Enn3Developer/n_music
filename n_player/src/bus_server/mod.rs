@@ -22,7 +22,7 @@ pub enum Property {
 pub struct Metadata {
     pub title: Option<String>,
     pub artists: Option<Vec<String>>,
-    pub length: u64,
+    pub length: f64,
     pub id: String,
     pub image_path: Option<String>,
 }
@@ -93,7 +93,7 @@ pub async fn run<B: BusServer>(
                     } else {
                         Some(vec![meta.artist])
                     },
-                    length: meta.time.len_secs,
+                    length: meta.time.length,
                     image_path,
                 }));
             }

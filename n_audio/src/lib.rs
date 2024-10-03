@@ -88,28 +88,24 @@ pub fn strip_absolute_path(path: String) -> String {
 /// len_* is used to represent the *entire* timestamp (as is how long is the track)
 #[derive(Copy, Clone, Debug, Default)]
 pub struct TrackTime {
-    pub pos_secs: u64,
-    pub pos_frac: f64,
-    pub len_secs: u64,
-    pub len_frac: f64,
+    pub position: f64,
+    pub length: f64,
 }
 
 impl TrackTime {
     pub fn format_pos(&self) -> String {
-        let position = self.pos_secs as f64 + self.pos_frac;
         format!(
             "{:02}:{:02}",
-            (position / 60.0).floor() as u64,
-            position.floor() as u64 % 60
+            (self.position / 60.0).floor() as u64,
+            self.position.floor() as u64 % 60
         )
     }
 
     pub fn format_len(&self) -> String {
-        let length = self.len_secs as f64 + self.len_frac;
         format!(
             "{:02}:{:02}",
-            (length / 60.0).floor() as u64,
-            length.floor() as u64 % 60
+            (self.length / 60.0).floor() as u64,
+            self.length.floor() as u64 % 60
         )
     }
 }

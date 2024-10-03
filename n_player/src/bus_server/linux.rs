@@ -238,7 +238,9 @@ impl PlayerInterface for MPRISBridge {
         } else {
             Some(vec![meta.artist])
         });
-        metadata.set_length(Some(Time::from_secs(meta.time.len_secs as i64)));
+        metadata.set_length(Some(Time::from_millis(
+            (meta.time.length * 1000.0).floor() as i64
+        )));
         metadata.set_trackid(Some(ObjectPath::from_static_str_unchecked("/n_music")));
         metadata.set_art_url(image_path);
 
@@ -260,8 +262,9 @@ impl PlayerInterface for MPRISBridge {
 
     async fn position(&self) -> fdo::Result<Time> {
         let track_time = self.runner.read().await.time();
-        Ok(Time::from_secs(track_time.pos_secs as i64)
-            + Time::from_millis((track_time.pos_frac * 1000.0) as i64))
+        Ok(Time::from_millis(
+            (track_time.position * 1000.0).floor() as i64
+        ))
     }
 
     async fn minimum_rate(&self) -> fdo::Result<PlaybackRate> {

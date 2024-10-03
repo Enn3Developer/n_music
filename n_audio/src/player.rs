@@ -103,17 +103,15 @@ impl Player {
     pub async fn seek_to(&self, secs: u64, frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             if let Some(current_duration) = &self.cached_get_time {
-                let min_value = if secs as f64 + frac
-                    <= current_duration.len_secs as f64 + current_duration.len_frac
-                {
+                let min_value = if secs as f64 + frac <= current_duration.length {
                     Time {
                         seconds: secs,
                         frac,
                     }
                 } else {
                     Time {
-                        seconds: current_duration.len_secs,
-                        frac: current_duration.len_frac,
+                        seconds: current_duration.length.trunc() as u64,
+                        frac: current_duration.length.fract(),
                     }
                 };
                 tx.send_async(Message::Seek(min_value)).await?;
@@ -290,10 +288,8 @@ impl Player {
                 let position = time_base.calc_time(packet.ts());
                 let length = time_base.calc_time(duration);
                 if let Err(err) = tx_t.send(Message::Time(TrackTime {
-                    pos_secs: position.seconds,
-                    pos_frac: position.frac,
-                    len_secs: length.seconds,
-                    len_frac: length.frac,
+                    position: position.seconds as f64 + position.frac,
+                    length: length.seconds as f64 + length.frac,
                 })) {
                     if let Ok(message) = rx.try_recv() {
                         if let Message::Exit = message {

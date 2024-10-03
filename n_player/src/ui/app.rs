@@ -35,7 +35,7 @@ impl App {
             .into_iter()
             .map(|i| {
                 let track_path = runner.blocking_read().get_path_for_file(i);
-                FileTrack::new(remove_ext(track_path), String::new(), 0)
+                FileTrack::new(remove_ext(track_path), String::new(), 0.0)
             })
             .collect::<Vec<_>>()
             .into();
@@ -86,12 +86,12 @@ impl App {
     }
 
     pub fn seek(&self) {
-        if self.time.len_secs == 0 {
+        if self.time.length == 0.0 {
             return;
         }
         self.tx
             .send(RunnerMessage::Seek(Seek::Absolute(
-                self.slider_time * (self.time.len_secs as f64 + self.time.len_frac),
+                self.slider_time * self.time.length,
             )))
             .unwrap();
     }
@@ -111,8 +111,7 @@ impl eframe::App for App {
             self.volume = guard.volume();
             self.time = guard.time();
         }
-        self.slider_time = (self.time.pos_secs as f64 + self.time.pos_frac)
-            / (self.time.len_secs as f64 + self.time.len_frac);
+        self.slider_time = self.time.position / self.time.length;
 
         while let Ok(message) = self.rx.try_recv() {
             match message {
@@ -164,8 +163,8 @@ impl eframe::App for App {
                     .ui(ui);
                 ui.label(format!(
                     "{:02}:{:02}",
-                    (self.tracks[index].length as f64 / 60.0).floor() as u64,
-                    self.tracks[index].length % 60
+                    (self.tracks[index].length / 60.0).floor() as u64,
+                    self.tracks[index].length.floor() as u64 % 60
                 ));
                 ui.add_space(10.0);
                 let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
@@ -186,16 +185,13 @@ impl eframe::App for App {
                     ui.label(&self.tracks[index].title);
                     ui.add_space(10.0);
                     let text_toggle = if !self.playback { "▶" } else { "⏸" };
-                    let previous_btn = Button::new("⏮").frame(false).ui(ui);
-                    let toggle_btn = Button::new(text_toggle).frame(false).ui(ui);
-                    let next_btn = Button::new("⏭").frame(false).ui(ui);
-                    if previous_btn.clicked() {
+                    if Button::new("⏮").frame(false).ui(ui).clicked() {
                         self.play_previous();
                     }
-                    if toggle_btn.clicked() {
+                    if Button::new(text_toggle).frame(false).ui(ui).clicked() {
                         self.toggle_pause();
-                    }
-                    if next_btn.clicked() {
+                    };
+                    if Button::new("⏭").frame(false).ui(ui).clicked() {
                         self.play_next();
                     }
                 });
@@ -226,8 +222,8 @@ impl eframe::App for App {
                         });
                         ui.label(format!(
                             "{:02}:{:02}",
-                            (track.length as f64 / 60.0).floor() as u64,
-                            track.length % 60
+                            (track.length / 60.0).floor() as u64,
+                            track.length.floor() as u64 % 60
                         ))
                     });
                     if row + 1 != self.len {

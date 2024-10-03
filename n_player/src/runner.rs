@@ -69,7 +69,7 @@ impl Runner {
                 self.player.play_next();
             }
             RunnerMessage::PlayPrevious => {
-                if self.current_time.pos_secs > 2 {
+                if self.current_time.position > 3.0 {
                     self.player.seek_to(0, 0.0).await.unwrap();
                 } else {
                     self.player.end_current().await.unwrap();
@@ -105,9 +105,7 @@ impl Runner {
             RunnerMessage::Seek(seek) => {
                 let seek = match seek {
                     Seek::Absolute(value) => value,
-                    Seek::Relative(value) => {
-                        self.current_time.pos_secs as f64 + self.current_time.pos_frac + value
-                    }
+                    Seek::Relative(value) => self.current_time.position + value,
                 };
                 self.player
                     .seek_to(seek.trunc() as u64, seek.fract())

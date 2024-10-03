@@ -22,7 +22,7 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
         if let Ok(music_track) = MusicTrack::new(track) {
             let metadata = music_track.get_meta();
-            tx.send(Message::Length(i, metadata.time.len_secs))
+            tx.send(Message::Length(i, metadata.time.length))
                 .expect("can't send back loaded times");
             if !metadata.artist.is_empty() {
                 tx.send(Message::Artist(i, metadata.artist))
@@ -50,7 +50,7 @@ pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
 
 #[derive(Debug)]
 enum Message {
-    Length(usize, u64),
+    Length(usize, f64),
     Artist(usize, String),
     Title(usize, String),
 }
@@ -87,11 +87,11 @@ pub enum ClientMessage {
 pub struct FileTrack {
     title: String,
     artist: String,
-    length: u64,
+    length: f64,
 }
 
 impl FileTrack {
-    pub fn new(title: String, artist: String, length: u64) -> Self {
+    pub fn new(title: String, artist: String, length: f64) -> Self {
         Self {
             title,
             artist,

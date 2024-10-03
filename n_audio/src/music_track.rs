@@ -76,10 +76,8 @@ impl MusicTrack {
         let time = time_base.calc_time(duration);
 
         let time = TrackTime {
-            pos_secs: 0,
-            pos_frac: 0.0,
-            len_secs: time.seconds,
-            len_frac: time.frac,
+            position: 0.0,
+            length: time.seconds as f64 + time.frac,
         };
 
         let mut artist = String::new();
@@ -113,10 +111,8 @@ impl MusicTrack {
         let time = time_base.calc_time(duration);
 
         TrackTime {
-            pos_secs: 0,
-            pos_frac: 0.0,
-            len_secs: time.seconds,
-            len_frac: time.frac,
+            position: 0.0,
+            length: time.seconds as f64 + time.frac,
         }
     }
 }
