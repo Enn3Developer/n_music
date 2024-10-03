@@ -1,6 +1,6 @@
 use crate::runner::{Runner, RunnerMessage};
 use crate::{loader_thread, FileTrack, FileTracks, Message};
-use eframe::egui::{Button, Context, ScrollArea, Visuals, Widget};
+use eframe::egui::{Button, Context, Event, Key, Modifiers, ScrollArea, Visuals, Widget};
 use eframe::{egui, CreationContext, Frame};
 use flume::{Receiver, Sender};
 use n_audio::{remove_ext, TrackTime};
@@ -39,7 +39,7 @@ impl App {
 
         let queue = runner.blocking_read().queue();
         let path = runner.blocking_read().path();
-        let (tx_l, rx_l) = flume::unbounded();
+        let (tx_l, rx) = flume::unbounded();
         thread::spawn(move || {
             let paths = queue
                 .into_iter()
@@ -56,7 +56,7 @@ impl App {
         Self {
             runner,
             tx,
-            rx: rx_l,
+            rx,
             len,
             playback: false,
             volume: 1.0,
@@ -82,7 +82,7 @@ impl App {
     }
 
     pub fn play_track(&self, i: usize) {
-        self.tx.send(RunnerMessage::PlayTrack(i)).unwrap()
+        self.tx.send(RunnerMessage::PlayTrack(i)).unwrap();
     }
 }
 
@@ -105,7 +105,33 @@ impl eframe::App for App {
             }
         }
 
-        ctx.input(|input| {});
+        ctx.input(|input| {
+            for event in &input.events {
+                match event {
+                    Event::Key {
+                        key: Key::Space,
+                        pressed: true,
+                        repeat: false,
+                        ..
+                    } => self.toggle_pause(),
+                    Event::Key {
+                        key: Key::ArrowRight,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Modifiers { ctrl: true, .. },
+                        ..
+                    } => self.play_next(),
+                    Event::Key {
+                        key: Key::ArrowLeft,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Modifiers { ctrl: true, .. },
+                        ..
+                    } => self.play_previous(),
+                    _ => {}
+                };
+            }
+        });
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(60.0);
