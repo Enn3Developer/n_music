@@ -180,6 +180,26 @@ impl eframe::App for App {
                     self.set_volume();
                 }
             });
+            ui.horizontal(|ui| {
+                ScrollArea::horizontal().show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.label(&self.tracks[index].title);
+                    ui.add_space(10.0);
+                    let text_toggle = if !self.playback { "▶" } else { "⏸" };
+                    let previous_btn = Button::new("⏮").frame(false).ui(ui);
+                    let toggle_btn = Button::new(text_toggle).frame(false).ui(ui);
+                    let next_btn = Button::new("⏭").frame(false).ui(ui);
+                    if previous_btn.clicked() {
+                        self.play_previous();
+                    }
+                    if toggle_btn.clicked() {
+                        self.toggle_pause();
+                    }
+                    if next_btn.clicked() {
+                        self.play_next();
+                    }
+                });
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
