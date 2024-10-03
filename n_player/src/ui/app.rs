@@ -135,6 +135,18 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(60.0);
+            let mut index = self.runner.blocking_read().index();
+            if index > self.tracks.len() {
+                index = 0;
+            }
+            ui.horizontal(|ui| {
+                ui.label(self.time.format_pos());
+                ui.label(format!(
+                    "{:02}:{:02}",
+                    (self.tracks[index].length as f64 / 60.0).floor() as u64,
+                    self.tracks[index].length % 60
+                ));
+            });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -173,5 +185,9 @@ impl eframe::App for App {
         });
 
         ctx.request_repaint_after(Duration::from_millis(250));
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        false
     }
 }

@@ -94,6 +94,26 @@ pub struct TrackTime {
     pub len_frac: f64,
 }
 
+impl TrackTime {
+    pub fn format_pos(&self) -> String {
+        let position = self.pos_secs as f64 + self.pos_frac;
+        format!(
+            "{:02}:{:02}",
+            (position / 60.0).floor() as u64,
+            position.floor() as u64 % 60
+        )
+    }
+
+    pub fn format_len(&self) -> String {
+        let length = self.len_secs as f64 + self.len_frac;
+        format!(
+            "{:02}:{:02}",
+            (length / 60.0).floor() as u64,
+            length.floor() as u64 % 60
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Metadata {
     pub time: TrackTime,
