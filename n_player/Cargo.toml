@@ -24,3 +24,8 @@ hashbrown = "0.15.0"
 tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 num_cpus = "1.16.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
