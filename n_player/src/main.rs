@@ -76,6 +76,7 @@ fn main() {
                 .push(font_name);
 
             cc.egui_ctx.set_fonts(font_def);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::new(App::new(runner.clone(), tx, cc)))
         }),
     )

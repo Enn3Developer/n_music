@@ -25,3 +25,4 @@ image = { version = "0.25", features = ["jpeg", "png", "ico", "webp", "avif", "b
 hashbrown = "0.15.0"
 tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+num_cpus = "1.16.0"

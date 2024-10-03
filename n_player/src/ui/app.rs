@@ -1,7 +1,9 @@
+use crate::image::ImageLoader;
 use crate::runner::{Runner, RunnerMessage, Seek};
 use crate::{loader_thread, FileTrack, FileTracks, Message};
 use eframe::egui::{
-    Button, Context, Event, Key, Modifiers, ScrollArea, Slider, SliderOrientation, Visuals, Widget,
+    Button, Context, Event, Image, Key, Modifiers, ScrollArea, Slider, SliderOrientation, Visuals,
+    Widget,
 };
 use eframe::{egui, CreationContext, Frame};
 use flume::{Receiver, Sender};
@@ -14,7 +16,7 @@ use tokio::sync::RwLock;
 
 pub struct App {
     runner: Arc<RwLock<Runner>>,
-    tx: Sender<RunnerMessage>,
+    tx_runner: Sender<RunnerMessage>,
     rx: Receiver<Message>,
     len: usize,
     playback: bool,
@@ -22,6 +24,7 @@ pub struct App {
     time: TrackTime,
     tracks: FileTracks,
     slider_time: f64,
+    image_loader: ImageLoader,
 }
 
 impl App {
@@ -56,9 +59,11 @@ impl App {
             loader_thread(tx_l, paths);
         });
 
+        let image_loader = ImageLoader::new(runner.clone());
+
         Self {
             runner,
-            tx,
+            tx_runner: tx,
             rx,
             len,
             playback: false,
@@ -66,30 +71,33 @@ impl App {
             time: TrackTime::default(),
             tracks,
             slider_time: 0.0,
+            image_loader,
         }
     }
 
     pub fn play_next(&self) {
-        self.tx.send(RunnerMessage::PlayNext).unwrap();
+        self.tx_runner.send(RunnerMessage::PlayNext).unwrap();
     }
 
     pub fn play_previous(&self) {
-        self.tx.send(RunnerMessage::PlayPrevious).unwrap();
+        self.tx_runner.send(RunnerMessage::PlayPrevious).unwrap();
     }
 
     pub fn toggle_pause(&self) {
-        self.tx.send(RunnerMessage::TogglePause).unwrap();
+        self.tx_runner.send(RunnerMessage::TogglePause).unwrap();
     }
 
     pub fn set_volume(&self) {
-        self.tx.send(RunnerMessage::SetVolume(self.volume)).unwrap();
+        self.tx_runner
+            .send(RunnerMessage::SetVolume(self.volume))
+            .unwrap();
     }
 
     pub fn seek(&self) {
         if self.time.length == 0.0 {
             return;
         }
-        self.tx
+        self.tx_runner
             .send(RunnerMessage::Seek(Seek::Absolute(
                 self.slider_time * self.time.length,
             )))
@@ -97,7 +105,7 @@ impl App {
     }
 
     pub fn play_track(&self, i: usize) {
-        self.tx.send(RunnerMessage::PlayTrack(i)).unwrap();
+        self.tx_runner.send(RunnerMessage::PlayTrack(i)).unwrap();
     }
 }
 
@@ -151,49 +159,63 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(60.0);
+            ui.add_space(10.0);
             let mut index = self.runner.blocking_read().index();
             if index > self.tracks.len() {
                 index = 0;
             }
+            let image = self.image_loader.get(index);
             ui.horizontal(|ui| {
-                ui.label(self.time.format_pos());
-                let time_slider = Slider::new(&mut self.slider_time, 0.0..=1.0)
-                    .orientation(SliderOrientation::Horizontal)
-                    .show_value(false)
+                if !image.is_empty() {
+                    Image::from_bytes(
+                        format!("bytes://{}", self.tracks[index].title.escape_default()),
+                        image,
+                    )
+                    .fit_to_original_size(1.0)
                     .ui(ui);
-                ui.label(format!(
-                    "{:02}:{:02}",
-                    (self.tracks[index].length / 60.0).floor() as u64,
-                    self.tracks[index].length.floor() as u64 % 60
-                ));
-                ui.add_space(10.0);
-                let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
-                    .show_value(false)
-                    .ui(ui);
-                ui.label(format!("{}%", (self.volume * 100.0).round() as usize));
+                }
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(self.time.format_pos());
+                        let time_slider = Slider::new(&mut self.slider_time, 0.0..=1.0)
+                            .orientation(SliderOrientation::Horizontal)
+                            .show_value(false)
+                            .ui(ui);
+                        ui.label(format!(
+                            "{:02}:{:02}",
+                            (self.tracks[index].length / 60.0).floor() as u64,
+                            self.tracks[index].length.floor() as u64 % 60
+                        ));
+                        ui.add_space(10.0);
+                        let volume_slider = Slider::new(&mut self.volume, 0.0..=1.0)
+                            .show_value(false)
+                            .ui(ui);
+                        ui.label(format!("{}%", (self.volume * 100.0).round() as usize));
 
-                if time_slider.changed() {
-                    self.seek();
-                }
-                if volume_slider.changed() {
-                    self.set_volume();
-                }
-            });
-            ui.horizontal(|ui| {
-                ScrollArea::horizontal().show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.label(&self.tracks[index].title);
-                    ui.add_space(10.0);
-                    let text_toggle = if !self.playback { "▶" } else { "⏸" };
-                    if Button::new("⏮").frame(false).ui(ui).clicked() {
-                        self.play_previous();
-                    }
-                    if Button::new(text_toggle).frame(false).ui(ui).clicked() {
-                        self.toggle_pause();
-                    };
-                    if Button::new("⏭").frame(false).ui(ui).clicked() {
-                        self.play_next();
-                    }
+                        if time_slider.changed() {
+                            self.seek();
+                        }
+                        if volume_slider.changed() {
+                            self.set_volume();
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ScrollArea::horizontal().show(ui, |ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            ui.label(&self.tracks[index].title);
+                            ui.add_space(10.0);
+                            let text_toggle = if !self.playback { "▶" } else { "⏸" };
+                            if Button::new("⏮").frame(false).ui(ui).clicked() {
+                                self.play_previous();
+                            }
+                            if Button::new(text_toggle).frame(false).ui(ui).clicked() {
+                                self.toggle_pause();
+                            };
+                            if Button::new("⏭").frame(false).ui(ui).clicked() {
+                                self.play_next();
+                            }
+                        });
+                    });
                 });
             });
         });
@@ -206,7 +228,13 @@ impl eframe::App for App {
                     let track = &self.tracks[row];
                     let title = &track.title;
                     let artist = &track.artist;
+                    let image = self.image_loader.get(row);
                     ui.horizontal(|ui| {
+                        if !image.is_empty() {
+                            Image::from_bytes(format!("bytes://{}", title.escape_default()), image)
+                                .fit_to_original_size(0.5)
+                                .ui(ui);
+                        }
                         let mut frame = false;
                         if self.playback && self.runner.blocking_read().index() == row {
                             ui.add_space(10.0);

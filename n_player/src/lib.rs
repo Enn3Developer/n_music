@@ -13,6 +13,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
 pub mod bus_server;
+pub mod image;
 #[cfg(target_os = "linux")]
 pub mod mpris_server;
 pub mod runner;
@@ -49,7 +50,7 @@ pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
 }
 
 #[derive(Debug)]
-enum Message {
+pub enum Message {
     Length(usize, f64),
     Artist(usize, String),
     Title(usize, String),
