@@ -4,8 +4,10 @@ use eframe::egui;
 use eframe::egui::FontFamily;
 use mpris_server::Server;
 use n_audio::queue::QueuePlayer;
+#[cfg(target_os = "linux")]
 use n_player::bus_server::linux::MPRISBridge;
-use n_player::bus_server::{BusServer, DummyServer};
+#[cfg(not(target_os = "linux"))]
+use n_player::bus_server::DummyServer;
 use n_player::runner::{run, Runner};
 use n_player::storage::Storage;
 use n_player::ui::app::App;
