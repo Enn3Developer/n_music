@@ -156,22 +156,20 @@ impl eframe::App for App {
             }
         });
 
+        let mut index = self.runner.blocking_read().index();
+        if index > self.tracks.len() {
+            index = 0;
+        }
+
         egui::TopBottomPanel::bottom("control_panel").show(ctx, |ui| {
             ui.set_min_height(60.0);
             ui.add_space(5.0);
-            let mut index = self.runner.blocking_read().index();
-            if index > self.tracks.len() {
-                index = 0;
-            }
             let image = self.image_loader.get(index);
             ui.horizontal(|ui| {
-                if !image.is_empty() {
-                    Image::from_bytes(
-                        format!("bytes://{}", self.tracks[index].title.escape_default()),
-                        image,
-                    )
-                    .fit_to_original_size(1.0)
-                    .ui(ui);
+                if image.exists() {
+                    Image::from_uri(format!("file://{}", image.to_string_lossy()))
+                        .fit_to_original_size(1.0)
+                        .ui(ui);
                 }
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
@@ -232,8 +230,8 @@ impl eframe::App for App {
                     let artist = &track.artist;
                     let image = self.image_loader.get(row);
                     ui.horizontal(|ui| {
-                        if !image.is_empty() {
-                            Image::from_bytes(format!("bytes://{}", title.escape_default()), image)
+                        if image.exists() {
+                            Image::from_uri(format!("file://{}", image.to_string_lossy()))
                                 .fit_to_original_size(0.5)
                                 .ui(ui);
                         }

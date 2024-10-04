@@ -31,6 +31,7 @@ fn main() {
             Box::new(|_cc| Ok(Box::new(init_app))),
         )
         .expect("can't create init app");
+        storage.lock().unwrap().save();
     }
 
     let tmp = NamedTempFile::new().unwrap();
