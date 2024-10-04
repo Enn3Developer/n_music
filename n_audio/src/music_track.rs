@@ -83,11 +83,13 @@ impl MusicTrack {
         let mut artist = String::new();
         let mut title = String::new();
 
-        for tag in format.metadata().current().unwrap().tags() {
-            if let Some(StandardTagKey::Artist) = tag.std_key {
-                artist = tag.value.to_string();
-            } else if let Some(StandardTagKey::TrackTitle) = tag.std_key {
-                title = tag.value.to_string();
+        if let Some(metadata) = format.metadata().skip_to_latest() {
+            for tag in metadata.tags() {
+                if let Some(StandardTagKey::Artist) = tag.std_key {
+                    artist = tag.value.to_string();
+                } else if let Some(StandardTagKey::TrackTitle) = tag.std_key {
+                    title = tag.value.to_string();
+                }
             }
         }
 
