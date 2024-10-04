@@ -5,7 +5,6 @@ use n_audio::queue::QueuePlayer;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
-use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::fs;
@@ -15,6 +14,7 @@ use std::path::Path;
 pub mod bus_server;
 pub mod image;
 pub mod runner;
+pub mod storage;
 pub mod ui;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
@@ -54,7 +54,7 @@ pub enum Message {
     Title(usize, String),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct FileTrack {
     title: String,
     artist: String,
@@ -91,7 +91,7 @@ impl Ord for FileTrack {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct FileTracks {
     pub tracks: Vec<FileTrack>,
 }
@@ -122,9 +122,11 @@ pub fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
 ) {
     let dir = fs::read_dir(path).expect("Can't read files in the chosen directory");
     dir.filter_map(|item| item.ok()).for_each(|file| {
-        let mut p = file.path().to_str().unwrap().to_string();
-        p.shrink_to_fit();
-        player.add(p);
+        if file.file_type().unwrap().is_file() {
+            let mut p = file.path().to_str().unwrap().to_string();
+            p.shrink_to_fit();
+            player.add(p);
+        }
     });
     player.shrink_to_fit();
 

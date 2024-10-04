@@ -8,10 +8,9 @@ edition = "2021"
 
 [dependencies]
 eframe = { version = "0.29.1", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
-serde = "1.0"
-serde_derive = "1.0"
+bitcode = { version = "0.6.3", features = ["derive"] }
+directories = "5.0.1"
 n_audio = { path = "../n_audio" }
-infer = "0.16.0"
 rfd = "0.15.0"
 async-channel = "2.3.1"
 mpris-server = "0.8.1"
