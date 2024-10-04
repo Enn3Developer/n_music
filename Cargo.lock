@@ -2435,7 +2435,7 @@ dependencies = [
 
 [[package]]
 name = "n_audio"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "audiopus",
  "audiopus_sys",
@@ -2455,7 +2455,7 @@ dependencies = [
 
 [[package]]
 name = "n_player"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "async-channel",
  "bitcode",
