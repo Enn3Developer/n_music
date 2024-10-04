@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use std::{fs, io};
 
 use crate::{remove_ext, Metadata, TrackTime, PROBE};
 use symphonia::core::formats::{FormatOptions, FormatReader};
@@ -44,8 +44,8 @@ impl MusicTrack {
     }
 
     /// Returns the `FormatReader` provided by Symphonia
-    pub fn get_format(&self) -> Box<dyn FormatReader> {
-        let file = fs::read(&self.path).expect("can't read file");
+    pub fn get_format(&self) -> Result<Box<dyn FormatReader>, io::Error> {
+        let file = fs::read(&self.path)?;
         let media_stream = MediaSourceStream::new(
             Box::new(Cursor::new(file)),
             std::default::Default::default(),
@@ -60,11 +60,11 @@ impl MusicTrack {
         let probed = PROBE
             .format(&hint, media_stream, &fmt_ops, &meta_ops)
             .expect("Format not supported");
-        probed.format
+        Ok(probed.format)
     }
 
-    pub fn get_meta(&self) -> Metadata {
-        let mut format = self.get_format();
+    pub fn get_meta(&self) -> Result<Metadata, io::Error> {
+        let mut format = self.get_format()?;
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 
@@ -93,15 +93,15 @@ impl MusicTrack {
             }
         }
 
-        Metadata {
+        Ok(Metadata {
             time,
             artist,
             title,
-        }
+        })
     }
 
-    pub fn get_length(&self) -> TrackTime {
-        let format = self.get_format();
+    pub fn get_length(&self) -> Result<TrackTime, io::Error> {
+        let format = self.get_format()?;
         let track = format.default_track().expect("Can't load tracks");
         let time_base = track.codec_params.time_base.unwrap();
 
@@ -112,9 +112,9 @@ impl MusicTrack {
             .unwrap();
         let time = time_base.calc_time(duration);
 
-        TrackTime {
+        Ok(TrackTime {
             position: 0.0,
             length: time.seconds as f64 + time.frac,
-        }
+        })
     }
 }

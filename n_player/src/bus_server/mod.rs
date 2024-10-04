@@ -87,21 +87,23 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
                     .expect("can't write image data to tmp file");
                 Some(tmp.path().to_str().unwrap().to_string())
             };
-            properties.push(Property::Metadata(Metadata {
-                id: String::from("/n_music"),
-                title: Some(if !meta.title.is_empty() {
-                    meta.title
-                } else {
-                    remove_ext(track_name)
-                }),
-                artists: if meta.artist.is_empty() {
-                    None
-                } else {
-                    Some(vec![meta.artist])
-                },
-                length: meta.time.length,
-                image_path,
-            }));
+            if let Ok(meta) = meta {
+                properties.push(Property::Metadata(Metadata {
+                    id: String::from("/n_music"),
+                    title: Some(if !meta.title.is_empty() {
+                        meta.title
+                    } else {
+                        remove_ext(track_name)
+                    }),
+                    artists: if meta.artist.is_empty() {
+                        None
+                    } else {
+                        Some(vec![meta.artist])
+                    },
+                    length: meta.time.length,
+                    image_path,
+                }));
+            }
         }
 
         if !properties.is_empty() {

@@ -228,21 +228,23 @@ impl PlayerInterface for MPRISBridge {
         };
 
         let mut metadata = Metadata::new();
-        metadata.set_title(Some(if !meta.title.is_empty() {
-            meta.title
-        } else {
-            remove_ext(track_name)
-        }));
-        metadata.set_artist(if meta.artist.is_empty() {
-            None
-        } else {
-            Some(vec![meta.artist])
-        });
-        metadata.set_length(Some(Time::from_millis(
-            (meta.time.length * 1000.0).floor() as i64
-        )));
-        metadata.set_trackid(Some(ObjectPath::from_static_str_unchecked("/n_music")));
-        metadata.set_art_url(image_path);
+        if let Ok(meta) = meta {
+            metadata.set_title(Some(if !meta.title.is_empty() {
+                meta.title
+            } else {
+                remove_ext(track_name)
+            }));
+            metadata.set_artist(if meta.artist.is_empty() {
+                None
+            } else {
+                Some(vec![meta.artist])
+            });
+            metadata.set_length(Some(Time::from_millis(
+                (meta.time.length * 1000.0).floor() as i64
+            )));
+            metadata.set_trackid(Some(ObjectPath::from_static_str_unchecked("/n_music")));
+            metadata.set_art_url(image_path);
+        }
 
         Ok(metadata)
     }

@@ -171,14 +171,15 @@ impl Player {
         path: P,
     ) -> Result<(), Box<dyn Error>> {
         let music_track = MusicTrack::new(path)?;
-        self.play(music_track.get_format());
+        self.play(music_track.get_format()?);
 
         Ok(())
     }
 
     /// Plays a certain track
-    pub fn play_from_track(&mut self, track: &MusicTrack) {
-        self.play(track.get_format());
+    pub fn play_from_track(&mut self, track: &MusicTrack) -> Result<(), Box<dyn Error>> {
+        self.play(track.get_format()?);
+        Ok(())
     }
 
     /// Plays a certain track given its format

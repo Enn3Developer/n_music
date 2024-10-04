@@ -57,7 +57,9 @@ impl Runner {
         }
 
         if self.player.has_ended() {
-            self.player.play_next();
+            if let Err(err) = self.player.play_next() {
+                eprintln!("error happened: {err}");
+            }
         }
     }
 
@@ -66,14 +68,18 @@ impl Runner {
         match message {
             RunnerMessage::PlayNext => {
                 self.player.end_current().await.unwrap();
-                self.player.play_next();
+                if let Err(err) = self.player.play_next() {
+                    eprintln!("error happened: {err}");
+                }
             }
             RunnerMessage::PlayPrevious => {
                 if self.current_time.position > 3.0 {
                     self.player.seek_to(0, 0.0).await.unwrap();
                 } else {
                     self.player.end_current().await.unwrap();
-                    self.player.play_previous();
+                    if let Err(err) = self.player.play_previous() {
+                        eprintln!("error happened: {err}");
+                    }
                 }
             }
             RunnerMessage::TogglePause => {
@@ -83,7 +89,9 @@ impl Runner {
                     self.player.pause().await.unwrap();
                 }
                 if !self.player.is_playing() {
-                    self.player.play_next();
+                    if let Err(err) = self.player.play_next() {
+                        eprintln!("error happened: {err}");
+                    }
                 }
             }
             RunnerMessage::Pause => {
@@ -92,7 +100,9 @@ impl Runner {
             RunnerMessage::Play => {
                 self.player.unpause().await.unwrap();
                 if !self.player.is_playing() {
-                    self.player.play_next();
+                    if let Err(err) = self.player.play_next() {
+                        eprintln!("error happened: {err}");
+                    }
                 }
             }
             RunnerMessage::SetVolume(volume) => {
@@ -100,7 +110,9 @@ impl Runner {
             }
             RunnerMessage::PlayTrack(index) => {
                 self.player.end_current().await.unwrap();
-                self.player.play_index(index);
+                if let Err(err) = self.player.play_index(index) {
+                    eprintln!("error happened: {err}");
+                }
             }
             RunnerMessage::Seek(seek) => {
                 let seek = match seek {

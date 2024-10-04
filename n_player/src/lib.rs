@@ -21,15 +21,17 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
         if let Ok(music_track) = MusicTrack::new(track) {
             let metadata = music_track.get_meta();
-            tx.send(Message::Length(i, metadata.time.length))
-                .expect("can't send back loaded times");
-            if !metadata.artist.is_empty() {
-                tx.send(Message::Artist(i, metadata.artist))
-                    .expect("can't send back artist");
-            }
-            if !metadata.title.is_empty() {
-                tx.send(Message::Title(i, metadata.title))
-                    .expect("can't send back title");
+            if let Ok(metadata) = metadata {
+                tx.send(Message::Length(i, metadata.time.length))
+                    .expect("can't send back loaded times");
+                if !metadata.artist.is_empty() {
+                    tx.send(Message::Artist(i, metadata.artist))
+                        .expect("can't send back artist");
+                }
+                if !metadata.title.is_empty() {
+                    tx.send(Message::Title(i, metadata.title))
+                        .expect("can't send back title");
+                }
             }
         }
     });
@@ -156,6 +158,7 @@ pub fn find_cjk_font() -> Option<String> {
     }
     #[cfg(target_os = "windows")]
     {
+        use std::path::PathBuf;
         let font_file = {
             // c:/Windows/Fonts/msyh.ttc
             let mut font_path = PathBuf::from(std::env::var("SystemRoot").ok()?);

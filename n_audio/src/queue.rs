@@ -1,5 +1,7 @@
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::error::Error;
+use std::io;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
@@ -97,37 +99,38 @@ impl QueuePlayer {
         }
     }
 
-    pub fn play(&mut self) {
-        let track = MusicTrack::new(self.get_path_for_file(self.index).to_str().unwrap()).unwrap();
-        let format = track.get_format();
+    pub fn play(&mut self) -> Result<(), Box<dyn Error>> {
+        let track = MusicTrack::new(self.get_path_for_file(self.index).to_str().unwrap())?;
+        let format = track.get_format()?;
 
         self.player.play(format);
+        Ok(())
     }
 
-    pub fn play_index(&mut self, index: usize) {
+    pub fn play_index(&mut self, index: usize) -> Result<(), Box<dyn Error>> {
         self.index = index;
 
-        self.play();
+        self.play()
     }
 
-    pub fn play_next(&mut self) {
+    pub fn play_next(&mut self) -> Result<(), Box<dyn Error>> {
         self.index += 1;
 
         if self.index >= self.queue.len() {
             self.index = 0;
         }
 
-        self.play();
+        self.play()
     }
 
-    pub fn play_previous(&mut self) {
+    pub fn play_previous(&mut self) -> Result<(), Box<dyn Error>> {
         if self.index == 0 {
             self.index = self.queue.len();
         }
 
         self.index -= 1;
 
-        self.play();
+        self.play()
     }
 
     pub fn get_index_from_track_name(&self, name: &str) -> Result<usize, NError> {
@@ -140,8 +143,9 @@ impl QueuePlayer {
         Err(NError::NoTrack)
     }
 
-    pub fn get_length_for_track(&self, index: usize) -> TrackTime {
-        let track = MusicTrack::new(&self.queue[index]).unwrap();
+    pub fn get_length_for_track(&self, index: usize) -> Result<TrackTime, io::Error> {
+        let track = MusicTrack::new(&self.queue[index])
+            .map_err(|_| io::Error::from(io::ErrorKind::InvalidFilename))?;
         track.get_length()
     }
 }
