@@ -5,6 +5,7 @@ use eframe::egui::FontFamily;
 use mpris_server::Server;
 use n_audio::queue::QueuePlayer;
 use n_player::bus_server::linux::MPRISBridge;
+use n_player::bus_server::{BusServer, DummyServer};
 use n_player::runner::{run, Runner};
 use n_player::storage::Storage;
 use n_player::ui::app::App;
@@ -52,13 +53,11 @@ fn main() {
 
     let future = runtime.spawn(async move {
         #[cfg(target_os = "linux")]
-        let server = Some(
-            Server::new("n_music", MPRISBridge::new(r.clone(), tx_t.clone()))
-                .await
-                .unwrap(),
-        );
+        let server = Server::new("n_music", MPRISBridge::new(r.clone(), tx_t.clone()))
+            .await
+            .unwrap();
         #[cfg(not(target_os = "linux"))]
-        let server = None;
+        let server = DummyServer;
 
         let runner_future = tokio::task::spawn(run(r.clone()));
         let bus_future = tokio::task::spawn(bus_server::run(server, r.clone(), tmp));
