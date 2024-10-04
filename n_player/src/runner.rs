@@ -6,11 +6,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-pub async fn run(runner: Arc<RwLock<Runner>>) {
-    let mut interval = tokio::time::interval(Duration::from_millis(250));
+pub async fn run(runner: Arc<RwLock<Runner>>, rx: Receiver<RunnerMessage>) {
+    let mut interval = tokio::time::interval(Duration::from_millis(750));
     loop {
-        interval.tick().await;
-        runner.write().await.update().await;
+        tokio::select! {
+            _ = interval.tick() => {
+                runner.write().await.update().await;
+            }
+            message = rx.recv_async() => {
+                if let Ok(message) = message {
+                    runner.write().await.parse_command(message).await;
+                }
+                runner.write().await.update().await;
+            }
+        }
     }
 }
 
@@ -34,24 +43,18 @@ pub enum Seek {
 
 pub struct Runner {
     player: QueuePlayer,
-    rx: Receiver<RunnerMessage>,
     current_time: TrackTime,
 }
 
 impl Runner {
-    pub fn new(rx: Receiver<RunnerMessage>, player: QueuePlayer) -> Self {
+    pub fn new(player: QueuePlayer) -> Self {
         Self {
             player,
-            rx,
             current_time: TrackTime::default(),
         }
     }
 
     pub async fn update(&mut self) {
-        while let Ok(message) = self.rx.try_recv() {
-            self.parse_command(message).await;
-        }
-
         if let Some(time) = self.player.get_time() {
             self.current_time = time;
         }

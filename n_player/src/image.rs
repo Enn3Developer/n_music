@@ -9,29 +9,28 @@ use n_audio::remove_ext;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use std::{fs, thread};
 use tokio::sync::RwLock;
 
-type LoadingImages = Arc<Mutex<Vec<(usize, PathBuf)>>>;
 type ImageLoadedMessage = (usize, PathBuf);
 
 pub struct ImageLoader {
     loaded_images: HashMap<usize, PathBuf>,
     runner: Arc<RwLock<Runner>>,
-    loading_images: LoadingImages,
+    loading_images: Sender<(usize, PathBuf)>,
     rx: Receiver<ImageLoadedMessage>,
     already_loading: Vec<usize>,
 }
 
 impl ImageLoader {
     pub fn new(runner: Arc<RwLock<Runner>>) -> Self {
-        let loading_images = Arc::new(Mutex::new(vec![]));
+        let (loading_images, thread_rx) = flume::unbounded();
         let (tx, rx) = flume::unbounded();
+        let thread_rx = Arc::new(Mutex::new(thread_rx));
         for _ in 0..num_cpus::get() {
+            let thread_rx = thread_rx.clone();
             let tx = tx.clone();
-            let loading_images = loading_images.clone();
-            thread::spawn(move || load_image(tx, loading_images));
+            thread::spawn(move || load_image(tx, thread_rx));
         }
         Self {
             runner,
@@ -52,9 +51,8 @@ impl ImageLoader {
         } else if !self.already_loading.contains(&index) {
             self.already_loading.push(index);
             self.loading_images
-                .lock()
-                .unwrap()
-                .push((index, self.runner.blocking_read().get_path_for_file(index)));
+                .send((index, self.runner.blocking_read().get_path_for_file(index)))
+                .unwrap();
             PathBuf::new()
         } else {
             PathBuf::new()
@@ -62,29 +60,31 @@ impl ImageLoader {
     }
 }
 
-fn load_image(tx: Sender<ImageLoadedMessage>, loading_images: LoadingImages) {
+fn load_image(tx: Sender<ImageLoadedMessage>, rx: Arc<Mutex<Receiver<(usize, PathBuf)>>>) {
     loop {
-        let loading = loading_images.lock().unwrap().pop();
+        let loading = rx.lock().unwrap().recv();
 
-        if let Some(loading) = loading {
+        if let Ok(loading) = loading {
             let mut image = get_image(loading.1.as_path());
-            if !image.is_empty() {
+            let path = if !image.is_empty() {
                 image::load_from_memory(&image)
                     .unwrap()
                     .resize(128, 128, FilterType::Lanczos3)
                     .to_rgb8()
                     .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
                     .unwrap();
-            }
-            let images_dir = Storage::app_dir().join("images");
-            if !images_dir.exists() {
-                fs::create_dir(images_dir.as_path()).unwrap();
-            }
-            let path = images_dir.join(format!("{}.jpg", remove_ext(loading.1)));
-            fs::write(path.as_path(), image).unwrap();
+
+                let images_dir = Storage::app_dir().join("images");
+                if !images_dir.exists() {
+                    fs::create_dir(images_dir.as_path()).unwrap();
+                }
+                let path = images_dir.join(format!("{}.jpg", remove_ext(loading.1)));
+                fs::write(path.as_path(), image).unwrap();
+                path
+            } else {
+                PathBuf::new().join("thisdoesntexistsodontworryaboutit")
+            };
             tx.send((loading.0, path)).unwrap();
         }
-
-        thread::sleep(Duration::from_millis(200));
     }
 }

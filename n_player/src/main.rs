@@ -43,7 +43,7 @@ fn main() {
     let mut player = QueuePlayer::new(storage.lock().unwrap().path.clone());
     add_all_tracks_to_player(&mut player, storage.lock().unwrap().path.clone());
 
-    let runner = Arc::new(RwLock::new(Runner::new(rx, player)));
+    let runner = Arc::new(RwLock::new(Runner::new(player)));
 
     let r = runner.clone();
     let tx_t = tx.clone();
@@ -61,7 +61,7 @@ fn main() {
         #[cfg(not(target_os = "linux"))]
         let server = DummyServer;
 
-        let runner_future = tokio::task::spawn(run(r.clone()));
+        let runner_future = tokio::task::spawn(run(r.clone(), rx));
         let bus_future = tokio::task::spawn(bus_server::run(server, r.clone(), tmp));
 
         let _ = tokio::join!(runner_future, bus_future);
