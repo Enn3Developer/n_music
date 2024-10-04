@@ -168,7 +168,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 if image.exists() {
                     Image::from_uri(format!("file://{}", image.to_string_lossy()))
-                        .fit_to_original_size(1.0)
+                        .fit_to_original_size(0.5)
                         .ui(ui);
                 }
                 ui.vertical(|ui| {
@@ -232,7 +232,7 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         if image.exists() {
                             Image::from_uri(format!("file://{}", image.to_string_lossy()))
-                                .fit_to_original_size(0.5)
+                                .fit_to_original_size(0.25)
                                 .ui(ui);
                         }
                         let mut frame = false;

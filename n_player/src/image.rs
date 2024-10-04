@@ -71,7 +71,7 @@ fn load_image(tx: Sender<ImageLoadedMessage>, loading_images: LoadingImages) {
             if !image.is_empty() {
                 image::load_from_memory(&image)
                     .unwrap()
-                    .resize(64, 64, FilterType::Lanczos3)
+                    .resize(128, 128, FilterType::Lanczos3)
                     .to_rgb8()
                     .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
                     .unwrap();
