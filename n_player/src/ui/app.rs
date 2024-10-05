@@ -1,5 +1,5 @@
 use crate::image::ImageLoader;
-use crate::runner::{Runner, RunnerMessage, Seek};
+use crate::runner::{Runner, RunnerMessage, RunnerSeek};
 use crate::{loader_thread, FileTrack, FileTracks, Message};
 use eframe::egui::{
     Button, Context, Event, Image, Key, Modifiers, ScrollArea, Slider, SliderOrientation, Visuals,
@@ -8,6 +8,7 @@ use eframe::egui::{
 use eframe::{egui, CreationContext, Frame};
 use flume::{Receiver, Sender};
 use n_audio::{remove_ext, TrackTime};
+use pollster::FutureExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -36,18 +37,18 @@ impl App {
         let len = runner.blocking_read().len();
         let tracks: FileTracks = (0..len)
             .map(|i| {
-                let track_path = runner.blocking_read().get_path_for_file(i);
+                let track_path = runner.blocking_read().get_path_for_file(i).block_on();
                 FileTrack::new(remove_ext(track_path), String::new(), 0.0)
             })
             .collect::<Vec<_>>()
             .into();
 
-        let queue = runner.blocking_read().queue();
         let path = runner.blocking_read().path();
         let (tx_l, rx) = flume::unbounded();
+        let r = runner.clone();
         thread::spawn(move || {
-            let paths = queue
-                .into_iter()
+            let paths = (0..len)
+                .map(|i| r.blocking_read().get_path_for_file(i).block_on())
                 .map(|file_name| {
                     let mut path_buf = PathBuf::new();
                     path_buf.push(&path);
@@ -97,7 +98,7 @@ impl App {
             return;
         }
         self.tx_runner
-            .send(RunnerMessage::Seek(Seek::Absolute(
+            .send(RunnerMessage::Seek(RunnerSeek::Absolute(
                 self.slider_time * self.time.length,
             )))
             .unwrap();

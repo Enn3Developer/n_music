@@ -1,6 +1,8 @@
 use flume::Receiver;
 use n_audio::queue::QueuePlayer;
 use n_audio::TrackTime;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,11 +34,11 @@ pub enum RunnerMessage {
     Play,
     SetVolume(f64),
     PlayTrack(usize),
-    Seek(Seek),
+    Seek(RunnerSeek),
 }
 
 #[derive(Debug)]
-pub enum Seek {
+pub enum RunnerSeek {
     Absolute(f64),
     Relative(f64),
 }
@@ -60,7 +62,7 @@ impl Runner {
         }
 
         if self.player.has_ended() {
-            if let Err(err) = self.player.play_next() {
+            if let Err(err) = self.player.play_next().await {
                 eprintln!("error happened: {err}");
             }
         }
@@ -71,7 +73,7 @@ impl Runner {
         match message {
             RunnerMessage::PlayNext => {
                 self.player.end_current().await.unwrap();
-                if let Err(err) = self.player.play_next() {
+                if let Err(err) = self.player.play_next().await {
                     eprintln!("error happened: {err}");
                 }
             }
@@ -80,7 +82,7 @@ impl Runner {
                     self.player.seek_to(0, 0.0).await.unwrap();
                 } else {
                     self.player.end_current().await.unwrap();
-                    if let Err(err) = self.player.play_previous() {
+                    if let Err(err) = self.player.play_previous().await {
                         eprintln!("error happened: {err}");
                     }
                 }
@@ -92,7 +94,7 @@ impl Runner {
                     self.player.pause().await.unwrap();
                 }
                 if !self.player.is_playing() {
-                    if let Err(err) = self.player.play_next() {
+                    if let Err(err) = self.player.play_next().await {
                         eprintln!("error happened: {err}");
                     }
                 }
@@ -103,7 +105,7 @@ impl Runner {
             RunnerMessage::Play => {
                 self.player.unpause().await.unwrap();
                 if !self.player.is_playing() {
-                    if let Err(err) = self.player.play_next() {
+                    if let Err(err) = self.player.play_next().await {
                         eprintln!("error happened: {err}");
                     }
                 }
@@ -113,14 +115,14 @@ impl Runner {
             }
             RunnerMessage::PlayTrack(index) => {
                 self.player.end_current().await.unwrap();
-                if let Err(err) = self.player.play_index(index) {
+                if let Err(err) = self.player.play_index(index).await {
                     eprintln!("error happened: {err}");
                 }
             }
             RunnerMessage::Seek(seek) => {
                 let seek = match seek {
-                    Seek::Absolute(value) => value,
-                    Seek::Relative(value) => self.current_time.position + value,
+                    RunnerSeek::Absolute(value) => value,
+                    RunnerSeek::Relative(value) => self.current_time.position + value,
                 };
                 self.player
                     .seek_to(seek.trunc() as u64, seek.fract())
@@ -146,8 +148,12 @@ impl Runner {
         self.player.path()
     }
 
-    pub fn queue(&self) -> Vec<String> {
+    pub fn queue(&self) -> Arc<RwLock<BufReader<File>>> {
         self.player.queue()
+    }
+
+    pub fn index_map(&self) -> Vec<u64> {
+        self.player.index_map()
     }
 
     pub fn index(&self) -> usize {
@@ -162,11 +168,11 @@ impl Runner {
         self.player.is_empty()
     }
 
-    pub fn get_path_for_file(&self, i: usize) -> PathBuf {
-        self.player.get_path_for_file(i)
+    pub async fn get_path_for_file(&self, i: usize) -> PathBuf {
+        self.player.get_path_for_file(i).await
     }
 
-    pub fn current_track(&self) -> String {
-        self.player.current_track_name()
+    pub async fn current_track(&self) -> String {
+        self.player.current_track_name().await
     }
 }

@@ -127,7 +127,7 @@ pub fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
         if file.file_type().unwrap().is_file() {
             let mut p = file.path().to_str().unwrap().to_string();
             p.shrink_to_fit();
-            player.add(p);
+            player.add(p).unwrap();
         }
     });
     player.shrink_to_fit();

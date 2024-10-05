@@ -2450,6 +2450,7 @@ dependencies = [
  "serde_json",
  "symphonia",
  "symphonia-core",
+ "tempfile",
  "tokio",
 ]
 
@@ -2469,6 +2470,7 @@ dependencies = [
  "multitag",
  "n_audio",
  "num_cpus",
+ "pollster",
  "rayon",
  "rfd",
  "tempfile",

@@ -1,11 +1,10 @@
 use crate::music_track::MusicTrack;
 use crate::{output, Message, TrackTime, CODEC_REGISTRY};
 use flume::{Receiver, SendError, Sender};
-use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::thread;
 use std::thread::JoinHandle;
+use std::{io, thread};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
@@ -169,7 +168,7 @@ impl Player {
     pub fn play_from_path<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
         &mut self,
         path: P,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> io::Result<()> {
         let music_track = MusicTrack::new(path)?;
         self.play(music_track.get_format()?);
 
@@ -177,7 +176,7 @@ impl Player {
     }
 
     /// Plays a certain track
-    pub fn play_from_track(&mut self, track: &MusicTrack) -> Result<(), Box<dyn Error>> {
+    pub fn play_from_track(&mut self, track: &MusicTrack) -> io::Result<()> {
         self.play(track.get_format()?);
         Ok(())
     }

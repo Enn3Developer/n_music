@@ -147,7 +147,7 @@ impl PlayerInterface for MPRISBridge {
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
         self.tx
-            .send_async(RunnerMessage::Seek(runner::Seek::Relative(
+            .send_async(RunnerMessage::Seek(runner::RunnerSeek::Relative(
                 offset.as_secs() as f64 + (offset.as_millis() as f64 / 1000.0),
             )))
             .await
@@ -157,7 +157,7 @@ impl PlayerInterface for MPRISBridge {
 
     async fn set_position(&self, _track_id: TrackId, position: Time) -> fdo::Result<()> {
         self.tx
-            .send_async(RunnerMessage::Seek(runner::Seek::Absolute(
+            .send_async(RunnerMessage::Seek(runner::RunnerSeek::Absolute(
                 position.as_millis() as f64 / 1000.0,
             )))
             .await
@@ -203,13 +203,8 @@ impl PlayerInterface for MPRISBridge {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        let mut index = self.runner.read().await.index();
         let path = self.runner.read().await.path();
-        let queue = self.runner.read().await.queue();
-        if index > queue.len() {
-            index = 0;
-        }
-        let track_name = &queue[index];
+        let track_name = &self.runner.read().await.current_track().await;
         let mut path_buf = PathBuf::new();
         path_buf.push(&path);
         path_buf.push(track_name);

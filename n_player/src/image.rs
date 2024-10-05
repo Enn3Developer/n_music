@@ -6,6 +6,7 @@ use hashbrown::HashMap;
 use image::imageops::FilterType;
 use image::ImageFormat;
 use n_audio::remove_ext;
+use pollster::FutureExt;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -51,7 +52,13 @@ impl ImageLoader {
         } else if !self.already_loading.contains(&index) {
             self.already_loading.push(index);
             self.loading_images
-                .send((index, self.runner.blocking_read().get_path_for_file(index)))
+                .send((
+                    index,
+                    self.runner
+                        .blocking_read()
+                        .get_path_for_file(index)
+                        .block_on(),
+                ))
                 .unwrap();
             PathBuf::new()
         } else {

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::ffi::OsStr;
 use std::io::Cursor;
 use std::path::Path;
@@ -19,9 +18,7 @@ pub struct MusicTrack {
 }
 
 impl MusicTrack {
-    pub fn new<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(
-        path: P,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new<P: AsRef<Path> + AsRef<OsStr> + Clone + Into<String>>(path: P) -> io::Result<Self> {
         let p = path.clone();
         let p = Path::new(&p);
         Ok(MusicTrack {
@@ -29,10 +26,7 @@ impl MusicTrack {
             name: remove_ext(p),
             ext: p
                 .extension()
-                .ok_or_else(|| {
-                    println!("{p:?}");
-                    String::from("no extension")
-                })?
+                .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidFilename))?
                 .to_str()
                 .unwrap()
                 .to_string(),

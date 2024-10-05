@@ -52,7 +52,6 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
     let mut volume = 1.0;
     let mut index = runner.read().await.index();
     let path = runner.read().await.path();
-    let queue = runner.read().await.queue();
 
     loop {
         interval.tick().await;
@@ -69,7 +68,7 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
 
         if index != guard.index() {
             index = guard.index();
-            let track_name = &queue[index];
+            let track_name = &guard.current_track().await;
             let mut path_buf = PathBuf::new();
             path_buf.push(&path);
             path_buf.push(track_name);
