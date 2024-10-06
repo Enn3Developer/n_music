@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "1.8.1"
+version = "1.8.2"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
@@ -10,13 +10,11 @@ edition = "2021"
 slint-build = "1.8.0"
 
 [dependencies]
-slint = { version = "1.8.0", default-features = false, features = ["std", "renderer-skia", "compat-1-2", "backend-winit"] }
 bitcode = { version = "0.6.3", features = ["derive"] }
 directories = "5.0.1"
 n_audio = { path = "../n_audio" }
 rfd = "0.15.0"
 async-channel = "2.3.1"
-mpris-server = "0.8.1"
 flume = "0.11.0"
 rayon = "1.10.0"
 multitag = "0.3.1"
@@ -26,3 +24,12 @@ tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 num_cpus = "1.16.0"
 pollster = "0.3.0"
+
+[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
+slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg"] }
+
+[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+mpris-server = "0.8.1"
