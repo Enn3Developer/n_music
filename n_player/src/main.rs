@@ -14,6 +14,7 @@ use n_player::bus_server::DummyServer;
 use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use n_player::storage::Storage;
 use n_player::{add_all_tracks_to_player, bus_server, get_image};
+use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::VecModel;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -161,6 +162,7 @@ async fn main() {
     }
 
     main_window.set_version(env!("CARGO_PKG_VERSION").into());
+    main_window.set_color_scheme(ColorScheme::Dark);
 
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
     let t = tx.clone();

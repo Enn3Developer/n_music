@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "1.8.0"
+version = "1.8.1"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
@@ -10,8 +10,7 @@ edition = "2021"
 slint-build = "1.8.0"
 
 [dependencies]
-slint = "1.8.0"
-#eframe = { version = "0.29.1", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
+slint = { version = "1.8.0", default-features = false, features = ["std", "renderer-skia", "compat-1-2", "backend-winit"] }
 bitcode = { version = "0.6.3", features = ["derive"] }
 directories = "5.0.1"
 n_audio = { path = "../n_audio" }
@@ -21,7 +20,6 @@ mpris-server = "0.8.1"
 flume = "0.11.0"
 rayon = "1.10.0"
 multitag = "0.3.1"
-#egui_extras = { version = "0.29.1", default-features = false, features = ["all_loaders"] }
 image = { version = "0.25", features = ["jpeg", "png", "ico", "webp", "avif", "bmp", "dds", "exr", "gif", "pnm", "tiff"] }
 hashbrown = "0.15.0"
 tempfile = "3.13.0"

@@ -1,4 +1,4 @@
-import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider } from "std-widgets.slint";
+import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider, Palette } from "std-widgets.slint";
 
 struct TrackData {
     title: string,
@@ -17,8 +17,8 @@ component Track {
         }
 
         Rectangle {
-            background: rgba(50, 50, 50, playing ? 35 : 0);
-            border-color: rgba(75, 75, 75, 50);
+            background: playing ? Palette.accent-background : Palette.background;
+            border-color: Palette.border;
             border-width: parent.has-hover ? 2px : 0px;
             HorizontalLayout {
                 spacing: 10px;
@@ -33,18 +33,21 @@ component Track {
                 VerticalLayout {
                     alignment: center;
                     Text {
+                        color: playing ? Palette.accent-foreground : Palette.foreground;
                         text: track.title;
                         font-size: 12px;
                     }
 
                     Text {
                         text: track.artist;
+                        color: playing ? Palette.accent-foreground : Palette.foreground;
                         font-size: 12px;
                     }
                 }
 
                 Text {
                     text: track.time;
+                    color: playing ? Palette.accent-foreground : Palette.foreground;
                     vertical-alignment: center;
                     horizontal-alignment: right;
                     font-size: 10px;
@@ -66,7 +69,7 @@ component ControlPanel {
     callback play_next();
     callback seek(float);
     callback set_volume(float);
-    control_panel := HorizontalLayout {
+    control-panel := HorizontalLayout {
         spacing: 10px;
         padding: 10px;
         Image {
@@ -78,15 +81,16 @@ component ControlPanel {
         VerticalLayout {
             HorizontalLayout {
                 spacing: 10px;
-                alignment: start;
+                alignment: end;
                 Text {
+                    vertical-alignment: center;
                     text: position_time;
                 }
 
                 Slider {
                     minimum: 0.0;
                     maximum: length;
-                    width: control-panel.width * 23%;
+                    width: control-panel.width * 24%;
                     value: time;
                     changed(value) => {
                         seek(value)
@@ -94,13 +98,14 @@ component ControlPanel {
                 }
 
                 Text {
+                    vertical-alignment: center;
                     text: track.time;
                 }
 
                 Slider {
                     minimum: 0.0;
                     maximum: 1.0;
-                    width: control-panel.width * 23%;
+                    width: control-panel.width * 24%;
                     value: volume;
                     changed(value) => {
                         set_volume(value)
@@ -108,6 +113,7 @@ component ControlPanel {
                 }
 
                 Text {
+                    vertical-alignment: center;
                     text: round(volume * 100.0) + "%";
                 }
             }
@@ -127,24 +133,24 @@ component ControlPanel {
                 }
 
                 HorizontalLayout {
-                    alignment: start;
+                    alignment: end;
                     spacing: 10px;
                     Button {
-                        text: "⏮";
+                        icon: @image-url("../assets/icons/previous.svg");
                         clicked => {
                             play_previous()
                         }
                     }
 
                     Button {
-                        text: playback ? "⏸" : "▶";
+                        icon: playback ? @image-url("../assets/icons/pause.svg") : @image-url("../assets/icons/play.svg");
                         clicked => {
                             toggle_pause()
                         }
                     }
 
                     Button {
-                        text: "⏭";
+                        icon: @image-url("../assets/icons/next.svg");
                         clicked => {
                             play_next()
                         }
@@ -164,6 +170,7 @@ export component MainWindow inherits Window {
     in property <float> length;
     in property <float> volume;
     in property <string> version;
+    in property <ColorScheme> color-scheme <=> Palette.color-scheme;
     callback clicked(int);
     callback play_previous();
     callback toggle_pause();
@@ -172,7 +179,7 @@ export component MainWindow inherits Window {
     callback set_volume(float);
     title: "N Music v" + version;
     preferred-width: 450px;
-    preferred-height: 700px;
+    preferred-height: 600px;
     min-width: 200px;
     min-height: 300px;
     VerticalLayout {
@@ -187,7 +194,17 @@ export component MainWindow inherits Window {
             }
         }
 
-        ControlPanel {
+        HorizontalLayout {
+            alignment: center;
+            padding-top: 2px;
+            Rectangle {
+                width: parent.width - 20px;
+                height: 2px;
+                background: Palette.alternate-background;
+            }
+        }
+
+        control_panel := ControlPanel {
             track: tracks[playing];
             playback: playback;
             position_time: position_time;
