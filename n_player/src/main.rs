@@ -48,7 +48,7 @@ async fn loader_task(
                         if !image.is_empty() {
                             image::load_from_memory(&image)
                                 .unwrap()
-                                .resize(128, 128, FilterType::Lanczos3)
+                                .resize_to_fill(128, 128, FilterType::Lanczos3)
                                 .to_rgb8()
                                 .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
                                 .unwrap();
