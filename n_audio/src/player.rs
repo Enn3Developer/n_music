@@ -131,9 +131,6 @@ impl Player {
             while let Ok(message) = rx_t.try_recv() {
                 if let Message::Time(time) = message {
                     last = Some(time);
-                    if self.is_paused {
-                        self.is_paused = false;
-                    }
                 }
             }
         }
