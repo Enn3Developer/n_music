@@ -100,8 +100,11 @@ impl Player {
     /// Seeks to the set timestamp
     /// Be aware that if the timestamp isn't valid the track thread will panic
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub async fn seek_to(&self, secs: u64, frac: f64) -> Result<(), SendError<Message>> {
+    pub async fn seek_to(&self, secs: u64, mut frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
+            if secs == 0 && frac == 0.0 {
+                frac = 0.01;
+            }
             if let Some(current_duration) = &self.cached_get_time {
                 let min_value = if secs as f64 + frac <= current_duration.length {
                     Time {

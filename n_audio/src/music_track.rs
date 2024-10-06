@@ -13,7 +13,6 @@ use symphonia_core::meta::StandardTagKey;
 /// The basics where everything is built upon
 pub struct MusicTrack {
     path: String,
-    name: String,
     ext: String,
 }
 
@@ -23,7 +22,6 @@ impl MusicTrack {
         let p = Path::new(&p);
         Ok(MusicTrack {
             path: path.into(),
-            name: remove_ext(p),
             ext: p
                 .extension()
                 .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidFilename))?
@@ -31,10 +29,6 @@ impl MusicTrack {
                 .unwrap()
                 .to_string(),
         })
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
     }
 
     /// Returns the `FormatReader` provided by Symphonia
@@ -85,6 +79,10 @@ impl MusicTrack {
                     title = tag.value.to_string();
                 }
             }
+        }
+
+        if title.is_empty() {
+            title = remove_ext(&self.path);
         }
 
         Ok(Metadata {

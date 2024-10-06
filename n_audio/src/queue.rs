@@ -85,11 +85,12 @@ impl QueuePlayer {
     }
 
     #[inline]
-    pub fn add<P: Into<String>>(&mut self, path: P) -> io::Result<()> {
+    pub async fn add<P: Into<String>>(&mut self, path: P) -> io::Result<()> {
         self.index_map
-            .push(self.queue_file.blocking_write().stream_position()?);
+            .push(self.queue_file.write().await.stream_position()?);
         self.queue_file
-            .blocking_write()
+            .write()
+            .await
             .get_mut()
             .write_all(format!("{}\n", strip_absolute_path(path.into())).as_bytes())?;
         self.len += 1;

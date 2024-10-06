@@ -33,6 +33,11 @@ impl Storage {
         app_dir
     }
 
+    pub fn music_dir() -> PathBuf {
+        let user_dirs = directories::UserDirs::new().unwrap();
+        user_dirs.audio_dir().unwrap().into()
+    }
+
     pub fn save(&self) {
         let storage_file = Self::app_dir().join("config");
         fs::write(storage_file, bitcode::encode(self)).unwrap();
@@ -42,7 +47,7 @@ impl Storage {
 impl Default for Storage {
     fn default() -> Self {
         Self {
-            path: String::default(),
+            path: Self::music_dir().to_str().unwrap().to_string(),
             volume: 1.0,
         }
     }

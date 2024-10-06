@@ -7,7 +7,6 @@ use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
-use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
@@ -15,7 +14,6 @@ pub mod bus_server;
 pub mod image;
 pub mod runner;
 pub mod storage;
-pub mod ui;
 
 fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
     tracks.par_iter().enumerate().for_each(|(i, track)| {
@@ -118,18 +116,20 @@ impl From<Vec<FileTrack>> for FileTracks {
     }
 }
 
-pub fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
+pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
     player: &mut QueuePlayer,
     path: P,
 ) {
-    let dir = fs::read_dir(path).expect("Can't read files in the chosen directory");
-    dir.filter_map(|item| item.ok()).for_each(|file| {
-        if file.file_type().unwrap().is_file() {
+    let mut dir = tokio::fs::read_dir(path)
+        .await
+        .expect("Can't read files in the chosen directory");
+    while let Ok(Some(file)) = dir.next_entry().await {
+        if file.file_type().await.unwrap().is_file() {
             let mut p = file.path().to_str().unwrap().to_string();
             p.shrink_to_fit();
-            player.add(p).unwrap();
+            player.add(p).await.unwrap();
         }
-    });
+    }
     player.shrink_to_fit();
 
     player.shuffle();
