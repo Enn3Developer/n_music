@@ -3,6 +3,7 @@
 use flume::{Receiver, Sender};
 use image::imageops::FilterType;
 use image::ImageFormat;
+#[cfg(target_os = "linux")]
 use mpris_server::Server;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
