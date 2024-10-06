@@ -163,13 +163,14 @@ export component MainWindow inherits Window {
     in property <float> time;
     in property <float> length;
     in property <float> volume;
+    in property <string> version;
     callback clicked(int);
     callback play_previous();
     callback toggle_pause();
     callback play_next();
     callback seek(float);
     callback set_volume(float);
-    title: "N Music";
+    title: "N Music v" + version;
     preferred-width: 450px;
     preferred-height: 700px;
     min-width: 200px;

@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "1.7.2"
+version = "1.8.0"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 

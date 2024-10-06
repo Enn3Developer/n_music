@@ -119,21 +119,6 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<(usize, TrackData)>) {
 async fn main() {
     let storage = Rc::new(Mutex::new(Storage::read_saved()));
 
-    // if storage.lock().unwrap().path.is_empty() {
-    //     let native_options = eframe::NativeOptions {
-    //         viewport: egui::ViewportBuilder::default().with_inner_size([200.0, 100.0]),
-    //         ..Default::default()
-    //     };
-    //     let init_app = InitApp::new(storage.clone());
-    //     eframe::run_native(
-    //         "Import Playlist",
-    //         native_options,
-    //         Box::new(|_cc| Ok(Box::new(init_app))),
-    //     )
-    //     .expect("can't create init app");
-    //     storage.lock().unwrap().save();
-    // }
-
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
@@ -174,6 +159,8 @@ async fn main() {
             title: remove_ext(track_path).into(),
         });
     }
+
+    main_window.set_version(env!("CARGO_PKG_VERSION").into());
 
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
     let t = tx.clone();
@@ -246,42 +233,6 @@ async fn main() {
     });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
-
-    // let native_options = eframe::NativeOptions {
-    //     viewport: egui::ViewportBuilder::default().with_inner_size([450.0, 600.0]),
-    //     ..Default::default()
-    // };
-    // eframe::run_native(
-    //     "N Music",
-    //     native_options,
-    //     Box::new(|cc| {
-    //         let font_file = find_cjk_font().unwrap();
-    //         let font_name = font_file
-    //             .split('/')
-    //             .last()
-    //             .unwrap()
-    //             .split('.')
-    //             .next()
-    //             .unwrap()
-    //             .to_string();
-    //         let font_file_bytes = fs::read(font_file).unwrap();
-    //
-    //         let font_data = egui::FontData::from_owned(font_file_bytes);
-    //         let mut font_def = egui::FontDefinitions::default();
-    //         font_def.font_data.insert(font_name.to_string(), font_data);
-    //
-    //         font_def
-    //             .families
-    //             .entry(FontFamily::Proportional)
-    //             .or_default()
-    //             .push(font_name);
-    //
-    //         cc.egui_ctx.set_fonts(font_def);
-    //         egui_extras::install_image_loaders(&cc.egui_ctx);
-    //         Ok(Box::new(App::new(runner.clone(), tx, cc)))
-    //     }),
-    // )
-    // .expect("can't start app");
 
     loader.abort();
     updater.abort();
