@@ -189,6 +189,7 @@ async fn main() {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut searching = String::new();
         let mut old_index = usize::MAX;
+        let mut loaded = 0;
         loop {
             interval.tick().await;
             let guard = runner.read().await;
@@ -208,7 +209,9 @@ async fn main() {
                 let index = track_data.index as usize;
                 tracks[index] = track_data;
                 new_loaded = true;
+                loaded += 1;
             }
+            let progress = loaded as f64 / tracks.len() as f64;
             let mut playing_track = None;
             if old_index != index || new_loaded {
                 playing_track = Some(tracks[index].clone());
@@ -251,6 +254,15 @@ async fn main() {
 
                     if let Some(playing_track) = playing_track {
                         window.set_playing_track(playing_track);
+                    }
+
+                    if new_loaded {
+                        let progress = if progress == 1.0 {
+                            0.0
+                        } else {
+                            progress as f32
+                        };
+                        window.set_progress(progress);
                     }
 
                     if new_loaded || updated_search {

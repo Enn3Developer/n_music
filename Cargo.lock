@@ -2842,6 +2842,7 @@ dependencies = [
  "multitag",
  "n_audio",
  "num_cpus",
+ "opusmeta",
  "pollster",
  "rayon",
  "rfd",

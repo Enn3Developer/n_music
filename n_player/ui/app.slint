@@ -1,4 +1,4 @@
-import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider, Palette, LineEdit } from "std-widgets.slint";
+import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider, Palette, LineEdit, ProgressIndicator } from "std-widgets.slint";
 
 struct TrackData {
     title: string,
@@ -17,7 +17,7 @@ component Track {
             clicked()
         }
 
-        Rectangle {
+        box := Rectangle {
             background: playing ? Palette.accent-background : Palette.background;
             border-color: Palette.border;
             border-width: parent.has-hover ? 2px : 0px;
@@ -36,13 +36,17 @@ component Track {
                     Text {
                         color: playing ? Palette.accent-foreground : Palette.foreground;
                         text: track.title;
+                        overflow: elide;
                         font-size: 12px;
+                        max-width: box.width * 60%;
                     }
 
                     Text {
                         text: track.artist;
+                        overflow: elide;
                         color: playing ? Palette.accent-foreground : Palette.foreground;
                         font-size: 12px;
+                        max-width: box.width * 60%;
                     }
                 }
 
@@ -124,12 +128,16 @@ component ControlPanel {
                     alignment: center;
                     Text {
                         text: track.title;
+                        overflow: elide;
                         font-size: 12px;
+                        max-width: control-panel.width * 40%;
                     }
 
                     Text {
                         text: track.artist;
+                        overflow: elide;
                         font-size: 12px;
+                        max-width: control-panel.width * 40%;
                     }
                 }
 
@@ -169,26 +177,35 @@ component Separator {
         padding-bottom: parent.padding-bottom;
         Rectangle {
             width: parent.width - 20px;
-            height: 2px;
+            height: 1px;
             background: Palette.alternate-background;
         }
     }
 }
 
 component TopPanel {
+    in property <float> progress;
     callback searching(string);
-    HorizontalLayout {
+    VerticalLayout {
         spacing: 10px;
         padding: 10px;
-        LineEdit {
-            placeholder-text: "Search...";
-            edited(value) => {
-                searching(value)
+        padding-bottom: 5px;
+        HorizontalLayout {
+            spacing: 10px;
+            LineEdit {
+                placeholder-text: "Search...";
+                edited(value) => {
+                    searching(value)
+                }
+            }
+
+            Button {
+                icon: @image-url("../assets/icons/settings.svg");
             }
         }
 
-        Button {
-            icon: @image-url("../assets/icons/settings.svg");
+        ProgressIndicator {
+            progress: progress;
         }
     }
 }
@@ -204,6 +221,7 @@ export component MainWindow inherits Window {
     in property <float> volume;
     in property <string> version;
     in property <ColorScheme> color-scheme <=> Palette.color-scheme;
+    in property <float> progress;
     callback clicked(int);
     callback play_previous();
     callback toggle_pause();
@@ -214,17 +232,14 @@ export component MainWindow inherits Window {
     title: "N Music v" + version;
     preferred-width: 450px;
     preferred-height: 600px;
-    min-width: 200px;
+    min-width: 400px;
     min-height: 300px;
     VerticalLayout {
         top-panel := TopPanel {
+            progress: progress;
             searching(value) => {
                 searching(value)
             }
-        }
-
-        Separator {
-            padding-bottom: 5px;
         }
 
         ListView {

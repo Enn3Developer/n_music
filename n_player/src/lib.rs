@@ -1,12 +1,15 @@
 use flume::Sender;
+use multitag::data::Picture;
 use multitag::Tag;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
+use opusmeta::picture::PictureType;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
+use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
@@ -35,12 +38,23 @@ fn loader_thread(tx: Sender<Message>, tracks: Vec<String>) {
     });
 }
 
-pub fn get_image<P: AsRef<Path>>(path: P) -> Vec<u8> {
-    if let Ok(tag) = Tag::read_from_path(path) {
+pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
+    if let Ok(tag) = Tag::read_from_path(path.as_ref()) {
         if let Some(album) = tag.get_album_info() {
             if let Some(cover) = album.cover {
                 return cover.data;
+            } else {
+                if let Tag::OpusTag { inner } = tag {
+                    let cover = inner.pictures().first().cloned().map(Picture::from);
+                    if let Some(cover) = cover {
+                        return cover.data;
+                    }
+                } else {
+                    eprintln!("not an opus tag {path:?}");
+                }
             }
+        } else {
+            eprintln!("no album for {path:?}");
         }
     }
 
