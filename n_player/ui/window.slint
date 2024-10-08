@@ -20,6 +20,7 @@ export component MainWindow inherits Window {
     in-out property <bool> settings;
     in-out property <string> theme;
     in-out property <bool> toggle-save-window-size;
+    in-out property <string> current-path;
     out property <length> last-width <=> self.width;
     out property <length> last-height <=> self.height;
     callback clicked(int);
@@ -31,10 +32,12 @@ export component MainWindow inherits Window {
     callback searching(string);
     callback change_theme(string);
     callback save_window_size(bool);
+    callback path();
+    callback set_path(string);
     title: "N Music v" + version;
     preferred-width: saved-width;
     preferred-height: saved-height;
-    min-width: 400px;
+    min-width: 450px;
     min-height: 300px;
     if !settings: App {
         width: parent.width;
@@ -78,6 +81,7 @@ export component MainWindow inherits Window {
         height: parent.height;
         theme: theme;
         window-size: toggle-save-window-size;
+        current_parth: current-path;
         exit => {
             parent.settings = false;
         }
@@ -88,6 +92,12 @@ export component MainWindow inherits Window {
         toggle_save_window_size => {
             parent.toggle-save-window-size = !parent.toggle-save-window-size;
             save_window_size(parent.toggle-save-window-size);
+        }
+        path => {
+            path()
+        }
+        set_path(value) => {
+            set_path(value)
         }
     }
 }

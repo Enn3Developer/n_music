@@ -160,11 +160,15 @@ async fn main() {
     }
 
     main_window.set_version(env!("CARGO_PKG_VERSION").into());
-    main_window.set_color_scheme(settings.lock().unwrap().theme.into());
-    main_window.set_theme(String::from(settings.lock().unwrap().theme).into());
-    main_window.set_saved_width(settings.lock().unwrap().window_size.width as f32);
-    main_window.set_saved_height(settings.lock().unwrap().window_size.height as f32);
-    main_window.set_toggle_save_window_size(settings.lock().unwrap().save_window_size);
+    {
+        let settings = settings.lock().unwrap();
+        main_window.set_color_scheme(settings.theme.into());
+        main_window.set_theme(String::from(settings.theme).into());
+        main_window.set_saved_width(settings.window_size.width as f32);
+        main_window.set_saved_height(settings.window_size.height as f32);
+        main_window.set_toggle_save_window_size(settings.save_window_size);
+        main_window.set_current_path(settings.path.clone().into());
+    }
 
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
@@ -178,6 +182,26 @@ async fn main() {
     });
     let s = settings.clone();
     main_window.on_save_window_size(move |save| s.lock().unwrap().save_window_size = save);
+    let window = main_window.as_weak();
+    main_window.on_path(move || {
+        let window = window.clone();
+        slint::spawn_local(async move {
+            if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
+                window
+                    .upgrade_in_event_loop(move |window| {
+                        window.invoke_set_path(folder.path().to_string_lossy().to_string().into())
+                    })
+                    .unwrap();
+            }
+        })
+        .unwrap();
+    });
+    let s = settings.clone();
+    let window = main_window.clone_strong();
+    main_window.on_set_path(move |path| {
+        s.lock().unwrap().path = path.clone().into();
+        window.set_current_path(path);
+    });
     let t = tx.clone();
     main_window.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
     let t = tx.clone();
@@ -197,7 +221,7 @@ async fn main() {
     let (tx_searching, rx_searching) = flume::unbounded();
     main_window.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
     let window = main_window.as_weak();
-
+    let r = runner.clone();
     let updater = tokio::task::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut searching = String::new();
@@ -205,7 +229,7 @@ async fn main() {
         let mut loaded = 0;
         loop {
             interval.tick().await;
-            let guard = runner.read().await;
+            let guard = r.read().await;
             let mut index = guard.index();
             if index > len {
                 index = 0;
@@ -287,6 +311,7 @@ async fn main() {
     });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
+    settings.lock().unwrap().volume = runner.read().await.volume();
     if settings.lock().unwrap().save_window_size {
         let width = main_window.get_last_width() as usize;
         let height = main_window.get_last_height() as usize;
