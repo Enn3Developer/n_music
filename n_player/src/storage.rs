@@ -1,14 +1,18 @@
+use crate::{Theme, WindowSize};
 use bitcode::{Decode, Encode};
 use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Decode, Encode)]
-pub struct Storage {
+pub struct Settings {
     pub path: String,
     pub volume: f64,
+    pub theme: Theme,
+    pub window_size: WindowSize,
+    pub save_window_size: bool,
 }
 
-impl Storage {
+impl Settings {
     pub fn read_saved() -> Self {
         let storage_file = Self::app_dir().join("config");
         if storage_file.exists() && storage_file.is_file() {
@@ -44,11 +48,14 @@ impl Storage {
     }
 }
 
-impl Default for Storage {
+impl Default for Settings {
     fn default() -> Self {
         Self {
             path: Self::music_dir().to_str().unwrap().to_string(),
             volume: 1.0,
+            theme: Theme::default(),
+            window_size: WindowSize::default(),
+            save_window_size: false,
         }
     }
 }

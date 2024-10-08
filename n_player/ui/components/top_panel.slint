@@ -1,0 +1,33 @@
+import { Button, ProgressIndicator, LineEdit, Palette } from "std-widgets.slint";
+
+export component TopPanel {
+    in property <float> progress;
+    callback searching(string);
+    callback settings();
+    VerticalLayout {
+        spacing: 10px;
+        padding: 10px;
+        padding-bottom: 5px;
+        HorizontalLayout {
+            spacing: 10px;
+            LineEdit {
+                placeholder-text: "Search...";
+                edited(value) => {
+                    searching(value)
+                }
+            }
+
+            Button {
+                icon: @image-url("../../assets/icons/settings.svg");
+                colorize-icon: true;
+                clicked => {
+                    settings()
+                }
+            }
+        }
+
+        ProgressIndicator {
+            progress: progress;
+        }
+    }
+}

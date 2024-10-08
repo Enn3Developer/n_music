@@ -13,13 +13,11 @@ use n_player::bus_server::linux::MPRISBridge;
 #[cfg(not(target_os = "linux"))]
 use n_player::bus_server::DummyServer;
 use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
-use n_player::storage::Storage;
-use n_player::{add_all_tracks_to_player, bus_server, get_image};
-use slint::private_unstable_api::re_exports::ColorScheme;
+use n_player::storage::Settings;
+use n_player::{add_all_tracks_to_player, bus_server, get_image, Theme, WindowSize};
 use slint::VecModel;
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -55,7 +53,7 @@ async fn loader_task(
                                 .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
                                 .unwrap();
 
-                            let images_dir = Storage::app_dir().join("images");
+                            let images_dir = Settings::app_dir().join("images");
                             if !images_dir.exists() {
                                 tokio::fs::create_dir(images_dir.as_path()).await.unwrap();
                             }
@@ -117,13 +115,13 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
 
 #[tokio::main]
 async fn main() {
-    let storage = Rc::new(Mutex::new(Storage::read_saved()));
+    let settings = Arc::new(Mutex::new(Settings::read_saved()));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
-    let mut player = QueuePlayer::new(storage.lock().unwrap().path.clone());
-    add_all_tracks_to_player(&mut player, storage.lock().unwrap().path.clone()).await;
+    let mut player = QueuePlayer::new(settings.lock().unwrap().path.clone());
+    add_all_tracks_to_player(&mut player, settings.lock().unwrap().path.clone()).await;
     let len = player.len();
 
     let runner = Arc::new(RwLock::new(Runner::new(player)));
@@ -162,9 +160,24 @@ async fn main() {
     }
 
     main_window.set_version(env!("CARGO_PKG_VERSION").into());
-    main_window.set_color_scheme(ColorScheme::Dark);
+    main_window.set_color_scheme(settings.lock().unwrap().theme.into());
+    main_window.set_theme(String::from(settings.lock().unwrap().theme).into());
+    main_window.set_saved_width(settings.lock().unwrap().window_size.width as f32);
+    main_window.set_saved_height(settings.lock().unwrap().window_size.height as f32);
+    main_window.set_toggle_save_window_size(settings.lock().unwrap().save_window_size);
 
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
+    let s = settings.clone();
+    let window = main_window.clone_strong();
+    main_window.on_change_theme(move |theme_name| {
+        if let Ok(theme) = Theme::try_from(theme_name.to_string()) {
+            s.lock().unwrap().theme = theme;
+            window.set_color_scheme(theme.into());
+            s.lock().unwrap().save();
+        }
+    });
+    let s = settings.clone();
+    main_window.on_save_window_size(move |save| s.lock().unwrap().save_window_size = save);
     let t = tx.clone();
     main_window.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
     let t = tx.clone();
@@ -274,8 +287,15 @@ async fn main() {
     });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
+    if settings.lock().unwrap().save_window_size {
+        let width = main_window.get_last_width() as usize;
+        let height = main_window.get_last_height() as usize;
+        settings.lock().unwrap().window_size = WindowSize { width, height };
+    } else {
+        settings.lock().unwrap().window_size = WindowSize::default();
+    }
 
     updater.abort();
     future.abort();
-    storage.lock().unwrap().save();
+    settings.lock().unwrap().save();
 }

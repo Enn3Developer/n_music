@@ -1,6 +1,6 @@
 use crate::get_image;
 use crate::runner::Runner;
-use crate::storage::Storage;
+use crate::storage::Settings;
 use flume::{Receiver, Sender};
 use hashbrown::HashMap;
 use image::imageops::FilterType;
@@ -81,7 +81,7 @@ fn load_image(tx: Sender<ImageLoadedMessage>, rx: Arc<Mutex<Receiver<(usize, Pat
                     .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
                     .unwrap();
 
-                let images_dir = Storage::app_dir().join("images");
+                let images_dir = Settings::app_dir().join("images");
                 if !images_dir.exists() {
                     fs::create_dir(images_dir.as_path()).unwrap();
                 }

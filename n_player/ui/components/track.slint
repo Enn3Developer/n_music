@@ -1,0 +1,56 @@
+import {TrackData} from "./../data/track_data.slint";
+import {Palette} from "std-widgets.slint";
+
+export component Track {
+    in property <TrackData> track;
+    in property <bool> playing;
+    callback clicked();
+    TouchArea {
+        clicked => {
+            clicked()
+        }
+
+        box := Rectangle {
+            background: playing ? Palette.accent-background : Palette.background;
+            border-color: Palette.border;
+            border-width: parent.has-hover ? 2px : 0px;
+            HorizontalLayout {
+                spacing: 10px;
+                padding: 10px;
+                padding-left: playing ? 20px : 10px;
+                Image {
+                    width: 64px;
+                    height: 64px;
+                    source: track.cover;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        color: playing ? Palette.accent-foreground : Palette.foreground;
+                        text: track.title;
+                        overflow: elide;
+                        font-size: 12px;
+                        max-width: box.width * 60%;
+                    }
+
+                    Text {
+                        text: track.artist;
+                        overflow: elide;
+                        color: playing ? Palette.accent-foreground : Palette.foreground;
+                        font-size: 12px;
+                        max-width: box.width * 60%;
+                    }
+                }
+
+                Text {
+                    text: track.time;
+                    color: playing ? Palette.accent-foreground : Palette.foreground;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    font-size: 10px;
+                }
+            }
+        }
+    }
+}

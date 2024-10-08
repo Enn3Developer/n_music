@@ -1,0 +1,113 @@
+import {TrackData} from "./../data/track_data.slint";
+import { Slider, Button } from "std-widgets.slint";
+
+export component ControlPanel {
+    in property <TrackData> track;
+    in property <bool> playback;
+    in property <string> position_time;
+    in property <float> time;
+    in property <float> length;
+    in property <float> volume;
+    callback play_previous();
+    callback toggle_pause();
+    callback play_next();
+    callback seek(float);
+    callback set_volume(float);
+    control-panel := HorizontalLayout {
+        spacing: 10px;
+        padding: 10px;
+        Image {
+            width: 72px;
+            height: 72px;
+            source: track.cover;
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                Text {
+                    vertical-alignment: center;
+                    text: position_time;
+                }
+
+                Slider {
+                    minimum: 0.0;
+                    maximum: length;
+                    width: control-panel.width * 24%;
+                    value: time;
+                    changed(value) => {
+                        seek(value)
+                    }
+                }
+
+                Text {
+                    vertical-alignment: center;
+                    text: track.time;
+                }
+
+                Slider {
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    width: control-panel.width * 24%;
+                    value: volume;
+                    changed(value) => {
+                        set_volume(value)
+                    }
+                }
+
+                Text {
+                    vertical-alignment: center;
+                    text: round(volume * 100.0) + "%";
+                }
+            }
+
+            HorizontalLayout {
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: track.title;
+                        overflow: elide;
+                        font-size: 12px;
+                        max-width: control-panel.width * 40%;
+                    }
+
+                    Text {
+                        text: track.artist;
+                        overflow: elide;
+                        font-size: 12px;
+                        max-width: control-panel.width * 40%;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+                    Button {
+                        icon: @image-url("../../assets/icons/previous.svg");
+                        colorize-icon: true;
+                        clicked => {
+                            play_previous()
+                        }
+                    }
+
+                    Button {
+                        icon: playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                        colorize-icon: true;
+                        clicked => {
+                            toggle_pause()
+                        }
+                    }
+
+                    Button {
+                        icon: @image-url("../../assets/icons/next.svg");
+                        colorize-icon: true;
+                        clicked => {
+                            play_next()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

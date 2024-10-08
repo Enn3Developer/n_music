@@ -1,0 +1,76 @@
+import {TrackData} from "./../data/track_data.slint";
+import {Separator} from "./../components/separator.slint";
+import {TopPanel} from "./../components/top_panel.slint";
+import {ControlPanel} from "./../components/control_panel.slint";
+import {Track} from "./../components/track.slint";
+import {ListView} from "std-widgets.slint";
+
+export component App {
+    in property <[TrackData]> tracks;
+    in property <int> playing;
+    in property <TrackData> playing_track;
+    in property <bool> playback;
+    in property <string> position_time;
+    in property <float> time;
+    in property <float> length;
+    in property <float> volume;
+    in property <float> progress;
+    callback clicked(int);
+    callback play_previous();
+    callback toggle_pause();
+    callback play_next();
+    callback seek(float);
+    callback set_volume(float);
+    callback searching(string);
+    callback settings();
+    VerticalLayout {
+        top-panel := TopPanel {
+            progress: progress;
+            searching(value) => {
+                searching(value)
+            }
+            settings => {
+                settings()
+            }
+        }
+
+        ListView {
+            viewport-width: parent.width - 20px;
+            for track[i] in tracks: Track {
+                track: track;
+                playing: playing == track.index;
+                clicked => {
+                    clicked(track.index)
+                }
+            }
+        }
+
+        Separator {
+            padding-top: 5px;
+        }
+
+        control_panel := ControlPanel {
+            track: playing_track;
+            playback: playback;
+            position_time: position_time;
+            time: time;
+            length: length;
+            volume: volume;
+            play_previous => {
+                play_previous()
+            }
+            toggle_pause => {
+                toggle_pause()
+            }
+            play_next => {
+                play_next()
+            }
+            seek(value) => {
+                seek(value)
+            }
+            set_volume(value) => {
+                set_volume(value)
+            }
+        }
+    }
+}
