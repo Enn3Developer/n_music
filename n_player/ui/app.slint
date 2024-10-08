@@ -1,10 +1,11 @@
-import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider, Palette } from "std-widgets.slint";
+import { VerticalBox, ScrollView, ListView, Button, HorizontalBox, Slider, Palette, LineEdit } from "std-widgets.slint";
 
 struct TrackData {
     title: string,
     artist: string,
     time: string,
     cover: image,
+    index: int,
 }
 
 component Track {
@@ -161,9 +162,41 @@ component ControlPanel {
     }
 }
 
+component Separator {
+    HorizontalLayout {
+        alignment: center;
+        padding-top: parent.padding-top;
+        padding-bottom: parent.padding-bottom;
+        Rectangle {
+            width: parent.width - 20px;
+            height: 2px;
+            background: Palette.alternate-background;
+        }
+    }
+}
+
+component TopPanel {
+    callback searching(string);
+    HorizontalLayout {
+        spacing: 10px;
+        padding: 10px;
+        LineEdit {
+            placeholder-text: "Search...";
+            edited(value) => {
+                searching(value)
+            }
+        }
+
+        Button {
+            icon: @image-url("../assets/icons/settings.svg");
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     in property <[TrackData]> tracks;
     in property <int> playing;
+    in property <TrackData> playing_track;
     in property <bool> playback;
     in property <string> position_time;
     in property <float> time;
@@ -177,35 +210,40 @@ export component MainWindow inherits Window {
     callback play_next();
     callback seek(float);
     callback set_volume(float);
+    callback searching(string);
     title: "N Music v" + version;
     preferred-width: 450px;
     preferred-height: 600px;
     min-width: 200px;
     min-height: 300px;
     VerticalLayout {
+        top-panel := TopPanel {
+            searching(value) => {
+                searching(value)
+            }
+        }
+
+        Separator {
+            padding-bottom: 5px;
+        }
+
         ListView {
             viewport-width: parent.width - 20px;
             for track[i] in tracks: Track {
                 track: track;
-                playing: playing == i;
+                playing: playing == track.index;
                 clicked => {
-                    clicked(i)
+                    clicked(track.index)
                 }
             }
         }
 
-        HorizontalLayout {
-            alignment: center;
-            padding-top: 2px;
-            Rectangle {
-                width: parent.width - 20px;
-                height: 2px;
-                background: Palette.alternate-background;
-            }
+        Separator {
+            padding-top: 5px;
         }
 
         control_panel := ControlPanel {
-            track: tracks[playing];
+            track: playing_track;
             playback: playback;
             position_time: position_time;
             time: time;

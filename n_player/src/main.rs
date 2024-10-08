@@ -32,7 +32,7 @@ unsafe impl Sync for TrackData {}
 
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
-    tx: Sender<(usize, TrackData)>,
+    tx: Sender<TrackData>,
     rx_l: Arc<tokio::sync::Mutex<Receiver<usize>>>,
 ) {
     loop {
@@ -69,24 +69,22 @@ async fn loader_task(
                         PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                     };
 
-                    tx.send_async((
-                        index,
-                        TrackData {
-                            artist: meta.artist.into(),
-                            time: format!(
-                                "{:02}:{:02}",
-                                (meta.time.length / 60.0).floor() as u64,
-                                meta.time.length.floor() as u64 % 60
-                            )
-                            .into(),
-                            cover: if image_path.exists() {
-                                slint::Image::load_from_path(&image_path).unwrap()
-                            } else {
-                                Default::default()
-                            },
-                            title: meta.title.into(),
+                    tx.send_async(TrackData {
+                        artist: meta.artist.into(),
+                        time: format!(
+                            "{:02}:{:02}",
+                            (meta.time.length / 60.0).floor() as u64,
+                            meta.time.length.floor() as u64 % 60
+                        )
+                        .into(),
+                        cover: if image_path.exists() {
+                            slint::Image::load_from_path(&image_path).unwrap()
+                        } else {
+                            Default::default()
                         },
-                    ))
+                        title: meta.title.into(),
+                        index: index as i32,
+                    })
                     .await
                     .unwrap();
                 }
@@ -95,7 +93,7 @@ async fn loader_task(
     }
 }
 
-async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<(usize, TrackData)>) {
+async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
     let len = runner.read().await.len();
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
@@ -159,6 +157,7 @@ async fn main() {
             cover: Default::default(),
             time: Default::default(),
             title: remove_ext(track_path).into(),
+            index: i as i32,
         });
     }
 
@@ -182,10 +181,14 @@ async fn main() {
     let t = tx.clone();
     main_window
         .on_set_volume(move |volume| t.send(RunnerMessage::SetVolume(volume as f64)).unwrap());
+    let (tx_searching, rx_searching) = flume::unbounded();
+    main_window.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
     let window = main_window.as_weak();
 
     let updater = tokio::task::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
+        let mut searching = String::new();
+        let mut old_index = usize::MAX;
         loop {
             interval.tick().await;
             let guard = runner.read().await;
@@ -199,6 +202,44 @@ async fn main() {
             let time_float = time.position;
             let volume = guard.volume();
             let position = time.format_pos();
+
+            let mut new_loaded = false;
+            while let Ok(track_data) = rx_l.try_recv() {
+                let index = track_data.index as usize;
+                tracks[index] = track_data;
+                new_loaded = true;
+            }
+            let mut playing_track = None;
+            if old_index != index || new_loaded {
+                playing_track = Some(tracks[index].clone());
+                old_index = index;
+            }
+
+            let mut updated_search = false;
+            while let Ok(search_string) = rx_searching.try_recv() {
+                searching = search_string;
+                updated_search = true;
+            }
+
+            let mut t = vec![];
+
+            let is_searching = !searching.is_empty();
+
+            if new_loaded || updated_search {
+                t = tracks.clone();
+            }
+
+            if is_searching && (updated_search || new_loaded) {
+                t = t
+                    .into_iter()
+                    .filter(|track| {
+                        let search = searching.to_lowercase();
+                        track.title.to_lowercase().contains(&search)
+                            || track.artist.to_lowercase().contains(&search)
+                    })
+                    .collect();
+            }
+
             window
                 .upgrade_in_event_loop(move |window| {
                     window.set_playing(index as i32);
@@ -207,37 +248,21 @@ async fn main() {
                     window.set_length(length as f32);
                     window.set_playback(playback);
                     window.set_volume(volume as f32);
+
+                    if let Some(playing_track) = playing_track {
+                        window.set_playing_track(playing_track);
+                    }
+
+                    if new_loaded || updated_search {
+                        window.set_tracks(VecModel::from_slice(&t));
+                    }
                 })
                 .unwrap();
         }
     });
 
-    let window = main_window.as_weak();
-    let loader = tokio::task::spawn(async move {
-        let mut loaded = 0;
-        let threshold = num_cpus::get() * 4;
-        while let Ok((index, track_data)) = rx_l.recv_async().await {
-            tracks[index] = track_data;
-            loaded += 1;
-            if loaded % threshold == 0 {
-                let t = tracks.clone();
-                window
-                    .upgrade_in_event_loop(move |window| {
-                        window.set_tracks(VecModel::from_slice(&t));
-                    })
-                    .unwrap();
-            }
-        }
-        window
-            .upgrade_in_event_loop(move |window| {
-                window.set_tracks(VecModel::from_slice(&tracks));
-            })
-            .unwrap();
-    });
-
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
-    loader.abort();
     updater.abort();
     future.abort();
     storage.lock().unwrap().save();
