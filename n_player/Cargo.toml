@@ -25,6 +25,7 @@ tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 num_cpus = "1.16.0"
 pollster = "0.3.0"
+infer = { version = "0.16.0", default-features = false, features = ["std"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
 slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "gettext"] }

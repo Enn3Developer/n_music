@@ -6,6 +6,7 @@ use slint::private_unstable_api::re_exports::ColorScheme;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
+use tokio::fs::File;
 
 pub mod bus_server;
 pub mod image;
@@ -45,9 +46,13 @@ pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<Strin
     let mut paths = vec![];
     while let Ok(Some(file)) = dir.next_entry().await {
         if file.file_type().await.unwrap().is_file() {
-            let mut p = file.path().to_str().unwrap().to_string();
-            p.shrink_to_fit();
-            paths.push(p);
+            if let Ok(Some(mime)) = infer::get_from_path(&file.path()) {
+                if mime.mime_type().contains("audio") {
+                    let mut p = file.path().to_str().unwrap().to_string();
+                    p.shrink_to_fit();
+                    paths.push(p);
+                }
+            }
         }
     }
     player.add_all(paths).await.unwrap();
