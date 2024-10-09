@@ -27,10 +27,10 @@ num_cpus = "1.16.0"
 pollster = "0.3.0"
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
-slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg"] }
+slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "gettext"] }
 
 [target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
-slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia"] }
+slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia", "gettext"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = "0.8.1"

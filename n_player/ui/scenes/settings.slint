@@ -19,7 +19,7 @@ export component Settings {
             Text {
                 horizontal-alignment: left;
                 vertical-alignment: center;
-                text: "Settings";
+                text: @tr("Settings");
                 font-size: 24px;
             }
 
@@ -42,7 +42,7 @@ export component Settings {
                 spacing: 10px;
                 padding: 10px;
                 Setting {
-                    text: "Theme";
+                    text: @tr("Theme");
                     ComboBox {
                         model: ["System", "Light", "Dark"];
                         current-value: theme;
@@ -53,7 +53,7 @@ export component Settings {
                 }
 
                 Setting {
-                    text: "Save Window Size";
+                    text: @tr("Save Window Size");
                     Switch {
                         checked: window-size;
                         toggled => {
@@ -63,7 +63,7 @@ export component Settings {
                 }
 
                 Setting {
-                    text: "Music Path (needs restart)";
+                    text: @tr("Music Path (needs restart)");
                     LineEdit {
                         text: current-parth;
                         accepted(value) => {

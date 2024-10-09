@@ -131,6 +131,8 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<TrackData>>) {
 
 #[tokio::main]
 async fn main() {
+    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/lang/"));
+
     let settings = Arc::new(RefCell::new(Settings::read_saved()));
 
     let tmp = NamedTempFile::new().unwrap();

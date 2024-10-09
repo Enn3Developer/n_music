@@ -11,7 +11,7 @@ export component TopPanel {
         HorizontalLayout {
             spacing: 10px;
             LineEdit {
-                placeholder-text: "Search...";
+                placeholder-text: @tr("Search...");
                 edited(value) => {
                     searching(value)
                 }
