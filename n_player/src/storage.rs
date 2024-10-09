@@ -39,7 +39,15 @@ impl Settings {
 
     pub fn music_dir() -> PathBuf {
         let user_dirs = directories::UserDirs::new().unwrap();
-        user_dirs.audio_dir().unwrap().into()
+        if let Some(music_dir) = user_dirs.audio_dir() {
+            music_dir.into()
+        } else {
+            let path = user_dirs.home_dir().join("Music");
+            if !path.exists() {
+                fs::create_dir(&path).unwrap();
+            }
+            path
+        }
     }
 
     pub fn save(&self) {
