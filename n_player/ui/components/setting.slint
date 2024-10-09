@@ -1,0 +1,19 @@
+export component Setting {
+    in property <string> text;
+    HorizontalLayout {
+        max-height: 20px;
+        Text {
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            text: text;
+            font-size: 14px;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            max-height: 24px;
+            spacing: 10px;
+            @children
+        }
+    }
+}

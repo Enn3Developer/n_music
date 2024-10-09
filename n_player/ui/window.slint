@@ -34,7 +34,7 @@ export component MainWindow inherits Window {
     callback save_window_size(bool);
     callback path();
     callback set_path(string);
-    title: "N Music v" + version;
+    title: "N Music - " + playing_track.title;
     preferred-width: saved-width;
     preferred-height: saved-height;
     min-width: 450px;

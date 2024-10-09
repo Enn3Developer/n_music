@@ -196,6 +196,7 @@ impl Player {
         let thread =
             thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
 
+        self.is_paused = false;
         self.rx_e = Some(rx_e);
         self.rx_t = Some(rx_t);
         self.tx = Some(tx);

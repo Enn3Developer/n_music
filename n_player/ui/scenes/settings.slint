@@ -1,25 +1,6 @@
 import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit } from "std-widgets.slint";
 import { Separator } from "../components/separator.slint";
-
-component Setting {
-    in property <string> text;
-    HorizontalLayout {
-        max-height: 24px;
-        Text {
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            text: text;
-            font-size: 16px;
-        }
-
-        HorizontalLayout {
-            alignment: end;
-            max-height: 24px;
-            spacing: 10px;
-            @children
-        }
-    }
-}
+import { Setting } from "../components/setting.slint";
 
 export component Settings {
     in property <string> theme;
@@ -98,6 +79,8 @@ export component Settings {
                         }
                     }
                 }
+
+                VerticalLayout { }
             }
         }
     }

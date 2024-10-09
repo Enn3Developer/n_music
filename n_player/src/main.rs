@@ -40,25 +40,33 @@ async fn loader_task(
             }
             let path = runner.read().await.get_path_for_file(index).await;
             if let Ok(track) = MusicTrack::new(path.to_string_lossy().to_string()) {
-                if let Ok(meta) = track.get_meta() {
+                if let Ok(Ok(meta)) = tokio::task::spawn_blocking(move || track.get_meta()).await {
                     let p = path.clone();
                     let image_path = if let Ok(mut image) =
                         tokio::task::spawn_blocking(move || get_image(p)).await
                     {
                         if !image.is_empty() {
-                            image::load_from_memory(&image)
+                            if let Err(e) = image::load_from_memory(&image)
                                 .unwrap()
                                 .resize_to_fill(128, 128, FilterType::Lanczos3)
                                 .to_rgb8()
                                 .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
-                                .unwrap();
+                            {
+                                eprintln!(
+                                    "error happened during image resizing and conversion: {e}"
+                                );
+                            }
 
                             let images_dir = Settings::app_dir().join("images");
                             if !images_dir.exists() {
-                                tokio::fs::create_dir(images_dir.as_path()).await.unwrap();
+                                if let Err(e) = tokio::fs::create_dir(images_dir.as_path()).await {
+                                    eprintln!("error happened during dir creation: {e}");
+                                }
                             }
                             let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                            tokio::fs::write(path.as_path(), image).await.unwrap();
+                            if let Err(e) = tokio::fs::write(path.as_path(), image).await {
+                                eprintln!("error happened during image writing: {e}");
+                            }
                             path
                         } else {
                             PathBuf::new().join("thisdoesntexistsodontworryaboutit")
@@ -67,24 +75,27 @@ async fn loader_task(
                         PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                     };
 
-                    tx.send_async(TrackData {
-                        artist: meta.artist.into(),
-                        time: format!(
-                            "{:02}:{:02}",
-                            (meta.time.length / 60.0).floor() as u64,
-                            meta.time.length.floor() as u64 % 60
-                        )
-                        .into(),
-                        cover: if image_path.exists() {
-                            slint::Image::load_from_path(&image_path).unwrap()
-                        } else {
-                            Default::default()
-                        },
-                        title: meta.title.into(),
-                        index: index as i32,
-                    })
-                    .await
-                    .unwrap();
+                    if let Err(e) = tx
+                        .send_async(TrackData {
+                            artist: meta.artist.into(),
+                            time: format!(
+                                "{:02}:{:02}",
+                                (meta.time.length / 60.0).floor() as u64,
+                                meta.time.length.floor() as u64 % 60
+                            )
+                            .into(),
+                            cover: if image_path.exists() {
+                                slint::Image::load_from_path(&image_path).unwrap()
+                            } else {
+                                Default::default()
+                            },
+                            title: meta.title.into(),
+                            index: index as i32,
+                        })
+                        .await
+                    {
+                        eprintln!("error happened during metadata transfer, probably because the app was closed: {e}");
+                    }
                 }
             }
         }
@@ -96,7 +107,8 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
     let rx_l = Arc::new(tokio::sync::Mutex::new(rx_l));
-    for _ in 0..num_cpus::get() {
+    let cpus = num_cpus::get() * 2;
+    for _ in 0..cpus {
         let runner = runner.clone();
         let tx = tx.clone();
         let rx_l = rx_l.clone();
@@ -105,7 +117,7 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
     for i in 0..len {
         tx_l.send_async(i).await.unwrap();
     }
-    for _ in 0..num_cpus::get() {
+    for _ in 0..cpus {
         tx_l.send_async(usize::MAX).await.unwrap();
     }
     for task in tasks {

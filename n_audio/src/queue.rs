@@ -16,7 +16,6 @@ pub struct QueuePlayer {
     path: String,
     player: Player,
     index: usize,
-    len: usize,
     index_map: Vec<u64>,
 }
 
@@ -36,7 +35,6 @@ impl QueuePlayer {
             player,
             index: usize::MAX - 1,
             path,
-            len: 0,
             index_map: vec![],
         }
     }
@@ -46,11 +44,11 @@ impl QueuePlayer {
     }
 
     pub fn len(&self) -> usize {
-        self.len
+        self.index_map.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.index_map.is_empty()
     }
 
     pub fn path(&self) -> String {
@@ -93,21 +91,36 @@ impl QueuePlayer {
             .await
             .get_mut()
             .write_all(format!("{}\n", strip_absolute_path(path.into())).as_bytes())?;
-        self.len += 1;
         Ok(())
+    }
+
+    pub async fn add_all<P: Into<String>>(
+        &mut self,
+        paths: impl IntoIterator<Item = P>,
+    ) -> io::Result<()> {
+        let mut data = Vec::with_capacity(8192);
+        for path in paths {
+            let path = format!("{}\n", strip_absolute_path(path.into()));
+            let mut path = path.as_bytes().to_vec();
+            self.index_map.push(data.len() as u64);
+            data.append(&mut path);
+        }
+        self.queue_file
+            .write()
+            .await
+            .get_mut()
+            .write_all(data.as_slice())
     }
 
     #[inline]
     pub fn remove(&mut self, index: usize) {
         self.index_map.remove(index);
-        self.len -= 1;
     }
 
     #[inline]
     pub fn clear(&mut self) {
         self.queue_file.blocking_write().get_mut().rewind().unwrap();
         self.index_map.clear();
-        self.len = 0;
         self.index = usize::MAX - 1;
     }
 
@@ -117,7 +130,7 @@ impl QueuePlayer {
     }
 
     pub async fn current_track_name(&self) -> String {
-        let seek = if self.index >= self.len {
+        let seek = if self.index >= self.len() {
             self.index_map[0].clone()
         } else {
             self.index_map[self.index].clone()
@@ -134,7 +147,7 @@ impl QueuePlayer {
 
     pub async fn play(&mut self) -> io::Result<()> {
         let track = MusicTrack::new(self.get_path_for_file(self.index).await.to_str().unwrap())?;
-        let format = track.get_format()?;
+        let format = tokio::task::spawn_blocking(move || track.get_format()).await??;
 
         self.player.play(format);
         Ok(())
@@ -149,7 +162,7 @@ impl QueuePlayer {
     pub async fn play_next(&mut self) -> io::Result<()> {
         self.index += 1;
 
-        if self.index >= self.len {
+        if self.index >= self.len() {
             self.index = 0;
         }
 
@@ -158,7 +171,7 @@ impl QueuePlayer {
 
     pub async fn play_previous(&mut self) -> io::Result<()> {
         if self.index == 0 {
-            self.index = self.len;
+            self.index = self.len();
         }
 
         self.index -= 1;
