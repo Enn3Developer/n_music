@@ -16,9 +16,10 @@ use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use n_player::storage::Settings;
 use n_player::{add_all_tracks_to_player, bus_server, get_image, Theme, WindowSize};
 use slint::VecModel;
+use std::cell::RefCell;
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
@@ -127,13 +128,13 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
 
 #[tokio::main]
 async fn main() {
-    let settings = Arc::new(Mutex::new(Settings::read_saved()));
+    let settings = Arc::new(RefCell::new(Settings::read_saved()));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
-    let mut player = QueuePlayer::new(settings.lock().unwrap().path.clone());
-    add_all_tracks_to_player(&mut player, settings.lock().unwrap().path.clone()).await;
+    let mut player = QueuePlayer::new(settings.borrow().path.clone());
+    add_all_tracks_to_player(&mut player, settings.borrow().path.clone()).await;
     let len = player.len();
 
     let runner = Arc::new(RwLock::new(Runner::new(player)));
@@ -172,28 +173,26 @@ async fn main() {
     }
 
     main_window.set_version(env!("CARGO_PKG_VERSION").into());
-    {
-        let settings = settings.lock().unwrap();
-        main_window.set_color_scheme(settings.theme.into());
-        main_window.set_theme(String::from(settings.theme).into());
-        main_window.set_saved_width(settings.window_size.width as f32);
-        main_window.set_saved_height(settings.window_size.height as f32);
-        main_window.set_toggle_save_window_size(settings.save_window_size);
-        main_window.set_current_path(settings.path.clone().into());
-    }
+
+    main_window.set_color_scheme(settings.borrow().theme.into());
+    main_window.set_theme(String::from(settings.borrow().theme).into());
+    main_window.set_saved_width(settings.borrow().window_size.width as f32);
+    main_window.set_saved_height(settings.borrow().window_size.height as f32);
+    main_window.set_toggle_save_window_size(settings.borrow().save_window_size);
+    main_window.set_current_path(settings.borrow().path.clone().into());
 
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
     let window = main_window.clone_strong();
     main_window.on_change_theme(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name.to_string()) {
-            s.lock().unwrap().theme = theme;
+            s.borrow_mut().theme = theme;
             window.set_color_scheme(theme.into());
-            s.lock().unwrap().save();
+            s.borrow_mut().save();
         }
     });
     let s = settings.clone();
-    main_window.on_save_window_size(move |save| s.lock().unwrap().save_window_size = save);
+    main_window.on_save_window_size(move |save| s.borrow_mut().save_window_size = save);
     let window = main_window.as_weak();
     main_window.on_path(move || {
         let window = window.clone();
@@ -211,7 +210,7 @@ async fn main() {
     let s = settings.clone();
     let window = main_window.clone_strong();
     main_window.on_set_path(move |path| {
-        s.lock().unwrap().path = path.clone().into();
+        s.borrow_mut().path = path.clone().into();
         window.set_current_path(path);
     });
     let t = tx.clone();
@@ -323,16 +322,16 @@ async fn main() {
     });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
-    settings.lock().unwrap().volume = runner.read().await.volume();
-    if settings.lock().unwrap().save_window_size {
+    settings.borrow_mut().volume = runner.read().await.volume();
+    if settings.borrow().save_window_size {
         let width = main_window.get_last_width() as usize;
         let height = main_window.get_last_height() as usize;
-        settings.lock().unwrap().window_size = WindowSize { width, height };
+        settings.borrow_mut().window_size = WindowSize { width, height };
     } else {
-        settings.lock().unwrap().window_size = WindowSize::default();
+        settings.borrow_mut().window_size = WindowSize::default();
     }
 
     updater.abort();
     future.abort();
-    settings.lock().unwrap().save();
+    settings.borrow_mut().save();
 }
