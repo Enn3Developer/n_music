@@ -31,12 +31,15 @@ unsafe impl Sync for TrackData {}
 
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
-    tx: Sender<TrackData>,
+    tx: Sender<Option<TrackData>>,
     rx_l: Arc<tokio::sync::Mutex<Receiver<usize>>>,
 ) {
     loop {
         if let Ok(index) = rx_l.lock().await.recv_async().await {
             if index == usize::MAX {
+                if let Err(e) = tx.send_async(None).await {
+                    eprintln!("error happened when signaling end of task, probably because the app was closed: {e}");
+                }
                 return;
             }
             let path = runner.read().await.get_path_for_file(index).await;
@@ -77,7 +80,7 @@ async fn loader_task(
                     };
 
                     if let Err(e) = tx
-                        .send_async(TrackData {
+                        .send_async(Some(TrackData {
                             artist: meta.artist.into(),
                             time: format!(
                                 "{:02}:{:02}",
@@ -92,7 +95,7 @@ async fn loader_task(
                             },
                             title: meta.title.into(),
                             index: index as i32,
-                        })
+                        }))
                         .await
                     {
                         eprintln!("error happened during metadata transfer, probably because the app was closed: {e}");
@@ -103,7 +106,7 @@ async fn loader_task(
     }
 }
 
-async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<TrackData>) {
+async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<TrackData>>) {
     let len = runner.read().await.len();
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
@@ -238,6 +241,7 @@ async fn main() {
         let mut searching = String::new();
         let mut old_index = usize::MAX;
         let mut loaded = 0;
+        let threshold = num_cpus::get() * 4;
         loop {
             interval.tick().await;
             let guard = r.read().await;
@@ -254,10 +258,16 @@ async fn main() {
 
             let mut new_loaded = false;
             while let Ok(track_data) = rx_l.try_recv() {
-                let index = track_data.index as usize;
-                tracks[index] = track_data;
-                new_loaded = true;
-                loaded += 1;
+                if let Some(track_data) = track_data {
+                    let index = track_data.index as usize;
+                    tracks[index] = track_data;
+                    loaded += 1;
+                    if loaded % threshold == 0 {
+                        new_loaded = true;
+                    }
+                } else {
+                    new_loaded = true;
+                }
             }
             let progress = loaded as f64 / tracks.len() as f64;
             let mut playing_track = None;
