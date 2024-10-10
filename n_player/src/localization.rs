@@ -10,6 +10,7 @@ pub struct Locale {
     theme: Option<String>,
     window_size: Option<String>,
     music_path: Option<String>,
+    language: Option<String>,
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
