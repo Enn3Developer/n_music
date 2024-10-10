@@ -4,5 +4,8 @@
   "theme": "Theme",
   "window_size": "Save window size",
   "music_path": "Music path (needs restart)",
-  "language": "Language"
+  "language": "Language",
+  "theme_system": "System",
+  "theme_system_light": "Light",
+  "theme_system_dark": "Dark"
 }

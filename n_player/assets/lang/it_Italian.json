@@ -4,5 +4,8 @@
   "theme": "Tema",
   "window_size": "Salva dimensioni della finestra",
   "music_path": "Percorso musica (richiede un riavvio)",
-  "language": "Lingua"
+  "language": "Lingua",
+  "theme_system": "Sistema",
+  "theme_system_light": "Chiaro",
+  "theme_system_dark": "Scuro"
 }
