@@ -2,6 +2,9 @@ import {TrackData} from "./data/track_data.slint";
 import {Palette} from "std-widgets.slint";
 import {App} from "./scenes/app.slint";
 import { Settings } from "scenes/settings.slint";
+import { Localization } from "globals/localization.slint";
+
+export { Localization }
 
 export component MainWindow inherits Window {
     in property <[TrackData]> tracks;

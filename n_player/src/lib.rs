@@ -6,12 +6,17 @@ use slint::private_unstable_api::re_exports::ColorScheme;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
-use tokio::fs::File;
+
+slint::include_modules!();
 
 pub mod bus_server;
 pub mod image;
+pub mod localization;
 pub mod runner;
-pub mod storage;
+pub mod settings;
+
+unsafe impl Send for TrackData {}
+unsafe impl Sync for TrackData {}
 
 pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
     if let Ok(tag) = Tag::read_from_path(path.as_ref()) {
@@ -70,8 +75,8 @@ pub struct WindowSize {
 impl Default for WindowSize {
     fn default() -> Self {
         Self {
-            width: 450,
-            height: 600,
+            width: 500,
+            height: 625,
         }
     }
 }

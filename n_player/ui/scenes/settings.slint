@@ -1,6 +1,7 @@
 import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit } from "std-widgets.slint";
 import { Separator } from "../components/separator.slint";
 import { Setting } from "../components/setting.slint";
+import { Localization } from "../globals/localization.slint";
 
 export component Settings {
     in property <string> theme;
@@ -19,7 +20,7 @@ export component Settings {
             Text {
                 horizontal-alignment: left;
                 vertical-alignment: center;
-                text: @tr("Settings");
+                text: Localization.settings;
                 font-size: 24px;
             }
 
@@ -42,7 +43,7 @@ export component Settings {
                 spacing: 10px;
                 padding: 10px;
                 Setting {
-                    text: @tr("Theme");
+                    text: Localization.theme;
                     ComboBox {
                         model: ["System", "Light", "Dark"];
                         current-value: theme;
@@ -53,7 +54,7 @@ export component Settings {
                 }
 
                 Setting {
-                    text: @tr("Save Window Size");
+                    text: Localization.window_size;
                     Switch {
                         checked: window-size;
                         toggled => {
@@ -63,7 +64,7 @@ export component Settings {
                 }
 
                 Setting {
-                    text: @tr("Music Path (needs restart)");
+                    text: Localization.music_path;
                     LineEdit {
                         text: current-parth;
                         accepted(value) => {

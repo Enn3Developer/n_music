@@ -1,4 +1,5 @@
 import { Button, ProgressIndicator, LineEdit, Palette } from "std-widgets.slint";
+import { Localization } from "../globals/localization.slint";
 
 export component TopPanel {
     in property <float> progress;
@@ -11,7 +12,7 @@ export component TopPanel {
         HorizontalLayout {
             spacing: 10px;
             LineEdit {
-                placeholder-text: @tr("Search...");
+                placeholder-text: Localization.search;
                 edited(value) => {
                     searching(value)
                 }

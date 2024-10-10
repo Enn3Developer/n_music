@@ -12,10 +12,14 @@ use n_audio::remove_ext;
 use n_player::bus_server::linux::MPRISBridge;
 #[cfg(not(target_os = "linux"))]
 use n_player::bus_server::DummyServer;
+use n_player::localization::localize;
 use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
-use n_player::storage::Settings;
-use n_player::{add_all_tracks_to_player, bus_server, get_image, Theme, WindowSize};
-use slint::VecModel;
+use n_player::settings::Settings;
+use n_player::{
+    add_all_tracks_to_player, bus_server, get_image, Localization, MainWindow, Theme, TrackData,
+    WindowSize,
+};
+use slint::{ComponentHandle, VecModel};
 use std::cell::RefCell;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -23,11 +27,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
-
-slint::include_modules!();
-
-unsafe impl Send for TrackData {}
-unsafe impl Sync for TrackData {}
 
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
@@ -131,8 +130,6 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<TrackData>>) {
 
 #[tokio::main]
 async fn main() {
-    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/lang/"));
-
     let settings = Arc::new(RefCell::new(Settings::read_saved()));
 
     let tmp = NamedTempFile::new().unwrap();
@@ -149,6 +146,11 @@ async fn main() {
 
     let (tx_l, rx_l) = flume::unbounded();
     let main_window = MainWindow::new().unwrap();
+
+    localize(
+        settings.borrow().locale.clone(),
+        main_window.global::<Localization>(),
+    );
 
     let future = tokio::spawn(async move {
         #[cfg(target_os = "linux")]
