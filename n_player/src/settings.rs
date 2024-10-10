@@ -10,7 +10,6 @@ pub struct Settings {
     pub theme: Theme,
     pub window_size: WindowSize,
     pub save_window_size: bool,
-    #[hint = ascii]
     pub locale: Option<String>,
 }
 

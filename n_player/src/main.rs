@@ -12,7 +12,7 @@ use n_audio::remove_ext;
 use n_player::bus_server::linux::MPRISBridge;
 #[cfg(not(target_os = "linux"))]
 use n_player::bus_server::DummyServer;
-use n_player::localization::localize;
+use n_player::localization::{get_locale_denominator, localize};
 use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use n_player::settings::Settings;
 use n_player::{
@@ -188,6 +188,19 @@ async fn main() {
     main_window.set_toggle_save_window_size(settings.borrow().save_window_size);
     main_window.set_current_path(settings.borrow().path.clone().into());
 
+    let s = settings.clone();
+    let window = main_window.clone_strong();
+    main_window
+        .global::<Localization>()
+        .on_set_locale(move |locale_name| {
+            let denominator = get_locale_denominator(Some(&locale_name));
+            s.borrow_mut().locale = Some(denominator.to_string());
+            localize(
+                Some(denominator.to_string()),
+                window.global::<Localization>(),
+            );
+            s.borrow().save();
+        });
     tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
     let window = main_window.clone_strong();

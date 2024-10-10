@@ -1,5 +1,6 @@
 use crate::Localization;
 use serde::{Deserialize, Serialize};
+use slint::{SharedString, VecModel};
 
 include!(concat!(env!("OUT_DIR"), "/localizations.rs"));
 
@@ -25,6 +26,14 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
     let locale = get_locale(&denominator);
     let english = get_locale("en");
 
+    let mut localizations = LOCALIZATIONS
+        .iter()
+        .map(|(_, name)| name.to_string())
+        .map(|name| name.into())
+        .collect::<Vec<SharedString>>();
+    localizations.sort();
+    localization.set_localizations(VecModel::from_slice(&localizations));
+    localization.set_current_locale(get_locale_name(Some(&denominator)).into());
     localization.set_settings(
         locale
             .settings
@@ -60,13 +69,33 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
             .unwrap_or(english.music_path.as_ref().unwrap())
             .into(),
     );
+    localization.set_language(
+        locale
+            .language
+            .as_ref()
+            .unwrap_or(english.language.as_ref().unwrap())
+            .into(),
+    );
 }
 
-pub fn get_locale_name(denominator: &str) -> &str {
-    for localization in LOCALIZATIONS {
-        if denominator == localization.0 {
-            return localization.1;
+pub fn get_locale_name(denominator: Option<&str>) -> &str {
+    if let Some(denominator) = denominator {
+        for localization in LOCALIZATIONS {
+            if denominator == localization.0 {
+                return localization.1;
+            }
         }
     }
     "English"
+}
+
+pub fn get_locale_denominator(name: Option<&str>) -> &str {
+    if let Some(name) = name {
+        for localization in LOCALIZATIONS {
+            if name == localization.1 {
+                return localization.0;
+            }
+        }
+    }
+    "en"
 }

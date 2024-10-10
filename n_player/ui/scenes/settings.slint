@@ -81,6 +81,17 @@ export component Settings {
                     }
                 }
 
+                Setting {
+                    text: Localization.language;
+                    ComboBox {
+                        model: Localization.localizations;
+                        current-value: Localization.current_locale;
+                        selected(value) => {
+                            Localization.set_locale(value)
+                        }
+                    }
+                }
+
                 VerticalLayout { }
             }
         }
