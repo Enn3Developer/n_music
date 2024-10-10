@@ -1,17 +1,12 @@
-import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit } from "std-widgets.slint";
+import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit, Palette } from "std-widgets.slint";
 import { Separator } from "../components/separator.slint";
 import { Setting } from "../components/setting.slint";
 import { Localization } from "../globals/localization.slint";
+import { SettingsData } from "../globals/settings_data.slint";
+import { AppData } from "../globals/app_data.slint";
 
 export component Settings {
-    in property <string> theme;
-    in property <bool> window-size;
-    in property <string> current-parth;
     callback exit();
-    callback change_theme(string);
-    callback toggle_save_window_size();
-    callback path();
-    callback set_path(string);
     settings := VerticalLayout {
         HorizontalLayout {
             spacing: 10px;
@@ -46,9 +41,10 @@ export component Settings {
                     text: Localization.theme;
                     ComboBox {
                         model: ["System", "Light", "Dark"];
-                        current-value: theme;
+                        current-value: SettingsData.theme;
                         selected(value) => {
-                            change_theme(value)
+                            SettingsData.change_theme(value);
+                            SettingsData.theme = value;
                         }
                     }
                 }
@@ -56,9 +52,10 @@ export component Settings {
                 Setting {
                     text: Localization.window_size;
                     Switch {
-                        checked: window-size;
+                        checked: SettingsData.save_window_size;
                         toggled => {
-                            toggle_save_window_size()
+                            SettingsData.save_window_size = !SettingsData.save_window_size;
+                            SettingsData.toggle_save_window_size(SettingsData.save_window_size);
                         }
                     }
                 }
@@ -66,9 +63,9 @@ export component Settings {
                 Setting {
                     text: Localization.music_path;
                     LineEdit {
-                        text: current-parth;
+                        text: SettingsData.current_path;
                         accepted(value) => {
-                            set_path(value)
+                            SettingsData.set_path(value)
                         }
                     }
 
@@ -76,7 +73,7 @@ export component Settings {
                         icon: @image-url("../../assets/icons/folder.svg");
                         colorize-icon: true;
                         clicked => {
-                            path()
+                            SettingsData.path()
                         }
                     }
                 }
@@ -92,7 +89,13 @@ export component Settings {
                     }
                 }
 
-                VerticalLayout { }
+                VerticalLayout {
+                    Text {
+                        text: "N Music v" + AppData.version;
+                        font-size: 12px;
+                        color: Palette.accent-foreground;
+                    }
+                }
             }
         }
     }

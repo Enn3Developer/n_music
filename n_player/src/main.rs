@@ -16,8 +16,8 @@ use n_player::localization::{get_locale_denominator, localize};
 use n_player::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use n_player::settings::Settings;
 use n_player::{
-    add_all_tracks_to_player, bus_server, get_image, Localization, MainWindow, Theme, TrackData,
-    WindowSize,
+    add_all_tracks_to_player, bus_server, get_image, AppData, Localization, MainWindow,
+    SettingsData, Theme, TrackData, WindowSize,
 };
 use slint::{ComponentHandle, VecModel};
 use std::cell::RefCell;
@@ -179,14 +179,17 @@ async fn main() {
         });
     }
 
-    main_window.set_version(env!("CARGO_PKG_VERSION").into());
+    let settings_data = main_window.global::<SettingsData>();
+    let app_data = main_window.global::<AppData>();
 
-    main_window.set_color_scheme(settings.borrow().theme.into());
-    main_window.set_theme(String::from(settings.borrow().theme).into());
-    main_window.set_saved_width(settings.borrow().window_size.width as f32);
-    main_window.set_saved_height(settings.borrow().window_size.height as f32);
-    main_window.set_toggle_save_window_size(settings.borrow().save_window_size);
-    main_window.set_current_path(settings.borrow().path.clone().into());
+    app_data.set_version(env!("CARGO_PKG_VERSION").into());
+
+    settings_data.set_color_scheme(settings.borrow().theme.into());
+    settings_data.set_theme(String::from(settings.borrow().theme).into());
+    settings_data.set_width(settings.borrow().window_size.width as f32);
+    settings_data.set_height(settings.borrow().window_size.height as f32);
+    settings_data.set_save_window_size(settings.borrow().save_window_size);
+    settings_data.set_current_path(settings.borrow().path.clone().into());
 
     let s = settings.clone();
     let window = main_window.clone_strong();
@@ -201,26 +204,26 @@ async fn main() {
             );
             s.borrow().save();
         });
-    tokio::task::block_in_place(|| main_window.set_tracks(VecModel::from_slice(&tracks)));
+    tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
-    let window = main_window.clone_strong();
-    main_window.on_change_theme(move |theme_name| {
+    settings_data.on_change_theme_callback(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name.to_string()) {
             s.borrow_mut().theme = theme;
-            window.set_color_scheme(theme.into());
             s.borrow_mut().save();
         }
     });
     let s = settings.clone();
-    main_window.on_save_window_size(move |save| s.borrow_mut().save_window_size = save);
+    settings_data.on_toggle_save_window_size(move |save| s.borrow_mut().save_window_size = save);
     let window = main_window.as_weak();
-    main_window.on_path(move || {
+    settings_data.on_path(move || {
         let window = window.clone();
         slint::spawn_local(async move {
             if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
                 window
                     .upgrade_in_event_loop(move |window| {
-                        window.invoke_set_path(folder.path().to_string_lossy().to_string().into())
+                        window
+                            .global::<SettingsData>()
+                            .invoke_set_path(folder.path().to_string_lossy().to_string().into())
                     })
                     .unwrap();
             }
@@ -228,29 +231,28 @@ async fn main() {
         .unwrap();
     });
     let s = settings.clone();
-    let window = main_window.clone_strong();
-    main_window.on_set_path(move |path| {
+    let s_data = main_window.global::<SettingsData>();
+    settings_data.on_set_path(move |path| {
         s.borrow_mut().path = path.clone().into();
-        window.set_current_path(path);
+        s_data.set_current_path(path);
     });
     let t = tx.clone();
-    main_window.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
+    app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
     let t = tx.clone();
-    main_window.on_play_previous(move || t.send(RunnerMessage::PlayPrevious).unwrap());
+    app_data.on_play_previous(move || t.send(RunnerMessage::PlayPrevious).unwrap());
     let t = tx.clone();
-    main_window.on_toggle_pause(move || t.send(RunnerMessage::TogglePause).unwrap());
+    app_data.on_toggle_pause(move || t.send(RunnerMessage::TogglePause).unwrap());
     let t = tx.clone();
-    main_window.on_play_next(move || t.send(RunnerMessage::PlayNext).unwrap());
+    app_data.on_play_next(move || t.send(RunnerMessage::PlayNext).unwrap());
     let t = tx.clone();
-    main_window.on_seek(move |time| {
+    app_data.on_seek(move |time| {
         t.send(RunnerMessage::Seek(RunnerSeek::Absolute(time as f64)))
             .unwrap()
     });
     let t = tx.clone();
-    main_window
-        .on_set_volume(move |volume| t.send(RunnerMessage::SetVolume(volume as f64)).unwrap());
+    app_data.on_set_volume(move |volume| t.send(RunnerMessage::SetVolume(volume as f64)).unwrap());
     let (tx_searching, rx_searching) = flume::unbounded();
-    main_window.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
+    app_data.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
     let window = main_window.as_weak();
     let r = runner.clone();
     let updater = tokio::task::spawn(async move {
@@ -320,15 +322,16 @@ async fn main() {
 
             window
                 .upgrade_in_event_loop(move |window| {
-                    window.set_playing(index as i32);
-                    window.set_position_time(position.into());
-                    window.set_time(time_float as f32);
-                    window.set_length(length as f32);
-                    window.set_playback(playback);
-                    window.set_volume(volume as f32);
+                    let app_data = window.global::<AppData>();
+                    app_data.set_playing(index as i32);
+                    app_data.set_position_time(position.into());
+                    app_data.set_time(time_float as f32);
+                    app_data.set_length(length as f32);
+                    app_data.set_playback(playback);
+                    app_data.set_volume(volume as f32);
 
                     if let Some(playing_track) = playing_track {
-                        window.set_playing_track(playing_track);
+                        app_data.set_playing_track(playing_track);
                     }
 
                     if new_loaded {
@@ -337,11 +340,11 @@ async fn main() {
                         } else {
                             progress as f32
                         };
-                        window.set_progress(progress);
+                        app_data.set_progress(progress);
                     }
 
                     if new_loaded || updated_search {
-                        window.set_tracks(VecModel::from_slice(&t));
+                        app_data.set_tracks(VecModel::from_slice(&t));
                     }
                 })
                 .unwrap();

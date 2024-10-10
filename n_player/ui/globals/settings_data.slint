@@ -1,0 +1,18 @@
+import { Palette } from "std-widgets.slint";
+
+export global SettingsData {
+    in-out property <ColorScheme> color_scheme <=> Palette.color-scheme;
+    in-out property <string> theme;
+    in-out property <length> width;
+    in-out property <length> height;
+    in-out property <bool> save_window_size;
+    in-out property <string> current_path;
+    callback change_theme_callback(string);
+    callback toggle_save_window_size(bool);
+    callback path();
+    callback set_path(string);
+    public function change_theme(theme: string) {
+        self.theme = theme;
+        change_theme_callback(theme);
+    }
+}

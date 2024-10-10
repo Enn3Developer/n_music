@@ -3,78 +3,23 @@ import {Palette} from "std-widgets.slint";
 import {App} from "./scenes/app.slint";
 import { Settings } from "scenes/settings.slint";
 import { Localization } from "globals/localization.slint";
+import { SettingsData } from "globals/settings_data.slint";
+import { AppData } from "globals/app_data.slint";
 
-export { Localization }
+export { Localization, SettingsData, AppData }
 
 export component MainWindow inherits Window {
-    in property <[TrackData]> tracks;
-    in property <int> playing;
-    in property <TrackData> playing_track;
-    in property <bool> playback;
-    in property <string> position_time;
-    in property <float> time;
-    in property <float> length;
-    in property <float> volume;
-    in property <string> version;
-    in property <ColorScheme> color-scheme <=> Palette.color-scheme;
-    in property <float> progress;
-    in property <length> saved-width;
-    in property <length> saved-height;
     in-out property <bool> settings;
-    in-out property <string> theme;
-    in-out property <bool> toggle-save-window-size;
-    in-out property <string> current-path;
     out property <length> last-width <=> self.width;
     out property <length> last-height <=> self.height;
-    callback clicked(int);
-    callback play_previous();
-    callback toggle_pause();
-    callback play_next();
-    callback seek(float);
-    callback set_volume(float);
-    callback searching(string);
-    callback change_theme(string);
-    callback save_window_size(bool);
-    callback path();
-    callback set_path(string);
-    title: "N Music - " + playing_track.title;
-    preferred-width: saved-width;
-    preferred-height: saved-height;
+    title: "N Music - " + AppData.playing_track.title;
+    preferred-width: SettingsData.width;
+    preferred-height: SettingsData.height;
     min-width: 450px;
     min-height: 300px;
     if !settings: App {
         width: parent.width;
         height: parent.height;
-        tracks: tracks;
-        playing: playing;
-        playing_track: playing_track;
-        playback: playback;
-        position_time: position_time;
-        time: time;
-        length: length;
-        volume: volume;
-        progress: progress;
-        clicked(value) => {
-            clicked(value)
-        }
-        play_previous => {
-            play_previous()
-        }
-        toggle_pause => {
-            toggle_pause()
-        }
-        play_next => {
-            play_next()
-        }
-        seek(value) => {
-            seek(value)
-        }
-        set_volume(value) => {
-            set_volume(value)
-        }
-        searching(value) => {
-            searching(value)
-        }
         settings => {
             parent.settings = true;
         }
@@ -82,25 +27,8 @@ export component MainWindow inherits Window {
     if settings: Settings {
         width: parent.width;
         height: parent.height;
-        theme: theme;
-        window-size: toggle-save-window-size;
-        current_parth: current-path;
         exit => {
             parent.settings = false;
-        }
-        change_theme(value) => {
-            change_theme(value);
-            parent.theme = value;
-        }
-        toggle_save_window_size => {
-            parent.toggle-save-window-size = !parent.toggle-save-window-size;
-            save_window_size(parent.toggle-save-window-size);
-        }
-        path => {
-            path()
-        }
-        set_path(value) => {
-            set_path(value)
         }
     }
 }

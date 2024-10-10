@@ -1,9 +1,8 @@
 import { Button, ProgressIndicator, LineEdit, Palette } from "std-widgets.slint";
 import { Localization } from "../globals/localization.slint";
+import { AppData } from "../globals/app_data.slint";
 
 export component TopPanel {
-    in property <float> progress;
-    callback searching(string);
     callback settings();
     VerticalLayout {
         spacing: 10px;
@@ -14,7 +13,7 @@ export component TopPanel {
             LineEdit {
                 placeholder-text: Localization.search;
                 edited(value) => {
-                    searching(value)
+                    AppData.searching(value)
                 }
             }
 
@@ -28,7 +27,7 @@ export component TopPanel {
         }
 
         ProgressIndicator {
-            progress: progress;
+            progress: AppData.progress;
         }
     }
 }
