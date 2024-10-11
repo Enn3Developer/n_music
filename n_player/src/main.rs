@@ -185,7 +185,7 @@ async fn main() {
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
     settings_data.set_color_scheme(settings.borrow().theme.into());
-    settings_data.set_theme(String::from(settings.borrow().theme).into());
+    settings_data.set_theme(i32::from(settings.borrow().theme));
     settings_data.set_width(settings.borrow().window_size.width as f32);
     settings_data.set_height(settings.borrow().window_size.height as f32);
     settings_data.set_save_window_size(settings.borrow().save_window_size);
@@ -209,7 +209,7 @@ async fn main() {
     let s = settings.clone();
     let window = main_window.clone_strong();
     settings_data.on_change_theme_callback(move |theme_name| {
-        if let Ok(theme) = Theme::try_from(theme_name.to_string()) {
+        if let Ok(theme) = Theme::try_from(theme_name) {
             s.borrow_mut().theme = theme;
             s.borrow_mut().save();
             window

@@ -40,10 +40,11 @@ export component Settings {
                 Setting {
                     text: Localization.theme;
                     ComboBox {
-                        model: ["System", "Light", "Dark"];
-                        current-value: SettingsData.theme;
+                        model: [Localization.theme_system, Localization.theme_light, Localization.theme_dark];
+                        current-index: SettingsData.theme;
+                        current-value: self.model[self.current-index];
                         selected(value) => {
-                            SettingsData.change_theme(value);
+                            SettingsData.change_theme(self.current-index);
                         }
                     }
                 }
@@ -117,7 +118,7 @@ export component Settings {
                     }
 
                     Text {
-                        text: "License: GPL-3";
+                        text: Localization.license + ": GPL-3";
                         font-size: 12px;
                         color: Palette.alternate-foreground;
                         horizontal-alignment: center;
