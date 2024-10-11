@@ -124,10 +124,9 @@ impl Runner {
                     RunnerSeek::Absolute(value) => value,
                     RunnerSeek::Relative(value) => self.current_time.position + value,
                 };
-                self.player
-                    .seek_to(seek.trunc() as u64, seek.fract())
-                    .await
-                    .unwrap();
+                if let Err(e) = self.player.seek_to(seek.trunc() as u64, seek.fract()).await {
+                    eprintln!("error happened while asking to seek: {e}");
+                }
             }
         }
     }

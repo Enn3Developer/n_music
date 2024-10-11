@@ -25,9 +25,9 @@ export component ControlPanel {
                     minimum: 0.0;
                     maximum: AppData.length > 1.0 ? AppData.length : 1.0;
                     width: control-panel.width * 24%;
-                    value: AppData.time;
+                    value <=> AppData.time;
                     changed(value) => {
-                        AppData.seek(value)
+                        AppData.seek(value);
                     }
                 }
 
