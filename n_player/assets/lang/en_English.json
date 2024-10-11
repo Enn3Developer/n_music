@@ -6,7 +6,8 @@
   "music_path": "Music path (needs restart)",
   "language": "Language",
   "theme_system": "System",
-  "theme_system_light": "Light",
-  "theme_system_dark": "Dark",
-  "credits": "Made by Enn3DevPlayer and others"
+  "theme_light": "Light",
+  "theme_dark": "Dark",
+  "credits": "Made by Enn3DevPlayer and others",
+  "license": "License"
 }

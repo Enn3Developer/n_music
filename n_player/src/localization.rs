@@ -12,7 +12,11 @@ pub struct Locale {
     window_size: Option<String>,
     music_path: Option<String>,
     language: Option<String>,
+    theme_system: Option<String>,
+    theme_light: Option<String>,
+    theme_dark: Option<String>,
     credits: Option<String>,
+    license: Option<String>,
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
@@ -77,11 +81,39 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
             .unwrap_or(english.language.as_ref().unwrap())
             .into(),
     );
+    localization.set_theme_system(
+        locale
+            .theme_system
+            .as_ref()
+            .unwrap_or(english.theme_system.as_ref().unwrap())
+            .into(),
+    );
+    localization.set_theme_light(
+        locale
+            .theme_light
+            .as_ref()
+            .unwrap_or(english.theme_light.as_ref().unwrap())
+            .into(),
+    );
+    localization.set_theme_dark(
+        locale
+            .theme_dark
+            .as_ref()
+            .unwrap_or(english.theme_dark.as_ref().unwrap())
+            .into(),
+    );
     localization.set_credits(
         locale
             .credits
             .as_ref()
             .unwrap_or(english.credits.as_ref().unwrap())
+            .into(),
+    );
+    localization.set_license(
+        locale
+            .license
+            .as_ref()
+            .unwrap_or(english.license.as_ref().unwrap())
             .into(),
     );
 }

@@ -108,6 +108,15 @@ impl From<Theme> for String {
         }
     }
 }
+impl From<Theme> for i32 {
+    fn from(value: Theme) -> Self {
+        match value {
+            Theme::System => 0,
+            Theme::Light => 1,
+            Theme::Dark => 2,
+        }
+    }
+}
 
 impl TryFrom<String> for Theme {
     type Error = String;
@@ -118,6 +127,22 @@ impl TryFrom<String> for Theme {
         } else if &value == "Light" {
             Ok(Self::Light)
         } else if &value == "Dark" {
+            Ok(Self::Dark)
+        } else {
+            Err(format!("{value} is not a valid theme"))
+        }
+    }
+}
+
+impl TryFrom<i32> for Theme {
+    type Error = String;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(Self::System)
+        } else if value == 1 {
+            Ok(Self::Light)
+        } else if value == 2 {
             Ok(Self::Dark)
         } else {
             Err(format!("{value} is not a valid theme"))
