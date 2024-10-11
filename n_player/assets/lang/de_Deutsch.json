@@ -1,0 +1,12 @@
+{
+  "settings": "Einstellungen",
+  "search": "Suche...",
+  "theme": "Thema",
+  "window_size": "Fenstergröße speichern",
+  "music_path": "Musikpfad (erfordert einen Neustart)",
+  "language": "Sprache",
+  "theme_system": "System",
+  "theme_system_light": "Hell",
+  "theme_system_dark": "Dunkel",
+  "credits": "Entwickelt von Enn3DevPlayer und anderen"
+}
