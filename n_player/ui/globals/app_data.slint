@@ -1,0 +1,22 @@
+import {TrackData} from "../data/track_data.slint";
+
+export global AppData {
+    in property <[TrackData]> tracks;
+    in property <int> playing;
+    in property <TrackData> playing_track;
+    in property <bool> playback;
+    in property <string> position_time;
+    in property <float> time;
+    in property <float> length;
+    in property <float> volume;
+    in property <string> version;
+    in property <float> progress;
+    callback clicked(int);
+    callback play_previous();
+    callback toggle_pause();
+    callback play_next();
+    callback seek(float);
+    callback set_volume(float);
+    callback searching(string);
+    callback open_link(string);
+}

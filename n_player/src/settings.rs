@@ -10,6 +10,7 @@ pub struct Settings {
     pub theme: Theme,
     pub window_size: WindowSize,
     pub save_window_size: bool,
+    pub locale: Option<String>,
 }
 
 impl Settings {
@@ -64,6 +65,7 @@ impl Default for Settings {
             theme: Theme::default(),
             window_size: WindowSize::default(),
             save_window_size: false,
+            locale: None,
         }
     }
 }

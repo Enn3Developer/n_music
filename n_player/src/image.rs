@@ -1,6 +1,6 @@
 use crate::get_image;
 use crate::runner::Runner;
-use crate::storage::Settings;
+use crate::settings::Settings;
 use flume::{Receiver, Sender};
 use hashbrown::HashMap;
 use image::imageops::FilterType;

@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 
 pub async fn run(runner: Arc<RwLock<Runner>>, rx: Receiver<RunnerMessage>) {
-    let mut interval = tokio::time::interval(Duration::from_millis(750));
+    let mut interval = tokio::time::interval(Duration::from_millis(500));
     loop {
         tokio::select! {
             _ = interval.tick() => {

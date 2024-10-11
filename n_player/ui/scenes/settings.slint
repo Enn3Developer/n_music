@@ -1,16 +1,12 @@
-import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit } from "std-widgets.slint";
+import { Button, ScrollView, ComboBox, CheckBox, Switch, LineEdit, Palette } from "std-widgets.slint";
 import { Separator } from "../components/separator.slint";
 import { Setting } from "../components/setting.slint";
+import { Localization } from "../globals/localization.slint";
+import { SettingsData } from "../globals/settings_data.slint";
+import { AppData } from "../globals/app_data.slint";
 
 export component Settings {
-    in property <string> theme;
-    in property <bool> window-size;
-    in property <string> current-parth;
     callback exit();
-    callback change_theme(string);
-    callback toggle_save_window_size();
-    callback path();
-    callback set_path(string);
     settings := VerticalLayout {
         HorizontalLayout {
             spacing: 10px;
@@ -19,7 +15,7 @@ export component Settings {
             Text {
                 horizontal-alignment: left;
                 vertical-alignment: center;
-                text: @tr("Settings");
+                text: Localization.settings;
                 font-size: 24px;
             }
 
@@ -42,32 +38,33 @@ export component Settings {
                 spacing: 10px;
                 padding: 10px;
                 Setting {
-                    text: @tr("Theme");
+                    text: Localization.theme;
                     ComboBox {
                         model: ["System", "Light", "Dark"];
-                        current-value: theme;
+                        current-value: SettingsData.theme;
                         selected(value) => {
-                            change_theme(value)
+                            SettingsData.change_theme(value);
                         }
                     }
                 }
 
                 Setting {
-                    text: @tr("Save Window Size");
+                    text: Localization.window_size;
                     Switch {
-                        checked: window-size;
+                        checked: SettingsData.save_window_size;
                         toggled => {
-                            toggle_save_window_size()
+                            SettingsData.save_window_size = !SettingsData.save_window_size;
+                            SettingsData.toggle_save_window_size(SettingsData.save_window_size);
                         }
                     }
                 }
 
                 Setting {
-                    text: @tr("Music Path (needs restart)");
+                    text: Localization.music_path;
                     LineEdit {
-                        text: current-parth;
+                        text: SettingsData.current_path;
                         accepted(value) => {
-                            set_path(value)
+                            SettingsData.set_path(value)
                         }
                     }
 
@@ -75,12 +72,58 @@ export component Settings {
                         icon: @image-url("../../assets/icons/folder.svg");
                         colorize-icon: true;
                         clicked => {
-                            path()
+                            SettingsData.path()
                         }
                     }
                 }
 
-                VerticalLayout { }
+                Setting {
+                    text: Localization.language;
+                    ComboBox {
+                        model: Localization.localizations;
+                        current-value: Localization.current_locale;
+                        selected(value) => {
+                            Localization.set_locale(value)
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 10px;
+                    padding: 10px;
+                    Text {
+                        text: "N Music v" + AppData.version;
+                        font-size: 12px;
+                        color: Palette.alternate-foreground;
+                        horizontal-alignment: center;
+                        max-height: 20px;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        TouchArea {
+                            width: text.width;
+                            text := Text {
+                                text: Localization.credits;
+                                font-size: 12px;
+                                color: cadetblue;
+                                max-height: 20px;
+                            }
+
+                            clicked => {
+                                AppData.open_link("https://github.com/Enn3Developer/n_music/graphs/contributors");
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "License: GPL-3";
+                        font-size: 12px;
+                        color: Palette.alternate-foreground;
+                        horizontal-alignment: center;
+                        max-height: 20px;
+                    }
+                }
             }
         }
     }

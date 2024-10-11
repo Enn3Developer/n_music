@@ -4,31 +4,12 @@ import {TopPanel} from "./../components/top_panel.slint";
 import {ControlPanel} from "./../components/control_panel.slint";
 import {Track} from "./../components/track.slint";
 import {ListView} from "std-widgets.slint";
+import { AppData } from "../globals/app_data.slint";
 
 export component App {
-    in property <[TrackData]> tracks;
-    in property <int> playing;
-    in property <TrackData> playing_track;
-    in property <bool> playback;
-    in property <string> position_time;
-    in property <float> time;
-    in property <float> length;
-    in property <float> volume;
-    in property <float> progress;
-    callback clicked(int);
-    callback play_previous();
-    callback toggle_pause();
-    callback play_next();
-    callback seek(float);
-    callback set_volume(float);
-    callback searching(string);
     callback settings();
     VerticalLayout {
         top-panel := TopPanel {
-            progress: progress;
-            searching(value) => {
-                searching(value)
-            }
             settings => {
                 settings()
             }
@@ -36,11 +17,11 @@ export component App {
 
         ListView {
             viewport-width: parent.width - 20px;
-            for track[i] in tracks: Track {
+            for track[i] in AppData.tracks: Track {
                 track: track;
-                playing: playing == track.index;
+                playing: AppData.playing == track.index;
                 clicked => {
-                    clicked(track.index)
+                    AppData.clicked(track.index)
                 }
             }
         }
@@ -49,28 +30,6 @@ export component App {
             padding-top: 5px;
         }
 
-        control_panel := ControlPanel {
-            track: playing_track;
-            playback: playback;
-            position_time: position_time;
-            time: time;
-            length: length;
-            volume: volume;
-            play_previous => {
-                play_previous()
-            }
-            toggle_pause => {
-                toggle_pause()
-            }
-            play_next => {
-                play_next()
-            }
-            seek(value) => {
-                seek(value)
-            }
-            set_volume(value) => {
-                set_volume(value)
-            }
-        }
+        control_panel := ControlPanel { }
     }
 }
