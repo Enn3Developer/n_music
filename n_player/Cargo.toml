@@ -6,6 +6,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+crate-type = ["cdylib"]
+
 [build-dependencies]
 slint-build = "1.8.0"
 
@@ -16,7 +19,6 @@ serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 directories = "5.0.1"
 n_audio = { path = "../n_audio" }
-rfd = "0.15.0"
 async-channel = "2.3.1"
 flume = "0.11.0"
 rayon = "1.10.0"
@@ -50,11 +52,8 @@ version = "1.8.0"
 default-features = false
 features = ["backend-android-activity-06"]
 
-[package.metadata.packager]
-before-packaging-command = "cargo build --release"
-product_name = "N Music"
-identifier = "com.enn3developer.n_music"
-formats = ["appimage"]
-description = "A simple music player"
-homepage = "https://github.com/Enn3Developer/n_music"
-category = "Music"
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1.1"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd = "0.15.0"

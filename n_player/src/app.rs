@@ -1,5 +1,7 @@
 #[cfg(target_os = "linux")]
 use crate::bus_server::linux::MPRISBridge;
+#[cfg(not(target_os = "linux"))]
+use crate::bus_server::DummyServer;
 use crate::localization::{get_locale_denominator, localize};
 use crate::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use crate::settings::Settings;
@@ -15,8 +17,6 @@ use mpris_server::Server;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
-#[cfg(not(target_os = "linux"))]
-use n_player::bus_server::DummyServer;
 use slint::{ComponentHandle, VecModel};
 use std::cell::RefCell;
 use std::io::Cursor;
@@ -125,6 +125,7 @@ pub async fn run_app() {
     let s = settings.clone();
     settings_data.on_toggle_save_window_size(move |save| s.borrow_mut().save_window_size = save);
     let window = main_window.as_weak();
+    #[cfg(not(target_os = "android"))]
     settings_data.on_path(move || {
         let window = window.clone();
         slint::spawn_local(async move {
@@ -305,17 +306,23 @@ async fn loader_task(
                                 );
                             }
 
-                            let images_dir = Settings::app_dir().join("images");
-                            if !images_dir.exists() {
-                                if let Err(e) = tokio::fs::create_dir(images_dir.as_path()).await {
-                                    eprintln!("error happened during dir creation: {e}");
+                            if cfg!(not(target_os = "android")) {
+                                let images_dir = Settings::app_dir().join("images");
+                                if !images_dir.exists() {
+                                    if let Err(e) =
+                                        tokio::fs::create_dir(images_dir.as_path()).await
+                                    {
+                                        eprintln!("error happened during dir creation: {e}");
+                                    }
                                 }
+                                let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
+                                if let Err(e) = tokio::fs::write(path.as_path(), image).await {
+                                    eprintln!("error happened during image writing: {e}");
+                                }
+                                path
+                            } else {
+                                PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                             }
-                            let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                            if let Err(e) = tokio::fs::write(path.as_path(), image).await {
-                                eprintln!("error happened during image writing: {e}");
-                            }
-                            path
                         } else {
                             PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                         }

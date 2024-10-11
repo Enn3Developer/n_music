@@ -15,7 +15,11 @@ pub struct Settings {
 
 impl Settings {
     pub async fn read_saved() -> Self {
-        let storage_file = Self::app_dir().join("config");
+        let storage_file = if cfg!(not(target_os = "android")) {
+            Self::app_dir().join("config")
+        } else {
+            PathBuf::new()
+        };
         if storage_file.exists() && storage_file.is_file() {
             let storage_content = tokio::fs::read(storage_file).await.unwrap();
             if let Ok(storage) = bitcode::decode(&storage_content) {
@@ -39,23 +43,27 @@ impl Settings {
     }
 
     pub fn music_dir() -> PathBuf {
-        let user_dirs = directories::UserDirs::new().unwrap();
-        if let Some(music_dir) = user_dirs.audio_dir() {
-            music_dir.into()
-        } else {
-            let path = user_dirs.home_dir().join("Music");
-            if !path.exists() {
-                fs::create_dir(&path).unwrap();
-            }
-            path
+        if let Some(user_dirs) = directories::UserDirs::new() {
+            return if let Some(music_dir) = user_dirs.audio_dir() {
+                music_dir.into()
+            } else {
+                let path = user_dirs.home_dir().join("Music");
+                if !path.exists() {
+                    fs::create_dir(&path).unwrap();
+                }
+                path
+            };
         }
+        PathBuf::new()
     }
 
     pub async fn save(&self) {
-        let storage_file = Self::app_dir().join("config");
-        tokio::fs::write(storage_file, bitcode::encode(self))
-            .await
-            .unwrap();
+        if cfg!(not(target_os = "android")) {
+            let storage_file = Self::app_dir().join("config");
+            tokio::fs::write(storage_file, bitcode::encode(self))
+                .await
+                .unwrap();
+        }
     }
 }
 
