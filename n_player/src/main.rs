@@ -191,6 +191,7 @@ async fn main() {
     settings_data.set_save_window_size(settings.borrow().save_window_size);
     settings_data.set_current_path(settings.borrow().path.clone().into());
 
+    app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
     let s = settings.clone();
     let window = main_window.clone_strong();
     main_window
@@ -206,10 +207,14 @@ async fn main() {
         });
     tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
+    let window = main_window.clone_strong();
     settings_data.on_change_theme_callback(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name.to_string()) {
             s.borrow_mut().theme = theme;
             s.borrow_mut().save();
+            window
+                .global::<SettingsData>()
+                .set_color_scheme(theme.into());
         }
     });
     let s = settings.clone();
@@ -231,10 +236,8 @@ async fn main() {
         .unwrap();
     });
     let s = settings.clone();
-    let s_data = main_window.global::<SettingsData>();
-    settings_data.on_set_path(move |path| {
+    settings_data.on_set_path_callback(move |path| {
         s.borrow_mut().path = path.clone().into();
-        s_data.set_current_path(path);
     });
     let t = tx.clone();
     app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
