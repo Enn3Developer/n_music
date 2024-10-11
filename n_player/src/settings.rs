@@ -14,10 +14,10 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn read_saved() -> Self {
+    pub async fn read_saved() -> Self {
         let storage_file = Self::app_dir().join("config");
         if storage_file.exists() && storage_file.is_file() {
-            let storage_content = fs::read(storage_file).unwrap();
+            let storage_content = tokio::fs::read(storage_file).await.unwrap();
             if let Ok(storage) = bitcode::decode(&storage_content) {
                 storage
             } else {
@@ -51,9 +51,11 @@ impl Settings {
         }
     }
 
-    pub fn save(&self) {
+    pub async fn save(&self) {
         let storage_file = Self::app_dir().join("config");
-        fs::write(storage_file, bitcode::encode(self)).unwrap();
+        tokio::fs::write(storage_file, bitcode::encode(self))
+            .await
+            .unwrap();
     }
 }
 

@@ -27,7 +27,7 @@ use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
 
 pub async fn run_app() {
-    let settings = Arc::new(RefCell::new(Settings::read_saved()));
+    let settings = Arc::new(RefCell::new(Settings::read_saved().await));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
@@ -100,7 +100,11 @@ pub async fn run_app() {
                 Some(denominator.to_string()),
                 window.global::<Localization>(),
             );
-            s.borrow().save();
+            let s = s.clone();
+            slint::spawn_local(async move {
+                s.borrow().save().await;
+            })
+            .unwrap();
         });
     tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
@@ -108,10 +112,14 @@ pub async fn run_app() {
     settings_data.on_change_theme_callback(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name) {
             s.borrow_mut().theme = theme;
-            s.borrow_mut().save();
             window
                 .global::<SettingsData>()
                 .set_color_scheme(theme.into());
+            let s = s.clone();
+            slint::spawn_local(async move {
+                s.borrow_mut().save().await;
+            })
+            .unwrap();
         }
     });
     let s = settings.clone();
@@ -263,7 +271,7 @@ pub async fn run_app() {
 
     updater.abort();
     future.abort();
-    settings.borrow_mut().save();
+    settings.borrow_mut().save().await;
 }
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
