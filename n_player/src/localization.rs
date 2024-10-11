@@ -12,6 +12,7 @@ pub struct Locale {
     window_size: Option<String>,
     music_path: Option<String>,
     language: Option<String>,
+    credits: Option<String>,
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
@@ -74,6 +75,13 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
             .language
             .as_ref()
             .unwrap_or(english.language.as_ref().unwrap())
+            .into(),
+    );
+    localization.set_credits(
+        locale
+            .credits
+            .as_ref()
+            .unwrap_or(english.credits.as_ref().unwrap())
             .into(),
     );
 }
