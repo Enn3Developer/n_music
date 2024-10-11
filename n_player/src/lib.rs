@@ -19,6 +19,20 @@ pub mod settings;
 unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
 
+#[cfg(target_os = "android")]
+#[no_mangle]
+fn android_main(app: slint::android::AndroidApp) {
+    use crate::app::run_app;
+    slint::android::init(app).unwrap();
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            run_app().await;
+        });
+}
+
 pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
     if let Ok(tag) = Tag::read_from_path(path.as_ref()) {
         if let Some(album) = tag.get_album_info() {
