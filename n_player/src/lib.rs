@@ -9,6 +9,7 @@ use std::path::Path;
 
 slint::include_modules!();
 
+pub mod app;
 pub mod bus_server;
 pub mod image;
 pub mod localization;
