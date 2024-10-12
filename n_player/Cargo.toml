@@ -6,6 +6,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+crate-type = ["lib", "cdylib"]
+
 [build-dependencies]
 slint-build = "1.8.0"
 
@@ -21,7 +24,7 @@ flume = "0.11.0"
 rayon = "1.10.0"
 multitag = "0.3.1"
 opusmeta = "1.1.0"
-image = { version = "0.25", features = ["jpeg", "png", "ico", "webp", "avif", "bmp", "dds", "exr", "gif", "pnm", "tiff"] }
+image = { version = "0.25", features = ["jpeg", "png"] }
 hashbrown = "0.15.0"
 tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
@@ -30,8 +33,6 @@ pollster = "0.3.0"
 infer = { version = "0.16.0", default-features = false, features = ["std"] }
 sys-locale = "0.3.1"
 open = "5.3.0"
-audiopus = "0.2.0"
-audiopus_sys = { version = "0.2.2", features = ["static"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = "0.8.1"
@@ -67,3 +68,12 @@ label = "N Music"
 
 [package.metadata.android.application.activity]
 orientation = "portrait"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.READ_EXTERNAL_STORAGE"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.READ_MEDIA_AUDIO"
+
+[[package.metadata.android.queries.intent]]
+actions = ["android.intent.action.OPEN_DOCUMENT_TREE"]

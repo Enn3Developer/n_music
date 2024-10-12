@@ -26,8 +26,11 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
 
-pub async fn run_app() {
-    let settings = Arc::new(RefCell::new(Settings::read_saved().await));
+pub async fn run_app(
+    settings: Settings,
+    #[cfg(target_os = "android")] app: slint::android::AndroidApp,
+) {
+    let settings = Arc::new(RefCell::new(settings));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
@@ -49,6 +52,8 @@ pub async fn run_app() {
         main_window.global::<Localization>(),
     );
 
+    #[cfg(target_os = "android")]
+    let a = app.clone();
     let future = tokio::spawn(async move {
         #[cfg(target_os = "linux")]
         let server = Server::new("n_music", MPRISBridge::new(r.clone(), tx_t.clone()))
@@ -59,7 +64,13 @@ pub async fn run_app() {
 
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
         let bus_future = tokio::task::spawn(bus_server::run(server, r.clone(), tmp));
+        #[cfg(not(target_os = "android"))]
         let loader_future = tokio::task::spawn(loader(r.clone(), tx_l));
+        #[cfg(target_os = "android")]
+        let loader_future = {
+            let app = a.clone();
+            tokio::task::spawn(loader(r.clone(), tx_l, app))
+        };
 
         let _ = tokio::join!(runner_future, bus_future, loader_future);
     });
@@ -91,6 +102,8 @@ pub async fn run_app() {
     app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
     let s = settings.clone();
     let window = main_window.clone_strong();
+    #[cfg(target_os = "android")]
+    let a = app.clone();
     main_window
         .global::<Localization>()
         .on_set_locale(move |locale_name| {
@@ -101,14 +114,21 @@ pub async fn run_app() {
                 window.global::<Localization>(),
             );
             let s = s.clone();
+            #[cfg(target_os = "android")]
+            let app = a.clone();
             slint::spawn_local(async move {
+                #[cfg(not(target_os = "android"))]
                 s.borrow().save().await;
+                #[cfg(target_os = "android")]
+                s.borrow().save(&app).await;
             })
             .unwrap();
         });
     tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
     let window = main_window.clone_strong();
+    #[cfg(target_os = "android")]
+    let a = app.clone();
     settings_data.on_change_theme_callback(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name) {
             s.borrow_mut().theme = theme;
@@ -116,8 +136,13 @@ pub async fn run_app() {
                 .global::<SettingsData>()
                 .set_color_scheme(theme.into());
             let s = s.clone();
+            #[cfg(target_os = "android")]
+            let app = a.clone();
             slint::spawn_local(async move {
+                #[cfg(not(target_os = "android"))]
                 s.borrow_mut().save().await;
+                #[cfg(target_os = "android")]
+                s.borrow_mut().save(&app).await;
             })
             .unwrap();
         }
@@ -272,12 +297,16 @@ pub async fn run_app() {
 
     updater.abort();
     future.abort();
+    #[cfg(not(target_os = "android"))]
     settings.borrow_mut().save().await;
+    #[cfg(target_os = "android")]
+    settings.borrow_mut().save(&app).await;
 }
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
     tx: Sender<Option<TrackData>>,
     rx_l: Arc<tokio::sync::Mutex<Receiver<usize>>>,
+    #[cfg(target_os = "android")] app: slint::android::AndroidApp,
 ) {
     loop {
         if let Ok(index) = rx_l.lock().await.recv_async().await {
@@ -306,23 +335,20 @@ async fn loader_task(
                                 );
                             }
 
-                            if cfg!(not(target_os = "android")) {
-                                let images_dir = Settings::app_dir().join("images");
-                                if !images_dir.exists() {
-                                    if let Err(e) =
-                                        tokio::fs::create_dir(images_dir.as_path()).await
-                                    {
-                                        eprintln!("error happened during dir creation: {e}");
-                                    }
+                            #[cfg(not(target_os = "android"))]
+                            let images_dir = Settings::app_dir().join("images");
+                            #[cfg(target_os = "android")]
+                            let images_dir = Settings::app_dir(&app).join("images");
+                            if !images_dir.exists() {
+                                if let Err(e) = tokio::fs::create_dir(images_dir.as_path()).await {
+                                    eprintln!("error happened during dir creation: {e}");
                                 }
-                                let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                                if let Err(e) = tokio::fs::write(path.as_path(), image).await {
-                                    eprintln!("error happened during image writing: {e}");
-                                }
-                                path
-                            } else {
-                                PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                             }
+                            let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
+                            if let Err(e) = tokio::fs::write(path.as_path(), image).await {
+                                eprintln!("error happened during image writing: {e}");
+                            }
+                            path
                         } else {
                             PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                         }
@@ -357,7 +383,11 @@ async fn loader_task(
     }
 }
 
-async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<TrackData>>) {
+async fn loader(
+    runner: Arc<RwLock<Runner>>,
+    tx: Sender<Option<TrackData>>,
+    #[cfg(target_os = "android")] app: slint::android::AndroidApp,
+) {
     let len = runner.read().await.len();
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
@@ -367,7 +397,12 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<TrackData>>) {
         let runner = runner.clone();
         let tx = tx.clone();
         let rx_l = rx_l.clone();
+        #[cfg(target_os = "android")]
+        let app = app.clone();
+        #[cfg(not(target_os = "android"))]
         tasks.push(tokio::task::spawn(loader_task(runner, tx, rx_l)));
+        #[cfg(target_os = "android")]
+        tasks.push(tokio::task::spawn(loader_task(runner, tx, rx_l, app)));
     }
     for i in 0..len {
         tx_l.send_async(i).await.unwrap();

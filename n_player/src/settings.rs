@@ -14,14 +14,9 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub async fn read_saved() -> Self {
-        let storage_file = if cfg!(not(target_os = "android")) {
-            Self::app_dir().join("config")
-        } else {
-            PathBuf::new()
-        };
+    fn read_from_file(storage_file: PathBuf) -> Self {
         if storage_file.exists() && storage_file.is_file() {
-            let storage_content = tokio::fs::read(storage_file).await.unwrap();
+            let storage_content = fs::read(storage_file).unwrap();
             if let Ok(storage) = bitcode::decode(&storage_content) {
                 storage
             } else {
@@ -32,6 +27,36 @@ impl Settings {
         }
     }
 
+    #[cfg(target_os = "android")]
+    pub fn read_saved_android(app: slint::android::AndroidApp) -> Self {
+        let data_path = app
+            .external_data_path()
+            .expect("can't get external data path");
+        let config_dir = data_path.join("config/");
+        if !config_dir.exists() {
+            fs::create_dir(&config_dir).unwrap();
+        }
+        let storage_file = config_dir.join("config");
+        Self::read_from_file(storage_file)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub async fn read_saved() -> Self {
+        let storage_file = Self::app_dir().join("config");
+
+        tokio::task::spawn_blocking(|| Self::read_from_file(storage_file))
+            .await
+            .unwrap()
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn app_dir(app: &slint::android::AndroidApp) -> PathBuf {
+        app.external_data_path()
+            .expect("can't get external data path")
+            .join("config/")
+    }
+
+    #[cfg(not(target_os = "android"))]
     pub fn app_dir() -> PathBuf {
         let base_dirs = directories::BaseDirs::new().unwrap();
         let local_data_dir = base_dirs.data_local_dir();
@@ -57,13 +82,23 @@ impl Settings {
         PathBuf::new()
     }
 
+    #[cfg(not(target_os = "android"))]
     pub async fn save(&self) {
-        if cfg!(not(target_os = "android")) {
-            let storage_file = Self::app_dir().join("config");
-            tokio::fs::write(storage_file, bitcode::encode(self))
-                .await
-                .unwrap();
+        let storage_file = Self::app_dir().join("config");
+        tokio::fs::write(storage_file, bitcode::encode(self))
+            .await
+            .unwrap();
+    }
+    #[cfg(target_os = "android")]
+    pub async fn save(&self, app: &slint::android::AndroidApp) {
+        let config_dir = Self::app_dir(app).join("config/");
+        if !config_dir.exists() {
+            tokio::fs::create_dir(&config_dir).await.unwrap();
         }
+        let storage_file = config_dir.join("config");
+        tokio::fs::write(storage_file, bitcode::encode(self))
+            .await
+            .unwrap();
     }
 }
 
