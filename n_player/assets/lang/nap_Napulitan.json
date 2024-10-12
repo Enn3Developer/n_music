@@ -6,8 +6,8 @@
   "music_path": "Addo stà 'a musica (bisogna riavvià)",
   "language": "Lengue",
   "theme_system": "Sistema",
-  "theme_system_light": "Chiaro",
-  "theme_system_dark": "Scùro",
+  "theme_light": "Chiaro",
+  "theme_dark": "Scùro",
   "credits": "Fatto da Enn3DevPlayer e 'e sò compagn",
   "license": "Accordo pe' 'o software"
 }
