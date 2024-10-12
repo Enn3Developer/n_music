@@ -53,8 +53,13 @@ pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
                     if let Some(cover) = cover {
                         return cover.data;
                     }
+                } else if let Tag::Id3Tag { inner } = tag {
+                    let cover = inner.pictures().next().cloned().map(Picture::from);
+                    if let Some(cover) = cover {
+                        return cover.data;
+                    }
                 } else {
-                    eprintln!("not an opus tag {path:?}");
+                    eprintln!("not an opus or mp3 tag {path:?}");
                 }
             }
         } else {
