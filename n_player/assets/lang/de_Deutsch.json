@@ -6,8 +6,8 @@
   "music_path": "Musikpfad (erfordert einen Neustart)",
   "language": "Sprache",
   "theme_system": "System",
-  "theme_system_light": "Hell",
-  "theme_system_dark": "Dunkel",
+  "theme_light": "Hell",
+  "theme_dark": "Dunkel",
   "credits": "Entwickelt von Enn3DevPlayer und anderen",
   "license": "Lizenz"
 }
