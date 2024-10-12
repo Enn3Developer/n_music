@@ -17,11 +17,8 @@ slint = { version = "1.8.0", default-features = false, features = ["std", "compa
 bitcode = { version = "0.6.3", features = ["derive"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
-directories = "5.0.1"
 n_audio = { path = "../n_audio" }
-async-channel = "2.3.1"
 flume = "0.11.0"
-rayon = "1.10.0"
 multitag = "0.3.1"
 opusmeta = "1.1.0"
 image = { version = "0.25", features = ["jpeg", "png"] }
@@ -57,6 +54,8 @@ ndk-context = "0.1.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 rfd = "0.15.0"
+directories = "5.0.1"
+async-channel = "2.3.1"
 
 [package.metadata.android]
 package = "com.enn3developer.n_music"

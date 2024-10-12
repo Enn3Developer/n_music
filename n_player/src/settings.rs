@@ -67,6 +67,12 @@ impl Settings {
         app_dir
     }
 
+    #[cfg(target_os = "android")]
+    pub fn music_dir() -> PathBuf {
+        PathBuf::new()
+    }
+
+    #[cfg(not(target_os = "android"))]
     pub fn music_dir() -> PathBuf {
         if let Some(user_dirs) = directories::UserDirs::new() {
             return if let Some(music_dir) = user_dirs.audio_dir() {

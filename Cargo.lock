@@ -2944,7 +2944,6 @@ dependencies = [
  "open",
  "opusmeta",
  "pollster",
- "rayon",
  "rfd",
  "serde",
  "serde_json",

@@ -60,7 +60,7 @@ export component ControlPanel {
                 spacing: 10px;
                 VerticalLayout {
                     alignment: center;
-                    width: (control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing) / 2;
+                    width: control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing - buttons.width;
                     Text {
                         text: AppData.playing_track.title;
                         overflow: elide;
@@ -74,29 +74,32 @@ export component ControlPanel {
                     }
                 }
 
-                HorizontalLayout {
+                buttons := HorizontalLayout {
                     alignment: end;
                     spacing: 10px;
-                    width: (control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing) / 2;
-                    Button {
+                    width: previous.width + toggle-pause.width + next.width + self.spacing * 2;
+                    previous := Button {
                         icon: @image-url("../../assets/icons/previous.svg");
                         colorize-icon: true;
+                        width: 64px;
                         clicked => {
                             AppData.play_previous()
                         }
                     }
 
-                    Button {
+                    toggle_pause := Button {
                         icon: AppData.playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
                         colorize-icon: true;
+                        width: 64px;
                         clicked => {
                             AppData.toggle_pause()
                         }
                     }
 
-                    Button {
+                    next := Button {
                         icon: @image-url("../../assets/icons/next.svg");
                         colorize-icon: true;
+                        width: 64px;
                         clicked => {
                             AppData.play_next()
                         }

@@ -42,6 +42,7 @@ pub async fn run_app(
     let runner = Arc::new(RwLock::new(Runner::new(player)));
 
     let r = runner.clone();
+    #[cfg(target_os = "linux")]
     let tx_t = tx.clone();
 
     let (tx_l, rx_l) = flume::unbounded();
@@ -149,6 +150,7 @@ pub async fn run_app(
     });
     let s = settings.clone();
     settings_data.on_toggle_save_window_size(move |save| s.borrow_mut().save_window_size = save);
+    #[cfg(not(target_os = "android"))]
     let window = main_window.as_weak();
     #[cfg(not(target_os = "android"))]
     settings_data.on_path(move || {
