@@ -59,25 +59,24 @@ pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<Strin
     player: &mut QueuePlayer,
     path: P,
 ) {
-    let mut dir = tokio::fs::read_dir(path)
-        .await
-        .expect("Can't read files in the chosen directory");
-    let mut paths = vec![];
-    while let Ok(Some(file)) = dir.next_entry().await {
-        if file.file_type().await.unwrap().is_file() {
-            if let Ok(Some(mime)) = infer::get_from_path(&file.path()) {
-                if mime.mime_type().contains("audio") {
-                    let mut p = file.path().to_str().unwrap().to_string();
-                    p.shrink_to_fit();
-                    paths.push(p);
+    if let Ok(mut dir) = tokio::fs::read_dir(path).await {
+        let mut paths = vec![];
+        while let Ok(Some(file)) = dir.next_entry().await {
+            if file.file_type().await.unwrap().is_file() {
+                if let Ok(Some(mime)) = infer::get_from_path(&file.path()) {
+                    if mime.mime_type().contains("audio") {
+                        let mut p = file.path().to_str().unwrap().to_string();
+                        p.shrink_to_fit();
+                        paths.push(p);
+                    }
                 }
             }
         }
-    }
-    player.add_all(paths).await.unwrap();
-    player.shrink_to_fit();
+        player.add_all(paths).await.unwrap();
+        player.shrink_to_fit();
 
-    player.shuffle();
+        player.shuffle();
+    }
 }
 
 #[derive(Copy, Clone, Debug, Decode, Encode)]
