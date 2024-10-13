@@ -201,7 +201,7 @@ jobs:
               echo "linker = \"$TARGET_CC\"">>.cargo/config
           fi
           echo ${{ secrets.KEYSTORE_CONTENT }} | base64 --decode > "${{ runner.temp }}/n_music.keystore"
-          echo "\nkeystore_password = \"${{ secrets.KEYSTORE_PASSWORD }}\"" >> n_player/Cargo.toml
+          echo "keystore_password = \"${{ secrets.KEYSTORE_PASSWORD }}\"" >> n_player/Cargo.toml
           
           sudo ln -fs /usr/bin/mold /usr/bin/ld
       - name: Build ${{ matrix.target }}
