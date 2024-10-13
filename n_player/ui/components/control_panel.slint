@@ -26,7 +26,7 @@ export component ControlPanel {
                 time_slider := Slider {
                     minimum: 0.0;
                     maximum: AppData.length > 1.0 ? AppData.length : 1.0;
-                    width: (control-panel.width - image.width - position.width - length.width - volume.width - parent.spacing * 4 - control-panel.padding * 2) / 2;
+                    width: (control-panel.width - image.width - position.width - length.width - (AppData.android ? 0 : 45px) - parent.spacing * (AppData.android ? 2 : 4) - control-panel.padding * 2) / (AppData.android ? 1 : 2);
                     value <=> AppData.time;
                     released(value) => {
                         AppData.seek(value);
@@ -39,17 +39,17 @@ export component ControlPanel {
                     width: 35px;
                 }
 
-                volume_slider := Slider {
+                if !AppData.android: volume_slider := Slider {
                     minimum: 0.0;
                     maximum: 1.0;
-                    width: (control-panel.width - image.width - position.width - length.width - volume.width - parent.spacing * 4 - control-panel.padding * 2) / 2;
+                    width: (control-panel.width - image.width - position.width - length.width - 45px - parent.spacing * 4 - control-panel.padding * 2) / 2;
                     value: AppData.volume;
                     changed(value) => {
                         AppData.set_volume(value)
                     }
                 }
 
-                volume := Text {
+                if !AppData.android: volume := Text {
                     vertical-alignment: center;
                     text: round(AppData.volume * 100.0) + "%";
                     width: 45px;
