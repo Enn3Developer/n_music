@@ -78,4 +78,4 @@ name = "android.permission.READ_MEDIA_AUDIO"
 actions = ["android.intent.action.OPEN_DOCUMENT_TREE"]
 
 [package.metadata.android.signing.release]
-path = "../n_music.keystore"
+path = "n_music.keystore"
