@@ -345,15 +345,19 @@ async fn loader_task(
                                     let is_height = height < width;
                                     let x = if is_height { difference / 2 } else { 0 };
                                     let y = if !is_height { difference / 2 } else { 0 };
-                                    Crop::new(min, min, x, y).execute(&mut zune_image).unwrap();
+                                    tokio::task::block_in_place(|| {
+                                        Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
+                                    });
                                 }
-                                rimage::operations::resize::Resize::new(
-                                    128,
-                                    128,
-                                    ResizeAlg::Convolution(FilterType::Hamming),
-                                )
-                                .execute(&mut zune_image)
-                                .unwrap();
+                                tokio::task::block_in_place(|| {
+                                    rimage::operations::resize::Resize::new(
+                                        128,
+                                        128,
+                                        ResizeAlg::Convolution(FilterType::Hamming),
+                                    )
+                                    .execute(&mut zune_image)
+                                    .unwrap()
+                                });
                                 #[cfg(not(target_os = "android"))]
                                 let images_dir = Settings::app_dir().join("images");
                                 #[cfg(target_os = "android")]
@@ -410,7 +414,7 @@ async fn loader(
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
     let rx_l = Arc::new(tokio::sync::Mutex::new(rx_l));
-    let cpus = num_cpus::get() * 2;
+    let cpus = num_cpus::get() * 4;
     for _ in 0..cpus {
         let runner = runner.clone();
         let tx = tx.clone();
