@@ -148,3 +148,64 @@ jobs:
         with:
           files: |
             target/${{ matrix.target }}/release/*.tar.gz
+
+  build-android:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            host_cc: ""
+            target_cc: ""
+    env:
+      CRATE_NAME: "n_player"
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Cache build
+        uses: Swatinem/rust-cache@v2
+      - name: Setup
+        run: |
+          rustup toolchain install nightly
+          rustup component add rust-src --toolchain nightly
+          rustup default nightly
+          rustup target add ${{ matrix.target }}
+          cargo install cargo-apk
+          
+          write_var(){
+            echo "$1=$(eval echo \$$1)" >> $GITHUB_ENV
+          }
+          
+          sudo apt update
+          sudo apt install -y mold upx libasound2-dev
+          
+          if ! [[ -z "${{ matrix.host_cc }}" ]]; then
+              export HOST_CC="${{ matrix.host_cc }}-gcc"
+              write_var HOST_CC
+              sudo apt install -y -qq gcc-${{ matrix.host_cc }} pkg-config-${{ matrix.host_cc }}
+          fi
+          if ! [[ -z "${{ matrix.target_cc }}" ]]; then
+              export TARGET_CC="${{ matrix.target_cc }}-gcc"
+              write_var TARGET_CC
+              sudo apt install -y -qq gcc-${{ matrix.target_cc }} pkg-config-${{ matrix.host_cc }}
+              mkdir -p .cargo
+              echo '[target.${{ matrix.target }}]'>>.cargo/config
+              echo "linker = \"$TARGET_CC\"">>.cargo/config
+          fi
+          echo "${{ secrets.KEYSTORE_CONTENT }}" > n_music.keystore
+          
+          sudo ln -fs /usr/bin/mold /usr/bin/ld
+      - name: Build ${{ matrix.target }}
+        run: |
+          PKG_CONFIG_SYSROOT_DIR=/ ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME CARGO_APK_RELEASE_KESYTORE=n_music.keystore CARGO_APK_RELEASE_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }} cargo apk build -Z build-std=std --target=${{ matrix.target }} --package n_player --release
+      - name: Upload n_music-${{ matrix.target }}.apk
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.CRATE_NAME }}-${{ matrix.target }}.apk
+          path: target/release/N Music.apk
+      - name: Publish in release
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            target/release/N Music.apk
