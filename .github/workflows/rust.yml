@@ -164,6 +164,13 @@ jobs:
         uses: actions/checkout@v3
       - name: Cache build
         uses: Swatinem/rust-cache@v2
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
       - name: Setup
         run: |
           rustup toolchain install nightly
