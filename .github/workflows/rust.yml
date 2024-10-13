@@ -200,7 +200,7 @@ jobs:
               echo '[target.${{ matrix.target }}]'>>.cargo/config
               echo "linker = \"$TARGET_CC\"">>.cargo/config
           fi
-          echo "${{ secrets.KEYSTORE_CONTENT }}" > "${{ runner.temp }}/n_music.keystore"
+          echo ${{ secrets.KEYSTORE_CONTENT }} | base64 --decode > "${{ runner.temp }}/n_music.keystore"
           
           sudo ln -fs /usr/bin/mold /usr/bin/ld
       - name: Build ${{ matrix.target }}
