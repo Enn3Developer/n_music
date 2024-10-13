@@ -5,7 +5,7 @@ use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use std::fs::File;
 use std::io;
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,14 +59,16 @@ impl QueuePlayer {
         self.path = path;
     }
 
-    pub async fn get_path_for_file(&self, i: usize) -> PathBuf {
+    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
         let mut guard = self.queue_file.write().await;
-        guard.seek(SeekFrom::Start(self.index_map[i])).unwrap();
+        guard
+            .seek(SeekFrom::Start(*self.index_map.get(i)?))
+            .unwrap();
         let mut name = String::new();
         guard.read_line(&mut name).unwrap();
         name = name.replace("\n", "");
 
-        PathBuf::from(&self.path).join(name)
+        Some(PathBuf::from(&self.path).join(name))
     }
 
     pub fn queue(&self) -> Arc<RwLock<BufReader<File>>> {
@@ -129,11 +131,11 @@ impl QueuePlayer {
         self.index_map.shuffle(&mut thread_rng());
     }
 
-    pub async fn current_track_name(&self) -> String {
+    pub async fn current_track_name(&self) -> Option<String> {
         let seek = if self.index >= self.len() {
-            self.index_map[0].clone()
+            self.index_map.first()?.clone()
         } else {
-            self.index_map[self.index].clone()
+            self.index_map.get(self.index)?.clone()
         };
 
         let mut guard = self.queue_file.write().await;
@@ -142,11 +144,17 @@ impl QueuePlayer {
         guard.read_line(&mut name).unwrap();
         name = name.replace("\n", "");
 
-        name
+        Some(name)
     }
 
     pub async fn play(&mut self) -> io::Result<()> {
-        let track = MusicTrack::new(self.get_path_for_file(self.index).await.to_str().unwrap())?;
+        let track = MusicTrack::new(
+            self.get_path_for_file(self.index)
+                .await
+                .ok_or(io::Error::from(ErrorKind::NotFound))?
+                .to_str()
+                .unwrap(),
+        )?;
         let format = tokio::task::spawn_blocking(move || track.get_format()).await??;
 
         self.player.play(format);

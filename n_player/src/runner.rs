@@ -167,11 +167,11 @@ impl Runner {
         self.player.is_empty()
     }
 
-    pub async fn get_path_for_file(&self, i: usize) -> PathBuf {
+    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
         self.player.get_path_for_file(i).await
     }
 
-    pub async fn current_track(&self) -> String {
+    pub async fn current_track(&self) -> Option<String> {
         self.player.current_track_name().await
     }
 }

@@ -78,7 +78,7 @@ pub async fn run_app(
 
     let mut tracks = vec![];
     for i in 0..len {
-        let track_path = runner.read().await.get_path_for_file(i).await;
+        let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
         tracks.push(TrackData {
             artist: Default::default(),
             cover: Default::default(),
@@ -320,66 +320,71 @@ async fn loader_task(
                 }
                 return;
             }
-            let path = runner.read().await.get_path_for_file(index).await;
-            if let Ok(track) = MusicTrack::new(path.to_string_lossy().to_string()) {
-                if let Ok(Ok(meta)) = tokio::task::spawn_blocking(move || track.get_meta()).await {
-                    let p = path.clone();
-                    let image_path = if let Ok(mut image) =
-                        tokio::task::spawn_blocking(move || get_image(p)).await
+            if let Some(path) = runner.read().await.get_path_for_file(index).await {
+                if let Ok(track) = MusicTrack::new(path.to_string_lossy().to_string()) {
+                    if let Ok(Ok(meta)) =
+                        tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
-                        if !image.is_empty() {
-                            if let Err(e) = image::load_from_memory(&image)
-                                .unwrap()
-                                .resize_to_fill(128, 128, FilterType::Lanczos3)
-                                .to_rgb8()
-                                .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
-                            {
-                                eprintln!(
-                                    "error happened during image resizing and conversion: {e}"
-                                );
-                            }
-
-                            #[cfg(not(target_os = "android"))]
-                            let images_dir = Settings::app_dir().join("images");
-                            #[cfg(target_os = "android")]
-                            let images_dir = Settings::app_dir(&app).join("images");
-                            if !images_dir.exists() {
-                                if let Err(e) = tokio::fs::create_dir(images_dir.as_path()).await {
-                                    eprintln!("error happened during dir creation: {e}");
+                        let p = path.clone();
+                        let image_path = if let Ok(mut image) =
+                            tokio::task::spawn_blocking(move || get_image(p)).await
+                        {
+                            if !image.is_empty() {
+                                if let Err(e) = image::load_from_memory(&image)
+                                    .unwrap()
+                                    .resize_to_fill(128, 128, FilterType::Lanczos3)
+                                    .to_rgb8()
+                                    .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
+                                {
+                                    eprintln!(
+                                        "error happened during image resizing and conversion: {e}"
+                                    );
                                 }
+
+                                #[cfg(not(target_os = "android"))]
+                                let images_dir = Settings::app_dir().join("images");
+                                #[cfg(target_os = "android")]
+                                let images_dir = Settings::app_dir(&app).join("images");
+                                if !images_dir.exists() {
+                                    if let Err(e) =
+                                        tokio::fs::create_dir(images_dir.as_path()).await
+                                    {
+                                        eprintln!("error happened during dir creation: {e}");
+                                    }
+                                }
+                                let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
+                                if let Err(e) = tokio::fs::write(path.as_path(), image).await {
+                                    eprintln!("error happened during image writing: {e}");
+                                }
+                                path
+                            } else {
+                                PathBuf::new().join("thisdoesntexistsodontworryaboutit")
                             }
-                            let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                            if let Err(e) = tokio::fs::write(path.as_path(), image).await {
-                                eprintln!("error happened during image writing: {e}");
-                            }
-                            path
                         } else {
                             PathBuf::new().join("thisdoesntexistsodontworryaboutit")
-                        }
-                    } else {
-                        PathBuf::new().join("thisdoesntexistsodontworryaboutit")
-                    };
+                        };
 
-                    if let Err(e) = tx
-                        .send_async(Some(TrackData {
-                            artist: meta.artist.into(),
-                            time: format!(
-                                "{:02}:{:02}",
-                                (meta.time.length / 60.0).floor() as u64,
-                                meta.time.length.floor() as u64 % 60
-                            )
-                            .into(),
-                            cover: if image_path.exists() {
-                                slint::Image::load_from_path(&image_path).unwrap()
-                            } else {
-                                Default::default()
-                            },
-                            title: meta.title.into(),
-                            index: index as i32,
-                        }))
-                        .await
-                    {
-                        eprintln!("error happened during metadata transfer, probably because the app was closed: {e}");
+                        if let Err(e) = tx
+                            .send_async(Some(TrackData {
+                                artist: meta.artist.into(),
+                                time: format!(
+                                    "{:02}:{:02}",
+                                    (meta.time.length / 60.0).floor() as u64,
+                                    meta.time.length.floor() as u64 % 60
+                                )
+                                .into(),
+                                cover: if image_path.exists() {
+                                    slint::Image::load_from_path(&image_path).unwrap()
+                                } else {
+                                    Default::default()
+                                },
+                                title: meta.title.into(),
+                                index: index as i32,
+                            }))
+                            .await
+                        {
+                            eprintln!("error happened during metadata transfer, probably because the app was closed: {e}");
+                        }
                     }
                 }
             }

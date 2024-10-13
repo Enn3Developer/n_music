@@ -68,7 +68,7 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
 
         if index != guard.index() {
             index = guard.index();
-            let track_name = &guard.current_track().await;
+            let track_name = &guard.current_track().await.unwrap();
             let mut path_buf = PathBuf::new();
             path_buf.push(&path);
             path_buf.push(track_name);

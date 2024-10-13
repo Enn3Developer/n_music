@@ -204,7 +204,7 @@ impl PlayerInterface for MPRISBridge {
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
         let path = self.runner.read().await.path();
-        let track_name = &self.runner.read().await.current_track().await;
+        let track_name = &self.runner.read().await.current_track().await.unwrap();
         let mut path_buf = PathBuf::new();
         path_buf.push(&path);
         path_buf.push(track_name);
