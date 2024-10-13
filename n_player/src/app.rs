@@ -6,7 +6,7 @@ use crate::localization::{get_locale_denominator, localize};
 use crate::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use crate::settings::Settings;
 use crate::{
-    add_all_tracks_to_player, bus_server, get_image, AppData, Localization, MainWindow,
+    add_all_tracks_to_player, bus_server, get_image, AppData, FileTrack, Localization, MainWindow,
     SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
@@ -215,9 +215,9 @@ pub async fn run_app(
 
             let mut new_loaded = false;
             while let Ok(track_data) = rx_l.try_recv() {
-                if let Some(track_data) = track_data {
-                    let index = track_data.index as usize;
-                    tracks[index] = track_data;
+                if let Some((index, file_track)) = track_data {
+                    tracks[index] = file_track.into();
+                    tracks[index].index = index as i32;
                     loaded += 1;
                     if loaded % threshold == 0 {
                         new_loaded = true;
@@ -308,7 +308,7 @@ pub async fn run_app(
 }
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
-    tx: Sender<Option<TrackData>>,
+    tx: Sender<Option<(usize, FileTrack)>>,
     rx_l: Arc<tokio::sync::Mutex<Receiver<usize>>>,
     #[cfg(target_os = "android")] app: slint::android::AndroidApp,
 ) {
@@ -365,22 +365,15 @@ async fn loader_task(
                         };
 
                         if let Err(e) = tx
-                            .send_async(Some(TrackData {
-                                artist: meta.artist.into(),
-                                time: format!(
-                                    "{:02}:{:02}",
-                                    (meta.time.length / 60.0).floor() as u64,
-                                    meta.time.length.floor() as u64 % 60
-                                )
-                                .into(),
-                                cover: if image_path.exists() {
-                                    slint::Image::load_from_path(&image_path).unwrap()
-                                } else {
-                                    Default::default()
+                            .send_async(Some((
+                                index,
+                                FileTrack {
+                                    title: meta.title,
+                                    artist: meta.artist,
+                                    length: meta.time.length,
+                                    image_path: image_path.to_str().unwrap().to_string(),
                                 },
-                                title: meta.title.into(),
-                                index: index as i32,
-                            }))
+                            )))
                             .await
                         {
                             eprintln!("error happened during metadata transfer, probably because the app was closed: {e}");
@@ -394,7 +387,7 @@ async fn loader_task(
 
 async fn loader(
     runner: Arc<RwLock<Runner>>,
-    tx: Sender<Option<TrackData>>,
+    tx: Sender<Option<(usize, FileTrack)>>,
     #[cfg(target_os = "android")] app: slint::android::AndroidApp,
 ) {
     let len = runner.read().await.len();

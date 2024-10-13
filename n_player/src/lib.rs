@@ -178,3 +178,33 @@ impl TryFrom<i32> for Theme {
         }
     }
 }
+
+#[derive(Debug, Decode, Encode)]
+pub struct FileTrack {
+    pub title: String,
+    pub artist: String,
+    pub length: f64,
+    pub image_path: String,
+}
+
+impl From<FileTrack> for TrackData {
+    fn from(value: FileTrack) -> Self {
+        let image_path = Path::new(&value.image_path);
+        Self {
+            artist: value.artist.into(),
+            cover: if image_path.exists() {
+                slint::Image::load_from_path(&image_path).unwrap()
+            } else {
+                Default::default()
+            },
+            index: 0,
+            time: format!(
+                "{:02}:{:02}",
+                (value.length / 60.0).floor() as u64,
+                value.length.floor() as u64 % 60
+            )
+            .into(),
+            title: value.title.into(),
+        }
+    }
+}

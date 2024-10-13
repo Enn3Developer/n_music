@@ -1,6 +1,8 @@
-use crate::{Theme, WindowSize};
+use crate::{FileTrack, Theme, WindowSize};
 use bitcode::{Decode, Encode};
+use hashbrown::DefaultHashBuilder;
 use std::fs;
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::path::PathBuf;
 
 #[derive(Debug, Decode, Encode)]
@@ -11,6 +13,8 @@ pub struct Settings {
     pub window_size: WindowSize,
     pub save_window_size: bool,
     pub locale: Option<String>,
+    pub timestamp: Option<u64>,
+    pub tracks: Vec<FileTrack>,
 }
 
 impl Settings {
@@ -85,6 +89,34 @@ impl Settings {
         PathBuf::new()
     }
 
+    pub async fn check_timestamp(&self) -> bool {
+        if let Some(saved_timestamp) = &self.timestamp {
+            let mut hasher = DefaultHashBuilder::default().build_hasher();
+            tokio::fs::metadata(&self.path)
+                .await
+                .unwrap()
+                .modified()
+                .unwrap()
+                .hash(&mut hasher);
+            let timestamp = hasher.finish();
+            &timestamp == saved_timestamp
+        } else {
+            false
+        }
+    }
+
+    pub async fn save_timestamp(&mut self) {
+        let mut hasher = DefaultHashBuilder::default().build_hasher();
+        tokio::fs::metadata(&self.path)
+            .await
+            .unwrap()
+            .modified()
+            .unwrap()
+            .hash(&mut hasher);
+        let timestamp = hasher.finish();
+        self.timestamp = Some(timestamp);
+    }
+
     #[cfg(not(target_os = "android"))]
     pub async fn save(&self) {
         let storage_file = Self::app_dir().join("config");
@@ -115,6 +147,8 @@ impl Default for Settings {
             window_size: WindowSize::default(),
             save_window_size: false,
             locale: None,
+            timestamp: None,
+            tracks: vec![],
         }
     }
 }
