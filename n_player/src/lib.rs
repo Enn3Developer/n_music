@@ -180,8 +180,9 @@ impl TryFrom<i32> for Theme {
     }
 }
 
-#[derive(Debug, Decode, Encode)]
+#[derive(Clone, Debug, Decode, Encode)]
 pub struct FileTrack {
+    pub path: String,
     pub title: String,
     pub artist: String,
     pub length: f64,

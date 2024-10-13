@@ -56,6 +56,11 @@ pub async fn run_app(
         main_window.global::<Localization>(),
     );
 
+    let check_timestamp = settings.borrow().check_timestamp().await;
+    let is_cached = !check_timestamp
+        && !settings.borrow().tracks.is_empty()
+        && settings.borrow().tracks.len() == len;
+
     #[cfg(target_os = "android")]
     let a = app.clone();
     let future = tokio::spawn(async move {
@@ -68,28 +73,47 @@ pub async fn run_app(
 
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
         let bus_future = tokio::task::spawn(bus_server::run(server, r.clone(), tmp));
-        #[cfg(not(target_os = "android"))]
-        let loader_future = tokio::task::spawn(loader(r.clone(), tx_l));
-        #[cfg(target_os = "android")]
-        let loader_future = {
-            let app = a.clone();
-            tokio::task::spawn(loader(r.clone(), tx_l, app))
-        };
+        if !is_cached {
+            #[cfg(not(target_os = "android"))]
+            let loader_future = tokio::task::spawn(loader(r.clone(), tx_l));
+            #[cfg(target_os = "android")]
+            let loader_future = {
+                let app = a.clone();
+                tokio::task::spawn(loader(r.clone(), tx_l, app))
+            };
 
-        let _ = tokio::join!(runner_future, bus_future, loader_future);
+            let _ = tokio::join!(runner_future, bus_future, loader_future);
+        } else {
+            let _ = tokio::join!(runner_future, bus_future);
+        }
     });
 
     let mut tracks = vec![];
     for i in 0..len {
         let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
-        tracks.push(TrackData {
-            artist: Default::default(),
-            cover: Default::default(),
-            time: Default::default(),
-            title: remove_ext(track_path).into(),
-            index: i as i32,
-        });
+        if is_cached {
+            let track_without_ext = remove_ext(track_path);
+            if let Some(file_track) = settings
+                .borrow()
+                .tracks
+                .iter()
+                .find(|file_track| file_track.path == track_without_ext)
+            {
+                let mut track: TrackData = file_track.clone().into();
+                track.index = i as i32;
+                tracks.push(track)
+            }
+        } else {
+            tracks.push(TrackData {
+                artist: Default::default(),
+                cover: Default::default(),
+                time: Default::default(),
+                title: remove_ext(track_path).into(),
+                index: i as i32,
+            });
+        }
     }
+    let tracks_len = tracks.len();
 
     let settings_data = main_window.global::<SettingsData>();
     let app_data = main_window.global::<AppData>();
@@ -196,6 +220,7 @@ pub async fn run_app(
     app_data.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
     let window = main_window.as_weak();
     let r = runner.clone();
+    let (tx_t, rx_t) = flume::unbounded();
     let updater = tokio::task::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut searching = String::new();
@@ -219,6 +244,7 @@ pub async fn run_app(
             let mut new_loaded = false;
             while let Ok(track_data) = rx_l.try_recv() {
                 if let Some((index, file_track)) = track_data {
+                    tx_t.send_async(file_track.clone()).await.unwrap();
                     tracks[index] = file_track.into();
                     tracks[index].index = index as i32;
                     loaded += 1;
@@ -304,6 +330,11 @@ pub async fn run_app(
 
     updater.abort();
     future.abort();
+    let tracks: Vec<FileTrack> = rx_t.iter().collect();
+    if tracks.len() == tracks_len {
+        settings.borrow_mut().tracks = tracks;
+        settings.borrow_mut().save_timestamp().await;
+    }
     #[cfg(not(target_os = "android"))]
     settings.borrow_mut().save().await;
     #[cfg(target_os = "android")]
@@ -369,6 +400,7 @@ async fn loader_task(
                             .send_async(Some((
                                 index,
                                 FileTrack {
+                                    path: remove_ext(path),
                                     title: meta.title,
                                     artist: meta.artist,
                                     length: meta.time.length,
