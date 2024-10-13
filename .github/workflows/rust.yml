@@ -205,7 +205,7 @@ jobs:
           sudo ln -fs /usr/bin/mold /usr/bin/ld
       - name: Build ${{ matrix.target }}
         run: |
-          PKG_CONFIG_SYSROOT_DIR=/ ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME CARGO_APK_RELEASE_KESYTORE=n_music.keystore CARGO_APK_RELEASE_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }} cargo apk build --target=${{ matrix.target }} --package n_player --release
+          PKG_CONFIG_SYSROOT_DIR=/ ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME CARGO_APK_RELEASE_KESYTORE=n_music.keystore CARGO_APK_RELEASE_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }} cargo apk build --lib --target=${{ matrix.target }} --package n_player --release
       - name: Upload n_music-${{ matrix.target }}.apk
         uses: actions/upload-artifact@v3
         with:
