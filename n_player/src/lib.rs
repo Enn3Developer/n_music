@@ -1,4 +1,3 @@
-use crate::settings::Settings;
 use bitcode::{Decode, Encode};
 use multitag::data::Picture;
 use multitag::Tag;
@@ -23,6 +22,8 @@ unsafe impl Sync for TrackData {}
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
+    use crate::settings::Settings;
+
     slint::android::init(app.clone()).unwrap();
     let mut settings = Settings::read_saved_android(&app);
     if !Path::new(&settings.path).exists() {
