@@ -9,9 +9,11 @@ export component TopPanel {
         padding: 10px;
         padding-bottom: 5px;
         HorizontalLayout {
+            height: 50px;
             spacing: 10px;
             LineEdit {
                 placeholder-text: Localization.search;
+                font-size: 16px;
                 edited(value) => {
                     AppData.searching(value)
                 }

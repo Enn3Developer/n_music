@@ -28,11 +28,8 @@ impl Settings {
     }
 
     #[cfg(target_os = "android")]
-    pub fn read_saved_android(app: slint::android::AndroidApp) -> Self {
-        let data_path = app
-            .external_data_path()
-            .expect("can't get external data path");
-        let config_dir = data_path.join("config/");
+    pub fn read_saved_android(app: &slint::android::AndroidApp) -> Self {
+        let config_dir = Self::app_dir(app);
         if !config_dir.exists() {
             fs::create_dir(&config_dir).unwrap();
         }
@@ -97,7 +94,7 @@ impl Settings {
     }
     #[cfg(target_os = "android")]
     pub async fn save(&self, app: &slint::android::AndroidApp) {
-        let config_dir = Self::app_dir(app).join("config/");
+        let config_dir = Self::app_dir(app);
         if !config_dir.exists() {
             tokio::fs::create_dir(&config_dir).await.unwrap();
         }

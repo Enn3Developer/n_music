@@ -24,7 +24,7 @@ unsafe impl Sync for TrackData {}
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
     slint::android::init(app.clone()).unwrap();
-    let mut settings = Settings::read_saved_android(app.clone());
+    let mut settings = Settings::read_saved_android(&app);
     if !Path::new(&settings.path).exists() {
         settings.path = app
             .external_data_path()
