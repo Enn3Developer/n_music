@@ -18,7 +18,6 @@ use n_audio::remove_ext;
 use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, VecModel};
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -330,7 +329,7 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let image_path = if let Ok(image) =
+                        let image = if let Ok(image) =
                             tokio::task::spawn_blocking(move || get_image(p)).await
                         {
                             if !image.is_empty() {
@@ -358,30 +357,12 @@ async fn loader_task(
                                     .execute(&mut zune_image)
                                     .unwrap()
                                 });
-                                #[cfg(not(target_os = "android"))]
-                                let images_dir = Settings::app_dir().join("images");
-                                #[cfg(target_os = "android")]
-                                let images_dir = Settings::app_dir(&app).join("images");
-                                if !images_dir.exists() {
-                                    if let Err(e) =
-                                        tokio::fs::create_dir(images_dir.as_path()).await
-                                    {
-                                        eprintln!("error happened during dir creation: {e}");
-                                    }
-                                }
-                                let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                                let p = path.clone();
-                                if let Ok(Err(e)) =
-                                    tokio::task::spawn_blocking(move || zune_image.save(p)).await
-                                {
-                                    eprintln!("error happened during image writing: {e}");
-                                }
-                                path
+                                zune_image.flatten_to_u8()[0].clone()
                             } else {
-                                PathBuf::new().join("thisdoesntexistsodontworryaboutit")
+                                vec![]
                             }
                         } else {
-                            PathBuf::new().join("thisdoesntexistsodontworryaboutit")
+                            vec![]
                         };
 
                         if let Err(e) = tx
@@ -391,7 +372,7 @@ async fn loader_task(
                                     title: meta.title,
                                     artist: meta.artist,
                                     length: meta.time.length,
-                                    image_path: image_path.to_str().unwrap().to_string(),
+                                    image,
                                 },
                             )))
                             .await

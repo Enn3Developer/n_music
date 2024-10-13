@@ -3,6 +3,7 @@ use multitag::data::Picture;
 use multitag::Tag;
 use n_audio::queue::QueuePlayer;
 use slint::private_unstable_api::re_exports::ColorScheme;
+use slint::SharedPixelBuffer;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
@@ -184,16 +185,15 @@ pub struct FileTrack {
     pub title: String,
     pub artist: String,
     pub length: f64,
-    pub image_path: String,
+    pub image: Vec<u8>,
 }
 
 impl From<FileTrack> for TrackData {
     fn from(value: FileTrack) -> Self {
-        let image_path = Path::new(&value.image_path);
         Self {
             artist: value.artist.into(),
-            cover: if image_path.exists() {
-                slint::Image::load_from_path(&image_path).unwrap()
+            cover: if !value.image.is_empty() {
+                slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&value.image, 128, 128))
             } else {
                 Default::default()
             },
