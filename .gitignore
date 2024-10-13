@@ -12,3 +12,4 @@ Cargo.lock
 .nmusic.toml
 /.idea
 /lsp
+*.keystore
