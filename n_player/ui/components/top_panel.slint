@@ -18,6 +18,14 @@ export component TopPanel {
             }
 
             Button {
+                icon: @image-url("../../assets/icons/down.svg");
+                colorize-icon: true;
+                clicked => {
+                    AppData.scroll();
+                }
+            }
+
+            Button {
                 icon: @image-url("../../assets/icons/settings.svg");
                 colorize-icon: true;
                 clicked => {

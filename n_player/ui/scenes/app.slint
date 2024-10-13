@@ -17,11 +17,12 @@ export component App {
 
         ListView {
             viewport-width: parent.width - 20px;
+            viewport-y <=> AppData.viewport-y;
             for track[i] in AppData.tracks: Track {
                 track: track;
                 playing: AppData.playing == track.index;
                 clicked => {
-                    AppData.clicked(track.index)
+                    AppData.clicked(track.index);
                 }
             }
         }

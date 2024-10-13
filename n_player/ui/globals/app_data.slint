@@ -12,6 +12,7 @@ export global AppData {
     in property <string> version;
     in property <float> progress;
     in-out property <bool> android;
+    in-out property <length> viewport-y;
     callback clicked(int);
     callback play_previous();
     callback toggle_pause();
@@ -20,4 +21,8 @@ export global AppData {
     callback set_volume(float);
     callback searching(string);
     callback open_link(string);
+    public function scroll() {
+        // height is negative
+        viewport-y = playing * -84px;
+    }
 }
