@@ -38,6 +38,7 @@ pub struct Metadata {
     pub image_path: Option<String>,
 }
 
+#[allow(async_fn_in_trait)]
 pub trait BusServer {
     async fn properties_changed<P: IntoIterator<Item = Property>>(
         &self,

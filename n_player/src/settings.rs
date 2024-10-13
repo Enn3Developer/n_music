@@ -105,10 +105,9 @@ impl Settings {
         }
     }
 
-    pub async fn save_timestamp(&mut self) {
+    pub fn save_timestamp(&mut self) {
         let mut hasher = DefaultHashBuilder::default().build_hasher();
-        tokio::fs::metadata(&self.path)
-            .await
+        fs::metadata(&self.path)
             .unwrap()
             .modified()
             .unwrap()
@@ -118,23 +117,19 @@ impl Settings {
     }
 
     #[cfg(not(target_os = "android"))]
-    pub async fn save(&self) {
+    pub fn save(&self) {
         let storage_file = Self::app_dir().join("config");
-        tokio::fs::write(storage_file, bitcode::encode(self))
-            .await
-            .unwrap();
+        fs::write(storage_file, bitcode::encode(self)).unwrap();
     }
 
     #[cfg(target_os = "android")]
-    pub async fn save(&self, app: &slint::android::AndroidApp) {
+    pub fn save(&self, app: &slint::android::AndroidApp) {
         let config_dir = Self::app_dir(app);
         if !config_dir.exists() {
-            tokio::fs::create_dir(&config_dir).await.unwrap();
+            fs::create_dir(&config_dir).unwrap();
         }
         let storage_file = config_dir.join("config");
-        tokio::fs::write(storage_file, bitcode::encode(self))
-            .await
-            .unwrap();
+        fs::write(storage_file, bitcode::encode(self)).unwrap();
     }
 }
 
