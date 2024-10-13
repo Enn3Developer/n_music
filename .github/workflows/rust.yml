@@ -211,10 +211,10 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: ${{ env.CRATE_NAME }}-${{ matrix.target }}.apk
-          path: target/release/N Music.apk
+          path: target/release/apk/N Music.apk
       - name: Publish in release
         uses: softprops/action-gh-release@v1
         if: github.ref_type == 'tag'
         with:
           files: |
-            target/release/N Music.apk
+            target/release/apk/N Music.apk
