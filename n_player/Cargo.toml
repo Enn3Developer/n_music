@@ -21,7 +21,10 @@ n_audio = { path = "../n_audio" }
 flume = "0.11.0"
 multitag = "0.3.1"
 opusmeta = "1.1.0"
-image = { version = "0.25", features = ["jpeg", "png"] }
+zune-image = { version = "0.5.0-rc0", default-features = false, features = ["png", "jpeg"] }
+zune-imageprocs = { version = "0.5.0-rc0", features = ["portable-simd"] }
+zune-core = { version = "0.5.0-rc2", default-features = false, features = ["std"] }
+rimage = { version = "0.11.0-next.3", default-features = false, features = ["mozjpeg", "oxipng", "resize"] }
 hashbrown = "0.15.0"
 tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }

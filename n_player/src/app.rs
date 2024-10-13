@@ -10,21 +10,25 @@ use crate::{
     SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
-use image::imageops::FilterType;
-use image::ImageFormat;
 #[cfg(target_os = "linux")]
 use mpris_server::Server;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
+use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, VecModel};
 use std::cell::RefCell;
-use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
+use zune_core::bytestream::ZCursor;
+use zune_core::colorspace::ColorSpace;
+use zune_core::options::DecoderOptions;
+use zune_image::image::Image;
+use zune_image::traits::OperationsTrait;
+use zune_imageprocs::crop::Crop;
 
 pub async fn run_app(
     settings: Settings,
@@ -326,21 +330,30 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let image_path = if let Ok(mut image) =
+                        let image_path = if let Ok(image) =
                             tokio::task::spawn_blocking(move || get_image(p)).await
                         {
                             if !image.is_empty() {
-                                if let Err(e) = image::load_from_memory(&image)
-                                    .unwrap()
-                                    .resize_to_fill(128, 128, FilterType::Lanczos3)
-                                    .to_rgb8()
-                                    .write_to(&mut Cursor::new(&mut image), ImageFormat::Jpeg)
-                                {
-                                    eprintln!(
-                                        "error happened during image resizing and conversion: {e}"
-                                    );
+                                let mut zune_image =
+                                    Image::read(ZCursor::new(image), DecoderOptions::new_fast())
+                                        .unwrap();
+                                zune_image.convert_color(ColorSpace::RGB).unwrap();
+                                let (width, height) = zune_image.dimensions();
+                                if width != height {
+                                    let difference = width.abs_diff(height);
+                                    let min = width.min(height);
+                                    let is_height = height < width;
+                                    let x = if is_height { difference / 2 } else { 0 };
+                                    let y = if !is_height { difference / 2 } else { 0 };
+                                    Crop::new(min, min, x, y).execute(&mut zune_image).unwrap();
                                 }
-
+                                rimage::operations::resize::Resize::new(
+                                    128,
+                                    128,
+                                    ResizeAlg::Convolution(FilterType::Hamming),
+                                )
+                                .execute(&mut zune_image)
+                                .unwrap();
                                 #[cfg(not(target_os = "android"))]
                                 let images_dir = Settings::app_dir().join("images");
                                 #[cfg(target_os = "android")]
@@ -353,7 +366,10 @@ async fn loader_task(
                                     }
                                 }
                                 let path = images_dir.join(format!("{}.jpg", remove_ext(path)));
-                                if let Err(e) = tokio::fs::write(path.as_path(), image).await {
+                                let p = path.clone();
+                                if let Ok(Err(e)) =
+                                    tokio::task::spawn_blocking(move || zune_image.save(p)).await
+                                {
                                     eprintln!("error happened during image writing: {e}");
                                 }
                                 path
