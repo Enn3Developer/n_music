@@ -92,6 +92,7 @@ impl Settings {
             .await
             .unwrap();
     }
+
     #[cfg(target_os = "android")]
     pub async fn save(&self, app: &slint::android::AndroidApp) {
         let config_dir = Self::app_dir(app);
