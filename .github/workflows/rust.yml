@@ -173,6 +173,7 @@ jobs:
         uses: android-actions/setup-android@v3
       - name: Setup
         run: |
+          sdkmanager "platform-tools" "platforms;android-30"
           rustup toolchain install nightly
           rustup component add rust-src --toolchain nightly
           rustup default nightly
