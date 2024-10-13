@@ -1,18 +1,21 @@
 export component Setting {
     in property <string> text;
-    HorizontalLayout {
+    horizontal := HorizontalLayout {
+        width: parent.width;
         max-height: 18px;
         Text {
             horizontal-alignment: left;
             vertical-alignment: center;
             text: text;
             font-size: 12px;
+            width: horizontal.width - children.width;
         }
 
-        HorizontalLayout {
+        children := HorizontalLayout {
             alignment: end;
             max-height: parent.max-height;
             spacing: 10px;
+            width: horizontal.width / 2;
             @children
         }
     }

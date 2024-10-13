@@ -107,8 +107,8 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             buffer_size: cpal::BufferSize::Default,
         };
 
-        // Create a ring buffer with a capacity for up-to 1000ms of audio.
-        let ring_len = ((1000 * spec.rate as usize) / 1000) * num_channels;
+        // Create a ring buffer with a capacity for up-to 250ms of audio.
+        let ring_len = ((250 * spec.rate as usize) / 1000) * num_channels;
 
         let ring_buf = SpscRb::new(ring_len);
         let (ring_buf_producer, ring_buf_consumer) = (ring_buf.producer(), ring_buf.consumer());

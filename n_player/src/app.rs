@@ -91,6 +91,8 @@ pub async fn run_app(
     let settings_data = main_window.global::<SettingsData>();
     let app_data = main_window.global::<AppData>();
 
+    #[cfg(target_os = "android")]
+    app_data.set_android(true);
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
     settings_data.set_color_scheme(settings.borrow().theme.into());

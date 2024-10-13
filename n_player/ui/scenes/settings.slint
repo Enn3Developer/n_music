@@ -8,6 +8,7 @@ import { AppData } from "../globals/app_data.slint";
 export component Settings {
     callback exit();
     settings := VerticalLayout {
+        width: parent.width;
         HorizontalLayout {
             spacing: 10px;
             padding: 10px;
@@ -38,6 +39,7 @@ export component Settings {
                 spacing: 10px;
                 padding: 10px;
                 Setting {
+                    width: settings.width - 35px;
                     text: Localization.theme;
                     ComboBox {
                         model: [Localization.theme_system, Localization.theme_light, Localization.theme_dark];
@@ -50,6 +52,7 @@ export component Settings {
                 }
 
                 Setting {
+                    width: settings.width - 35px;
                     text: Localization.window_size;
                     Switch {
                         checked: SettingsData.save_window_size;
@@ -61,8 +64,9 @@ export component Settings {
                 }
 
                 Setting {
+                    width: settings.width - 35px;
                     text: Localization.music_path;
-                    LineEdit {
+                    if !AppData.android: LineEdit {
                         text: SettingsData.current_path;
                         accepted(value) => {
                             SettingsData.set_path(value)
@@ -79,6 +83,7 @@ export component Settings {
                 }
 
                 Setting {
+                    width: settings.width - 35px;
                     text: Localization.language;
                     ComboBox {
                         model: Localization.localizations;
@@ -92,6 +97,7 @@ export component Settings {
                 VerticalLayout {
                     spacing: 10px;
                     padding: 10px;
+                    width: settings.width - 35px;
                     Text {
                         text: "N Music v" + AppData.version;
                         font-size: 12px;
