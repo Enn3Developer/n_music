@@ -1,7 +1,11 @@
 use bitcode::{Decode, Encode};
+#[cfg(target_os = "android")]
+use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
 use multitag::data::Picture;
 use multitag::Tag;
 use n_audio::queue::QueuePlayer;
+#[cfg(target_os = "android")]
+use once_cell::sync::Lazy;
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 use std::ffi::OsStr;
@@ -20,6 +24,57 @@ unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
 
 #[cfg(target_os = "android")]
+pub struct SenderReceiver<M> {
+    tx: Sender<M>,
+    rx: Receiver<M>,
+}
+
+#[cfg(target_os = "android")]
+impl<M> SenderReceiver<M> {
+    pub fn new() -> Self {
+        let (tx, rx) = flume::unbounded();
+        Self { tx, rx }
+    }
+
+    pub fn send(&self, message: M) -> Result<(), SendError<M>> {
+        self.tx.send(message)
+    }
+
+    pub fn recv(&self) -> Result<M, RecvError> {
+        self.rx.recv()
+    }
+
+    pub fn try_recv(&self) -> Result<M, TryRecvError> {
+        self.rx.try_recv()
+    }
+}
+
+#[cfg(target_os = "android")]
+pub static ANDROID_RX: Lazy<SenderReceiver<MessageRustToAndroid>> =
+    Lazy::new(|| SenderReceiver::new());
+#[cfg(target_os = "android")]
+pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
+    Lazy::new(|| SenderReceiver::new());
+
+#[cfg(target_os = "android")]
+pub enum MessageAndroidToRust {
+    Directory(String),
+}
+#[cfg(target_os = "android")]
+pub enum MessageRustToAndroid {
+    AskDirectory,
+}
+
+#[cfg(target_os = "android")]
+impl Into<usize> for MessageRustToAndroid {
+    fn into(self) -> usize {
+        match self {
+            MessageRustToAndroid::AskDirectory => 0,
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
@@ -29,12 +84,10 @@ fn android_main(app: slint::android::AndroidApp) {
 
     let mut settings = Settings::read_saved_android(&app);
     if !Path::new(&settings.path).exists() {
-        settings.path = app
-            .external_data_path()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        ANDROID_RX.send(MessageRustToAndroid::AskDirectory).unwrap();
+        if let Ok(MessageAndroidToRust::Directory(directory)) = ANDROID_TX.recv() {
+            settings.path = directory;
+        }
     }
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -216,9 +269,15 @@ impl From<FileTrack> for TrackData {
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_helloWorld<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_check<'local>(
     mut env: jni::JNIEnv<'local>,
     class: jni::objects::JClass<'local>,
 ) {
-    env.call_method(class, "hello", "()V", &[]).unwrap();
+    while let Ok(message) = ANDROID_RX.try_recv() {
+        match message {
+            MessageRustToAndroid::AskDirectory => {
+                env.call_method(&class, "askDirectory", "()V", &[]).unwrap();
+            }
+        }
+    }
 }
