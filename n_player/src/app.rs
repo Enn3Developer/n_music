@@ -57,8 +57,6 @@ pub async fn run_app(
 
     let check_timestamp = settings.lock().unwrap().check_timestamp().await;
     let is_cached = check_timestamp && !settings.lock().unwrap().tracks.is_empty();
-    println!("{check_timestamp}");
-    println!("{is_cached}");
 
     let future = tokio::spawn(async move {
         #[cfg(target_os = "linux")]
