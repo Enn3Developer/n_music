@@ -2973,6 +2973,7 @@ dependencies = [
  "directories",
  "flume",
  "infer",
+ "jni",
  "mpris-server",
  "multitag",
  "n_audio",

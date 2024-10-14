@@ -26,6 +26,7 @@ fn android_main(app: slint::android::AndroidApp) {
     use crate::settings::Settings;
 
     slint::android::init(app.clone()).unwrap();
+
     let mut settings = Settings::read_saved_android(&app);
     if !Path::new(&settings.path).exists() {
         settings.path = app
@@ -211,4 +212,13 @@ impl From<FileTrack> for TrackData {
             title: value.title.into(),
         }
     }
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_helloWorld<'local>(
+    mut env: jni::JNIEnv<'local>,
+    class: jni::objects::JClass<'local>,
+) {
+    env.call_method(class, "hello", "()V", &[]).unwrap();
 }
