@@ -118,6 +118,7 @@ pub async fn run_app(
     settings_data.set_save_window_size(settings.lock().unwrap().save_window_size);
     settings_data.set_current_path(settings.lock().unwrap().path.clone().into());
 
+    #[cfg(not(target_os = "android"))]
     app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
     let s = settings.clone();
     let window = main_window.clone_strong();
