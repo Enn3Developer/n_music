@@ -1,8 +1,9 @@
 use crate::{FileTrack, Theme, WindowSize};
 use bitcode::{Decode, Encode};
-use hashbrown::DefaultHashBuilder;
 use std::fs;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::fs::File;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::{BufReader, BufWriter, Cursor};
 use std::path::PathBuf;
 
 #[derive(Debug, Decode, Encode)]
@@ -20,13 +21,23 @@ pub struct Settings {
 impl Settings {
     fn read_from_file(storage_file: PathBuf) -> Self {
         if storage_file.exists() && storage_file.is_file() {
-            let storage_content = fs::read(storage_file).unwrap();
-            if let Ok(storage) = bitcode::decode(&storage_content) {
-                storage
+            let mut data = vec![];
+            if let Ok(_) = zstd::stream::copy_decode(
+                File::open(storage_file).unwrap(),
+                BufWriter::new(Cursor::new(&mut data)),
+            ) {
+                if let Ok(storage) = bitcode::decode(&data) {
+                    storage
+                } else {
+                    eprintln!("not encoded");
+                    Self::default()
+                }
             } else {
+                eprintln!("bad file");
                 Self::default()
             }
         } else {
+            eprintln!("file not found");
             Self::default()
         }
     }
@@ -91,7 +102,7 @@ impl Settings {
 
     pub async fn check_timestamp(&self) -> bool {
         if let Some(saved_timestamp) = &self.timestamp {
-            let mut hasher = DefaultHashBuilder::default().build_hasher();
+            let mut hasher = DefaultHasher::default();
             tokio::fs::metadata(&self.path)
                 .await
                 .unwrap()
@@ -106,7 +117,7 @@ impl Settings {
     }
 
     pub fn save_timestamp(&mut self) {
-        let mut hasher = DefaultHashBuilder::default().build_hasher();
+        let mut hasher = DefaultHasher::default();
         fs::metadata(&self.path)
             .unwrap()
             .modified()
@@ -118,8 +129,7 @@ impl Settings {
 
     #[cfg(not(target_os = "android"))]
     pub fn save(&self) {
-        let storage_file = Self::app_dir().join("config");
-        fs::write(storage_file, bitcode::encode(self)).unwrap();
+        self.save_and_compress(Self::app_dir());
     }
 
     #[cfg(target_os = "android")]
@@ -128,8 +138,21 @@ impl Settings {
         if !config_dir.exists() {
             fs::create_dir(&config_dir).unwrap();
         }
+        self.save_and_compress(config_dir);
+    }
+
+    fn save_and_compress(&self, config_dir: PathBuf) {
         let storage_file = config_dir.join("config");
-        fs::write(storage_file, bitcode::encode(self)).unwrap();
+        if storage_file.exists() {
+            fs::remove_file(&storage_file).unwrap();
+        }
+        let data = bitcode::encode(self);
+        zstd::stream::copy_encode(
+            BufReader::new(Cursor::new(data)),
+            File::create(storage_file).unwrap(),
+            9,
+        )
+        .unwrap();
     }
 }
 

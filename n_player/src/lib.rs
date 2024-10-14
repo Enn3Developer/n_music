@@ -190,7 +190,10 @@ pub struct FileTrack {
 }
 
 impl From<FileTrack> for TrackData {
-    fn from(value: FileTrack) -> Self {
+    fn from(mut value: FileTrack) -> Self {
+        value.artist.shrink_to_fit();
+        value.title.shrink_to_fit();
+        value.image.shrink_to_fit();
         Self {
             artist: value.artist.into(),
             cover: if !value.image.is_empty() {

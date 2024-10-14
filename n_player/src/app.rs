@@ -56,7 +56,9 @@ pub async fn run_app(
     );
 
     let check_timestamp = settings.lock().unwrap().check_timestamp().await;
-    let is_cached = !check_timestamp && !settings.lock().unwrap().tracks.is_empty();
+    let is_cached = check_timestamp && !settings.lock().unwrap().tracks.is_empty();
+    println!("{check_timestamp}");
+    println!("{is_cached}");
 
     let future = tokio::spawn(async move {
         #[cfg(target_os = "linux")]
@@ -207,6 +209,7 @@ pub async fn run_app(
         let mut old_index = usize::MAX;
         let mut loaded = 0;
         let threshold = num_cpus::get() * 4;
+        let mut saved = false;
         loop {
             interval.tick().await;
             let guard = r.read().await;
@@ -236,19 +239,22 @@ pub async fn run_app(
                         new_loaded = true;
                     }
                 } else {
-                    let settings = s.clone();
-                    #[cfg(target_os = "android")]
-                    let app = a.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let mut settings = settings.lock().unwrap();
-                        settings.save_timestamp();
-                        #[cfg(not(target_os = "android"))]
-                        settings.save();
+                    if !saved {
+                        saved = true;
+                        let settings = s.clone();
                         #[cfg(target_os = "android")]
-                        settings.save(&app);
-                    })
-                    .await
-                    .unwrap();
+                        let app = a.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let mut settings = settings.lock().unwrap();
+                            settings.save_timestamp();
+                            #[cfg(not(target_os = "android"))]
+                            settings.save();
+                            #[cfg(target_os = "android")]
+                            settings.save(&app);
+                        })
+                        .await
+                        .unwrap();
+                    }
                     new_loaded = true;
                 }
             }
