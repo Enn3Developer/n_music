@@ -50,6 +50,8 @@ pub trait Platform {
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}
     fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {}
+
+    fn tick(&mut self) {}
 }
 
 #[cfg(target_os = "linux")]
@@ -219,5 +221,9 @@ impl Platform for AndroidPlatform {
             }
         }
         vec![]
+    }
+
+    fn tick(&mut self) {
+        while let Ok(message) = crate::ANDROID_TX.try_recv() {}
     }
 }

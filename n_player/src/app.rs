@@ -264,6 +264,8 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                     .collect();
             }
 
+            p.lock().await.tick();
+
             window
                 .upgrade_in_event_loop(move |window| {
                     let app_data = window.global::<AppData>();
