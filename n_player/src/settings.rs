@@ -86,13 +86,13 @@ impl Settings {
 
     pub fn save_timestamp(&mut self) {
         let mut hasher = DefaultHasher::default();
-        fs::metadata(&self.path)
-            .unwrap()
-            .modified()
-            .unwrap()
-            .hash(&mut hasher);
-        let timestamp = hasher.finish();
-        self.timestamp = Some(timestamp);
+        if let Ok(metadata) = fs::metadata(&self.path) {
+            if let Ok(modified) = metadata.modified() {
+                modified.hash(&mut hasher);
+                let timestamp = hasher.finish();
+                self.timestamp = Some(timestamp);
+            }
+        }
     }
 
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
