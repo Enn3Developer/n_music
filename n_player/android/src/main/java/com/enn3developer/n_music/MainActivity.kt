@@ -69,6 +69,11 @@ class MainActivity : NativeActivity() {
         startActivity(browserIntent)
     }
 
+    @Suppress("unused")
+    private fun createNotification() {
+
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         start(this)

@@ -229,6 +229,12 @@ impl Platform for AndroidPlatform {
         vec![]
     }
 
+    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        env.call_method(&self.callback, "createNotification", "()V", &[])
+            .unwrap();
+    }
+
     fn tick(&mut self) {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {}
     }
