@@ -15,7 +15,7 @@ pub struct QueuePlayer {
     queue_file: Arc<RwLock<BufReader<File>>>,
     path: String,
     player: Player,
-    index: usize,
+    index: u16,
     index_map: Vec<u64>,
 }
 
@@ -33,13 +33,13 @@ impl QueuePlayer {
         QueuePlayer {
             queue_file,
             player,
-            index: usize::MAX - 1,
+            index: u16::MAX - 1,
             path,
             index_map: vec![],
         }
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> u16 {
         self.index
     }
 
@@ -59,10 +59,10 @@ impl QueuePlayer {
         self.path = path;
     }
 
-    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
+    pub async fn get_path_for_file(&self, i: u16) -> Option<PathBuf> {
         let mut guard = self.queue_file.write().await;
         guard
-            .seek(SeekFrom::Start(*self.index_map.get(i)?))
+            .seek(SeekFrom::Start(*self.index_map.get(i as usize)?))
             .unwrap();
         let mut name = String::new();
         guard.read_line(&mut name).unwrap();
@@ -123,7 +123,7 @@ impl QueuePlayer {
     pub fn clear(&mut self) {
         self.queue_file.blocking_write().get_mut().rewind().unwrap();
         self.index_map.clear();
-        self.index = usize::MAX - 1;
+        self.index = u16::MAX - 1;
     }
 
     #[inline]
@@ -132,10 +132,10 @@ impl QueuePlayer {
     }
 
     pub async fn current_track_name(&self) -> Option<String> {
-        let seek = if self.index >= self.len() {
+        let seek = if self.index >= self.len() as u16 {
             self.index_map.first()?.clone()
         } else {
-            self.index_map.get(self.index)?.clone()
+            self.index_map.get(self.index as usize)?.clone()
         };
 
         let mut guard = self.queue_file.write().await;
@@ -161,7 +161,7 @@ impl QueuePlayer {
         Ok(())
     }
 
-    pub async fn play_index(&mut self, index: usize) -> io::Result<()> {
+    pub async fn play_index(&mut self, index: u16) -> io::Result<()> {
         self.index = index;
 
         self.play().await
@@ -170,7 +170,7 @@ impl QueuePlayer {
     pub async fn play_next(&mut self) -> io::Result<()> {
         self.index += 1;
 
-        if self.index >= self.len() {
+        if self.index >= self.len() as u16 {
             self.index = 0;
         }
 
@@ -179,7 +179,7 @@ impl QueuePlayer {
 
     pub async fn play_previous(&mut self) -> io::Result<()> {
         if self.index == 0 {
-            self.index = self.len();
+            self.index = self.len() as u16;
         }
 
         self.index -= 1;

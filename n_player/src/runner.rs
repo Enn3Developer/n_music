@@ -33,7 +33,7 @@ pub enum RunnerMessage {
     Pause,
     Play,
     SetVolume(f64),
-    PlayTrack(usize),
+    PlayTrack(u16),
     Seek(RunnerSeek),
 }
 
@@ -155,7 +155,7 @@ impl Runner {
         self.player.index_map()
     }
 
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> u16 {
         self.player.index()
     }
 
@@ -167,7 +167,7 @@ impl Runner {
         self.player.is_empty()
     }
 
-    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
+    pub async fn get_path_for_file(&self, i: u16) -> Option<PathBuf> {
         self.player.get_path_for_file(i).await
     }
 
