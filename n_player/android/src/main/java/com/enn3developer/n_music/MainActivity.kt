@@ -31,11 +31,13 @@ class MainActivity : NativeActivity() {
         }
 
         const val ASK_DIRECTORY = 0
-        const val REQUEST_PERMISSION_CODE: Int = 1
+        const val ASK_FILE = 1
+        const val REQUEST_PERMISSION_CODE = 1
     }
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
+    private external fun gotFile(file: String)
 
     private fun askDirectoryWithPermission() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -55,6 +57,13 @@ class MainActivity : NativeActivity() {
     }
 
     @Suppress("unused")
+    private fun askFile() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        }
+        startActivityForResult(intent, ASK_FILE)
+    }
+
+    @Suppress("unused")
     private fun openLink(link: String) {
         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
         startActivity(browserIntent)
@@ -66,18 +75,23 @@ class MainActivity : NativeActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        println("got response")
-        if (resultCode == RESULT_OK && requestCode == ASK_DIRECTORY) {
-            data?.data?.also { uri ->
-                if (uri.path != null) {
-                    val contentResolver = applicationContext.contentResolver
-                    val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    contentResolver.takePersistableUriPermission(uri, takeFlags)
+        if (resultCode == RESULT_OK) {
+            if (requestCode == ASK_DIRECTORY) {
+                data?.data?.also { uri ->
+                    if (uri.path != null) {
+                        val contentResolver = applicationContext.contentResolver
+                        val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        contentResolver.takePersistableUriPermission(uri, takeFlags)
+                        val path = uri.path!!.replace("/tree/primary:", "/storage/emulated/0/")
+                        Toast.makeText(applicationContext, "Loading music...", Toast.LENGTH_LONG)
+                            .show()
+                        gotDirectory(path)
+                    }
+                }
+            } else if (requestCode == ASK_FILE) {
+                data?.data?.also { uri ->
                     val path = uri.path!!.replace("/tree/primary:", "/storage/emulated/0/")
-                    println(path)
-                    Toast.makeText(applicationContext, "Loading music...", Toast.LENGTH_LONG)
-                        .show()
-                    gotDirectory(path)
+                    gotFile(path)
                 }
             }
         }

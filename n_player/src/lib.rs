@@ -68,6 +68,7 @@ pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
 #[cfg(target_os = "android")]
 pub enum MessageAndroidToRust {
     Directory(String),
+    File(String),
     Start(jni::JavaVM, jni::objects::GlobalRef),
 }
 #[cfg(target_os = "android")]
@@ -306,6 +307,23 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory
 ) {
     ANDROID_TX
         .send(MessageAndroidToRust::Directory(
+            env.get_string(&string)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+        ))
+        .unwrap()
+}
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotFile<'local>(
+    mut env: jni::JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    string: jni::objects::JString<'local>,
+) {
+    ANDROID_TX
+        .send(MessageAndroidToRust::File(
             env.get_string(&string)
                 .unwrap()
                 .to_str()

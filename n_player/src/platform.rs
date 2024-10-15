@@ -208,6 +208,16 @@ impl Platform for AndroidPlatform {
     }
 
     fn ask_file(&mut self) -> Vec<PathBuf> {
-        todo!()
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        env.call_method(&self.callback, "askFile", "()V", &[])
+            .unwrap();
+        while let Ok(message) = crate::ANDROID_TX.recv() {
+            if let crate::MessageAndroidToRust::File(path) = message {
+                return vec![PathBuf::from(path)];
+            } else {
+                crate::ANDROID_TX.send(message).unwrap();
+            }
+        }
+        vec![]
     }
 }
