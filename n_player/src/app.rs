@@ -1,7 +1,3 @@
-#[cfg(target_os = "linux")]
-use crate::bus_server::linux::MPRISBridge;
-#[cfg(not(target_os = "linux"))]
-use crate::bus_server::DummyServer;
 use crate::localization::{get_locale_denominator, localize};
 use crate::platform::Platform;
 use crate::runner::{run, Runner, RunnerMessage, RunnerSeek};
@@ -11,8 +7,6 @@ use crate::{
     SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
-#[cfg(target_os = "linux")]
-use mpris_server::Server;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
@@ -59,16 +53,12 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     let check_timestamp = settings.lock().await.check_timestamp().await;
     let is_cached = check_timestamp && !settings.lock().await.tracks.is_empty();
 
+    let p = platform.clone();
     let future = tokio::spawn(async move {
-        #[cfg(target_os = "linux")]
-        let server = Server::new("n_music", MPRISBridge::new(r.clone(), tx_t.clone()))
-            .await
-            .unwrap();
-        #[cfg(not(target_os = "linux"))]
-        let server = DummyServer;
+        p.lock().await.add_runner(r.clone(), tx_t.clone()).await;
 
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
-        let bus_future = tokio::task::spawn(bus_server::run(server, r.clone(), tmp));
+        let bus_future = tokio::task::spawn(bus_server::run(p, r.clone(), tmp));
         if !is_cached {
             let loader_future = tokio::task::spawn(loader(r.clone(), tx_l));
 
@@ -118,15 +108,6 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     settings_data.set_height(settings.lock().await.window_size.height as f32);
     settings_data.set_save_window_size(settings.lock().await.save_window_size);
     settings_data.set_current_path(settings.lock().await.path.clone().into());
-
-    #[cfg(not(target_os = "android"))]
-    app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
-    #[cfg(target_os = "android")]
-    app_data.on_open_link(move |link| {
-        crate::ANDROID_RX
-            .send(crate::MessageRustToAndroid::OpenLink(link.into()))
-            .unwrap()
-    });
 
     let p = platform.clone();
     app_data.on_open_link(move |link| {

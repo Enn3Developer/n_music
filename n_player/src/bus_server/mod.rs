@@ -1,4 +1,5 @@
 use crate::get_image;
+use crate::platform::Platform;
 use crate::runner::Runner;
 use n_audio::music_track::MusicTrack;
 use n_audio::remove_ext;
@@ -8,21 +9,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 #[cfg(target_os = "linux")]
 pub mod linux;
-
-pub struct DummyServer;
-
-impl BusServer for DummyServer {
-    async fn properties_changed<P: IntoIterator<Item = Property>>(
-        &self,
-        _properties: P,
-    ) -> Result<(), String> {
-        Ok(())
-    }
-}
 
 pub enum Property {
     Playing(bool),
@@ -38,15 +28,11 @@ pub struct Metadata {
     pub image_path: Option<String>,
 }
 
-#[allow(async_fn_in_trait)]
-pub trait BusServer {
-    async fn properties_changed<P: IntoIterator<Item = Property>>(
-        &self,
-        properties: P,
-    ) -> Result<(), String>;
-}
-
-pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: NamedTempFile) {
+pub async fn run<P: Platform>(
+    platform: Arc<Mutex<P>>,
+    runner: Arc<RwLock<Runner>>,
+    mut tmp: NamedTempFile,
+) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     let mut properties = vec![];
     let mut playback = false;
@@ -107,10 +93,10 @@ pub async fn run<B: BusServer>(server: B, runner: Arc<RwLock<Runner>>, mut tmp: 
         }
 
         if !properties.is_empty() {
-            server
-                .properties_changed(mem::take(&mut properties))
+            platform
+                .lock()
                 .await
-                .unwrap();
+                .properties_changed(mem::take(&mut properties));
         }
     }
 }

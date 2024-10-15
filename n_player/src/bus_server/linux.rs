@@ -1,12 +1,11 @@
-use crate::bus_server::{BusServer, Property};
 use crate::runner::{Runner, RunnerMessage};
 use crate::{get_image, runner};
 use flume::Sender;
 use mpris_server::zbus::fdo;
 use mpris_server::zbus::zvariant::ObjectPath;
 use mpris_server::{
-    zbus, LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface,
-    Server, Time, TrackId, Volume,
+    zbus, LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
+    TrackId, Volume,
 };
 use n_audio::music_track::MusicTrack;
 use n_audio::remove_ext;
@@ -15,38 +14,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 use tokio::sync::RwLock;
-
-impl<T: PlayerInterface + 'static> BusServer for Server<T> {
-    async fn properties_changed<P: IntoIterator<Item = Property>>(
-        &self,
-        properties: P,
-    ) -> Result<(), String> {
-        Server::properties_changed(
-            self,
-            properties.into_iter().map(|p| match p {
-                Property::Playing(playing) => mpris_server::Property::PlaybackStatus(if playing {
-                    PlaybackStatus::Playing
-                } else {
-                    PlaybackStatus::Paused
-                }),
-                Property::Metadata(metadata) => {
-                    let mut meta = Metadata::new();
-
-                    meta.set_title(metadata.title);
-                    meta.set_artist(metadata.artists);
-                    meta.set_length(Some(Time::from_secs(metadata.length as i64)));
-                    meta.set_art_url(metadata.image_path);
-                    meta.set_trackid(Some(ObjectPath::from_string_unchecked(metadata.id)));
-
-                    mpris_server::Property::Metadata(meta)
-                }
-                Property::Volume(volume) => mpris_server::Property::Volume(volume),
-            }),
-        )
-        .await
-        .map_err(|e| e.to_string())
-    }
-}
 
 pub struct MPRISBridge {
     runner: Arc<RwLock<Runner>>,
