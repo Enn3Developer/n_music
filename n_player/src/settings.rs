@@ -72,27 +72,26 @@ impl Settings {
 
     pub async fn check_timestamp(&self) -> bool {
         if let Some(saved_timestamp) = &self.timestamp {
-            let mut hasher = DefaultHasher::default();
-            if let Ok(metadata) = tokio::fs::metadata(&self.path).await {
-                if let Ok(modified) = metadata.modified() {
-                    modified.hash(&mut hasher);
-                    let timestamp = hasher.finish();
-                    return &timestamp == saved_timestamp;
-                }
+            if let Ok(timestamp) = self.timestamp().await {
+                return &timestamp == saved_timestamp;
             }
         }
         false
     }
 
-    pub fn save_timestamp(&mut self) {
-        let mut hasher = DefaultHasher::default();
-        if let Ok(metadata) = fs::metadata(&self.path) {
-            if let Ok(modified) = metadata.modified() {
-                modified.hash(&mut hasher);
-                let timestamp = hasher.finish();
-                self.timestamp = Some(timestamp);
-            }
+    pub async fn save_timestamp(&mut self) {
+        if let Ok(timestamp) = self.timestamp().await {
+            self.timestamp = Some(timestamp);
         }
+    }
+
+    pub async fn timestamp(&self) -> std::io::Result<u64> {
+        let mut hasher = DefaultHasher::default();
+        tokio::fs::metadata(&self.path)
+            .await?
+            .modified()?
+            .hash(&mut hasher);
+        Ok(hasher.finish())
     }
 
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {

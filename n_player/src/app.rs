@@ -226,7 +226,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                 } else {
                     if !saved {
                         saved = true;
-                        s.lock().await.save_timestamp();
+                        s.lock().await.save_timestamp().await;
                         s.lock().await.save(p.lock().await).await;
                     }
                     new_loaded = true;
