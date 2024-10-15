@@ -32,11 +32,21 @@ fn ask_music_dir_desktop() -> PathBuf {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn ask_file_desktop() -> PathBuf {
+    if let Some(path) = rfd::FileDialog::new().pick_file() {
+        path
+    } else {
+        PathBuf::new()
+    }
+}
+
 #[allow(async_fn_in_trait, unused_variables)]
 pub trait Platform {
     fn open_link(&mut self, link: String);
     fn internal_dir(&self) -> PathBuf;
     fn ask_music_dir(&mut self) -> PathBuf;
+    fn ask_file(&mut self) -> PathBuf;
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}
     fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {}
@@ -66,6 +76,10 @@ impl Platform for LinuxPlatform {
 
     fn ask_music_dir(&mut self) -> PathBuf {
         ask_music_dir_desktop()
+    }
+
+    fn ask_file(&mut self) -> PathBuf {
+        ask_file_desktop()
     }
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
@@ -129,6 +143,10 @@ impl Platform for DesktopPlatform {
     fn ask_music_dir(&mut self) -> PathBuf {
         ask_music_dir_desktop()
     }
+
+    fn ask_file(&mut self) -> PathBuf {
+        ask_file_desktop()
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -187,5 +205,9 @@ impl Platform for AndroidPlatform {
             }
         }
         PathBuf::new()
+    }
+
+    fn ask_file(&mut self) -> PathBuf {
+        todo!()
     }
 }
