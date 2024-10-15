@@ -100,32 +100,25 @@ impl Player {
     /// Seeks to the set timestamp
     /// Be aware that if the timestamp isn't valid the track thread will panic
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub async fn seek_to(&self, secs: u64, mut frac: f64) -> Result<(), SendError<Message>> {
+    pub async fn seek_to(&self, seconds: u64, mut frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
-            if secs == 0 && frac == 0.0 {
+            if seconds == 0 && frac == 0.0 {
                 frac = 0.01;
             }
-            if let Some(current_duration) = &self.cached_get_time {
-                let min_value = if secs as f64 + frac <= current_duration.length {
-                    Time {
-                        seconds: secs,
-                        frac,
-                    }
-                } else {
-                    Time {
-                        seconds: current_duration.length.trunc() as u64,
-                        frac: current_duration.length.fract(),
-                    }
-                };
-                tx.send_async(Message::Seek(min_value)).await?;
+
+            let time = Time { seconds, frac };
+            if let Some(mut time) = self.cached_get_time {
+                time.position = seconds as f64 + frac;
             }
+
+            tx.send_async(Message::Seek(time)).await?;
         }
         Ok(())
     }
 
     /// Returns the timestamp that was lastly sent by the track thread
     pub fn get_time(&mut self) -> Option<TrackTime> {
-        let mut last = None;
+        let mut last = self.cached_get_time;
 
         if let Some(rx_t) = &self.rx_t {
             while let Ok(message) = rx_t.try_recv() {

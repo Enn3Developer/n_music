@@ -1,9 +1,9 @@
+use crate::{remove_ext, Metadata, TrackTime, PROBE};
+use multitag::Tag;
 use std::ffi::OsStr;
 use std::io::Cursor;
 use std::path::Path;
 use std::{fs, io};
-
-use crate::{remove_ext, Metadata, TrackTime, PROBE};
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
@@ -78,6 +78,13 @@ impl MusicTrack {
                 } else if let Some(StandardTagKey::TrackTitle) = tag.std_key {
                     title = tag.value.to_string();
                 }
+            }
+        } else if let Ok(tag) = Tag::read_from_path(&self.path) {
+            if let Some(t) = tag.title() {
+                title = t.to_string();
+            }
+            if let Some(a) = tag.artist() {
+                artist = a;
             }
         }
 
