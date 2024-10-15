@@ -49,6 +49,14 @@ impl<M> SenderReceiver<M> {
     pub fn try_recv(&self) -> Result<M, TryRecvError> {
         self.rx.try_recv()
     }
+
+    pub async fn send_async(&self, message: M) -> Result<(), SendError<M>> {
+        self.tx.send_async(message).await
+    }
+
+    pub async fn recv_async(&self) -> Result<M, RecvError> {
+        self.rx.recv_async().await
+    }
 }
 
 #[cfg(target_os = "android")]

@@ -50,6 +50,7 @@ class MainActivity : NativeActivity() {
         startActivityForResult(intent, ASK_DIRECTORY)
     }
 
+    @Suppress("unused")
     private fun askDirectory() {
         println("asking directory")
         //Check if permission has been granted
@@ -60,6 +61,7 @@ class MainActivity : NativeActivity() {
         }
     }
 
+    @Suppress("unused")
     private fun openLink(link: String) {
         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
         startActivity(browserIntent)
@@ -105,10 +107,6 @@ class MainActivity : NativeActivity() {
                 }
             }
         }
-    }
-
-    fun hello() {
-        println("checked")
     }
 
     @SuppressLint("InlinedApi")

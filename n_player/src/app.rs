@@ -182,6 +182,28 @@ pub async fn run_app(
         })
         .unwrap();
     });
+    #[cfg(target_os = "android")]
+    let s = settings.clone();
+    #[cfg(target_os = "android")]
+    let a = app.clone();
+    #[cfg(target_os = "android")]
+    settings_data.on_path(move || {
+        let s = s.clone();
+        let a = a.clone();
+        slint::spawn_local(async move {
+            crate::ANDROID_RX
+                .send_async(crate::MessageRustToAndroid::AskDirectory)
+                .await
+                .unwrap();
+            if let Ok(crate::MessageAndroidToRust::Directory(path)) =
+                crate::ANDROID_TX.recv_async().await
+            {
+                s.lock().unwrap().path = path;
+                s.lock().unwrap().save(&a);
+            }
+        })
+        .unwrap();
+    });
     let s = settings.clone();
     settings_data.on_set_path_callback(move |path| {
         s.lock().unwrap().path = path.clone().into();
