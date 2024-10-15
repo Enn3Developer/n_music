@@ -28,6 +28,9 @@ export component ControlPanel {
                     maximum: AppData.length > 1.0 ? AppData.length : 1.0;
                     width: (control-panel.width - image.width - position.width - length.width - (AppData.android ? 0 : 45px) - parent.spacing * (AppData.android ? 2 : 4) - control-panel.padding * 2) / (AppData.android ? 1 : 2);
                     value <=> AppData.time;
+                    changed(value) => {
+                        AppData.changing();
+                    }
                     released(value) => {
                         AppData.seek(value);
                     }

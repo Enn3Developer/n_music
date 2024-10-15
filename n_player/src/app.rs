@@ -187,6 +187,8 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     app_data.on_set_volume(move |volume| t.send(RunnerMessage::SetVolume(volume as f64)).unwrap());
     let (tx_searching, rx_searching) = flume::unbounded();
     app_data.on_searching(move |searching| tx_searching.send(searching.to_string()).unwrap());
+    let (tx_changing, rx_changing) = flume::unbounded();
+    app_data.on_changing(move || tx_changing.send(()).unwrap());
     let window = main_window.as_weak();
     let r = runner.clone();
     let s = settings.clone();
@@ -211,6 +213,12 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
             let time_float = time.position;
             let volume = guard.volume();
             let position = time.format_pos();
+
+            let change_time = if let Ok(()) = rx_changing.try_recv() {
+                false
+            } else {
+                true
+            };
 
             let mut new_loaded = false;
             while let Ok(track_data) = rx_l.try_recv() {
@@ -273,7 +281,9 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                     let app_data = window.global::<AppData>();
                     app_data.set_playing(index as i32);
                     app_data.set_position_time(position.into());
-                    app_data.set_time(time_float as f32);
+                    if change_time {
+                        app_data.set_time(time_float as f32);
+                    }
                     app_data.set_length(length as f32);
                     app_data.set_playback(playback);
                     app_data.set_volume(volume as f32);
