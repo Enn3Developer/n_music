@@ -14,6 +14,7 @@ export component MainWindow inherits Window {
     out property <length> last-width <=> self.width;
     out property <length> last-height <=> self.height;
     title: "N Music - " + AppData.playing_track.title;
+    icon: @image-url("../assets/icons/icon.svg");
     preferred-width: SettingsData.width;
     preferred-height: SettingsData.height;
     min-width: 400px;

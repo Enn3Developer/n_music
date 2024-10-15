@@ -129,13 +129,13 @@ pub fn get_locale_name(denominator: Option<&str>) -> &str {
     "English"
 }
 
-pub fn get_locale_denominator(name: Option<&str>) -> &str {
-    if let Some(name) = name {
+pub fn get_locale_denominator(name: Option<String>) -> String {
+    if let Some(name) = name.as_ref() {
         for localization in LOCALIZATIONS {
             if name == localization.1 {
-                return localization.0;
+                return localization.0.to_string();
             }
         }
     }
-    "en"
+    "en".to_string()
 }

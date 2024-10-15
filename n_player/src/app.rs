@@ -3,6 +3,7 @@ use crate::bus_server::linux::MPRISBridge;
 #[cfg(not(target_os = "linux"))]
 use crate::bus_server::DummyServer;
 use crate::localization::{get_locale_denominator, localize};
+use crate::platform::Platform;
 use crate::runner::{run, Runner, RunnerMessage, RunnerSeek};
 use crate::settings::Settings;
 use crate::{
@@ -15,30 +16,30 @@ use mpris_server::Server;
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
+use rimage::codecs::webp::WebPDecoder;
 use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, VecModel};
-use std::sync::{Arc, Mutex};
+use std::io::Cursor;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use zune_core::bytestream::ZCursor;
 use zune_core::colorspace::ColorSpace;
 use zune_core::options::DecoderOptions;
 use zune_image::image::Image;
-use zune_image::traits::OperationsTrait;
+use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
 
-pub async fn run_app(
-    settings: Settings,
-    #[cfg(target_os = "android")] app: slint::android::AndroidApp,
-) {
+pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform: P) {
+    let platform = Arc::new(Mutex::new(platform));
     let settings = Arc::new(Mutex::new(settings));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
-    let mut player = QueuePlayer::new(settings.lock().unwrap().path.clone());
-    add_all_tracks_to_player(&mut player, settings.lock().unwrap().path.clone()).await;
+    let mut player = QueuePlayer::new(settings.lock().await.path.clone());
+    add_all_tracks_to_player(&mut player, settings.lock().await.path.clone()).await;
     let len = player.len();
 
     let runner = Arc::new(RwLock::new(Runner::new(player)));
@@ -51,12 +52,12 @@ pub async fn run_app(
     let main_window = MainWindow::new().unwrap();
 
     localize(
-        settings.lock().unwrap().locale.clone(),
+        settings.lock().await.locale.clone(),
         main_window.global::<Localization>(),
     );
 
-    let check_timestamp = settings.lock().unwrap().check_timestamp().await;
-    let is_cached = check_timestamp && !settings.lock().unwrap().tracks.is_empty();
+    let check_timestamp = settings.lock().await.check_timestamp().await;
+    let is_cached = check_timestamp && !settings.lock().await.tracks.is_empty();
 
     let future = tokio::spawn(async move {
         #[cfg(target_os = "linux")]
@@ -84,7 +85,7 @@ pub async fn run_app(
             let track_without_ext = remove_ext(track_path);
             if let Some(file_track) = settings
                 .lock()
-                .unwrap()
+                .await
                 .tracks
                 .iter()
                 .find(|file_track| file_track.path == track_without_ext)
@@ -111,12 +112,12 @@ pub async fn run_app(
     app_data.set_android(true);
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
-    settings_data.set_color_scheme(settings.lock().unwrap().theme.into());
-    settings_data.set_theme(i32::from(settings.lock().unwrap().theme));
-    settings_data.set_width(settings.lock().unwrap().window_size.width as f32);
-    settings_data.set_height(settings.lock().unwrap().window_size.height as f32);
-    settings_data.set_save_window_size(settings.lock().unwrap().save_window_size);
-    settings_data.set_current_path(settings.lock().unwrap().path.clone().into());
+    settings_data.set_color_scheme(settings.lock().await.theme.into());
+    settings_data.set_theme(i32::from(settings.lock().await.theme));
+    settings_data.set_width(settings.lock().await.window_size.width as f32);
+    settings_data.set_height(settings.lock().await.window_size.height as f32);
+    settings_data.set_save_window_size(settings.lock().await.save_window_size);
+    settings_data.set_current_path(settings.lock().await.path.clone().into());
 
     #[cfg(not(target_os = "android"))]
     app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
@@ -126,87 +127,69 @@ pub async fn run_app(
             .send(crate::MessageRustToAndroid::OpenLink(link.into()))
             .unwrap()
     });
+
+    let p = platform.clone();
+    app_data.on_open_link(move |link| {
+        let p = p.clone();
+        slint::spawn_local(async move { p.lock().await.open_link(link.into()) }).unwrap();
+    });
+
     let s = settings.clone();
     let window = main_window.clone_strong();
-    #[cfg(target_os = "android")]
-    let a = app.clone();
+    let p = platform.clone();
     main_window
         .global::<Localization>()
         .on_set_locale(move |locale_name| {
-            let denominator = get_locale_denominator(Some(&locale_name));
-            s.lock().unwrap().locale = Some(denominator.to_string());
+            let denominator = get_locale_denominator(Some(locale_name.into()));
             localize(
                 Some(denominator.to_string()),
                 window.global::<Localization>(),
             );
             let s = s.clone();
-            #[cfg(not(target_os = "android"))]
-            s.lock().unwrap().save();
-            #[cfg(target_os = "android")]
-            s.lock().unwrap().save(&a);
+            let p = p.clone();
+            slint::spawn_local(async move {
+                s.lock().await.locale = Some(denominator);
+                s.lock().await.save(p.lock().await).await;
+            })
+            .unwrap();
         });
     tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
     let window = main_window.clone_strong();
-    #[cfg(target_os = "android")]
-    let a = app.clone();
+    let p = platform.clone();
     settings_data.on_change_theme_callback(move |theme_name| {
         if let Ok(theme) = Theme::try_from(theme_name) {
-            s.lock().unwrap().theme = theme;
             window
                 .global::<SettingsData>()
                 .set_color_scheme(theme.into());
-            #[cfg(not(target_os = "android"))]
-            s.lock().unwrap().save();
-            #[cfg(target_os = "android")]
-            s.lock().unwrap().save(&a);
+            let s = s.clone();
+            let p = p.clone();
+            slint::spawn_local(async move {
+                s.lock().await.theme = theme;
+                s.lock().await.save(p.lock().await).await;
+            })
+            .unwrap();
         }
     });
     let s = settings.clone();
-    settings_data.on_toggle_save_window_size(move |save| s.lock().unwrap().save_window_size = save);
-    #[cfg(not(target_os = "android"))]
-    let window = main_window.as_weak();
-    #[cfg(not(target_os = "android"))]
-    settings_data.on_path(move || {
-        let window = window.clone();
+    settings_data.on_toggle_save_window_size(move |save| {
+        let s = s.clone();
         slint::spawn_local(async move {
-            if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
-                window
-                    .upgrade_in_event_loop(move |window| {
-                        window
-                            .global::<SettingsData>()
-                            .invoke_set_path(folder.path().to_string_lossy().to_string().into())
-                    })
-                    .unwrap();
-            }
+            s.lock().await.save_window_size = save;
         })
         .unwrap();
     });
-    #[cfg(target_os = "android")]
     let s = settings.clone();
-    #[cfg(target_os = "android")]
-    let a = app.clone();
-    #[cfg(target_os = "android")]
+    let p = platform.clone();
     settings_data.on_path(move || {
         let s = s.clone();
-        let a = a.clone();
+        let p = p.clone();
         slint::spawn_local(async move {
-            crate::ANDROID_RX
-                .send_async(crate::MessageRustToAndroid::AskDirectory)
-                .await
-                .unwrap();
-            if let Ok(crate::MessageAndroidToRust::Directory(path)) =
-                crate::ANDROID_TX.recv_async().await
-            {
-                s.lock().unwrap().path = path;
-                s.lock().unwrap().save(&a);
-            }
+            let path = p.lock().await.ask_music_dir();
+            s.lock().await.path = path.to_str().unwrap().to_string();
+            s.lock().await.save(p.lock().await).await;
         })
         .unwrap();
-    });
-    let s = settings.clone();
-    settings_data.on_set_path_callback(move |path| {
-        s.lock().unwrap().path = path.clone().into();
     });
     let t = tx.clone();
     app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
@@ -228,8 +211,7 @@ pub async fn run_app(
     let window = main_window.as_weak();
     let r = runner.clone();
     let s = settings.clone();
-    #[cfg(target_os = "android")]
-    let a = app.clone();
+    let p = platform.clone();
     let updater = tokio::task::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         let mut searching = String::new();
@@ -254,11 +236,8 @@ pub async fn run_app(
             let mut new_loaded = false;
             while let Ok(track_data) = rx_l.try_recv() {
                 if let Some((index, file_track)) = track_data {
-                    let settings = s.clone();
                     let file = file_track.clone();
-                    tokio::task::spawn_blocking(move || settings.lock().unwrap().tracks.push(file))
-                        .await
-                        .unwrap();
+                    s.lock().await.tracks.push(file);
                     tracks[index] = file_track.into();
                     tracks[index].index = index as i32;
                     loaded += 1;
@@ -268,19 +247,8 @@ pub async fn run_app(
                 } else {
                     if !saved {
                         saved = true;
-                        let settings = s.clone();
-                        #[cfg(target_os = "android")]
-                        let app = a.clone();
-                        tokio::task::spawn_blocking(move || {
-                            let mut settings = settings.lock().unwrap();
-                            settings.save_timestamp();
-                            #[cfg(not(target_os = "android"))]
-                            settings.save();
-                            #[cfg(target_os = "android")]
-                            settings.save(&app);
-                        })
-                        .await
-                        .unwrap();
+                        s.lock().await.save_timestamp();
+                        s.lock().await.save(p.lock().await).await;
                     }
                     new_loaded = true;
                 }
@@ -349,26 +317,23 @@ pub async fn run_app(
     });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
-    settings.lock().unwrap().volume = runner.read().await.volume();
-    if settings.lock().unwrap().save_window_size {
+    settings.lock().await.volume = runner.read().await.volume();
+    if settings.lock().await.save_window_size {
         let width = main_window.get_last_width() as usize;
         let height = main_window.get_last_height() as usize;
-        settings.lock().unwrap().window_size = WindowSize { width, height };
+        settings.lock().await.window_size = WindowSize { width, height };
     } else {
-        settings.lock().unwrap().window_size = WindowSize::default();
+        settings.lock().await.window_size = WindowSize::default();
     }
 
     updater.abort();
     future.abort();
-    #[cfg(not(target_os = "android"))]
-    settings.lock().unwrap().save();
-    #[cfg(target_os = "android")]
-    settings.lock().unwrap().save(&app);
+    settings.lock().await.save(platform.lock().await).await;
 }
 async fn loader_task(
     runner: Arc<RwLock<Runner>>,
     tx: Sender<Option<(usize, FileTrack)>>,
-    rx_l: Arc<tokio::sync::Mutex<Receiver<usize>>>,
+    rx_l: Arc<Mutex<Receiver<usize>>>,
 ) {
     loop {
         if let Ok(index) = rx_l.lock().await.recv_async().await {
@@ -388,31 +353,50 @@ async fn loader_task(
                             tokio::task::spawn_blocking(move || get_image(p)).await
                         {
                             if !image.is_empty() {
-                                let mut zune_image =
-                                    Image::read(ZCursor::new(image), DecoderOptions::new_fast())
-                                        .unwrap();
-                                zune_image.convert_color(ColorSpace::RGB).unwrap();
-                                let (width, height) = zune_image.dimensions();
-                                if width != height {
-                                    let difference = width.abs_diff(height);
-                                    let min = width.min(height);
-                                    let is_height = height < width;
-                                    let x = if is_height { difference / 2 } else { 0 };
-                                    let y = if !is_height { difference / 2 } else { 0 };
+                                let zune_image = if let Ok(image) =
+                                    Image::read(ZCursor::new(&image), DecoderOptions::new_fast())
+                                {
+                                    Some(image)
+                                } else if let Ok(mut webp_decoder) =
+                                    WebPDecoder::try_new(Cursor::new(&image))
+                                {
+                                    if let Ok(image) = webp_decoder.decode() {
+                                        Some(image)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                if let Some(mut zune_image) = zune_image {
+                                    zune_image.convert_color(ColorSpace::RGB).unwrap();
+                                    let (width, height) = zune_image.dimensions();
+                                    if width != height {
+                                        let difference = width.abs_diff(height);
+                                        let min = width.min(height);
+                                        let is_height = height < width;
+                                        let x = if is_height { difference / 2 } else { 0 };
+                                        let y = if !is_height { difference / 2 } else { 0 };
+                                        tokio::task::block_in_place(|| {
+                                            Crop::new(min, min, x, y)
+                                                .execute(&mut zune_image)
+                                                .unwrap()
+                                        });
+                                    }
                                     tokio::task::block_in_place(|| {
-                                        Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
+                                        rimage::operations::resize::Resize::new(
+                                            128,
+                                            128,
+                                            ResizeAlg::Convolution(FilterType::Hamming),
+                                        )
+                                        .execute(&mut zune_image)
+                                        .unwrap()
                                     });
+                                    zune_image.flatten_to_u8()[0].clone()
+                                } else {
+                                    vec![]
                                 }
-                                tokio::task::block_in_place(|| {
-                                    rimage::operations::resize::Resize::new(
-                                        128,
-                                        128,
-                                        ResizeAlg::Convolution(FilterType::Hamming),
-                                    )
-                                    .execute(&mut zune_image)
-                                    .unwrap()
-                                });
-                                zune_image.flatten_to_u8()[0].clone()
                             } else {
                                 vec![]
                             }
@@ -446,7 +430,7 @@ async fn loader(runner: Arc<RwLock<Runner>>, tx: Sender<Option<(usize, FileTrack
     let len = runner.read().await.len();
     let mut tasks = vec![];
     let (tx_l, rx_l) = flume::unbounded();
-    let rx_l = Arc::new(tokio::sync::Mutex::new(rx_l));
+    let rx_l = Arc::new(Mutex::new(rx_l));
     let cpus = num_cpus::get() * 4;
     for _ in 0..cpus {
         let runner = runner.clone();

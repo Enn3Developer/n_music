@@ -10,13 +10,8 @@ export global SettingsData {
     callback change_theme_callback(int);
     callback toggle_save_window_size(bool);
     callback path();
-    callback set_path_callback(string);
     public function change_theme(theme: int) {
         self.theme = theme;
         change_theme_callback(theme);
-    }
-    public function set_path(path: string) {
-        self.current_path = path;
-        set_path_callback(path);
     }
 }

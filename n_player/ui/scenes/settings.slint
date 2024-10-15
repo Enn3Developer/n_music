@@ -66,13 +66,6 @@ export component Settings {
                 Setting {
                     width: settings.width - 32px;
                     text: Localization.music_path;
-                    children: AppData.android ? 1 : 2;
-                    if !AppData.android: LineEdit {
-                        text: SettingsData.current_path;
-                        accepted(value) => {
-                            SettingsData.set_path(value)
-                        }
-                    }
 
                     Button {
                         icon: @image-url("../../assets/icons/folder.svg");

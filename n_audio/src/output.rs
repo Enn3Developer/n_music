@@ -16,6 +16,7 @@ use symphonia::core::units::Duration;
 
 pub trait AudioOutput {
     fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32) -> Result<()>;
+    #[allow(dead_code)]
     fn flush(&mut self);
 }
 

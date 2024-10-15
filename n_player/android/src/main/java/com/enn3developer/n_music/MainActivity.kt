@@ -32,16 +32,9 @@ class MainActivity : NativeActivity() {
 
         const val ASK_DIRECTORY = 0
         const val REQUEST_PERMISSION_CODE: Int = 1
-        lateinit var instance: MainActivity
-        private fun checkThread() {
-            while (true) {
-                Thread.sleep(200)
-                instance.check()
-            }
-        }
     }
 
-    private external fun check()
+    private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
 
     private fun askDirectoryWithPermission() {
@@ -69,8 +62,7 @@ class MainActivity : NativeActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        instance = this
-        thread(block = { checkThread() })
+        start(this)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -83,6 +75,8 @@ class MainActivity : NativeActivity() {
                     contentResolver.takePersistableUriPermission(uri, takeFlags)
                     val path = uri.path!!.replace("/tree/primary:", "/storage/emulated/0/")
                     println(path)
+                    Toast.makeText(applicationContext, "Loading music...", Toast.LENGTH_LONG)
+                        .show()
                     gotDirectory(path)
                 }
             }
@@ -98,11 +92,11 @@ class MainActivity : NativeActivity() {
         when (requestCode) {
             REQUEST_PERMISSION_CODE -> if (grantResults.isNotEmpty()) {
                 if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(applicationContext, "Permission granted", Toast.LENGTH_LONG)
+                    Toast.makeText(applicationContext, "Permission granted", Toast.LENGTH_SHORT)
                         .show()
                     askDirectoryWithPermission()
                 } else {
-                    Toast.makeText(applicationContext, "Permission denied", Toast.LENGTH_LONG)
+                    Toast.makeText(applicationContext, "Permission denied", Toast.LENGTH_SHORT)
                         .show()
                 }
             }

@@ -1,3 +1,4 @@
+use crate::platform::Platform;
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
@@ -6,19 +7,18 @@ use multitag::Tag;
 use n_audio::queue::QueuePlayer;
 #[cfg(target_os = "android")]
 use once_cell::sync::Lazy;
-use slint::platform::WindowEvent;
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
-use std::sync::Arc;
 
 slint::include_modules!();
 
 pub mod app;
 pub mod bus_server;
 pub mod localization;
+pub mod platform;
 pub mod runner;
 pub mod settings;
 
@@ -69,6 +69,7 @@ pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
 #[cfg(target_os = "android")]
 pub enum MessageAndroidToRust {
     Directory(String),
+    Start(jni::JavaVM, jni::objects::GlobalRef),
 }
 #[cfg(target_os = "android")]
 pub enum MessageRustToAndroid {
@@ -80,26 +81,37 @@ pub enum MessageRustToAndroid {
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
+    use crate::platform::AndroidPlatform;
     use crate::settings::Settings;
+    use slint::platform::WindowEvent;
+    use std::sync::Arc;
 
     slint::android::init(app.clone()).unwrap();
+    let platform = if let Ok(MessageAndroidToRust::Start(jvm, callback)) = ANDROID_TX.recv() {
+        Arc::new(std::sync::Mutex::new(AndroidPlatform::new(
+            app, jvm, callback,
+        )))
+    } else {
+        unreachable!()
+    };
 
-    let settings = Arc::new(std::sync::Mutex::new(Settings::read_saved_android(&app)));
+    let settings = Arc::new(std::sync::Mutex::new(Settings::read_saved(
+        platform.lock().unwrap(),
+    )));
     if !Path::new(&settings.lock().unwrap().path).exists() {
         let window = AndroidWindow::new().unwrap();
         let handle = window.as_weak();
         let settings = settings.clone();
+        let platform = platform.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1000));
-            ANDROID_RX.send(MessageRustToAndroid::AskDirectory).unwrap();
-            if let Ok(MessageAndroidToRust::Directory(directory)) = ANDROID_TX.recv() {
-                settings.lock().unwrap().path = directory;
-                handle
-                    .upgrade_in_event_loop(|window| {
-                        window.window().dispatch_event(WindowEvent::CloseRequested);
-                    })
-                    .unwrap();
-            }
+            let path = platform.lock().unwrap().ask_music_dir();
+            settings.lock().unwrap().path = path.to_str().unwrap().to_string();
+            handle
+                .upgrade_in_event_loop(|window| {
+                    window.window().dispatch_event(WindowEvent::CloseRequested);
+                })
+                .unwrap();
         });
         window.run().unwrap();
     }
@@ -110,7 +122,7 @@ fn android_main(app: slint::android::AndroidApp) {
         .block_on(async {
             run_app(
                 Arc::into_inner(settings).unwrap().into_inner().unwrap(),
-                app,
+                Arc::into_inner(platform).unwrap().into_inner().unwrap(),
             )
             .await;
         });
@@ -287,30 +299,6 @@ impl From<FileTrack> for TrackData {
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_check<'local>(
-    mut env: jni::JNIEnv<'local>,
-    class: jni::objects::JClass<'local>,
-) {
-    while let Ok(message) = ANDROID_RX.try_recv() {
-        match message {
-            MessageRustToAndroid::AskDirectory => {
-                env.call_method(&class, "askDirectory", "()V", &[]).unwrap();
-            }
-            MessageRustToAndroid::OpenLink(link) => {
-                let java_string = env.new_string(link).unwrap();
-                env.call_method(
-                    &class,
-                    "openLink",
-                    "(Ljava/lang/String;)V",
-                    &[(&java_string).into()],
-                )
-                .unwrap();
-            }
-        }
-    }
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory<'local>(
     mut env: jni::JNIEnv<'local>,
     _class: jni::objects::JClass<'local>,
@@ -324,5 +312,19 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory
                 .unwrap()
                 .to_string(),
         ))
+        .unwrap()
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_start<'local>(
+    env: jni::JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    callback: jni::objects::JObject<'local>,
+) {
+    let jvm = env.get_java_vm().unwrap();
+    let callback = env.new_global_ref(callback).unwrap();
+    ANDROID_TX
+        .send(MessageAndroidToRust::Start(jvm, callback))
         .unwrap()
 }
