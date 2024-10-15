@@ -1,4 +1,3 @@
-use crate::platform::Platform;
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
@@ -82,6 +81,7 @@ pub enum MessageRustToAndroid {
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
     use crate::platform::AndroidPlatform;
+    use crate::platform::Platform;
     use crate::settings::Settings;
     use slint::platform::WindowEvent;
     use std::sync::Arc;

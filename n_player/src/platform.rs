@@ -7,40 +7,36 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn open_link_desktop(link: String) {
+    open::that(link).unwrap();
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn internal_dir_desktop() -> PathBuf {
+    let base_dirs = directories::BaseDirs::new().unwrap();
+    let local_data_dir = base_dirs.data_local_dir();
+    let app_dir = local_data_dir.join("n_music");
+    if !app_dir.exists() {
+        std::fs::create_dir(app_dir.as_path()).unwrap();
+    }
+    app_dir
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn ask_music_dir_desktop() -> PathBuf {
+    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+        path
+    } else {
+        PathBuf::new()
+    }
+}
+
 #[allow(async_fn_in_trait, unused_variables)]
 pub trait Platform {
-    fn open_link(&mut self, link: String) {
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        open::that(link).unwrap();
-        #[cfg(target_os = "android")]
-        unimplemented!()
-    }
-    fn internal_dir(&self) -> PathBuf {
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        {
-            let base_dirs = directories::BaseDirs::new().unwrap();
-            let local_data_dir = base_dirs.data_local_dir();
-            let app_dir = local_data_dir.join("n_music");
-            if !app_dir.exists() {
-                std::fs::create_dir(app_dir.as_path()).unwrap();
-            }
-            app_dir
-        }
-        #[cfg(target_os = "android")]
-        unimplemented!()
-    }
-    fn ask_music_dir(&mut self) -> PathBuf {
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        {
-            if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                path
-            } else {
-                PathBuf::new()
-            }
-        }
-        #[cfg(target_os = "android")]
-        unimplemented!()
-    }
+    fn open_link(&mut self, link: String);
+    fn internal_dir(&self) -> PathBuf;
+    fn ask_music_dir(&mut self) -> PathBuf;
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}
     fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {}
@@ -60,6 +56,18 @@ impl LinuxPlatform {
 
 #[cfg(target_os = "linux")]
 impl Platform for LinuxPlatform {
+    fn open_link(&mut self, link: String) {
+        open_link_desktop(link)
+    }
+
+    fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop()
+    }
+
+    fn ask_music_dir(&mut self) -> PathBuf {
+        ask_music_dir_desktop()
+    }
+
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
         let server = mpris_server::Server::new(
             "n_music",
@@ -109,7 +117,19 @@ impl Platform for LinuxPlatform {
 pub struct DesktopPlatform {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-impl Platform for DesktopPlatform {}
+impl Platform for DesktopPlatform {
+    fn open_link(&mut self, link: String) {
+        open_link_desktop(link)
+    }
+
+    fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop()
+    }
+
+    fn ask_music_dir(&mut self) -> PathBuf {
+        ask_music_dir_desktop()
+    }
+}
 
 #[cfg(target_os = "android")]
 pub struct AndroidPlatform {
