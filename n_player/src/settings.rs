@@ -73,17 +73,15 @@ impl Settings {
     pub async fn check_timestamp(&self) -> bool {
         if let Some(saved_timestamp) = &self.timestamp {
             let mut hasher = DefaultHasher::default();
-            tokio::fs::metadata(&self.path)
-                .await
-                .unwrap()
-                .modified()
-                .unwrap()
-                .hash(&mut hasher);
-            let timestamp = hasher.finish();
-            &timestamp == saved_timestamp
-        } else {
-            false
+            if let Ok(metadata) = tokio::fs::metadata(&self.path).await {
+                if let Ok(modified) = metadata.modified() {
+                    modified.hash(&mut hasher);
+                    let timestamp = hasher.finish();
+                    return &timestamp == saved_timestamp;
+                }
+            }
         }
+        false
     }
 
     pub fn save_timestamp(&mut self) {
