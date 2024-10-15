@@ -1,6 +1,7 @@
 use crate::bus_server::Property;
 use crate::runner::{Runner, RunnerMessage};
 use flume::Sender;
+#[cfg(target_os = "linux")]
 use pollster::FutureExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,23 +10,36 @@ use tokio::sync::RwLock;
 #[allow(async_fn_in_trait, unused_variables)]
 pub trait Platform {
     fn open_link(&mut self, link: String) {
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         open::that(link).unwrap();
+        #[cfg(target_os = "android")]
+        unimplemented!()
     }
     fn internal_dir(&self) -> PathBuf {
-        let base_dirs = directories::BaseDirs::new().unwrap();
-        let local_data_dir = base_dirs.data_local_dir();
-        let app_dir = local_data_dir.join("n_music");
-        if !app_dir.exists() {
-            std::fs::create_dir(app_dir.as_path()).unwrap();
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        {
+            let base_dirs = directories::BaseDirs::new().unwrap();
+            let local_data_dir = base_dirs.data_local_dir();
+            let app_dir = local_data_dir.join("n_music");
+            if !app_dir.exists() {
+                std::fs::create_dir(app_dir.as_path()).unwrap();
+            }
+            app_dir
         }
-        app_dir
+        #[cfg(target_os = "android")]
+        unimplemented!()
     }
     fn ask_music_dir(&mut self) -> PathBuf {
-        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-            path
-        } else {
-            PathBuf::new()
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                path
+            } else {
+                PathBuf::new()
+            }
         }
+        #[cfg(target_os = "android")]
+        unimplemented!()
     }
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}

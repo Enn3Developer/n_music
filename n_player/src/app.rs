@@ -39,7 +39,6 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     let runner = Arc::new(RwLock::new(Runner::new(player)));
 
     let r = runner.clone();
-    #[cfg(target_os = "linux")]
     let tx_t = tx.clone();
 
     let (tx_l, rx_l) = flume::unbounded();
