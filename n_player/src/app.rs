@@ -54,9 +54,8 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     let is_cached = check_timestamp && !settings.lock().await.tracks.is_empty();
 
     let p = platform.clone();
+    p.lock().await.add_runner(r.clone(), tx_t.clone()).await;
     let future = tokio::spawn(async move {
-        p.lock().await.add_runner(r.clone(), tx_t.clone()).await;
-
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
         let bus_future = tokio::task::spawn(bus_server::run(p, r.clone(), tmp));
         if !is_cached {
