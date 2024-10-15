@@ -44,8 +44,8 @@ impl Settings {
         }
     }
 
-    pub fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
-        let storage_file = platform.internal_dir().join("config");
+    pub async fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
+        let storage_file = platform.internal_dir().await.join("config");
         Self::read_from_file(storage_file)
     }
 
@@ -95,7 +95,7 @@ impl Settings {
     }
 
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        self.save_and_compress(platform.internal_dir()).await
+        self.save_and_compress(platform.internal_dir().await).await
     }
 
     async fn save_and_compress(&self, config_dir: PathBuf) {

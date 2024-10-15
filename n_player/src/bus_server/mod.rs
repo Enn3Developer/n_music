@@ -28,7 +28,7 @@ pub struct Metadata {
     pub image_path: Option<String>,
 }
 
-pub async fn run<P: Platform>(
+pub async fn run<P: Platform + Send>(
     platform: Arc<Mutex<P>>,
     runner: Arc<RwLock<Runner>>,
     mut tmp: NamedTempFile,
@@ -96,7 +96,8 @@ pub async fn run<P: Platform>(
             platform
                 .lock()
                 .await
-                .properties_changed(mem::take(&mut properties));
+                .properties_changed(mem::take(&mut properties))
+                .await;
         }
     }
 }

@@ -1,8 +1,7 @@
 use crate::bus_server::Property;
 use crate::runner::{Runner, RunnerMessage};
+use async_trait::async_trait;
 use flume::Sender;
-#[cfg(target_os = "linux")]
-use pollster::FutureExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -13,51 +12,64 @@ fn open_link_desktop(link: String) {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn internal_dir_desktop() -> PathBuf {
+async fn internal_dir_desktop() -> PathBuf {
     let base_dirs = directories::BaseDirs::new().unwrap();
     let local_data_dir = base_dirs.data_local_dir();
     let app_dir = local_data_dir.join("n_music");
     if !app_dir.exists() {
-        std::fs::create_dir(app_dir.as_path()).unwrap();
+        tokio::fs::create_dir(app_dir.as_path()).await.unwrap();
     }
     app_dir
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn ask_music_dir_desktop() -> PathBuf {
-    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-        path
+async fn ask_music_dir_desktop() -> PathBuf {
+    if let Some(path) = rfd::AsyncFileDialog::new().pick_folder().await {
+        PathBuf::from(path)
     } else {
         PathBuf::new()
     }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn ask_file_desktop() -> Vec<PathBuf> {
-    if let Some(path) = rfd::FileDialog::new().pick_files() {
-        path
+async fn ask_file_desktop() -> Vec<PathBuf> {
+    if let Some(path) = rfd::AsyncFileDialog::new().pick_files().await {
+        path.into_iter().map(|fd| PathBuf::from(fd)).collect()
     } else {
         vec![]
     }
 }
 
-#[allow(async_fn_in_trait, unused_variables)]
+#[allow(unused_variables)]
+#[async_trait]
 /// Abstraction over a number of platforms (desktop and mobile)
 pub trait Platform {
     /// Ask underlying platform to open a web link
-    fn open_link(&mut self, link: String);
+    async fn open_link(&mut self, link: String);
     /// Ask underlying platform to get the app directory
-    fn internal_dir(&self) -> PathBuf;
+    async fn internal_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for the music dir
-    fn ask_music_dir(&mut self) -> PathBuf;
+    async fn ask_music_dir(&mut self) -> PathBuf;
     /// Ask underlying platform to ask user for files
-    fn ask_file(&mut self) -> Vec<PathBuf>;
+    async fn ask_file(&mut self) -> Vec<PathBuf>;
     /// Notify the platform that a [Runner] is ready and save it in memory
-    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}
+    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
+    where
+        Self: Sized,
+    {
+    }
     /// Notify the platform that some playback properties have changed and update those accordingly
-    fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {}
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P)
+    where
+        Self: Sized,
+    {
+    }
     /// Allows the platform to do operations once in a while
-    fn tick(&mut self) {}
+    async fn tick(&mut self)
+    where
+        Self: Sized,
+    {
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -73,21 +85,22 @@ impl LinuxPlatform {
 }
 
 #[cfg(target_os = "linux")]
+#[async_trait]
 impl Platform for LinuxPlatform {
-    fn open_link(&mut self, link: String) {
+    async fn open_link(&mut self, link: String) {
         open_link_desktop(link)
     }
 
-    fn internal_dir(&self) -> PathBuf {
-        internal_dir_desktop()
+    async fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop().await
     }
 
-    fn ask_music_dir(&mut self) -> PathBuf {
-        ask_music_dir_desktop()
+    async fn ask_music_dir(&mut self) -> PathBuf {
+        ask_music_dir_desktop().await
     }
 
-    fn ask_file(&mut self) -> Vec<PathBuf> {
-        ask_file_desktop()
+    async fn ask_file(&mut self) -> Vec<PathBuf> {
+        ask_file_desktop().await
     }
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
@@ -99,10 +112,11 @@ impl Platform for LinuxPlatform {
         .unwrap();
         self.server = Some(server);
     }
-    fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P) {
         if let Some(server) = &self.server {
-            server
-                .properties_changed(properties.into_iter().map(|p| match p {
+            let mut new_properties = vec![];
+            for p in properties {
+                new_properties.push(match p {
                     Property::Playing(playing) => {
                         mpris_server::Property::PlaybackStatus(if playing {
                             mpris_server::PlaybackStatus::Playing
@@ -128,9 +142,9 @@ impl Platform for LinuxPlatform {
                         mpris_server::Property::Metadata(meta)
                     }
                     Property::Volume(volume) => mpris_server::Property::Volume(volume),
-                }))
-                .block_on()
-                .unwrap()
+                });
+            }
+            server.properties_changed(new_properties).await.unwrap()
         }
     }
 }
@@ -139,21 +153,22 @@ impl Platform for LinuxPlatform {
 pub struct DesktopPlatform {}
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+#[async_trait]
 impl Platform for DesktopPlatform {
-    fn open_link(&mut self, link: String) {
+    async fn open_link(&mut self, link: String) {
         open_link_desktop(link)
     }
 
-    fn internal_dir(&self) -> PathBuf {
-        internal_dir_desktop()
+    async fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop().await
     }
 
-    fn ask_music_dir(&mut self) -> PathBuf {
-        ask_music_dir_desktop()
+    async fn ask_music_dir(&mut self) -> PathBuf {
+        ask_music_dir_desktop().await
     }
 
-    fn ask_file(&mut self) -> Vec<PathBuf> {
-        ask_file_desktop()
+    async fn ask_file(&mut self) -> Vec<PathBuf> {
+        ask_file_desktop().await
     }
 }
 
@@ -176,8 +191,9 @@ impl AndroidPlatform {
 }
 
 #[cfg(target_os = "android")]
+#[async_trait]
 impl Platform for AndroidPlatform {
-    fn open_link(&mut self, link: String) {
+    async fn open_link(&mut self, link: String) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         let java_string = env.new_string(link).unwrap();
         env.call_method(
@@ -189,7 +205,7 @@ impl Platform for AndroidPlatform {
         .unwrap();
     }
 
-    fn internal_dir(&self) -> PathBuf {
+    async fn internal_dir(&self) -> PathBuf {
         let path = self
             .app
             .external_data_path()
@@ -201,7 +217,7 @@ impl Platform for AndroidPlatform {
         path
     }
 
-    fn ask_music_dir(&mut self) -> PathBuf {
+    async fn ask_music_dir(&mut self) -> PathBuf {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "askDirectory", "()V", &[])
             .unwrap();
@@ -215,7 +231,7 @@ impl Platform for AndroidPlatform {
         PathBuf::new()
     }
 
-    fn ask_file(&mut self) -> Vec<PathBuf> {
+    async fn ask_file(&mut self) -> Vec<PathBuf> {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "askFile", "()V", &[])
             .unwrap();
@@ -235,7 +251,7 @@ impl Platform for AndroidPlatform {
             .unwrap();
     }
 
-    fn tick(&mut self) {
+    async fn tick(&mut self) {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {}
     }
 }

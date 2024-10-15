@@ -110,7 +110,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
     let p = platform.clone();
     app_data.on_open_link(move |link| {
         let p = p.clone();
-        slint::spawn_local(async move { p.lock().await.open_link(link.into()) }).unwrap();
+        slint::spawn_local(async move { p.lock().await.open_link(link.into()).await }).unwrap();
     });
 
     let s = settings.clone();
@@ -164,7 +164,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
         let s = s.clone();
         let p = p.clone();
         slint::spawn_local(async move {
-            let path = p.lock().await.ask_music_dir();
+            let path = p.lock().await.ask_music_dir().await;
             s.lock().await.path = path.to_str().unwrap().to_string();
             s.lock().await.save(p.lock().await).await;
         })
@@ -266,7 +266,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                     .collect();
             }
 
-            p.lock().await.tick();
+            p.lock().await.tick().await;
 
             window
                 .upgrade_in_event_loop(move |window| {

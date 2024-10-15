@@ -3144,6 +3144,7 @@ name = "n_player"
 version = "1.9.0"
 dependencies = [
  "async-channel",
+ "async-trait",
  "bitcode",
  "directories",
  "flume",

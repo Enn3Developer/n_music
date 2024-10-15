@@ -13,7 +13,7 @@ async fn main() {
     let platform = DesktopPlatform {};
     #[cfg(target_os = "linux")]
     let platform = LinuxPlatform::new();
-    let settings = Settings::read_saved(&platform);
+    let settings = Settings::read_saved(&platform).await;
     n_player::app::run_app(settings, platform).await
 }
 
