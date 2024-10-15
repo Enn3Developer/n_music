@@ -42,15 +42,21 @@ fn ask_file_desktop() -> Vec<PathBuf> {
 }
 
 #[allow(async_fn_in_trait, unused_variables)]
+/// Abstraction over a number of platforms (desktop and mobile)
 pub trait Platform {
+    /// Ask underlying platform to open a web link
     fn open_link(&mut self, link: String);
+    /// Ask underlying platform to get the app directory
     fn internal_dir(&self) -> PathBuf;
+    /// Ask underlying platform to ask user for the music dir
     fn ask_music_dir(&mut self) -> PathBuf;
+    /// Ask underlying platform to ask user for files
     fn ask_file(&mut self) -> Vec<PathBuf>;
-
+    /// Notify the platform that a [Runner] is ready and save it in memory
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {}
+    /// Notify the platform that some playback properties have changed and update those accordingly
     fn properties_changed<P: IntoIterator<Item = Property>>(&mut self, properties: P) {}
-
+    /// Allows the platform to do operations once in a while
     fn tick(&mut self) {}
 }
 
