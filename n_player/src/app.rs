@@ -120,6 +120,12 @@ pub async fn run_app(
 
     #[cfg(not(target_os = "android"))]
     app_data.on_open_link(move |link| open::that(link.as_str()).unwrap());
+    #[cfg(target_os = "android")]
+    app_data.on_open_link(move |link| {
+        crate::ANDROID_RX
+            .send(crate::MessageRustToAndroid::OpenLink(link.into()))
+            .unwrap()
+    });
     let s = settings.clone();
     let window = main_window.clone_strong();
     #[cfg(target_os = "android")]

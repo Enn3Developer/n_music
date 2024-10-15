@@ -6,11 +6,13 @@ use multitag::Tag;
 use n_audio::queue::QueuePlayer;
 #[cfg(target_os = "android")]
 use once_cell::sync::Lazy;
+use slint::platform::WindowEvent;
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::path::Path;
+use std::sync::Arc;
 
 slint::include_modules!();
 
@@ -63,15 +65,7 @@ pub enum MessageAndroidToRust {
 #[cfg(target_os = "android")]
 pub enum MessageRustToAndroid {
     AskDirectory,
-}
-
-#[cfg(target_os = "android")]
-impl Into<usize> for MessageRustToAndroid {
-    fn into(self) -> usize {
-        match self {
-            MessageRustToAndroid::AskDirectory => 0,
-        }
-    }
+    OpenLink(String),
 }
 
 #[cfg(target_os = "android")]
@@ -82,19 +76,35 @@ fn android_main(app: slint::android::AndroidApp) {
 
     slint::android::init(app.clone()).unwrap();
 
-    let mut settings = Settings::read_saved_android(&app);
-    if !Path::new(&settings.path).exists() {
-        ANDROID_RX.send(MessageRustToAndroid::AskDirectory).unwrap();
-        if let Ok(MessageAndroidToRust::Directory(directory)) = ANDROID_TX.recv() {
-            settings.path = directory;
-        }
+    let settings = Arc::new(std::sync::Mutex::new(Settings::read_saved_android(&app)));
+    if !Path::new(&settings.lock().unwrap().path).exists() {
+        let window = AndroidWindow::new().unwrap();
+        let handle = window.as_weak();
+        let settings = settings.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            ANDROID_RX.send(MessageRustToAndroid::AskDirectory).unwrap();
+            if let Ok(MessageAndroidToRust::Directory(directory)) = ANDROID_TX.recv() {
+                settings.lock().unwrap().path = directory;
+                handle
+                    .upgrade_in_event_loop(|window| {
+                        window.window().dispatch_event(WindowEvent::CloseRequested);
+                    })
+                    .unwrap();
+            }
+        });
+        window.run().unwrap();
     }
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            run_app(settings, app).await;
+            run_app(
+                Arc::into_inner(settings).unwrap().into_inner().unwrap(),
+                app,
+            )
+            .await;
         });
 }
 
@@ -278,6 +288,33 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_check<'local
             MessageRustToAndroid::AskDirectory => {
                 env.call_method(&class, "askDirectory", "()V", &[]).unwrap();
             }
+            MessageRustToAndroid::OpenLink(link) => {
+                let java_string = env.new_string(link).unwrap();
+                env.call_method(
+                    &class,
+                    "openLink",
+                    "(Ljava/lang/String;)V",
+                    &[(&java_string).into()],
+                )
+                .unwrap();
+            }
         }
     }
+}
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory<'local>(
+    mut env: jni::JNIEnv<'local>,
+    _class: jni::objects::JClass<'local>,
+    string: jni::objects::JString<'local>,
+) {
+    ANDROID_TX
+        .send(MessageAndroidToRust::Directory(
+            env.get_string(&string)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+        ))
+        .unwrap()
 }

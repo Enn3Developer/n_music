@@ -5,8 +5,9 @@ import { Settings } from "scenes/settings.slint";
 import { Localization } from "globals/localization.slint";
 import { SettingsData } from "globals/settings_data.slint";
 import { AppData } from "globals/app_data.slint";
+import { AndroidWindow } from "android_window.slint";
 
-export { Localization, SettingsData, AppData }
+export { Localization, SettingsData, AppData, AndroidWindow }
 
 export component MainWindow inherits Window {
     in-out property <bool> settings;
