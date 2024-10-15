@@ -235,8 +235,10 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
             let progress = loaded as f64 / tracks.len() as f64;
             let mut playing_track = None;
             if old_index != index || new_loaded {
-                playing_track = Some(tracks[index as usize].clone());
-                old_index = index;
+                if let Some(track) = tracks.get(index as usize) {
+                    playing_track = Some(track.clone());
+                    old_index = index;
+                }
             }
 
             let mut updated_search = false;
