@@ -1,7 +1,6 @@
 use crate::platform::Platform;
 use crate::{FileTrack, Theme, WindowSize};
 use bitcode::{Decode, Encode};
-use std::fs;
 use std::fs::File;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{BufReader, BufWriter, Cursor};
@@ -46,7 +45,9 @@ impl Settings {
 
     pub async fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
         let storage_file = platform.internal_dir().await.join("config");
-        Self::read_from_file(storage_file)
+        tokio::task::spawn_blocking(|| Self::read_from_file(storage_file))
+            .await
+            .unwrap()
     }
 
     #[cfg(target_os = "android")]
@@ -111,7 +112,9 @@ impl Settings {
                 9,
             )
             .unwrap();
-        });
+        })
+        .await
+        .unwrap();
     }
 }
 

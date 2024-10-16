@@ -123,7 +123,7 @@ fn android_main(app: slint::android::AndroidApp) {
                         .unwrap();
                 });
                 tokio::task::block_in_place(|| window.run().unwrap());
-                future.await;
+                future.await.unwrap();
             }
             run_app(
                 Arc::into_inner(settings).unwrap().into_inner(),

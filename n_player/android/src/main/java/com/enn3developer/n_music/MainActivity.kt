@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.app.NativeActivity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.session.MediaSession
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
@@ -15,8 +14,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
-import kotlin.concurrent.thread
 
 
 class MainActivity : NativeActivity() {
@@ -79,16 +78,17 @@ class MainActivity : NativeActivity() {
     @Suppress("unused")
     private fun createNotification() {
         val mediaSession =
-            androidx.media3.session.MediaSession.Builder(
+            MediaSession.Builder(
                 applicationContext,
                 NPlayer(Looper.getMainLooper())
             )
                 .build()
-        var notification = NotificationCompat.Builder(applicationContext)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setStyle(
+        var notification = NotificationCompat.Builder(applicationContext, "n_music")
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setSmallIcon(R.mipmap.ic_launcher_round).setStyle(
                 MediaStyleNotificationHelper.MediaStyle(mediaSession)
                     .setShowActionsInCompactView(1 /* #1: pause button */)
-            )
+            ).build()
 
     }
 
