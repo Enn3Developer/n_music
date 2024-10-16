@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "1.9.0"
+version = "2.0.0-alpha1"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 
@@ -62,23 +62,3 @@ rfd = "0.15.0"
 directories = "5.0.1"
 async-channel = "2.3.1"
 open = "5.3.0"
-
-[package.metadata.android]
-package = "com.enn3developer.n_music"
-apk_name = "N Music"
-build_targets = ["aarch64-linux-android"]
-
-[package.metadata.android.application]
-label = "N Music"
-
-[package.metadata.android.application.activity]
-orientation = "portrait"
-
-[[package.metadata.android.uses_permission]]
-name = "android.permission.READ_EXTERNAL_STORAGE"
-
-[[package.metadata.android.uses_permission]]
-name = "android.permission.READ_MEDIA_AUDIO"
-
-[[package.metadata.android.queries.intent]]
-actions = ["android.intent.action.OPEN_DOCUMENT_TREE"]
