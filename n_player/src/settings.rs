@@ -63,7 +63,7 @@ impl Settings {
             } else {
                 let path = user_dirs.home_dir().join("Music");
                 if !path.exists() {
-                    fs::create_dir(&path).unwrap();
+                    std::fs::create_dir(&path).unwrap();
                 }
                 path
             };
