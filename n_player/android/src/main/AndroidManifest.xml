@@ -10,7 +10,9 @@
     <application
         android:allowBackup="true"
         android:label="N Music"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
