@@ -86,7 +86,8 @@ export component ControlPanel {
                         colorize-icon: true;
                         width: 64px;
                         clicked => {
-                            AppData.play_previous()
+                            AppData.play_previous();
+                            AppData.time = 0.0;
                         }
                     }
 
