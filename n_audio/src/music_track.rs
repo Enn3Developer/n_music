@@ -24,7 +24,7 @@ impl MusicTrack {
             path: path.into(),
             ext: p
                 .extension()
-                .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidFilename))?
+                .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?
                 .to_str()
                 .unwrap()
                 .to_string(),

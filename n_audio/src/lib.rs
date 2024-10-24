@@ -1,5 +1,3 @@
-#![feature(io_error_more)]
-
 use std::path::Path;
 use symphonia::core::codecs::CodecRegistry;
 
