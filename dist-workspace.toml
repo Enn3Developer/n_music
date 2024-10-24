@@ -16,9 +16,16 @@ install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = true
 
+# Use the latest Ubuntu image available
+[dist.github-custom-runners]
+global = "ubuntu-latest"
+
 # Install dependencies needed to build for Linux
 [dist.dependencies.apt]
-mold = "*"
+mold = { version = "*", targets = ["x86_64-unknown-linux-gnu"] }
 libasound2-dev = "*"
 musl-tools = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
 musl-dev = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
+
+[package]
+name = "N Music"
