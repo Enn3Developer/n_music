@@ -10,7 +10,7 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Whether to install an updater program
@@ -24,5 +24,3 @@ x86_64-unknown-linux-gnu = "ubuntu-latest"
 [dist.dependencies.apt]
 mold = { version = "*", targets = ["x86_64-unknown-linux-gnu"] }
 libasound2-dev = "*"
-musl-tools = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
-musl-dev = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
