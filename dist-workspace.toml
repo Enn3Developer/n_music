@@ -26,6 +26,3 @@ mold = { version = "*", targets = ["x86_64-unknown-linux-gnu"] }
 libasound2-dev = "*"
 musl-tools = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
 musl-dev = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
-
-[package]
-name = "N Music"
