@@ -25,6 +25,8 @@ use zune_image::image::Image;
 use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
 
+// TODO: possible idea for refactoring
+// make modules for each functionality and make them communicate between themselves
 pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform: P) {
     let platform = Arc::new(Mutex::new(platform));
     let settings = Arc::new(Mutex::new(settings));
@@ -130,7 +132,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                 s.lock().await.locale = Some(denominator);
                 s.lock().await.save(p.lock().await).await;
             })
-            .unwrap();
+                .unwrap();
         });
     tokio::task::block_in_place(|| app_data.set_tracks(VecModel::from_slice(&tracks)));
     let s = settings.clone();
@@ -147,7 +149,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
                 s.lock().await.theme = theme;
                 s.lock().await.save(p.lock().await).await;
             })
-            .unwrap();
+                .unwrap();
         }
     });
     let s = settings.clone();
@@ -156,7 +158,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
         slint::spawn_local(async move {
             s.lock().await.save_window_size = save;
         })
-        .unwrap();
+            .unwrap();
     });
     let s = settings.clone();
     let p = platform.clone();
@@ -168,7 +170,7 @@ pub async fn run_app<P: Platform + Send + 'static>(settings: Settings, platform:
             s.lock().await.path = path.to_str().unwrap().to_string();
             s.lock().await.save(p.lock().await).await;
         })
-        .unwrap();
+            .unwrap();
     });
     let t = tx.clone();
     app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as u16)).unwrap());
@@ -383,8 +385,8 @@ async fn loader_task(
                                             128,
                                             ResizeAlg::Convolution(FilterType::Hamming),
                                         )
-                                        .execute(&mut zune_image)
-                                        .unwrap()
+                                            .execute(&mut zune_image)
+                                            .unwrap()
                                     });
                                     zune_image.flatten_to_u8()[0].clone()
                                 } else {
