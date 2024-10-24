@@ -45,12 +45,13 @@ async-trait = "0.1.83"
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = "0.8.1"
 
-[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies.slint]
+# GitHub updated their macOS images and now skia doesn't build on Mac ARM anymore
+[target.'cfg(all(target_os = "macos"))'.dependencies.slint]
 version = "1.8.0"
 default-features = false
 features = ["renderer-femtovg"]
 
-[target.'cfg(not(all(target_os = "macos", target_arch = "x86_64")))'.dependencies.slint]
+[target.'cfg(not(all(target_os = "macos")))'.dependencies.slint]
 version = "1.8.0"
 default-features = false
 features = ["renderer-skia"]
