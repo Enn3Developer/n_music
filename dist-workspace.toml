@@ -15,5 +15,10 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = true
-# Install dependencies needed for building
-packages_install = "sudo apt install -y mold libasound2-dev"
+
+# Install dependencies needed to build for Linux
+[dist.dependencies.apt]
+mold = "*"
+libasound2-dev = "*"
+musl-tools = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
+musl-dev = { version = "*", targets = ["x86_64-unknown-linux-musl"] }
