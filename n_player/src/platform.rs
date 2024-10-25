@@ -56,20 +56,17 @@ pub trait Platform {
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
     where
         Self: Sized,
-    {
-    }
+    {}
     /// Notify the platform that some playback properties have changed and update those accordingly
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P)
+    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&mut self, properties: P)
     where
         Self: Sized,
-    {
-    }
+    {}
     /// Allows the platform to do operations once in a while
     async fn tick(&mut self)
     where
         Self: Sized,
-    {
-    }
+    {}
 }
 
 #[cfg(target_os = "linux")]
@@ -108,11 +105,11 @@ impl Platform for LinuxPlatform {
             "n_music",
             crate::bus_server::linux::MPRISBridge::new(runner, tx.clone()),
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
         self.server = Some(server);
     }
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&mut self, properties: P) {
         if let Some(server) = &self.server {
             let mut new_properties = vec![];
             for p in properties {
@@ -202,7 +199,7 @@ impl Platform for AndroidPlatform {
             "(Ljava/lang/String;)V",
             &[(&java_string).into()],
         )
-        .unwrap();
+            .unwrap();
     }
 
     async fn internal_dir(&self) -> PathBuf {
