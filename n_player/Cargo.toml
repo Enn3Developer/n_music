@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "2.0.0-alpha.1"
+version = "2.0.0-alpha.2"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/Enn3Developer/n_music"
@@ -36,7 +36,7 @@ rimage = { version = "0.11.0-next.3", default-features = false, features = ["moz
 tempfile = "3.13.0"
 tokio = { version = "1.40.0", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 num_cpus = "1.16.0"
-pollster = "0.3.0"
+pollster = "0.4.0"
 infer = { version = "0.16.0", default-features = false, features = ["std"] }
 sys-locale = "0.3.1"
 zstd = "0.13.2"
