@@ -12,6 +12,7 @@ use rimage::codecs::webp::WebPDecoder;
 use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, VecModel, Weak};
 use std::io::Cursor;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -38,9 +39,7 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
-    let mut player = QueuePlayer::new(settings.lock().await.path.clone());
-    add_all_tracks_to_player(&mut player, settings.lock().await.path.clone()).await;
-    let len = player.len() as u16;
+    let player = QueuePlayer::new(settings.lock().await.path.clone());
 
     let runner = Arc::new(RwLock::new(crate::runner::Runner::new(player)));
 
@@ -50,54 +49,22 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     let (tx_l, rx_l) = flume::unbounded();
     let main_window = MainWindow::new().unwrap();
 
-    localize(
-        settings.lock().await.locale.clone(),
-        main_window.global::<Localization>(),
-    );
-
-    let check_timestamp = settings.lock().await.check_timestamp().await;
-    let is_cached = check_timestamp && !settings.lock().await.tracks.is_empty();
-
     let p = platform.clone();
     p.lock().await.add_runner(r.clone(), tx_t.clone()).await;
+    let (tx_path, rx_path) = flume::unbounded();
+    tx_path
+        .send_async((settings.lock().await.path.clone(), true))
+        .await
+        .unwrap();
+    let (tx_tracks, rx_tracks) = flume::unbounded();
+    let s = settings.clone();
     let future = tokio::spawn(async move {
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
         let bus_future = tokio::task::spawn(bus_server::run(p, r.clone(), tmp));
-        if !is_cached {
-            let loader_future = tokio::task::spawn(loader(r.clone(), tx_l));
+        let loader_future = tokio::task::spawn(loader(r.clone(), s, tx_l, rx_path, tx_tracks));
 
-            let _ = tokio::join!(runner_future, bus_future, loader_future);
-        } else {
-            let _ = tokio::join!(runner_future, bus_future);
-        }
+        let _ = tokio::join!(runner_future, bus_future, loader_future);
     });
-
-    let mut tracks = vec![];
-    for i in 0..len {
-        let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
-        if is_cached {
-            let track_without_ext = remove_ext(track_path);
-            if let Some(file_track) = settings
-                .lock()
-                .await
-                .tracks
-                .iter()
-                .find(|file_track| file_track.path == track_without_ext)
-            {
-                let mut track: TrackData = file_track.clone().into();
-                track.index = i as i32;
-                tracks.push(track)
-            }
-        } else {
-            tracks.push(TrackData {
-                artist: Default::default(),
-                cover: Default::default(),
-                time: Default::default(),
-                title: remove_ext(track_path).into(),
-                index: i as i32,
-            });
-        }
-    }
 
     let (tx_searching, rx_searching) = flume::unbounded();
     let (tx_changing, rx_changing) = flume::unbounded();
@@ -109,7 +76,7 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
         tx.clone(),
         tx_searching,
         tx_changing,
-        &tracks,
+        tx_path,
     )
     .await;
 
@@ -122,7 +89,7 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
         s,
         p,
         window,
-        tracks,
+        rx_tracks,
         rx_changing,
         rx_searching,
         rx_l,
@@ -150,8 +117,13 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     tx: Sender<RunnerMessage>,
     tx_searching: Sender<String>,
     tx_changing: Sender<()>,
-    tracks: &[TrackData],
+    tx_path: Sender<(String, bool)>,
 ) {
+    localize(
+        settings.lock().await.locale.clone(),
+        main_window.global::<Localization>(),
+    );
+
     let settings_data = main_window.global::<SettingsData>();
     let app_data = main_window.global::<AppData>();
 
@@ -165,8 +137,6 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     settings_data.set_height(settings.lock().await.window_size.height as f32);
     settings_data.set_save_window_size(settings.lock().await.save_window_size);
     settings_data.set_current_path(settings.lock().await.path.clone().into());
-
-    app_data.set_tracks(VecModel::from_slice(tracks));
 
     let p = platform.clone();
     app_data.on_open_link(move |link| {
@@ -223,10 +193,15 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     settings_data.on_path(move || {
         let s = s.clone();
         let p = p.clone();
+        let tx_path = tx_path.clone();
         slint::spawn_local(async move {
             let path = p.lock().await.ask_music_dir().await;
             s.lock().await.path = path.to_str().unwrap().to_string();
             s.lock().await.save(p.lock().await).await;
+            tx_path
+                .send_async((path.to_str().unwrap().to_string(), false))
+                .await
+                .unwrap();
         })
         .unwrap();
     });
@@ -254,7 +229,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     s: Settings,
     p: Platform<P>,
     window: Weak<MainWindow>,
-    mut tracks: Vec<TrackData>,
+    rx_tracks: Receiver<Vec<TrackData>>,
     rx_changing: Receiver<()>,
     rx_searching: Receiver<String>,
     rx_l: Receiver<Option<(u16, FileTrack)>>,
@@ -265,6 +240,10 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     let mut loaded = 0;
     let threshold = num_cpus::get() * 4;
     let mut saved = false;
+    let mut tracks = vec![];
+    if let Ok(t) = rx_tracks.recv_async().await {
+        tracks = t;
+    }
     loop {
         interval.tick().await;
         let guard = r.read().await;
@@ -287,6 +266,13 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
         };
 
         let mut new_loaded = false;
+
+        if let Ok(t) = rx_tracks.try_recv() {
+            tracks = t;
+            new_loaded = true;
+            loaded = 0;
+        }
+
         while let Ok(track_data) = rx_l.try_recv() {
             if let Some((index, file_track)) = track_data {
                 let file = file_track.clone();
@@ -471,25 +457,75 @@ async fn loader_task(
     }
 }
 
-async fn loader(runner: Runner, tx: Sender<Option<(u16, FileTrack)>>) {
-    let len = runner.read().await.len();
-    let mut tasks = vec![];
-    let (tx_l, rx_l) = flume::unbounded();
-    let rx_l = Arc::new(Mutex::new(rx_l));
-    let cpus = num_cpus::get() * 4;
-    for _ in 0..cpus {
-        let runner = runner.clone();
-        let tx = tx.clone();
-        let rx_l = rx_l.clone();
-        tasks.push(tokio::task::spawn(loader_task(runner, tx, rx_l)));
-    }
-    for i in 0..len {
-        tx_l.send_async(i as u16).await.unwrap();
-    }
-    for _ in 0..cpus {
-        tx_l.send_async(u16::MAX).await.unwrap();
-    }
-    for task in tasks {
-        task.await.unwrap();
+async fn loader(
+    runner: Runner,
+    settings: Settings,
+    tx: Sender<Option<(u16, FileTrack)>>,
+    rx: Receiver<(String, bool)>,
+    tx_tracks: Sender<Vec<TrackData>>,
+) {
+    loop {
+        if let Ok((path, check_cache)) = rx.recv_async().await {
+            let len = {
+                let mut guard = runner.write().await;
+                guard.clear().await;
+                guard.set_path(path.clone());
+                add_all_tracks_to_player(guard.deref_mut(), path).await;
+                guard.len() as u16
+            };
+
+            let check_timestamp = settings.lock().await.check_timestamp().await;
+            let is_cached =
+                check_timestamp && !settings.lock().await.tracks.is_empty() && check_cache;
+
+            let mut tracks = vec![];
+            for i in 0..len {
+                let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
+                if is_cached {
+                    let track_without_ext = remove_ext(track_path);
+                    if let Some(file_track) = settings
+                        .lock()
+                        .await
+                        .tracks
+                        .iter()
+                        .find(|file_track| file_track.path == track_without_ext)
+                    {
+                        let mut track: TrackData = file_track.clone().into();
+                        track.index = i as i32;
+                        tracks.push(track)
+                    }
+                } else {
+                    tracks.push(TrackData {
+                        artist: Default::default(),
+                        cover: Default::default(),
+                        time: Default::default(),
+                        title: remove_ext(track_path).into(),
+                        index: i as i32,
+                    });
+                }
+            }
+
+            tx_tracks.send_async(tracks).await.unwrap();
+
+            let mut tasks = vec![];
+            let (tx_l, rx_l) = flume::unbounded();
+            let rx_l = Arc::new(Mutex::new(rx_l));
+            let cpus = num_cpus::get() * 4;
+            for _ in 0..cpus {
+                let runner = runner.clone();
+                let tx = tx.clone();
+                let rx_l = rx_l.clone();
+                tasks.push(tokio::task::spawn(loader_task(runner, tx, rx_l)));
+            }
+            for i in 0..len {
+                tx_l.send_async(i).await.unwrap();
+            }
+            for _ in 0..cpus {
+                tx_l.send_async(u16::MAX).await.unwrap();
+            }
+            for task in tasks {
+                task.await.unwrap();
+            }
+        }
     }
 }
