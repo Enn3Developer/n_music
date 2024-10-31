@@ -95,13 +95,6 @@ impl Settings {
         Ok(hasher.finish())
     }
 
-    pub async fn delete<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        let storage_file = platform.internal_dir().await.join("config");
-        if storage_file.exists() {
-            tokio::fs::remove_file(&storage_file).await.unwrap();
-        }
-    }
-
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
         self.save_and_compress(platform.internal_dir().await).await
     }

@@ -2,7 +2,6 @@ use flume::Receiver;
 use n_audio::queue::QueuePlayer;
 use n_audio::TrackTime;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -174,28 +173,5 @@ impl Runner {
 
     pub async fn current_track(&self) -> Option<String> {
         self.player.current_track_name().await
-    }
-
-    pub async fn add_all<P: Into<String>>(
-        &mut self,
-        paths: impl IntoIterator<Item = P>,
-    ) -> io::Result<()> {
-        self.player.add_all(paths).await
-    }
-
-    pub fn shrink_to_fit(&mut self) {
-        self.player.shrink_to_fit()
-    }
-
-    pub fn shuffle(&mut self) {
-        self.player.shuffle()
-    }
-
-    pub async fn clear(&mut self) {
-        self.player.clear().await
-    }
-
-    pub fn set_path(&mut self, path: String) {
-        self.player.set_path(path)
     }
 }

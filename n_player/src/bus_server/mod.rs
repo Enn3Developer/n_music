@@ -28,14 +28,17 @@ pub struct Metadata {
     pub image_path: Option<String>,
 }
 
-pub async fn run<P: Platform + Send>(platform: Arc<Mutex<P>>, runner: Arc<RwLock<Runner>>) {
+pub async fn run<P: Platform + Send>(
+    platform: Arc<Mutex<P>>,
+    runner: Arc<RwLock<Runner>>,
+    mut tmp: NamedTempFile,
+) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     let mut properties = vec![];
     let mut playback = false;
     let mut volume = 1.0;
     let mut index = runner.read().await.index();
     let path = runner.read().await.path();
-    let mut tmp = NamedTempFile::new().unwrap();
 
     loop {
         interval.tick().await;
