@@ -120,8 +120,8 @@ impl QueuePlayer {
     }
 
     #[inline]
-    pub fn clear(&mut self) {
-        self.queue_file.blocking_write().get_mut().rewind().unwrap();
+    pub async fn clear(&mut self) {
+        self.queue_file.write().await.get_mut().rewind().unwrap();
         self.index_map.clear();
         self.index = u16::MAX - 1;
     }

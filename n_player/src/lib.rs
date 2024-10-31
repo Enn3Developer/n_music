@@ -1,9 +1,9 @@
+use crate::runner::Runner;
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
 use multitag::data::Picture;
 use multitag::Tag;
-use n_audio::queue::QueuePlayer;
 #[cfg(target_os = "android")]
 use once_cell::sync::Lazy;
 use slint::private_unstable_api::re_exports::ColorScheme;
@@ -162,7 +162,7 @@ pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
 }
 
 pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
-    player: &mut QueuePlayer,
+    runner: &mut Runner,
     path: P,
 ) {
     if let Ok(mut dir) = tokio::fs::read_dir(path).await {
@@ -178,10 +178,10 @@ pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<Strin
                 }
             }
         }
-        player.add_all(paths).await.unwrap();
-        player.shrink_to_fit();
+        runner.add_all(paths).await.unwrap();
+        runner.shrink_to_fit();
 
-        player.shuffle();
+        runner.shuffle();
     }
 }
 
