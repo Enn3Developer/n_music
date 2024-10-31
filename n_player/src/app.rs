@@ -96,6 +96,10 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     ));
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
+
+    updater.abort();
+    future.abort();
+
     settings.lock().await.volume = runner.read().await.volume();
     if settings.lock().await.save_window_size {
         let width = main_window.get_last_width() as usize;
@@ -104,9 +108,6 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     } else {
         settings.lock().await.window_size = WindowSize::default();
     }
-
-    updater.abort();
-    future.abort();
     settings.lock().await.save(platform.lock().await).await;
 }
 
