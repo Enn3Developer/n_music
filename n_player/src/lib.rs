@@ -84,8 +84,6 @@ fn android_main(app: slint::android::AndroidApp) {
     use crate::platform::AndroidPlatform;
     use crate::platform::Platform;
     use crate::settings::Settings;
-    use slint::platform::WindowEvent;
-    use std::sync::Arc;
 
     slint::android::init(app.clone()).unwrap();
 
@@ -97,39 +95,12 @@ fn android_main(app: slint::android::AndroidApp) {
             let platform = if let Ok(MessageAndroidToRust::Start(jvm, callback)) =
                 ANDROID_TX.recv_async().await
             {
-                Arc::new(tokio::sync::Mutex::new(AndroidPlatform::new(
-                    app, jvm, callback,
-                )))
+                AndroidPlatform::new(app, jvm, callback)
             } else {
                 unreachable!()
             };
 
-            let settings = Arc::new(tokio::sync::Mutex::new(
-                Settings::read_saved(platform.lock().await).await,
-            ));
-            if !Path::new(&settings.lock().await.path).exists() {
-                let window = AndroidWindow::new().unwrap();
-                let handle = window.as_weak();
-                let settings = settings.clone();
-                let platform = platform.clone();
-                let future = tokio::task::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-                    let path = platform.lock().await.ask_music_dir().await;
-                    settings.lock().await.path = path.to_str().unwrap().to_string();
-                    handle
-                        .upgrade_in_event_loop(|window| {
-                            window.window().dispatch_event(WindowEvent::CloseRequested);
-                        })
-                        .unwrap();
-                });
-                tokio::task::block_in_place(|| window.run().unwrap());
-                future.await.unwrap();
-            }
-            run_app(
-                Arc::into_inner(settings).unwrap().into_inner(),
-                Arc::into_inner(platform).unwrap().into_inner(),
-            )
-            .await;
+            run_app(Settings::read_saved(&platform).await, platform).await;
         });
 }
 
