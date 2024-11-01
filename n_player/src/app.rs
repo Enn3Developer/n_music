@@ -278,6 +278,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             changes.push(Changes::Tracks(tracks));
             new_loaded = true;
             loaded = 0;
+            s.lock().await.clear_tracks(p.lock().await).await;
         }
 
         while let Ok(track_data) = rx_l.try_recv() {
