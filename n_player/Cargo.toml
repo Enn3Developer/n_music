@@ -1,6 +1,6 @@
 [package]
 name = "n_player"
-version = "2.0.0-alpha.3"
+version = "2.0.0-alpha.4"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/Enn3Developer/n_music"
