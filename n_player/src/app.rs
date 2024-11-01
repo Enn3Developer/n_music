@@ -195,20 +195,10 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
         })
         .unwrap();
     });
-    let s = settings.clone();
-    let p = platform.clone();
     settings_data.on_path(move || {
-        let s = s.clone();
-        let p = p.clone();
         let tx_path = tx_path.clone();
         slint::spawn_local(async move {
-            let path = p.lock().await.ask_music_dir().await;
-            s.lock().await.path = path.to_str().unwrap().to_string();
-            s.lock().await.save(p.lock().await).await;
-            tx_path
-                .send_async((path.to_str().unwrap().to_string(), false))
-                .await
-                .unwrap();
+            tx_path.send_async((String::new(), false)).await.unwrap();
         })
         .unwrap();
     });
@@ -475,7 +465,19 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
     tx_tracks: Sender<Vec<TrackData>>,
 ) {
     loop {
-        if let Ok((path, check_cache)) = rx.recv_async().await {
+        if let Ok((mut path, check_cache)) = rx.recv_async().await {
+            if path.is_empty() && !check_cache {
+                path = platform
+                    .lock()
+                    .await
+                    .ask_music_dir()
+                    .await
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+                settings.lock().await.path = path.clone();
+                settings.lock().await.save(platform.lock().await).await;
+            }
             let len = {
                 let mut guard = runner.write().await;
                 guard.clear().await;

@@ -99,9 +99,13 @@ class MainActivity : NativeActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (resultCode == RESULT_OK) {
+            println("activity result ok")
             if (requestCode == ASK_DIRECTORY) {
+                println("activity ask directory")
                 data?.data?.also { uri ->
+                    println("got data")
                     if (uri.path != null) {
+                        println("path is not null")
                         val contentResolver = applicationContext.contentResolver
                         val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         contentResolver.takePersistableUriPermission(uri, takeFlags)

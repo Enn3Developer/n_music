@@ -1,10 +1,10 @@
 [workspace]
 members = ["cargo:."]
 
-# Config for 'cargo dist'
+# Config for 'dist'
 [dist]
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.23.0"
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.24.1"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -15,6 +15,7 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 install-path = "~/.n_music/bin"
 # Whether to install an updater program
 install-updater = true
+# Custom display name to use for this app in release bodies
 display-name = "N Music"
 
 # Use the latest Ubuntu image available
