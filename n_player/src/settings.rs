@@ -16,7 +16,6 @@ pub struct Settings {
     pub save_window_size: bool,
     pub locale: Option<String>,
     pub timestamp: Option<u64>,
-    pub tracks: Vec<FileTrack>,
 }
 
 impl Settings {
@@ -95,6 +94,61 @@ impl Settings {
         Ok(hasher.finish())
     }
 
+    pub async fn clear_tracks<P: Deref<Target = impl Platform>>(&self, platform: P) {
+        let tracks_file = platform.internal_dir().await.join("tracks");
+        if tracks_file.exists() {
+            tokio::fs::remove_file(&tracks_file).await.unwrap();
+        }
+    }
+
+    pub async fn add_tracks<P: Deref<Target = impl Platform>>(
+        &self,
+        platform: P,
+        tracks: Vec<FileTrack>,
+    ) {
+        let tracks_file = platform.internal_dir().await.join("tracks");
+        let data = bitcode::encode(&tracks);
+        tokio::task::spawn_blocking(move || {
+            if let Ok(file) = File::create(tracks_file) {
+                zstd::stream::copy_encode(BufReader::new(Cursor::new(data)), file, 9).unwrap();
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    pub async fn read_tracks<P: Deref<Target = impl Platform>>(
+        &self,
+        platform: P,
+    ) -> Vec<FileTrack> {
+        let tracks_file = platform.internal_dir().await.join("tracks");
+
+        tokio::task::spawn_blocking(|| {
+            if tracks_file.exists() && tracks_file.is_file() {
+                let mut data = vec![];
+                if let Ok(_) = zstd::stream::copy_decode(
+                    File::open(tracks_file).unwrap(),
+                    BufWriter::new(Cursor::new(&mut data)),
+                ) {
+                    if let Ok(tracks) = bitcode::decode::<Vec<FileTrack>>(&data) {
+                        tracks
+                    } else {
+                        eprintln!("not encoded");
+                        vec![]
+                    }
+                } else {
+                    eprintln!("bad file");
+                    vec![]
+                }
+            } else {
+                eprintln!("file not found");
+                vec![]
+            }
+        })
+        .await
+        .unwrap()
+    }
+
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
         self.save_and_compress(platform.internal_dir().await).await
     }
@@ -128,7 +182,6 @@ impl Default for Settings {
             save_window_size: false,
             locale: None,
             timestamp: None,
-            tracks: vec![],
         }
     }
 }

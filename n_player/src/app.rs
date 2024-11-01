@@ -66,8 +66,8 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     let s = settings.clone();
     let future = tokio::spawn(async move {
         let runner_future = tokio::task::spawn(run(r.clone(), rx));
-        let bus_future = tokio::task::spawn(bus_server::run(p, r.clone(), tmp));
-        let loader_future = tokio::task::spawn(loader(r.clone(), s, tx_l, rx_path, tx_tracks));
+        let bus_future = tokio::task::spawn(bus_server::run(p.clone(), r.clone(), tmp));
+        let loader_future = tokio::task::spawn(loader(r.clone(), s, p, tx_l, rx_path, tx_tracks));
 
         let _ = tokio::join!(runner_future, bus_future, loader_future);
     });
@@ -247,6 +247,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     let mut loaded = 0;
     let mut saved = false;
     let mut changes = vec![];
+    let mut tracks = vec![];
     if let Ok(tracks) = rx_tracks.recv_async().await {
         changes.push(Changes::Tracks(tracks));
     }
@@ -282,7 +283,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
         while let Ok(track_data) = rx_l.try_recv() {
             if let Some((index, file_track)) = track_data {
                 let file = file_track.clone();
-                s.lock().await.tracks.push(file);
+                tracks.push(file);
                 let mut track: TrackData = file_track.into();
                 track.index = index as i32;
                 changes.push(Changes::Metadata(index, track));
@@ -291,6 +292,10 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             } else {
                 if !saved {
                     saved = true;
+                    s.lock()
+                        .await
+                        .add_tracks(p.lock().await, mem::take(&mut tracks))
+                        .await;
                     s.lock().await.save_timestamp().await;
                     s.lock().await.save(p.lock().await).await;
                 }
@@ -460,9 +465,10 @@ async fn loader_task(
     }
 }
 
-async fn loader(
+async fn loader<P: crate::platform::Platform + Send + 'static>(
     runner: Runner,
     settings: Settings,
+    platform: Platform<P>,
     tx: Sender<Option<(u16, FileTrack)>>,
     rx: Receiver<(String, bool)>,
     tx_tracks: Sender<Vec<TrackData>>,
@@ -478,9 +484,12 @@ async fn loader(
             };
 
             let check_timestamp = settings.lock().await.check_timestamp().await;
-            let is_cached =
-                check_timestamp && !settings.lock().await.tracks.is_empty() && check_cache;
-
+            let file_tracks = settings
+                .lock()
+                .await
+                .read_tracks(platform.lock().await)
+                .await;
+            let is_cached = check_timestamp && !file_tracks.is_empty() && check_cache;
             println!("check timestamp: {check_timestamp}; is cached: {is_cached}");
 
             let mut tracks = vec![];
@@ -488,10 +497,7 @@ async fn loader(
                 let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
                 if is_cached {
                     let track_without_ext = remove_ext(track_path);
-                    if let Some(file_track) = settings
-                        .lock()
-                        .await
-                        .tracks
+                    if let Some(file_track) = file_tracks
                         .iter()
                         .find(|file_track| file_track.path == track_without_ext)
                     {
