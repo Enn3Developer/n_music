@@ -5,7 +5,7 @@ export component Track {
     in property <TrackData> track;
     in property <bool> playing;
     callback clicked();
-    TouchArea {
+    if track.visible: TouchArea {
         clicked => {
             clicked()
         }

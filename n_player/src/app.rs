@@ -305,7 +305,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
         }
 
         p.lock().await.tick().await;
-        let search = searching.to_lowercase();
+        let mut search = searching.to_lowercase();
 
         let c = mem::take(&mut changes);
         window
@@ -340,15 +340,26 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                     }
                 }
 
+                let maybe_search = app_data.get_search_text().to_string();
+
+                if maybe_search.is_empty() && maybe_search != search {
+                    updated_search = true;
+                    search = maybe_search;
+                }
+
                 if updated_search || new_loaded {
                     let tracks = app_data.get_tracks();
                     for (index, mut track) in tracks.iter().enumerate() {
                         let title = track.title.to_lowercase();
                         let artist = track.artist.to_lowercase();
-                        if title.contains(&search) || artist.contains(&search) {
+                        if search.is_empty() {
                             track.visible = true;
                         } else {
-                            track.visible = false;
+                            if title.contains(&search) || artist.contains(&search) {
+                                track.visible = true;
+                            } else {
+                                track.visible = false;
+                            }
                         }
                         tracks.set_row_data(index, track);
                     }

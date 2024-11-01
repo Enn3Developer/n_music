@@ -82,7 +82,6 @@ pub enum MessageRustToAndroid {
 fn android_main(app: slint::android::AndroidApp) {
     use crate::app::run_app;
     use crate::platform::AndroidPlatform;
-    use crate::platform::Platform;
     use crate::settings::Settings;
 
     slint::android::init(app.clone()).unwrap();

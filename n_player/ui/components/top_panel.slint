@@ -14,8 +14,13 @@ export component TopPanel {
             LineEdit {
                 placeholder-text: Localization.search;
                 font-size: 16px;
+                text <=> AppData.search_text;
                 edited(value) => {
                     AppData.searching(value)
+                }
+                accepted(value) => {
+                    AppData.searching(value);
+                    self.clear-focus();
                 }
             }
 

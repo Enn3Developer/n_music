@@ -3,7 +3,7 @@ import {Separator} from "./../components/separator.slint";
 import {TopPanel} from "./../components/top_panel.slint";
 import {ControlPanel} from "./../components/control_panel.slint";
 import {Track} from "./../components/track.slint";
-import {ListView} from "std-widgets.slint";
+import {ListView, ScrollView} from "std-widgets.slint";
 import { AppData } from "../globals/app_data.slint";
 
 export component App {
@@ -15,16 +15,17 @@ export component App {
             }
         }
 
-        ListView {
+        ScrollView {
             viewport-width: parent.width - 20px;
             viewport-y <=> AppData.viewport-y;
-            for track[i] in AppData.tracks: Track {
-                width: track.visible ? parent.width - 20px : 0px;
-                height: track.visible ? 84px : 0px;
-                track: track;
-                playing: AppData.playing == track.index;
-                clicked => {
-                    AppData.clicked(track.index);
+            VerticalLayout {
+                for track[i] in AppData.tracks: Track {
+                    height: track.visible ? 84px : 0px;
+                    track: track;
+                    playing: AppData.playing == track.index;
+                    clicked => {
+                        AppData.clicked(track.index);
+                    }
                 }
             }
         }
