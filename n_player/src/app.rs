@@ -245,7 +245,6 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     let mut searching = String::new();
     let mut old_index = u16::MAX;
     let mut loaded = 0;
-    let threshold = num_cpus::get() * 4;
     let mut saved = false;
     let mut changes = vec![];
     if let Ok(tracks) = rx_tracks.recv_async().await {
@@ -288,9 +287,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                 track.index = index as i32;
                 changes.push(Changes::Metadata(index, track));
                 loaded += 1;
-                if loaded % threshold == 0 {
-                    new_loaded = true;
-                }
+                new_loaded = true;
             } else {
                 if !saved {
                     saved = true;
@@ -384,7 +381,7 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let image = if let Ok(image) =
+                        let mut image = if let Ok(image) =
                             tokio::task::spawn_blocking(move || get_image(p)).await
                         {
                             if !image.is_empty() {
@@ -438,6 +435,8 @@ async fn loader_task(
                         } else {
                             vec![]
                         };
+
+                        image.shrink_to_fit();
 
                         if let Err(e) = tx
                             .send_async(Some((
@@ -511,7 +510,7 @@ async fn loader(
                     });
                 }
             }
-
+            tracks.shrink_to_fit();
             tx_tracks.send_async(tracks).await.unwrap();
 
             if is_cached {
@@ -521,7 +520,7 @@ async fn loader(
             let mut tasks = vec![];
             let (tx_l, rx_l) = flume::unbounded();
             let rx_l = Arc::new(Mutex::new(rx_l));
-            let cpus = num_cpus::get() * 4;
+            let cpus = num_cpus::get() * 8;
             for _ in 0..cpus {
                 let runner = runner.clone();
                 let tx = tx.clone();

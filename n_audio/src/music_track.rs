@@ -92,6 +92,9 @@ impl MusicTrack {
             title = remove_ext(&self.path);
         }
 
+        title.shrink_to_fit();
+        artist.shrink_to_fit();
+
         Ok(Metadata {
             time,
             artist,
