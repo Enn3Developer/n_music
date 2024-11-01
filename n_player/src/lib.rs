@@ -297,6 +297,7 @@ impl From<FileTrack> for TrackData {
             )
             .into(),
             title: value.title.into(),
+            visible: true,
         }
     }
 }

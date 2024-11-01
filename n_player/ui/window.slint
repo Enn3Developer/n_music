@@ -13,7 +13,7 @@ export component MainWindow inherits Window {
     in-out property <bool> settings;
     out property <length> last-width <=> self.width;
     out property <length> last-height <=> self.height;
-    title: "N Music - " + AppData.playing_track.title;
+    title: "N Music - " + AppData.tracks[AppData.playing].title;
     icon: @image-url("../assets/icons/icon.png");
     preferred-width: SettingsData.width;
     preferred-height: SettingsData.height;

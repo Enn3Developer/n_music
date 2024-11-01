@@ -10,8 +10,9 @@ use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
 use rimage::codecs::webp::WebPDecoder;
 use rimage::operations::resize::{FilterType, ResizeAlg};
-use slint::{ComponentHandle, VecModel, Weak};
+use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::io::Cursor;
+use std::mem;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +29,11 @@ pub type Runner = Arc<RwLock<crate::runner::Runner>>;
 pub type Settings = Arc<Mutex<crate::settings::Settings>>;
 #[allow(type_alias_bounds)]
 pub type Platform<P: crate::platform::Platform + Send + 'static> = Arc<Mutex<P>>;
+
+enum Changes {
+    Tracks(Vec<TrackData>),
+    Metadata(u16, TrackData),
+}
 
 pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     settings: crate::settings::Settings,
@@ -241,9 +247,9 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     let mut loaded = 0;
     let threshold = num_cpus::get() * 4;
     let mut saved = false;
-    let mut tracks = vec![];
-    if let Ok(t) = rx_tracks.recv_async().await {
-        tracks = t;
+    let mut changes = vec![];
+    if let Ok(tracks) = rx_tracks.recv_async().await {
+        changes.push(Changes::Tracks(tracks));
     }
     loop {
         interval.tick().await;
@@ -268,8 +274,8 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
 
         let mut new_loaded = false;
 
-        if let Ok(t) = rx_tracks.try_recv() {
-            tracks = t;
+        if let Ok(tracks) = rx_tracks.try_recv() {
+            changes.push(Changes::Tracks(tracks));
             new_loaded = true;
             loaded = 0;
         }
@@ -278,8 +284,9 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             if let Some((index, file_track)) = track_data {
                 let file = file_track.clone();
                 s.lock().await.tracks.push(file);
-                tracks[index as usize] = file_track.into();
-                tracks[index as usize].index = index as i32;
+                let mut track: TrackData = file_track.into();
+                track.index = index as i32;
+                changes.push(Changes::Metadata(index, track));
                 loaded += 1;
                 if loaded % threshold == 0 {
                     new_loaded = true;
@@ -293,13 +300,9 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                 new_loaded = true;
             }
         }
-        let progress = loaded as f64 / tracks.len() as f64;
-        let mut playing_track = None;
+        let progress = loaded as f64 / len as f64;
         if old_index != index || new_loaded {
-            if let Some(track) = tracks.get(index as usize) {
-                playing_track = Some(track.clone());
-                old_index = index;
-            }
+            old_index = index;
         }
 
         let mut updated_search = false;
@@ -308,27 +311,10 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             updated_search = true;
         }
 
-        let mut t = vec![];
-
-        let is_searching = !searching.is_empty();
-
-        if new_loaded || updated_search {
-            t = tracks.clone();
-        }
-
-        if is_searching && (updated_search || new_loaded) {
-            t = t
-                .into_iter()
-                .filter(|track| {
-                    let search = searching.to_lowercase();
-                    track.title.to_lowercase().contains(&search)
-                        || track.artist.to_lowercase().contains(&search)
-                })
-                .collect();
-        }
-
         p.lock().await.tick().await;
+        let search = searching.to_lowercase();
 
+        let c = mem::take(&mut changes);
         window
             .upgrade_in_event_loop(move |window| {
                 let app_data = window.global::<AppData>();
@@ -341,10 +327,6 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                 app_data.set_playback(playback);
                 app_data.set_volume(volume as f32);
 
-                if let Some(playing_track) = playing_track {
-                    app_data.set_playing_track(playing_track);
-                }
-
                 if new_loaded {
                     let progress = if progress == 1.0 {
                         0.0
@@ -354,8 +336,29 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                     app_data.set_progress(progress);
                 }
 
-                if new_loaded || updated_search {
-                    app_data.set_tracks(VecModel::from_slice(&t));
+                for change in c {
+                    match change {
+                        Changes::Tracks(tracks) => {
+                            app_data.set_tracks(VecModel::from_slice(&tracks));
+                        }
+                        Changes::Metadata(index, track) => {
+                            app_data.get_tracks().set_row_data(index as usize, track);
+                        }
+                    }
+                }
+
+                if updated_search || new_loaded {
+                    let tracks = app_data.get_tracks();
+                    for (index, mut track) in tracks.iter().enumerate() {
+                        let title = track.title.to_lowercase();
+                        let artist = track.artist.to_lowercase();
+                        if title.contains(&search) || artist.contains(&search) {
+                            track.visible = true;
+                        } else {
+                            track.visible = false;
+                        }
+                        tracks.set_row_data(index, track);
+                    }
                 }
             })
             .unwrap();
@@ -479,6 +482,8 @@ async fn loader(
             let is_cached =
                 check_timestamp && !settings.lock().await.tracks.is_empty() && check_cache;
 
+            println!("check timestamp: {check_timestamp}; is cached: {is_cached}");
+
             let mut tracks = vec![];
             for i in 0..len {
                 let track_path = runner.read().await.get_path_for_file(i).await.unwrap();
@@ -502,11 +507,16 @@ async fn loader(
                         time: Default::default(),
                         title: remove_ext(track_path).into(),
                         index: i as i32,
+                        visible: true,
                     });
                 }
             }
 
             tx_tracks.send_async(tracks).await.unwrap();
+
+            if is_cached {
+                continue;
+            }
 
             let mut tasks = vec![];
             let (tx_l, rx_l) = flume::unbounded();

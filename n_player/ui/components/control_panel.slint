@@ -3,13 +3,14 @@ import { Slider, Button } from "std-widgets.slint";
 import { AppData } from "../globals/app_data.slint";
 
 export component ControlPanel {
+    in property <TrackData> playing_track: AppData.tracks[AppData.playing];
     control-panel := HorizontalLayout {
         spacing: 10px;
         padding: 10px;
         image := Image {
             width: 72px;
             height: 72px;
-            source: AppData.playing_track.cover;
+            source: playing_track.cover;
         }
 
         VerticalLayout {
@@ -38,7 +39,7 @@ export component ControlPanel {
 
                 length := Text {
                     vertical-alignment: center;
-                    text: AppData.playing_track.time;
+                    text: playing_track.time;
                     width: 35px;
                 }
 
@@ -65,13 +66,13 @@ export component ControlPanel {
                     alignment: center;
                     width: control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing - buttons.width;
                     Text {
-                        text: AppData.playing_track.title;
+                        text: playing_track.title;
                         overflow: elide;
                         font-size: 12px;
                     }
 
                     Text {
-                        text: AppData.playing_track.artist;
+                        text: playing_track.artist;
                         overflow: elide;
                         font-size: 12px;
                     }
