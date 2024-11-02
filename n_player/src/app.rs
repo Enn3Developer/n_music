@@ -299,7 +299,11 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
         }
 
         let mut updated_search = false;
+        let mut save_y = false;
         while let Ok(search_string) = rx_searching.try_recv() {
+            if searching.is_empty() {
+                save_y = true;
+            }
             searching = search_string;
             updated_search = true;
         }
@@ -350,6 +354,9 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                 if updated_search || new_loaded {
                     let tracks = app_data.get_tracks();
                     let mut counter = 0;
+                    if save_y {
+                        app_data.set_saved_y(app_data.get_viewport_y());
+                    }
                     for (index, mut track) in tracks.iter().enumerate() {
                         let title = track.title.to_lowercase();
                         let artist = track.artist.to_lowercase();
@@ -376,6 +383,9 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                     let height = (counter * -84) as f32;
                     if height > app_data.get_viewport_y() {
                         app_data.set_viewport_y(0.0);
+                    }
+                    if search.is_empty() {
+                        app_data.set_viewport_y(app_data.get_saved_y());
                     }
                 }
             })
