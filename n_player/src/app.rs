@@ -26,26 +26,26 @@ use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
 
 pub type Runner = Arc<RwLock<crate::runner::Runner>>;
-pub type Settings = Arc<Mutex<crate::settings::Settings>>;
+pub type Settings = Arc<RwLock<crate::settings::Settings>>;
 #[allow(type_alias_bounds)]
-pub type Platform<P: crate::platform::Platform + Send + 'static> = Arc<Mutex<P>>;
+pub type Platform<P: crate::platform::Platform + Send + 'static> = Arc<RwLock<P>>;
 
 enum Changes {
     Tracks(Vec<TrackData>),
     Metadata(u16, TrackData),
 }
 
-pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
+pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     settings: crate::settings::Settings,
     platform: P,
 ) {
-    let platform = Arc::new(Mutex::new(platform));
-    let settings = Arc::new(Mutex::new(settings));
+    let platform = Arc::new(RwLock::new(platform));
+    let settings = Arc::new(RwLock::new(settings));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();
 
-    let player = QueuePlayer::new(settings.lock().await.path.clone());
+    let player = QueuePlayer::new(settings.read().await.path.clone());
 
     let runner = Arc::new(RwLock::new(crate::runner::Runner::new(player)));
 
@@ -56,10 +56,10 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     let main_window = MainWindow::new().unwrap();
 
     let p = platform.clone();
-    p.lock().await.add_runner(r.clone(), tx_t.clone()).await;
+    p.write().await.add_runner(r.clone(), tx_t.clone()).await;
     let (tx_path, rx_path) = flume::unbounded();
     tx_path
-        .send_async((settings.lock().await.path.clone(), true))
+        .send_async((settings.read().await.path.clone(), true))
         .await
         .unwrap();
     let (tx_tracks, rx_tracks) = flume::unbounded();
@@ -106,15 +106,15 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static>(
     updater.abort();
     future.abort();
 
-    settings.lock().await.volume = runner.read().await.volume();
-    if settings.lock().await.save_window_size {
+    settings.write().await.volume = runner.read().await.volume();
+    if settings.read().await.save_window_size {
         let width = main_window.get_last_width() as usize;
         let height = main_window.get_last_height() as usize;
-        settings.lock().await.window_size = WindowSize { width, height };
+        settings.write().await.window_size = WindowSize { width, height };
     } else {
-        settings.lock().await.window_size = WindowSize::default();
+        settings.write().await.window_size = WindowSize::default();
     }
-    settings.lock().await.save(platform.lock().await).await;
+    settings.read().await.save(platform.read().await).await;
 }
 
 async fn setup_data<P: crate::platform::Platform + Send + 'static>(
@@ -127,7 +127,7 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     tx_path: Sender<(String, bool)>,
 ) {
     localize(
-        settings.lock().await.locale.clone(),
+        settings.read().await.locale.clone(),
         main_window.global::<Localization>(),
     );
 
@@ -138,17 +138,20 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     app_data.set_android(true);
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
-    settings_data.set_color_scheme(settings.lock().await.theme.into());
-    settings_data.set_theme(i32::from(settings.lock().await.theme));
-    settings_data.set_width(settings.lock().await.window_size.width as f32);
-    settings_data.set_height(settings.lock().await.window_size.height as f32);
-    settings_data.set_save_window_size(settings.lock().await.save_window_size);
-    settings_data.set_current_path(settings.lock().await.path.clone().into());
+    {
+        let settings = settings.read().await;
+        settings_data.set_color_scheme(settings.theme.into());
+        settings_data.set_theme(i32::from(settings.theme));
+        settings_data.set_width(settings.window_size.width as f32);
+        settings_data.set_height(settings.window_size.height as f32);
+        settings_data.set_save_window_size(settings.save_window_size);
+        settings_data.set_current_path(settings.path.clone().into());
+    }
 
     let p = platform.clone();
     app_data.on_open_link(move |link| {
         let p = p.clone();
-        slint::spawn_local(async move { p.lock().await.open_link(link.into()).await }).unwrap();
+        slint::spawn_local(async move { p.read().await.open_link(link.into()).await }).unwrap();
     });
 
     let s = settings.clone();
@@ -165,8 +168,8 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
             let s = s.clone();
             let p = p.clone();
             slint::spawn_local(async move {
-                s.lock().await.locale = Some(denominator);
-                s.lock().await.save(p.lock().await).await;
+                s.write().await.locale = Some(denominator);
+                s.read().await.save(p.read().await).await;
             })
             .unwrap();
         });
@@ -181,8 +184,8 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
             let s = s.clone();
             let p = p.clone();
             slint::spawn_local(async move {
-                s.lock().await.theme = theme;
-                s.lock().await.save(p.lock().await).await;
+                s.write().await.theme = theme;
+                s.read().await.save(p.read().await).await;
             })
             .unwrap();
         }
@@ -191,7 +194,7 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     settings_data.on_toggle_save_window_size(move |save| {
         let s = s.clone();
         slint::spawn_local(async move {
-            s.lock().await.save_window_size = save;
+            s.write().await.save_window_size = save;
         })
         .unwrap();
     });
@@ -268,7 +271,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             changes.push(Changes::Tracks(tracks));
             new_loaded = true;
             loaded = 0;
-            s.lock().await.clear_tracks(p.lock().await).await;
+            s.write().await.clear_tracks(p.read().await).await;
         }
 
         while let Ok(track_data) = rx_l.try_recv() {
@@ -283,12 +286,12 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             } else {
                 if !saved {
                     saved = true;
-                    s.lock()
-                        .await
-                        .add_tracks(p.lock().await, mem::take(&mut tracks))
+                    let mut settings = s.write().await;
+                    settings
+                        .add_tracks(p.read().await, mem::take(&mut tracks))
                         .await;
-                    s.lock().await.save_timestamp().await;
-                    s.lock().await.save(p.lock().await).await;
+                    settings.save_timestamp().await;
+                    settings.save(p.read().await).await;
                 }
                 new_loaded = true;
             }
@@ -308,7 +311,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
             updated_search = true;
         }
 
-        p.lock().await.tick().await;
+        p.write().await.tick().await;
         let mut search = searching.to_lowercase();
 
         let c = mem::take(&mut changes);
@@ -503,15 +506,15 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
         if let Ok((mut path, check_cache)) = rx.recv_async().await {
             if path.is_empty() && !check_cache {
                 path = platform
-                    .lock()
+                    .read()
                     .await
                     .ask_music_dir()
                     .await
                     .to_str()
                     .unwrap()
                     .to_string();
-                settings.lock().await.path = path.clone();
-                settings.lock().await.save(platform.lock().await).await;
+                settings.write().await.path = path.clone();
+                settings.read().await.save(platform.read().await).await;
             }
             let len = {
                 let mut guard = runner.write().await;
@@ -521,11 +524,11 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
                 guard.len() as u16
             };
 
-            let check_timestamp = settings.lock().await.check_timestamp().await;
+            let check_timestamp = settings.read().await.check_timestamp().await;
             let file_tracks = settings
-                .lock()
+                .read()
                 .await
-                .read_tracks(platform.lock().await)
+                .read_tracks(platform.read().await)
                 .await;
             let is_cached = check_timestamp && !file_tracks.is_empty() && check_cache;
             println!("check timestamp: {check_timestamp}; is cached: {is_cached}");

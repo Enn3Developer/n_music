@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -28,8 +28,8 @@ pub struct Metadata {
     pub image_path: Option<String>,
 }
 
-pub async fn run<P: Platform + Send>(
-    platform: Arc<Mutex<P>>,
+pub async fn run<P: Platform + Send + Sync>(
+    platform: Arc<RwLock<P>>,
     runner: Arc<RwLock<Runner>>,
     mut tmp: NamedTempFile,
 ) {
@@ -94,7 +94,7 @@ pub async fn run<P: Platform + Send>(
 
         if !properties.is_empty() {
             platform
-                .lock()
+                .read()
                 .await
                 .properties_changed(mem::take(&mut properties))
                 .await;

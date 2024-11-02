@@ -45,13 +45,13 @@ async fn ask_file_desktop() -> Vec<PathBuf> {
 /// Abstraction over a number of platforms (desktop and mobile)
 pub trait Platform {
     /// Ask underlying platform to open a web link
-    async fn open_link(&mut self, link: String);
+    async fn open_link(&self, link: String);
     /// Ask underlying platform to get the app directory
     async fn internal_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for the music dir
-    async fn ask_music_dir(&mut self) -> PathBuf;
+    async fn ask_music_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for files
-    async fn ask_file(&mut self) -> Vec<PathBuf>;
+    async fn ask_file(&self) -> Vec<PathBuf>;
     /// Notify the platform that a [Runner] is ready and save it in memory
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
     where
@@ -59,7 +59,7 @@ pub trait Platform {
     {
     }
     /// Notify the platform that some playback properties have changed and update those accordingly
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P)
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P)
     where
         Self: Sized,
     {
@@ -87,7 +87,7 @@ impl LinuxPlatform {
 #[cfg(target_os = "linux")]
 #[async_trait]
 impl Platform for LinuxPlatform {
-    async fn open_link(&mut self, link: String) {
+    async fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
 
@@ -95,11 +95,11 @@ impl Platform for LinuxPlatform {
         internal_dir_desktop().await
     }
 
-    async fn ask_music_dir(&mut self) -> PathBuf {
+    async fn ask_music_dir(&self) -> PathBuf {
         ask_music_dir_desktop().await
     }
 
-    async fn ask_file(&mut self) -> Vec<PathBuf> {
+    async fn ask_file(&self) -> Vec<PathBuf> {
         ask_file_desktop().await
     }
 
@@ -112,7 +112,7 @@ impl Platform for LinuxPlatform {
         .unwrap();
         self.server = Some(server);
     }
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&mut self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
         if let Some(server) = &self.server {
             let mut new_properties = vec![];
             for p in properties {
@@ -155,7 +155,7 @@ pub struct DesktopPlatform {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[async_trait]
 impl Platform for DesktopPlatform {
-    async fn open_link(&mut self, link: String) {
+    async fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
 
@@ -163,11 +163,11 @@ impl Platform for DesktopPlatform {
         internal_dir_desktop().await
     }
 
-    async fn ask_music_dir(&mut self) -> PathBuf {
+    async fn ask_music_dir(&self) -> PathBuf {
         ask_music_dir_desktop().await
     }
 
-    async fn ask_file(&mut self) -> Vec<PathBuf> {
+    async fn ask_file(&self) -> Vec<PathBuf> {
         ask_file_desktop().await
     }
 }
@@ -193,7 +193,7 @@ impl AndroidPlatform {
 #[cfg(target_os = "android")]
 #[async_trait]
 impl Platform for AndroidPlatform {
-    async fn open_link(&mut self, link: String) {
+    async fn open_link(&self, link: String) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         let java_string = env.new_string(link).unwrap();
         env.call_method(
@@ -217,7 +217,7 @@ impl Platform for AndroidPlatform {
         path
     }
 
-    async fn ask_music_dir(&mut self) -> PathBuf {
+    async fn ask_music_dir(&self) -> PathBuf {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "askDirectory", "()V", &[])
             .unwrap();
@@ -232,7 +232,7 @@ impl Platform for AndroidPlatform {
         PathBuf::new()
     }
 
-    async fn ask_file(&mut self) -> Vec<PathBuf> {
+    async fn ask_file(&self) -> Vec<PathBuf> {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "askFile", "()V", &[])
             .unwrap();
