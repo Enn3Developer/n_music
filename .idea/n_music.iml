@@ -9,6 +9,9 @@
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_audio/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_player/target" />
+      <excludeFolder url="file://$MODULE_DIR$/n_player/.gradle" />
+      <excludeFolder url="file://$MODULE_DIR$/n_player/.idea" />
+      <excludeFolder url="file://$MODULE_DIR$/n_player/build" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

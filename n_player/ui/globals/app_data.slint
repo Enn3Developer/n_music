@@ -24,6 +24,6 @@ export global AppData {
     callback changing();
     public function scroll() {
         // height is negative
-        viewport-y = playing * -84px;
+        viewport-y = min((playing - 1) * -84px - 50px, 0px);
     }
 }
