@@ -352,14 +352,22 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                     for (index, mut track) in tracks.iter().enumerate() {
                         let title = track.title.to_lowercase();
                         let artist = track.artist.to_lowercase();
-                        if search.is_empty() {
+                        if search.is_empty() && !track.visible {
                             track.visible = true;
-                        } else {
+                        } else if !search.is_empty() {
                             if title.contains(&search) || artist.contains(&search) {
+                                if track.visible {
+                                    continue;
+                                }
                                 track.visible = true;
                             } else {
+                                if !track.visible {
+                                    continue;
+                                }
                                 track.visible = false;
                             }
+                        } else {
+                            continue;
                         }
                         tracks.set_row_data(index, track);
                     }
