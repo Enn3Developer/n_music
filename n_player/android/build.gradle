@@ -12,7 +12,7 @@ android {
         minSdk 30
         targetSdk 34
         versionCode 16845056
-        versionName "1.9.0"
+        versionName "2.0.0-alpha.5"
     }
 
     buildTypes {
