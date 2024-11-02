@@ -567,7 +567,7 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
             let mut tasks = vec![];
             let (tx_l, rx_l) = flume::unbounded();
             let rx_l = Arc::new(Mutex::new(rx_l));
-            let cpus = num_cpus::get() * 8;
+            let cpus = num_cpus::get() * 4;
             for _ in 0..cpus {
                 let runner = runner.clone();
                 let tx = tx.clone();
