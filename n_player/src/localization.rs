@@ -1,8 +1,27 @@
 use crate::Localization;
+use paste::paste;
 use serde::{Deserialize, Serialize};
 use slint::{SharedString, VecModel};
 
 include!(concat!(env!("OUT_DIR"), "/localizations.rs"));
+
+macro_rules! localize {
+    ($localization:ident, $locale:ident, $default_locale:ident, $name:ident) => {
+        paste! {
+            $localization.[<set_ $name>](
+                $locale
+                    .$name
+                    .as_ref()
+                    .unwrap_or($default_locale.$name.as_ref().unwrap())
+                    .into(),
+            );
+        }
+    };
+
+    ($localization:ident, $locale:ident, $default_locale:ident, $($name:ident),+) => {
+        $(localize!($localization, $locale, $default_locale, $name);)+
+    };
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Locale {
@@ -17,6 +36,9 @@ pub struct Locale {
     theme_dark: Option<String>,
     credits: Option<String>,
     license: Option<String>,
+    update_text: Option<String>,
+    check_update: Option<String>,
+    update: Option<String>,
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
@@ -39,82 +61,25 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
     localizations.sort();
     localization.set_localizations(VecModel::from_slice(&localizations));
     localization.set_current_locale(get_locale_name(Some(&denominator)).into());
-    localization.set_settings(
-        locale
-            .settings
-            .as_ref()
-            .unwrap_or(english.settings.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_search(
-        locale
-            .search
-            .as_ref()
-            .unwrap_or(english.search.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_theme(
-        locale
-            .theme
-            .as_ref()
-            .unwrap_or(english.theme.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_window_size(
-        locale
-            .window_size
-            .as_ref()
-            .unwrap_or(english.window_size.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_music_path(
-        locale
-            .music_path
-            .as_ref()
-            .unwrap_or(english.music_path.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_language(
-        locale
-            .language
-            .as_ref()
-            .unwrap_or(english.language.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_theme_system(
-        locale
-            .theme_system
-            .as_ref()
-            .unwrap_or(english.theme_system.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_theme_light(
-        locale
-            .theme_light
-            .as_ref()
-            .unwrap_or(english.theme_light.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_theme_dark(
-        locale
-            .theme_dark
-            .as_ref()
-            .unwrap_or(english.theme_dark.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_credits(
-        locale
-            .credits
-            .as_ref()
-            .unwrap_or(english.credits.as_ref().unwrap())
-            .into(),
-    );
-    localization.set_license(
-        locale
-            .license
-            .as_ref()
-            .unwrap_or(english.license.as_ref().unwrap())
-            .into(),
+
+    localize!(
+        localization,
+        locale,
+        english,
+        settings,
+        search,
+        theme,
+        window_size,
+        music_path,
+        language,
+        theme_system,
+        theme_light,
+        theme_dark,
+        credits,
+        license,
+        update_text,
+        check_update,
+        update
     );
 }
 

@@ -35,6 +35,12 @@ enum Changes {
     Metadata(u16, TrackData),
 }
 
+#[cfg(feature = "updater")]
+enum AppUpdateMessage {
+    CheckUpdate,
+    Update,
+}
+
 pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     settings: crate::settings::Settings,
     platform: P,
@@ -74,6 +80,8 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
 
     let (tx_searching, rx_searching) = flume::unbounded();
     let (tx_changing, rx_changing) = flume::unbounded();
+    #[cfg(feature = "updater")]
+    let (tx_updater, rx_updater) = flume::unbounded();
 
     setup_data(
         settings.clone(),
@@ -83,6 +91,8 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
         tx_searching,
         tx_changing,
         tx_path,
+        #[cfg(feature = "updater")]
+        tx_updater,
     )
     .await;
 
@@ -101,9 +111,15 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
         rx_l,
     ));
 
+    #[cfg(feature = "updater")]
+    let window = main_window.as_weak();
+    #[cfg(feature = "updater")]
+    let app_updater = tokio::task::spawn(app_updater(rx_updater, window));
+
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
     updater.abort();
+    app_updater.abort();
     future.abort();
 
     settings.write().await.volume = runner.read().await.volume();
@@ -117,6 +133,43 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     settings.read().await.save(platform.read().await).await;
 }
 
+#[cfg(feature = "updater")]
+async fn app_updater(rx: Receiver<AppUpdateMessage>, window: Weak<MainWindow>) {
+    use axoupdater::AxoUpdater;
+    loop {
+        while let Ok(message) = rx.recv_async().await {
+            match message {
+                AppUpdateMessage::CheckUpdate => {
+                    if let Ok(updater) = AxoUpdater::new_for("n_player").load_receipt() {
+                        if let Ok(true) = updater.is_update_needed().await {
+                            window
+                                .upgrade_in_event_loop(|window| {
+                                    let settings_data = window.global::<SettingsData>();
+                                    settings_data.set_needs_update(true);
+                                })
+                                .unwrap_or(());
+                        }
+                    }
+                }
+                AppUpdateMessage::Update => {
+                    if let Ok(updater) = AxoUpdater::new_for("n_player").load_receipt() {
+                        if let Ok(true) = updater.is_update_needed().await {
+                            if let Ok(_) = updater.run().await {
+                                window
+                                    .upgrade_in_event_loop(|window| {
+                                        let settings_data = window.global::<SettingsData>();
+                                        settings_data.set_needs_update(false);
+                                    })
+                                    .unwrap_or(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     settings: Settings,
     platform: Platform<P>,
@@ -125,6 +178,7 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
     tx_searching: Sender<String>,
     tx_changing: Sender<()>,
     tx_path: Sender<(String, bool)>,
+    #[cfg(feature = "updater")] tx_updater: Sender<AppUpdateMessage>,
 ) {
     localize(
         settings.read().await.locale.clone(),
@@ -136,6 +190,8 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
 
     #[cfg(target_os = "android")]
     app_data.set_android(true);
+    #[cfg(feature = "updater")]
+    app_data.set_updater(true);
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
     {
@@ -146,6 +202,14 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
         settings_data.set_height(settings.window_size.height as f32);
         settings_data.set_save_window_size(settings.save_window_size);
         settings_data.set_current_path(settings.path.clone().into());
+    }
+
+    #[cfg(feature = "updater")]
+    {
+        let t = tx_updater.clone();
+        settings_data.on_check_update(move || t.send(AppUpdateMessage::CheckUpdate).unwrap());
+        let t = tx_updater.clone();
+        settings_data.on_update(move || t.send(AppUpdateMessage::Update).unwrap());
     }
 
     let p = platform.clone();

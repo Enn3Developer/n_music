@@ -13,8 +13,6 @@ installers = ["shell", "msi"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
 install-path = "~/.n_music/bin"
-# Whether to install an updater program
-install-updater = true
 # Custom display name to use for this app in release bodies
 display-name = "N Music"
 

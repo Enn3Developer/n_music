@@ -9,5 +9,8 @@
   "theme_light": "Light",
   "theme_dark": "Dark",
   "credits": "Made by Enn3DevPlayer and others",
-  "license": "License"
+  "license": "License",
+  "update_text": "Updates",
+  "check_update": "Check for updates",
+  "update": "Update"
 }

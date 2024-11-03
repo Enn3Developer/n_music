@@ -9,5 +9,8 @@
   "theme_light": "Chiaro",
   "theme_dark": "Scuro",
   "credits": "Sviluppato da Enn3DevPlayer e altri",
-  "license": "Licenza"
+  "license": "Licenza",
+  "update_text": "Aggiornamenti",
+  "check_update": "Controlla aggiornamenti",
+  "update": "Aggiorna"
 }
