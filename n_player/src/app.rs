@@ -119,6 +119,7 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
     updater.abort();
+    #[cfg(feature = "updater")]
     app_updater.abort();
     future.abort();
 
