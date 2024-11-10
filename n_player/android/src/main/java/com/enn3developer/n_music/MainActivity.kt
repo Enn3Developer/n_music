@@ -1,23 +1,31 @@
 package com.enn3developer.n_music
 
+import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.READ_MEDIA_AUDIO
 import android.annotation.SuppressLint
 import android.app.NativeActivity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 
-
+@UnstableApi
 class MainActivity : NativeActivity() {
     companion object {
         init {
@@ -35,10 +43,13 @@ class MainActivity : NativeActivity() {
             System.loadLibrary("n_player")
         }
 
+        const val NOTIFICATION_ID = 1
+        const val CHANNEL_ID = "NMusic"
         const val ASK_DIRECTORY = 0
         const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
     }
+    lateinit var notification: NotificationCompat.Builder
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
@@ -74,22 +85,66 @@ class MainActivity : NativeActivity() {
         startActivity(browserIntent)
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @OptIn(UnstableApi::class)
     @Suppress("unused")
     private fun createNotification() {
-        val mediaSession =
-            MediaSession.Builder(
+        if (
+            checkSelfPermission(POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
+        }
+
+        val sessionActivityPendingIntent =
+            applicationContext.packageManager?.getLaunchIntentForPackage(
+                applicationContext.packageName)?.let {
+                    sessionIntent -> PendingIntent.getActivity(
                 applicationContext,
-                NPlayer(Looper.getMainLooper())
+                0,
+                sessionIntent,
+                PendingIntent.FLAG_IMMUTABLE
             )
-                .build()
-        var notification = NotificationCompat.Builder(applicationContext, "n_music")
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSmallIcon(R.mipmap.ic_launcher_round).setStyle(
+            }
+        val player = NPlayer(Looper.getMainLooper())
+        val mediaSession = MediaSession.Builder(applicationContext, player)
+            .setSessionActivity(sessionActivityPendingIntent!!)
+            .build()
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            NOTIFICATION_SERVICE,
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setStyle(
                 MediaStyleNotificationHelper.MediaStyle(mediaSession)
                     .setShowActionsInCompactView(1 /* #1: pause button */)
-            ).build()
+            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setSmallIcon(R.mipmap.ic_launcher_round)
+        NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
+    }
 
+    @OptIn(UnstableApi::class)
+    @Suppress("unused")
+    private fun changeNotification(title: String, artist: String, coverPath: String) {
+        val icon = BitmapFactory.decodeFile(coverPath)
+        notification
+            .setContentTitle(title)
+            .setContentText(artist)
+            .setLargeIcon(icon)
+        with(NotificationManagerCompat.from(this)) {
+            if (ActivityCompat.checkSelfPermission(
+                    applicationContext,
+                    POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return@with
+            }
+
+            notify(NOTIFICATION_ID, notification.build())
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -154,7 +209,7 @@ class MainActivity : NativeActivity() {
     private fun requestPermissions() {
         ActivityCompat.requestPermissions(
             this,
-            arrayOf(READ_MEDIA_AUDIO),
+            arrayOf(READ_MEDIA_AUDIO, POST_NOTIFICATIONS),
             REQUEST_PERMISSION_CODE
         )
     }

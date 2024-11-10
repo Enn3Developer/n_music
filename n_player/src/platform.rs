@@ -5,6 +5,8 @@ use flume::Sender;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+#[cfg(target_os = "android")]
+use jni::objects::JValue;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn open_link_desktop(link: String) {
@@ -56,20 +58,17 @@ pub trait Platform {
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
     where
         Self: Sized,
-    {
-    }
+    {}
     /// Notify the platform that some playback properties have changed and update those accordingly
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P)
+    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P)
     where
         Self: Sized,
-    {
-    }
+    {}
     /// Allows the platform to do operations once in a while
     async fn tick(&mut self)
     where
         Self: Sized,
-    {
-    }
+    {}
 }
 
 #[cfg(target_os = "linux")]
@@ -108,11 +107,11 @@ impl Platform for LinuxPlatform {
             "n_music",
             crate::bus_server::linux::MPRISBridge::new(runner, tx.clone()),
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
         self.server = Some(server);
     }
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P) {
         if let Some(server) = &self.server {
             let mut new_properties = vec![];
             for p in properties {
@@ -202,7 +201,7 @@ impl Platform for AndroidPlatform {
             "(Ljava/lang/String;)V",
             &[(&java_string).into()],
         )
-        .unwrap();
+            .unwrap();
     }
 
     async fn internal_dir(&self) -> PathBuf {
@@ -248,11 +247,28 @@ impl Platform for AndroidPlatform {
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(&self.callback, "createNotification", "()V", &[])
-            .unwrap();
+        env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
     }
 
     async fn tick(&mut self) {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {}
+    }
+
+    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P) {
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        let mut new_properties = vec![];
+        for p in properties {
+            new_properties.push(if let Property::Metadata(metadata) = p {
+                    let title = env.new_string(metadata.title.unwrap()).unwrap();
+                    let artist = env.new_string(metadata.artists.unwrap().join(", ")).unwrap();
+                    let coverPath = env.new_string(metadata.image_path.unwrap()).unwrap();
+                    env.call_method(&self.callback,
+                                    "changeNotification",
+                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                                    &[(&title).into(), (&artist).into(), (&coverPath).into()])
+                        .unwrap();
+                }
+            );
+        }
     }
 }
