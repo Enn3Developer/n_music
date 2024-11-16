@@ -7,6 +7,7 @@ import android.app.NativeActivity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -24,6 +25,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
+
 
 @OptIn(UnstableApi::class)
 class MainActivity : NativeActivity() {
@@ -121,6 +123,12 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         lengthSong: String
     ) {
+        val intent = Intent(applicationContext, PlaybackService::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pendingIntent =
+            PendingIntent.getActivity(applicationContext, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         val duration = lengthSong.toFloat().toLong() * 1000
         val metadata = MediaMetadata.Builder()
             .apply {
@@ -150,6 +158,7 @@ class MainActivity : NativeActivity() {
                     setSmallIcon(R.mipmap.ic_launcher_round)
                     setContentTitle(title)
                     setContentText(artists)
+                    setContentIntent(pendingIntent)
                     style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
                     val cover = BitmapFactory.decodeFile(coverPath)
                     if (cover != null) {
