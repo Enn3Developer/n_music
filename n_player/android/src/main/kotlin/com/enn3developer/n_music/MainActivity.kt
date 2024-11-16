@@ -42,6 +42,7 @@ class MainActivity : NativeActivity() {
             // consistent here and inside AndroidManifest.xml
             System.loadLibrary("n_player")
         }
+
         const val NOTIFICATION_NAME_SERVICE = "NPlayer"
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "NMusic"
@@ -49,8 +50,10 @@ class MainActivity : NativeActivity() {
         const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
     }
+
     @SuppressLint("RestrictedApi")
     private var mediaSession: MediaSession? = null
+    private var playback: PlaybackState? = null
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
@@ -96,6 +99,10 @@ class MainActivity : NativeActivity() {
         ) {
             requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
         }
+        playback = PlaybackState.Builder()
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+            .build()
         mediaSession = MediaSession(applicationContext, "PlaybackService")
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -108,25 +115,28 @@ class MainActivity : NativeActivity() {
     @OptIn(UnstableApi::class)
     @SuppressLint("RestrictedApi")
     @Suppress("unused")
-    private fun changeNotification(title: String, artists: String, coverPath: String, lengthSong: String) {
+    private fun changeNotification(
+        title: String,
+        artists: String,
+        coverPath: String,
+        lengthSong: String
+    ) {
         val duration = lengthSong.toFloat().toLong() * 1000
         val metadata = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, artists)
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
             .apply {
+                putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                putString(MediaMetadata.METADATA_KEY_ARTIST, artists)
+                putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
                 val cover = BitmapFactory.decodeFile(coverPath)
                 if (cover != null) {
                     putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover)
                 }
             }
             .build()
-        mediaSession?.setMetadata(metadata)
-        val playback = PlaybackState.Builder()
-            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
-            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-            .build()
-        mediaSession?.setPlaybackState(playback)
+        mediaSession?.apply {
+            setMetadata(metadata)
+            setPlaybackState(playback)
+        }
         with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
             if (ActivityCompat.checkSelfPermission(
                     applicationContext,
@@ -136,16 +146,17 @@ class MainActivity : NativeActivity() {
                 return@with
             }
             notify(NOTIFICATION_ID, Notification.Builder(applicationContext, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher_round)
-                .setContentTitle(title)
-                .setContentText(artists)
-                .setStyle(Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken))
                 .apply {
+                    setSmallIcon(R.mipmap.ic_launcher_round)
+                    setContentTitle(title)
+                    setContentText(artists)
+                    style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
                     val cover = BitmapFactory.decodeFile(coverPath)
                     if (cover != null) {
                         setLargeIcon(cover)
                     }
-                }.build())
+                }.build()
+            )
         }
     }
 
