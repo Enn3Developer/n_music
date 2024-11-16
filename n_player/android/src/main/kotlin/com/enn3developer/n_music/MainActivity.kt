@@ -122,11 +122,11 @@ class MainActivity : NativeActivity() {
             }
             .build()
         mediaSession?.setMetadata(metadata)
-        val something = PlaybackState.Builder()
+        val playback = PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
             .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
             .build()
-        mediaSession?.setPlaybackState(something)
+        mediaSession?.setPlaybackState(playback)
         with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
             if (ActivityCompat.checkSelfPermission(
                     applicationContext,
