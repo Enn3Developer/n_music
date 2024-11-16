@@ -5,8 +5,6 @@ use flume::Sender;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-#[cfg(target_os = "android")]
-use jni::objects::JValue;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn open_link_desktop(link: String) {
@@ -259,13 +257,14 @@ impl Platform for AndroidPlatform {
         let mut new_properties = vec![];
         for p in properties {
             new_properties.push(if let Property::Metadata(metadata) = p {
-                    let title = env.new_string(metadata.title.unwrap()).unwrap();
-                    let artist = env.new_string(metadata.artists.unwrap().join(", ")).unwrap();
-                    let coverPath = env.new_string(metadata.image_path.unwrap()).unwrap();
+                    let title = env.new_string(metadata.title.unwrap_or(String::new())).unwrap();
+                    let artist = env.new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", ")).unwrap();
+                    let cover_path = env.new_string(metadata.image_path.unwrap_or(String::new())).unwrap();
+                    let length = env.new_string(metadata.length.to_string()).unwrap();
                     env.call_method(&self.callback,
                                     "changeNotification",
-                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                                    &[(&title).into(), (&artist).into(), (&coverPath).into()])
+                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                                    &[(&title).into(), (&artist).into(), (&cover_path).into(), (&length).into()])
                         .unwrap();
                 }
             );

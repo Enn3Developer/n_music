@@ -4,28 +4,28 @@ import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.READ_MEDIA_AUDIO
 import android.annotation.SuppressLint
 import android.app.NativeActivity
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.media.MediaMetadata
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Looper
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaStyleNotificationHelper
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 class MainActivity : NativeActivity() {
     companion object {
         init {
@@ -42,14 +42,15 @@ class MainActivity : NativeActivity() {
             // consistent here and inside AndroidManifest.xml
             System.loadLibrary("n_player")
         }
-
+        const val NOTIFICATION_NAME_SERVICE = "NPlayer"
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "NMusic"
         const val ASK_DIRECTORY = 0
         const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
     }
-    lateinit var notification: NotificationCompat.Builder
+    @SuppressLint("RestrictedApi")
+    private var mediaSession: MediaSession? = null
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
@@ -85,8 +86,8 @@ class MainActivity : NativeActivity() {
         startActivity(browserIntent)
     }
 
+    @SuppressLint("RestrictedApi")
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    @OptIn(UnstableApi::class)
     @Suppress("unused")
     private fun createNotification() {
         if (
@@ -95,46 +96,38 @@ class MainActivity : NativeActivity() {
         ) {
             requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
         }
-
-        val sessionActivityPendingIntent =
-            applicationContext.packageManager?.getLaunchIntentForPackage(
-                applicationContext.packageName)?.let {
-                    sessionIntent -> PendingIntent.getActivity(
-                applicationContext,
-                0,
-                sessionIntent,
-                PendingIntent.FLAG_IMMUTABLE
-            )
-            }
-        val player = NPlayer(Looper.getMainLooper())
-        val mediaSession = MediaSession.Builder(applicationContext, player)
-            .setSessionActivity(sessionActivityPendingIntent!!)
-            .build()
+        mediaSession = MediaSession(applicationContext, "PlaybackService")
         val channel = NotificationChannel(
             CHANNEL_ID,
-            NOTIFICATION_SERVICE,
-            NotificationManager.IMPORTANCE_DEFAULT
+            NOTIFICATION_NAME_SERVICE,
+            NotificationManager.IMPORTANCE_LOW
         )
-        notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setStyle(
-                MediaStyleNotificationHelper.MediaStyle(mediaSession)
-                    .setShowActionsInCompactView(1 /* #1: pause button */)
-            )
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setSmallIcon(R.mipmap.ic_launcher_round)
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
     }
 
     @OptIn(UnstableApi::class)
+    @SuppressLint("RestrictedApi")
     @Suppress("unused")
-    private fun changeNotification(title: String, artist: String, coverPath: String) {
-        val icon = BitmapFactory.decodeFile(coverPath)
-        notification
-            .setContentTitle(title)
-            .setContentText(artist)
-            .setLargeIcon(icon)
-        with(NotificationManagerCompat.from(this)) {
+    private fun changeNotification(title: String, artists: String, coverPath: String, lengthSong: String) {
+        val duration = lengthSong.toFloat().toLong() * 1000
+        val metadata = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, artists)
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
+            .apply {
+                val cover = BitmapFactory.decodeFile(coverPath)
+                if (cover != null) {
+                    putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover)
+                }
+            }
+            .build()
+        mediaSession?.setMetadata(metadata)
+        val something = PlaybackState.Builder()
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+            .build()
+        mediaSession?.setPlaybackState(something)
+        with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
             if (ActivityCompat.checkSelfPermission(
                     applicationContext,
                     POST_NOTIFICATIONS
@@ -142,8 +135,17 @@ class MainActivity : NativeActivity() {
             ) {
                 return@with
             }
-
-            notify(NOTIFICATION_ID, notification.build())
+            notify(NOTIFICATION_ID, Notification.Builder(applicationContext, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher_round)
+                .setContentTitle(title)
+                .setContentText(artists)
+                .setStyle(Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken))
+                .apply {
+                    val cover = BitmapFactory.decodeFile(coverPath)
+                    if (cover != null) {
+                        setLargeIcon(cover)
+                    }
+                }.build())
         }
     }
 
