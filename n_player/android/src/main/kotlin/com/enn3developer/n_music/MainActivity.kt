@@ -55,7 +55,6 @@ class MainActivity : NativeActivity() {
 
     @SuppressLint("RestrictedApi")
     private var mediaSession: MediaSession? = null
-    private var playback: PlaybackState? = null
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
@@ -101,10 +100,6 @@ class MainActivity : NativeActivity() {
         ) {
             requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
         }
-        playback = PlaybackState.Builder()
-            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
-            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-            .build()
         mediaSession = MediaSession(applicationContext, "PlaybackService")
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -140,6 +135,10 @@ class MainActivity : NativeActivity() {
                     putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover)
                 }
             }
+            .build()
+        val playback = PlaybackState.Builder()
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
             .build()
         mediaSession?.apply {
             setMetadata(metadata)
