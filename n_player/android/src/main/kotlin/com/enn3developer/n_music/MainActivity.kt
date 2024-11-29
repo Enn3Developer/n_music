@@ -18,12 +18,15 @@ import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 
 
@@ -55,10 +58,13 @@ class MainActivity : NativeActivity() {
 
     @SuppressLint("RestrictedApi")
     private var mediaSession: MediaSession? = null
+    private var playback: PlaybackState.Builder? = null
+    private var notification: Notification.Builder? = null
 
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
     private external fun gotFile(file: String)
+    private external fun receiverNotification(receiver: String)
 
     private fun askDirectoryWithPermission() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -100,13 +106,49 @@ class MainActivity : NativeActivity() {
         ) {
             requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
         }
-        mediaSession = MediaSession(applicationContext, "PlaybackService")
+        val TAG = "PlaybackService"
+        mediaSession = MediaSession(applicationContext, TAG)
+        val handler = Handler(Looper.getMainLooper())
+        handler.post(object : Runnable {
+            @SuppressLint("RestrictedApi")
+            override fun run() {
+                mediaSession?.setCallback(object : MediaSession.Callback() {
+                    override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                        Log.d(TAG, "onMediaButtonEvent called: $mediaButtonIntent")
+                        return false
+                    }
+
+                    override fun onPause() {
+                        Log.d(TAG, "onPause called (media button pressed)")
+                        super.onPause()
+                    }
+
+                    override fun onPlay() {
+                        Log.d(TAG, "onPlay called (media button pressed)")
+                        super.onPlay()
+                    }
+
+                    override fun onSkipToNext() {
+                        Log.d(TAG, "onSkipToNext called (media button pressed)")
+                        super.onSkipToNext()
+                    }
+
+                    override fun onSkipToPrevious() {
+                        Log.d(TAG, "onSkipToPrevious called (media button pressed)")
+                        super.onSkipToPrevious()
+                    }
+                })
+            }
+        })
+        playback = PlaybackState.Builder()
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
         val channel = NotificationChannel(
             CHANNEL_ID,
             NOTIFICATION_NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         )
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
+        notification = Notification.Builder(applicationContext, CHANNEL_ID)
     }
 
     @OptIn(UnstableApi::class)
@@ -136,14 +178,24 @@ class MainActivity : NativeActivity() {
                 }
             }
             .build()
-        val playback = PlaybackState.Builder()
-            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
-            .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-            .build()
+        playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
         mediaSession?.apply {
             setMetadata(metadata)
-            setPlaybackState(playback)
+            setPlaybackState(playback?.build())
         }
+        notification?.apply {
+            setContentTitle(title)
+            setContentText(artists)
+            setContentIntent(pendingIntent)
+            val cover = BitmapFactory.decodeFile(coverPath)
+            if (cover != null) {
+                setLargeIcon(cover)
+            }
+        }
+        showNotification()
+    }
+
+    private fun showNotification(){
         with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
             if (ActivityCompat.checkSelfPermission(
                     applicationContext,
@@ -152,20 +204,24 @@ class MainActivity : NativeActivity() {
             ) {
                 return@with
             }
-            notify(NOTIFICATION_ID, Notification.Builder(applicationContext, CHANNEL_ID)
-                .apply {
-                    setSmallIcon(R.mipmap.ic_launcher_round)
-                    setContentTitle(title)
-                    setContentText(artists)
-                    setContentIntent(pendingIntent)
-                    style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
-                    val cover = BitmapFactory.decodeFile(coverPath)
-                    if (cover != null) {
-                        setLargeIcon(cover)
-                    }
-                }.build()
-            )
+            notify(NOTIFICATION_ID, notification?.apply {
+                setSmallIcon(R.mipmap.ic_launcher_round)
+                style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
+            }?.build())
         }
+    }
+
+    private fun changePlaybackStatus(){
+        val playbackState = mediaSession?.controller?.playbackState
+        playbackState?.position?.let {
+            playback?.setState(
+                if (playbackState?.state == PlaybackState.STATE_PLAYING)
+                    PlaybackState.STATE_PAUSED
+                else PlaybackState.STATE_PLAYING,
+                it, 1.0f)
+        }
+        mediaSession?.setPlaybackState(playback?.build())
+        showNotification()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

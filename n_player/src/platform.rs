@@ -248,26 +248,40 @@ impl Platform for AndroidPlatform {
         env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
     }
 
-    async fn tick(&mut self) {
-        while let Ok(message) = crate::ANDROID_TX.try_recv() {}
+    async fn receiverEvent(&mut self) {
+        while let Ok(message) = crate::ANDROID_TX.try_recv() {
+            if let crate::MessageAndroidToRust::Receiver(e) = message {
+                print!("{}", e);
+            } else {
+                crate::ANDROID_TX.send(message).unwrap();
+            }
+        }
     }
 
     async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P) {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        let mut new_properties = vec![];
         for p in properties {
-            new_properties.push(if let Property::Metadata(metadata) = p {
+            match p {
+                Property::Playing(playing) => {
+                    env.call_method(&self.callback,
+                                    "changePlaybackStatus",
+                                    "()V",
+                                    &[])
+                        .unwrap();
+                }
+                Property::Metadata(metadata) => {
                     let title = env.new_string(metadata.title.unwrap_or(String::new())).unwrap();
                     let artist = env.new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", ")).unwrap();
                     let cover_path = env.new_string(metadata.image_path.unwrap_or(String::new())).unwrap();
-                    let length = env.new_string(metadata.length.to_string()).unwrap();
+                    let length = env.new_string(metadata.length.to_string()).unwrap_or(env.new_string(String::new()).unwrap());
                     env.call_method(&self.callback,
                                     "changeNotification",
                                     "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                                     &[(&title).into(), (&artist).into(), (&cover_path).into(), (&length).into()])
                         .unwrap();
                 }
-            );
+                _ => {}
+            }
         }
     }
 }
