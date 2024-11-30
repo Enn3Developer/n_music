@@ -113,28 +113,23 @@ class MainActivity : NativeActivity() {
             @SuppressLint("RestrictedApi")
             override fun run() {
                 mediaSession?.setCallback(object : MediaSession.Callback() {
-                    override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                        Log.d(TAG, "onMediaButtonEvent called: $mediaButtonIntent")
-                        return false
-                    }
-
                     override fun onPause() {
-                        Log.d(TAG, "onPause called (media button pressed)")
+                        receiverNotification("TogglePause")
                         super.onPause()
                     }
 
                     override fun onPlay() {
-                        Log.d(TAG, "onPlay called (media button pressed)")
+                        receiverNotification("TogglePause")
                         super.onPlay()
                     }
 
                     override fun onSkipToNext() {
-                        Log.d(TAG, "onSkipToNext called (media button pressed)")
+                        receiverNotification("PlayNext")
                         super.onSkipToNext()
                     }
 
                     override fun onSkipToPrevious() {
-                        Log.d(TAG, "onSkipToPrevious called (media button pressed)")
+                        receiverNotification("PlayPrevious")
                         super.onSkipToPrevious()
                     }
                 })

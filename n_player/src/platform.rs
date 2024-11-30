@@ -174,6 +174,7 @@ pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
     jvm: jni::JavaVM,
     callback: jni::objects::GlobalRef,
+    tx: Option<Sender<RunnerMessage>>
 }
 
 #[cfg(target_os = "android")]
@@ -182,8 +183,9 @@ impl AndroidPlatform {
         app: slint::android::AndroidApp,
         jvm: jni::JavaVM,
         callback: jni::objects::GlobalRef,
+        tx: Option<Sender<RunnerMessage>>
     ) -> Self {
-        Self { app, jvm, callback }
+        Self { app, jvm, callback, tx }
     }
 }
 
@@ -246,11 +248,18 @@ impl Platform for AndroidPlatform {
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
+        self.tx = Some(tx);
     }
 
-    async fn receiverEvent(&mut self) {
+    async fn tick(&mut self){
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
             if let crate::MessageAndroidToRust::Receiver(e) = message {
+                match e.as_str() {
+                    "TogglePause" => self.tx.clone().unwrap().send(RunnerMessage::TogglePause),
+                    "PlayNext" => self.tx.clone().unwrap().send(RunnerMessage::PlayNext),
+                    "PlayPrevious" => self.tx.clone().unwrap().send(RunnerMessage::PlayPrevious),
+                    _ => Ok(())
+                }.expect("error sending receiver command to Rust");
                 print!("{}", e);
             } else {
                 crate::ANDROID_TX.send(message).unwrap();
@@ -262,7 +271,7 @@ impl Platform for AndroidPlatform {
         let mut env = self.jvm.attach_current_thread().unwrap();
         for p in properties {
             match p {
-                Property::Playing(playing) => {
+                Property::Playing(_) => {
                     env.call_method(&self.callback,
                                     "changePlaybackStatus",
                                     "()V",
