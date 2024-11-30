@@ -26,7 +26,6 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 
 
@@ -64,7 +63,7 @@ class MainActivity : NativeActivity() {
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
     private external fun gotFile(file: String)
-    private external fun receiverNotification(receiver: String)
+    private external fun receiverNotification(receiver: String, seek: String)
 
     private fun askDirectoryWithPermission() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -114,29 +113,37 @@ class MainActivity : NativeActivity() {
             override fun run() {
                 mediaSession?.setCallback(object : MediaSession.Callback() {
                     override fun onPause() {
-                        receiverNotification("TogglePause")
+                        receiverNotification("TogglePause", "")
                         super.onPause()
                     }
 
                     override fun onPlay() {
-                        receiverNotification("TogglePause")
+                        receiverNotification("TogglePause", "")
                         super.onPlay()
                     }
 
                     override fun onSkipToNext() {
-                        receiverNotification("PlayNext")
+                        receiverNotification("PlayNext", "")
                         super.onSkipToNext()
                     }
 
                     override fun onSkipToPrevious() {
-                        receiverNotification("PlayPrevious")
+                        receiverNotification("PlayPrevious", "")
+                        playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
                         super.onSkipToPrevious()
+                    }
+
+                    override fun onSeekTo(pos: Long) {
+                        receiverNotification("Seek", (pos / 1000).toString())
+                        playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
+                        mediaSession?.setPlaybackState(playback?.build())
+                        super.onSeekTo(pos)
                     }
                 })
             }
         })
         playback = PlaybackState.Builder()
-            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS)
+            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
         val channel = NotificationChannel(
             CHANNEL_ID,
             NOTIFICATION_NAME_SERVICE,
@@ -206,11 +213,11 @@ class MainActivity : NativeActivity() {
         }
     }
 
-    private fun changePlaybackStatus(){
+    private fun changePlaybackStatus(status: String){
         val playbackState = mediaSession?.controller?.playbackState
         playbackState?.position?.let {
             playback?.setState(
-                if (playbackState?.state == PlaybackState.STATE_PLAYING)
+                if (status == "false")
                     PlaybackState.STATE_PAUSED
                 else PlaybackState.STATE_PLAYING,
                 it, 1.0f)

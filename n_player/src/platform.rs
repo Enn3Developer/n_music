@@ -1,5 +1,5 @@
 use crate::bus_server::Property;
-use crate::runner::{Runner, RunnerMessage};
+use crate::runner::{Runner, RunnerMessage, RunnerSeek};
 use async_trait::async_trait;
 use flume::Sender;
 use std::path::PathBuf;
@@ -253,14 +253,18 @@ impl Platform for AndroidPlatform {
 
     async fn tick(&mut self){
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
-            if let crate::MessageAndroidToRust::Receiver(e) = message {
-                match e.as_str() {
+            if let crate::MessageAndroidToRust::Receiver(msg, l) = message {
+                match msg.as_str() {
                     "TogglePause" => self.tx.clone().unwrap().send(RunnerMessage::TogglePause),
                     "PlayNext" => self.tx.clone().unwrap().send(RunnerMessage::PlayNext),
                     "PlayPrevious" => self.tx.clone().unwrap().send(RunnerMessage::PlayPrevious),
+                    "Seek" => Ok({
+                        self.tx.clone().unwrap().send(RunnerMessage::Seek(RunnerSeek::Absolute(l.parse::<f64>().unwrap_or(0.0))));
+                        self.tx.clone().unwrap().send(RunnerMessage::Play);
+                    }),
                     _ => Ok(())
                 }.expect("error sending receiver command to Rust");
-                print!("{}", e);
+                print!("{}", msg);
             } else {
                 crate::ANDROID_TX.send(message).unwrap();
             }
@@ -271,11 +275,12 @@ impl Platform for AndroidPlatform {
         let mut env = self.jvm.attach_current_thread().unwrap();
         for p in properties {
             match p {
-                Property::Playing(_) => {
+                Property::Playing(playing) => {
+                    let str_playing = env.new_string(playing.to_string()).unwrap_or(env.new_string(String::from("false")).unwrap());
                     env.call_method(&self.callback,
                                     "changePlaybackStatus",
-                                    "()V",
-                                    &[])
+                                    "(Ljava/lang/String;)V",
+                                    &[(&str_playing).into()])
                         .unwrap();
                 }
                 Property::Metadata(metadata) => {
