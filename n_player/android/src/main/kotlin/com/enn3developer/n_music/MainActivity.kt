@@ -158,7 +158,10 @@ class MainActivity : NativeActivity() {
             NotificationManager.IMPORTANCE_LOW
         )
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
-        notification = Notification.Builder(applicationContext, CHANNEL_ID)
+        notification = Notification.Builder(applicationContext, CHANNEL_ID)?.apply {
+            setSmallIcon(R.mipmap.ic_launcher_round)
+            style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -215,10 +218,7 @@ class MainActivity : NativeActivity() {
             ) {
                 return@with
             }
-            notify(NOTIFICATION_ID, notification?.apply {
-                setSmallIcon(R.mipmap.ic_launcher_round)
-                style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
-            }?.build())
+            notify(NOTIFICATION_ID, notification?.build())
         }
     }
 
@@ -238,6 +238,13 @@ class MainActivity : NativeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         start(this)
+    }
+
+    override fun onDestroy() {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(NOTIFICATION_ID)
+        stopService(Intent(this, PlaybackService::class.java))
+        super.onDestroy()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
