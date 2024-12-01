@@ -33,7 +33,7 @@
                 />
         </activity>
         <service
-            android:name=".PlaybackService"
+            android:name=".DummyService"
             android:parentActivityName=".MainActivity"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"

@@ -173,7 +173,7 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         lengthSong: String
     ) {
-        val intent = Intent(applicationContext, PlaybackService::class.java).apply{
+        val intent = Intent(applicationContext, DummyService::class.java).apply{
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent =
@@ -243,7 +243,7 @@ class MainActivity : NativeActivity() {
     override fun onDestroy() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
-        stopService(Intent(this, PlaybackService::class.java))
+        stopService(Intent(this, DummyService::class.java))
         super.onDestroy()
     }
 
