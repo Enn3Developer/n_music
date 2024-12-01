@@ -3,7 +3,6 @@ use crate::platform::Platform;
 use crate::runner::Runner;
 use n_audio::music_track::MusicTrack;
 use n_audio::{remove_ext, TrackTime};
-use slint::private_unstable_api::re_exports::Float;
 use std::io::{Seek, Write};
 use std::mem;
 use std::path::PathBuf;
@@ -56,7 +55,7 @@ pub async fn run<P: Platform + Send + Sync>(
             properties.push(Property::Volume(volume))
         }
         let guard_time = guard.time();
-        if time.position.abs_sub(guard_time.position) > 0.5 {
+        if (time.position - guard_time.position).abs() > 0.5 {
             time = guard_time;
             properties.push(Property::PositionChanged(time.position));
         }

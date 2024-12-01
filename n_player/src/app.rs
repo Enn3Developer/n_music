@@ -1,29 +1,20 @@
 use crate::localization::{get_locale_denominator, localize};
 use crate::runner::{run, RunnerMessage, RunnerSeek};
 use crate::{
-    add_all_tracks_to_player, bus_server, get_image, get_image_squared, AppData, FileTrack,
-    Localization, MainWindow, SettingsData, Theme, TrackData, WindowSize,
+    add_all_tracks_to_player, bus_server, get_image_squared, AppData, FileTrack, Localization,
+    MainWindow, SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
-use rimage::codecs::webp::WebPDecoder;
-use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, Model, VecModel, Weak};
-use std::io::Cursor;
 use std::mem;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::{Mutex, RwLock};
-use zune_core::bytestream::ZCursor;
-use zune_core::colorspace::ColorSpace;
-use zune_core::options::DecoderOptions;
-use zune_image::image::Image;
-use zune_image::traits::{DecoderTrait, OperationsTrait};
-use zune_imageprocs::crop::Crop;
 
 pub type Runner = Arc<RwLock<crate::runner::Runner>>;
 pub type Settings = Arc<RwLock<crate::settings::Settings>>;
@@ -480,7 +471,7 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let mut image = get_image_squared(p, 128, 128);
+                        let mut image = get_image_squared(p, 128, 128).await;
 
                         image.shrink_to_fit();
 
