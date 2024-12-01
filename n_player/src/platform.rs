@@ -113,6 +113,9 @@ impl Platform for LinuxPlatform {
         if let Some(server) = &self.server {
             let mut new_properties = vec![];
             for p in properties {
+                if let Property::PositionChanged(_) = p {
+                    continue;
+                }
                 new_properties.push(match p {
                     Property::Playing(playing) => {
                         mpris_server::Property::PlaybackStatus(if playing {
@@ -139,6 +142,7 @@ impl Platform for LinuxPlatform {
                         mpris_server::Property::Metadata(meta)
                     }
                     Property::Volume(volume) => mpris_server::Property::Volume(volume),
+                    _ => unreachable!("check skipped somehow"),
                 });
             }
             server.properties_changed(new_properties).await.unwrap()

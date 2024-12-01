@@ -1,29 +1,20 @@
 use crate::localization::{get_locale_denominator, localize};
 use crate::runner::{run, RunnerMessage, RunnerSeek};
 use crate::{
-    add_all_tracks_to_player, bus_server, get_image, AppData, FileTrack, Localization, MainWindow,
-    SettingsData, Theme, TrackData, WindowSize,
+    add_all_tracks_to_player, bus_server, get_image_squared, AppData, FileTrack, Localization,
+    MainWindow, SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
-use rimage::codecs::webp::WebPDecoder;
-use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::{ComponentHandle, Model, VecModel, Weak};
-use std::io::Cursor;
 use std::mem;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::{Mutex, RwLock};
-use zune_core::bytestream::ZCursor;
-use zune_core::colorspace::ColorSpace;
-use zune_core::options::DecoderOptions;
-use zune_image::image::Image;
-use zune_image::traits::{DecoderTrait, OperationsTrait};
-use zune_imageprocs::crop::Crop;
 
 pub type Runner = Arc<RwLock<crate::runner::Runner>>;
 pub type Settings = Arc<RwLock<crate::settings::Settings>>;
@@ -480,60 +471,7 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let mut image = if let Ok(image) =
-                            tokio::task::spawn_blocking(move || get_image(p)).await
-                        {
-                            if !image.is_empty() {
-                                let zune_image = if let Ok(image) =
-                                    Image::read(ZCursor::new(&image), DecoderOptions::new_fast())
-                                {
-                                    Some(image)
-                                } else if let Ok(mut webp_decoder) =
-                                    WebPDecoder::try_new(Cursor::new(&image))
-                                {
-                                    if let Ok(image) = webp_decoder.decode() {
-                                        Some(image)
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                };
-
-                                if let Some(mut zune_image) = zune_image {
-                                    zune_image.convert_color(ColorSpace::RGB).unwrap();
-                                    let (width, height) = zune_image.dimensions();
-                                    if width != height {
-                                        let difference = width.abs_diff(height);
-                                        let min = width.min(height);
-                                        let is_height = height < width;
-                                        let x = if is_height { difference / 2 } else { 0 };
-                                        let y = if !is_height { difference / 2 } else { 0 };
-                                        tokio::task::block_in_place(|| {
-                                            Crop::new(min, min, x, y)
-                                                .execute(&mut zune_image)
-                                                .unwrap()
-                                        });
-                                    }
-                                    tokio::task::block_in_place(|| {
-                                        rimage::operations::resize::Resize::new(
-                                            128,
-                                            128,
-                                            ResizeAlg::Convolution(FilterType::Hamming),
-                                        )
-                                        .execute(&mut zune_image)
-                                        .unwrap()
-                                    });
-                                    zune_image.flatten_to_u8()[0].clone()
-                                } else {
-                                    vec![]
-                                }
-                            } else {
-                                vec![]
-                            }
-                        } else {
-                            vec![]
-                        };
+                        let mut image = get_image_squared(p, 128, 128).await;
 
                         image.shrink_to_fit();
 

@@ -6,11 +6,20 @@ use multitag::data::Picture;
 use multitag::Tag;
 #[cfg(target_os = "android")]
 use once_cell::sync::Lazy;
+use rimage::codecs::webp::WebPDecoder;
+use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 use std::ffi::OsStr;
 use std::fmt::Debug;
+use std::io::Cursor;
 use std::path::Path;
+use zune_core::bytestream::ZCursor;
+use zune_core::colorspace::ColorSpace;
+use zune_core::options::DecoderOptions;
+use zune_image::image::Image;
+use zune_image::traits::{DecoderTrait, OperationsTrait};
+use zune_imageprocs::crop::Crop;
 
 slint::include_modules!();
 
@@ -102,6 +111,60 @@ fn android_main(app: slint::android::AndroidApp) {
 
             run_app(Settings::read_saved(&platform).await, platform).await;
         });
+}
+
+pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
+    path: P,
+    width: usize,
+    height: usize,
+) -> Vec<u8> {
+    if let Ok(image) = tokio::task::spawn_blocking(move || get_image(path)).await {
+        if !image.is_empty() {
+            let zune_image =
+                if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
+                    Some(image)
+                } else if let Ok(mut webp_decoder) = WebPDecoder::try_new(Cursor::new(&image)) {
+                    if let Ok(image) = webp_decoder.decode() {
+                        Some(image)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+            if let Some(mut zune_image) = zune_image {
+                zune_image.convert_color(ColorSpace::RGB).unwrap();
+                let (w, h) = zune_image.dimensions();
+                if w != h {
+                    let difference = w.abs_diff(h);
+                    let min = w.min(h);
+                    let is_height = h < w;
+                    let x = if is_height { difference / 2 } else { 0 };
+                    let y = if !is_height { difference / 2 } else { 0 };
+                    tokio::task::block_in_place(|| {
+                        Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
+                    });
+                }
+                tokio::task::block_in_place(|| {
+                    rimage::operations::resize::Resize::new(
+                        width,
+                        height,
+                        ResizeAlg::Convolution(FilterType::Hamming),
+                    )
+                    .execute(&mut zune_image)
+                    .unwrap()
+                });
+                zune_image.flatten_to_u8()[0].clone()
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    }
 }
 
 pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
