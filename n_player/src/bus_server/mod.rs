@@ -1,8 +1,9 @@
-use crate::get_image;
+use crate::get_image_squared;
 use crate::platform::Platform;
 use crate::runner::Runner;
 use n_audio::music_track::MusicTrack;
-use n_audio::remove_ext;
+use n_audio::{remove_ext, TrackTime};
+use slint::private_unstable_api::re_exports::Float;
 use std::io::{Seek, Write};
 use std::mem;
 use std::path::PathBuf;
@@ -18,6 +19,7 @@ pub enum Property {
     Playing(bool),
     Metadata(Metadata),
     Volume(f64),
+    PositionChanged(f64),
 }
 
 pub struct Metadata {
@@ -38,6 +40,7 @@ pub async fn run<P: Platform + Send + Sync>(
     let mut playback = false;
     let mut volume = 1.0;
     let mut index = runner.read().await.index();
+    let mut time = TrackTime::default();
     let path = runner.read().await.path();
 
     loop {
@@ -52,6 +55,11 @@ pub async fn run<P: Platform + Send + Sync>(
             volume = guard.volume();
             properties.push(Property::Volume(volume))
         }
+        let guard_time = guard.time();
+        if time.position.abs_sub(guard_time.position) > 0.5 {
+            time = guard_time;
+            properties.push(Property::PositionChanged(time.position));
+        }
 
         if index != guard.index() {
             index = guard.index();
@@ -62,9 +70,7 @@ pub async fn run<P: Platform + Send + Sync>(
             let track = MusicTrack::new(path_buf.to_str().unwrap())
                 .expect("can't get track for currently playing song");
             let meta = track.get_meta();
-            let image = tokio::task::spawn_blocking(|| get_image(path_buf))
-                .await
-                .unwrap();
+            let image = get_image_squared(path_buf, 512, 512).await;
             let image_path = if image.is_empty() {
                 None
             } else {

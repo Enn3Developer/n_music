@@ -142,6 +142,7 @@ impl Platform for LinuxPlatform {
                         mpris_server::Property::Metadata(meta)
                     }
                     Property::Volume(volume) => mpris_server::Property::Volume(volume),
+                    _ => {}
                 });
             }
             server.properties_changed(new_properties).await.unwrap()

@@ -87,7 +87,7 @@ pub fn strip_absolute_path(path: String) -> String {
 ///
 /// pos_* is used to represent the *current* timestamp (as in where is currently the player playing inside the track)
 /// len_* is used to represent the *entire* timestamp (as is how long is the track)
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct TrackTime {
     pub position: f64,
     pub length: f64,
