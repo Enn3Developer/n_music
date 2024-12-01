@@ -8,10 +8,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
@@ -65,6 +68,11 @@ class MainActivity : NativeActivity() {
     private external fun gotFile(file: String)
     private external fun receiverNotification(receiver: String, seek: String)
 
+    private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(p0: Context?, p1: Intent?) {
+        }
+    }
+
     private fun askDirectoryWithPermission() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
         }
@@ -108,40 +116,40 @@ class MainActivity : NativeActivity() {
         val TAG = "PlaybackService"
         mediaSession = MediaSession(applicationContext, TAG)
         val handler = Handler(Looper.getMainLooper())
-        handler.post(object : Runnable {
-            @SuppressLint("RestrictedApi")
-            override fun run() {
-                mediaSession?.setCallback(object : MediaSession.Callback() {
-                    override fun onPause() {
-                        receiverNotification("TogglePause", "")
-                        super.onPause()
-                    }
+        handler.post {
+            mediaSession?.setCallback(object : MediaSession.Callback() {
+                override fun onPause() {
+                    receiverNotification("TogglePause", "")
+                    super.onPause()
+                }
 
-                    override fun onPlay() {
-                        receiverNotification("TogglePause", "")
-                        super.onPlay()
-                    }
+                override fun onPlay() {
+                    receiverNotification("TogglePause", "")
+                    super.onPlay()
+                }
 
-                    override fun onSkipToNext() {
-                        receiverNotification("PlayNext", "")
-                        super.onSkipToNext()
-                    }
+                override fun onSkipToNext() {
+                    receiverNotification("PlayNext", "")
+                    super.onSkipToNext()
+                }
 
-                    override fun onSkipToPrevious() {
-                        receiverNotification("PlayPrevious", "")
-                        playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-                        super.onSkipToPrevious()
-                    }
+                override fun onSkipToPrevious() {
+                    receiverNotification("PlayPrevious", "")
+                    playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+                    mediaSession?.setPlaybackState(playback?.build())
+                    super.onSkipToPrevious()
+                }
 
-                    override fun onSeekTo(pos: Long) {
-                        receiverNotification("Seek", (pos / 1000).toString())
-                        playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
-                        mediaSession?.setPlaybackState(playback?.build())
-                        super.onSeekTo(pos)
-                    }
-                })
-            }
-        })
+                override fun onSeekTo(pos: Long) {
+                    receiverNotification("Seek", (pos / 1000).toString())
+                    playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
+                    mediaSession?.setPlaybackState(playback?.build())
+                    super.onSeekTo(pos)
+                }
+            })
+        }
+        val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
         playback = PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
         val channel = NotificationChannel(
@@ -162,8 +170,9 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         lengthSong: String
     ) {
-        val intent = Intent(applicationContext, PlaybackService::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val intent = Intent(applicationContext, PlaybackService::class.java).apply{
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val pendingIntent =
             PendingIntent.getActivity(applicationContext, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -174,8 +183,8 @@ class MainActivity : NativeActivity() {
                 putString(MediaMetadata.METADATA_KEY_TITLE, title)
                 putString(MediaMetadata.METADATA_KEY_ARTIST, artists)
                 putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
-                val cover = BitmapFactory.decodeFile(coverPath)
-                if (cover != null) {
+                if (coverPath.isNotEmpty()) {
+                    val cover = BitmapFactory.decodeFile(coverPath)
                     putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover)
                 }
             }
