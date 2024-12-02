@@ -116,7 +116,7 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
     path: P,
     width: usize,
     height: usize,
-) -> Vec<u8> {
+) -> Option<Image> {
     if let Ok(image) = tokio::task::spawn_blocking(move || get_image(path)).await {
         if !image.is_empty() {
             let zune_image =
@@ -154,15 +154,15 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                     .execute(&mut zune_image)
                     .unwrap()
                 });
-                zune_image.flatten_to_u8()[0].clone()
+                Some(zune_image)
             } else {
-                vec![]
+                None
             }
         } else {
-            vec![]
+            None
         }
     } else {
-        vec![]
+        None
     }
 }
 
