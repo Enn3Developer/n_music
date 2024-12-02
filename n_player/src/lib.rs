@@ -117,7 +117,7 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
     path: P,
     width: usize,
     height: usize,
-) -> Vec<u8> {
+) -> Option<Image> {
     if let Ok(image) = tokio::task::spawn_blocking(move || get_image(path)).await {
         if !image.is_empty() {
             let zune_image =
@@ -136,9 +136,11 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
             if let Some(mut zune_image) = zune_image {
                 zune_image.convert_color(ColorSpace::RGB).unwrap();
                 let (w, h) = zune_image.dimensions();
+                let mut size = w;
                 if w != h {
                     let difference = w.abs_diff(h);
                     let min = w.min(h);
+                    size = min;
                     let is_height = h < w;
                     let x = if is_height { difference / 2 } else { 0 };
                     let y = if !is_height { difference / 2 } else { 0 };
@@ -148,22 +150,22 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                 }
                 tokio::task::block_in_place(|| {
                     rimage::operations::resize::Resize::new(
-                        width,
-                        height,
+                        if width == 0 { size } else { width },
+                        if height == 0 { size } else { height },
                         ResizeAlg::Convolution(FilterType::Hamming),
                     )
                     .execute(&mut zune_image)
                     .unwrap()
                 });
-                zune_image.flatten_to_u8()[0].clone()
+                Some(zune_image)
             } else {
-                vec![]
+                None
             }
         } else {
-            vec![]
+            None
         }
     } else {
-        vec![]
+        None
     }
 }
 

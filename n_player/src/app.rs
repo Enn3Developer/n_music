@@ -471,9 +471,7 @@ async fn loader_task(
                         tokio::task::spawn_blocking(move || track.get_meta()).await
                     {
                         let p = path.clone();
-                        let mut image = get_image_squared(p, 128, 128).await;
-
-                        image.shrink_to_fit();
+                        let image = get_image_squared(p, 128, 128).await;
 
                         if let Err(e) = tx
                             .send_async(Some((
@@ -483,7 +481,9 @@ async fn loader_task(
                                     title: meta.title,
                                     artist: meta.artist,
                                     length: meta.time.length,
-                                    image,
+                                    image: image
+                                        .map(|i| i.flatten_to_u8()[0].clone())
+                                        .unwrap_or(vec![]),
                                 },
                             )))
                             .await
