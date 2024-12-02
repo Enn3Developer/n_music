@@ -66,7 +66,7 @@ class MainActivity : NativeActivity() {
     private external fun start(activity: MainActivity)
     private external fun gotDirectory(directory: String)
     private external fun gotFile(file: String)
-    private external fun receiverNotification(receiver: String, seek: String)
+    private external fun receiverNotification(receiver: String, seek: Double)
 
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -119,7 +119,7 @@ class MainActivity : NativeActivity() {
         handler.post {
             mediaSession?.setCallback(object : MediaSession.Callback() {
                 override fun onPause() {
-                    receiverNotification("TogglePause", "")
+                    receiverNotification("TogglePause", 0.0)
                     mediaSession?.controller?.playbackState?.position?.let {
                         playback?.setState(
                                 PlaybackState.STATE_PAUSED,
@@ -130,7 +130,7 @@ class MainActivity : NativeActivity() {
                 }
 
                 override fun onPlay() {
-                    receiverNotification("TogglePause", "")
+                    receiverNotification("TogglePause", 0.0)
                     mediaSession?.controller?.playbackState?.position?.let {
                         playback?.setState(
                             PlaybackState.STATE_PLAYING,
@@ -141,19 +141,19 @@ class MainActivity : NativeActivity() {
                 }
 
                 override fun onSkipToNext() {
-                    receiverNotification("PlayNext", "")
+                    receiverNotification("PlayNext", 0.0)
                     super.onSkipToNext()
                 }
 
                 override fun onSkipToPrevious() {
-                    receiverNotification("PlayPrevious", "")
+                    receiverNotification("PlayPrevious", 0.0)
                     playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
                     mediaSession?.setPlaybackState(playback?.build())
                     super.onSkipToPrevious()
                 }
 
                 override fun onSeekTo(pos: Long) {
-                    receiverNotification("Seek", (pos / 1000).toString())
+                    receiverNotification("Seek", (pos / 1000).toDouble())
                     playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
                     mediaSession?.setPlaybackState(playback?.build())
                     super.onSeekTo(pos)
@@ -189,7 +189,7 @@ class MainActivity : NativeActivity() {
         title: String,
         artists: String,
         coverPath: String,
-        lengthSong: String
+        songLength: Double
     ) {
         val intent = Intent(applicationContext, DummyService::class.java).apply{
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -198,7 +198,7 @@ class MainActivity : NativeActivity() {
             PendingIntent.getActivity(applicationContext, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val duration = lengthSong.toFloat().toLong() * 1000
+        val duration = songLength.toLong() * 1000
         val metadata = MediaMetadata.Builder()
             .apply {
                 putString(MediaMetadata.METADATA_KEY_TITLE, title)
@@ -236,20 +236,20 @@ class MainActivity : NativeActivity() {
         }
     }
 
-    private fun changePlaybackStatus(status: String){
+    private fun changePlaybackStatus(status: Boolean){
         val playbackState = mediaSession?.controller?.playbackState
         playbackState?.position?.let {
             playback?.setState(
-                if (status == "false")
-                    PlaybackState.STATE_PAUSED
-                else PlaybackState.STATE_PLAYING,
+                if (status)
+                    PlaybackState.STATE_PLAYING
+                else PlaybackState.STATE_PAUSED,
                 it, 1.0f)
         }
         mediaSession?.setPlaybackState(playback?.build())
     }
 
-    private fun changePlaybackSeek(pos: String){
-        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toFloat().toLong() * 1000, 1.0f) }
+    private fun changePlaybackSeek(pos: Double){
+        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toLong() * 1000, 1.0f) }
         mediaSession?.setPlaybackState(playback?.build())
     }
 

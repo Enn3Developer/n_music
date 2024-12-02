@@ -249,7 +249,7 @@ impl Platform for AndroidPlatform {
         vec![]
     }
 
-    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
+    async fn add_runner(&mut self, tx: Sender<RunnerMessage>) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
         self.tx = Some(tx);
@@ -257,14 +257,15 @@ impl Platform for AndroidPlatform {
 
     async fn tick(&mut self){
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
-            if let crate::MessageAndroidToRust::Receiver(msg, l) = message {
+            if let crate::MessageAndroidToRust::Receiver(msg, seek) = message {
+                let tx = self.tx.clone().unwrap();
                 match msg.as_str() {
-                    "TogglePause" => self.tx.clone().unwrap().send(RunnerMessage::TogglePause),
-                    "PlayNext" => self.tx.clone().unwrap().send(RunnerMessage::PlayNext),
-                    "PlayPrevious" => self.tx.clone().unwrap().send(RunnerMessage::PlayPrevious),
+                    "TogglePause" => tx.send(RunnerMessage::TogglePause),
+                    "PlayNext" => tx.send(RunnerMessage::PlayNext),
+                    "PlayPrevious" => tx.send(RunnerMessage::PlayPrevious),
                     "Seek" => Ok({
-                        self.tx.clone().unwrap().send(RunnerMessage::Seek(RunnerSeek::Absolute(l.parse::<f64>().unwrap_or(0.0))));
-                        self.tx.clone().unwrap().send(RunnerMessage::Play);
+                        tx.send(RunnerMessage::Seek(RunnerSeek::Absolute(seek)));
+                        tx.send(RunnerMessage::Play);
                     }),
                     _ => Ok(())
                 }.expect("error sending receiver command to Rust");
@@ -280,30 +281,27 @@ impl Platform for AndroidPlatform {
         for p in properties {
             match p {
                 Property::Playing(playing) => {
-                    let str_playing = env.new_string(playing.to_string()).unwrap_or(env.new_string(String::from("false")).unwrap());
                     env.call_method(&self.callback,
                                     "changePlaybackStatus",
-                                    "(Ljava/lang/String;)V",
-                                    &[(&str_playing).into()])
+                                    "(Z)V",
+                                    &[playing.into()])
                         .unwrap();
                 }
                 Property::Metadata(metadata) => {
                     let title = env.new_string(metadata.title.unwrap_or(String::new())).unwrap();
                     let artist = env.new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", ")).unwrap();
                     let cover_path = env.new_string(metadata.image_path.unwrap_or(String::new())).unwrap();
-                    let length = env.new_string(metadata.length.to_string()).unwrap_or(env.new_string(String::new()).unwrap());
                     env.call_method(&self.callback,
                                     "changeNotification",
-                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                                    &[(&title).into(), (&artist).into(), (&cover_path).into(), (&length).into()])
+                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
+                                    &[(&title).into(), (&artist).into(), (&cover_path).into(), metadata.length.into()])
                         .unwrap();
                 }
                 Property::PositionChanged(seek) => {
-                    let pos = env.new_string(seek.to_string()).unwrap_or(env.new_string(String::new()).unwrap());
                     env.call_method(&self.callback,
                                     "changePlaybackSeek",
-                                    "(Ljava/lang/String;)V",
-                                    &[(&pos).into()])
+                                    "(D)V",
+                                    &[seek.into()])
                         .unwrap();
                 }
                 _ => {}
