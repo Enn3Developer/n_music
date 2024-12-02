@@ -3,7 +3,6 @@ use crate::platform::Platform;
 use crate::runner::Runner;
 use n_audio::music_track::MusicTrack;
 use n_audio::{remove_ext, TrackTime};
-use std::io::{Seek, Write};
 use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,7 +32,7 @@ pub struct Metadata {
 pub async fn run<P: Platform + Send + Sync>(
     platform: Arc<RwLock<P>>,
     runner: Arc<RwLock<Runner>>,
-    mut tmp: NamedTempFile,
+    tmp: NamedTempFile,
 ) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     let mut properties = vec![];
@@ -70,7 +69,7 @@ pub async fn run<P: Platform + Send + Sync>(
             let track = MusicTrack::new(path_buf.to_str().unwrap())
                 .expect("can't get track for currently playing song");
             let meta = track.get_meta();
-            let image = get_image_squared(path_buf, 512, 512).await;
+            let image = get_image_squared(path_buf, 0, 0).await;
             let image_path = if image.is_none() {
                 None
             } else {

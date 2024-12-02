@@ -135,9 +135,11 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
             if let Some(mut zune_image) = zune_image {
                 zune_image.convert_color(ColorSpace::RGB).unwrap();
                 let (w, h) = zune_image.dimensions();
+                let mut size = w;
                 if w != h {
                     let difference = w.abs_diff(h);
                     let min = w.min(h);
+                    size = min;
                     let is_height = h < w;
                     let x = if is_height { difference / 2 } else { 0 };
                     let y = if !is_height { difference / 2 } else { 0 };
@@ -147,8 +149,8 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                 }
                 tokio::task::block_in_place(|| {
                     rimage::operations::resize::Resize::new(
-                        width,
-                        height,
+                        if width == 0 { size } else { width },
+                        if height == 0 { size } else { height },
                         ResizeAlg::Convolution(FilterType::Hamming),
                     )
                     .execute(&mut zune_image)
