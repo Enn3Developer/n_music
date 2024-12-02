@@ -120,11 +120,23 @@ class MainActivity : NativeActivity() {
             mediaSession?.setCallback(object : MediaSession.Callback() {
                 override fun onPause() {
                     receiverNotification("TogglePause", "")
+                    mediaSession?.controller?.playbackState?.position?.let {
+                        playback?.setState(
+                                PlaybackState.STATE_PAUSED,
+                            it, 1.0f)
+                    }
+                    mediaSession?.setPlaybackState(playback?.build())
                     super.onPause()
                 }
 
                 override fun onPlay() {
                     receiverNotification("TogglePause", "")
+                    mediaSession?.controller?.playbackState?.position?.let {
+                        playback?.setState(
+                            PlaybackState.STATE_PLAYING,
+                            it, 1.0f)
+                    }
+                    mediaSession?.setPlaybackState(playback?.build())
                     super.onPlay()
                 }
 
@@ -157,8 +169,14 @@ class MainActivity : NativeActivity() {
             NOTIFICATION_NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         )
+        mediaSession?.controller?.playbackState?.position?.let {
+            playback?.setState(
+                PlaybackState.STATE_PLAYING,
+                it, 1.0f)
+        }
+        mediaSession?.setPlaybackState(playback?.build())
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
-        notification = Notification.Builder(applicationContext, CHANNEL_ID)?.apply {
+        notification = Notification.Builder(applicationContext, CHANNEL_ID).apply {
             setSmallIcon(R.mipmap.ic_launcher_round)
             style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
         }
@@ -192,7 +210,7 @@ class MainActivity : NativeActivity() {
                 }
             }
             .build()
-        playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, 0L, 1.0f) }
         mediaSession?.apply {
             setMetadata(metadata)
             setPlaybackState(playback?.build())
@@ -206,10 +224,6 @@ class MainActivity : NativeActivity() {
                 setLargeIcon(cover)
             }
         }
-        showNotification()
-    }
-
-    private fun showNotification(){
         with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
             if (ActivityCompat.checkSelfPermission(
                     applicationContext,
@@ -232,7 +246,11 @@ class MainActivity : NativeActivity() {
                 it, 1.0f)
         }
         mediaSession?.setPlaybackState(playback?.build())
-        showNotification()
+    }
+
+    private fun changePlaybackSeek(pos: String){
+        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toFloat().toLong() * 1000, 1.0f) }
+        mediaSession?.setPlaybackState(playback?.build())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

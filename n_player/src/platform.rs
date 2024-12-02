@@ -298,6 +298,14 @@ impl Platform for AndroidPlatform {
                                     &[(&title).into(), (&artist).into(), (&cover_path).into(), (&length).into()])
                         .unwrap();
                 }
+                Property::PositionChanged(seek) => {
+                    let pos = env.new_string(seek.to_string()).unwrap_or(env.new_string(String::new()).unwrap());
+                    env.call_method(&self.callback,
+                                    "changePlaybackSeek",
+                                    "(Ljava/lang/String;)V",
+                                    &[(&pos).into()])
+                        .unwrap();
+                }
                 _ => {}
             }
         }
