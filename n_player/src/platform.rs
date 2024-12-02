@@ -249,7 +249,7 @@ impl Platform for AndroidPlatform {
         vec![]
     }
 
-    async fn add_runner(&mut self, tx: Sender<RunnerMessage>) {
+    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
         self.tx = Some(tx);
