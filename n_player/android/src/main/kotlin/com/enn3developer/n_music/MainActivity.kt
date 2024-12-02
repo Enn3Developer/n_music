@@ -59,13 +59,21 @@ class MainActivity : NativeActivity() {
     }
 
     @SuppressLint("RestrictedApi")
-    private var mediaSession: MediaSession? = null
+    // It's the playback in the notification
     private var playback: PlaybackState.Builder? = null
+    // It's used to set metadata of the song and playback
+    private var mediaSession: MediaSession? = null
+    // We set here mediaSession token for style
     private var notification: Notification.Builder? = null
 
+    // Called when app is open first time
     private external fun start(activity: MainActivity)
+
     private external fun gotDirectory(directory: String)
+
     private external fun gotFile(file: String)
+
+    // Called in mediaSession callback when we interact with notification
     private external fun receiverNotification(receiver: String, seek: Double)
 
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
@@ -107,11 +115,8 @@ class MainActivity : NativeActivity() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @Suppress("unused")
     private fun createNotification() {
-        if (
-            checkSelfPermission(POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(POST_NOTIFICATIONS), REQUEST_PERMISSION_CODE)
+        if (!checkPermissions()) {
+            requestPermissions()
         }
         val TAG = "PlaybackService"
         mediaSession = MediaSession(applicationContext, TAG)
@@ -182,6 +187,23 @@ class MainActivity : NativeActivity() {
         }
     }
 
+    private fun changePlaybackStatus(status: Boolean){
+        val playbackState = mediaSession?.controller?.playbackState
+        playbackState?.position?.let {
+            playback?.setState(
+                if (status)
+                    PlaybackState.STATE_PLAYING
+                else PlaybackState.STATE_PAUSED,
+                it, 1.0f)
+        }
+        mediaSession?.setPlaybackState(playback?.build())
+    }
+
+    private fun changePlaybackSeek(pos: Double){
+        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toLong() * 1000, 1.0f) }
+        mediaSession?.setPlaybackState(playback?.build())
+    }
+
     @OptIn(UnstableApi::class)
     @SuppressLint("RestrictedApi")
     @Suppress("unused")
@@ -234,23 +256,6 @@ class MainActivity : NativeActivity() {
             }
             notify(NOTIFICATION_ID, notification?.build())
         }
-    }
-
-    private fun changePlaybackStatus(status: Boolean){
-        val playbackState = mediaSession?.controller?.playbackState
-        playbackState?.position?.let {
-            playback?.setState(
-                if (status)
-                    PlaybackState.STATE_PLAYING
-                else PlaybackState.STATE_PAUSED,
-                it, 1.0f)
-        }
-        mediaSession?.setPlaybackState(playback?.build())
-    }
-
-    private fun changePlaybackSeek(pos: Double){
-        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toLong() * 1000, 1.0f) }
-        mediaSession?.setPlaybackState(playback?.build())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -315,7 +320,8 @@ class MainActivity : NativeActivity() {
     @SuppressLint("InlinedApi")
     fun checkPermissions(): Boolean {
         val readMediaAudio = ContextCompat.checkSelfPermission(applicationContext, READ_MEDIA_AUDIO)
-        return readMediaAudio == PackageManager.PERMISSION_GRANTED
+        val grantNotification = ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
+        return (readMediaAudio == PackageManager.PERMISSION_GRANTED) && (grantNotification == PackageManager.PERMISSION_GRANTED)
     }
 
     @SuppressLint("InlinedApi")
