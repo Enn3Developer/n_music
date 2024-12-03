@@ -1,5 +1,5 @@
 use crate::bus_server::Property;
-use crate::runner::{Runner, RunnerMessage, RunnerSeek};
+use crate::runner::{Runner, RunnerMessage};
 use async_trait::async_trait;
 use flume::Sender;
 use std::path::PathBuf;
@@ -258,28 +258,6 @@ impl Platform for AndroidPlatform {
         self.tx = Some(tx);
     }
 
-    async fn tick(&mut self) {
-        while let Ok(message) = crate::ANDROID_TX.try_recv() {
-            if let crate::MessageAndroidToRust::Receiver(msg, seek) = message {
-                let tx = self.tx.clone().unwrap();
-                match msg.as_str() {
-                    "TogglePause" => tx.send(RunnerMessage::TogglePause),
-                    "PlayNext" => tx.send(RunnerMessage::PlayNext),
-                    "PlayPrevious" => tx.send(RunnerMessage::PlayPrevious),
-                    "Seek" => Ok({
-                        tx.send(RunnerMessage::Seek(RunnerSeek::Absolute(seek)));
-                        tx.send(RunnerMessage::Play);
-                    }),
-                    _ => Ok(()),
-                }
-                .expect("error sending receiver command to Rust");
-                print!("{}", msg);
-            } else {
-                crate::ANDROID_TX.send(message).unwrap();
-            }
-        }
-    }
-
     async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         for p in properties {
@@ -321,6 +299,17 @@ impl Platform for AndroidPlatform {
                         .unwrap();
                 }
                 _ => {}
+            }
+        }
+    }
+
+    async fn tick(&mut self) {
+        while let Ok(message) = crate::ANDROID_TX.try_recv() {
+            if let crate::MessageAndroidToRust::Callback(msg) = message {
+                let tx = self.tx.clone().unwrap();
+                tx.send(msg).expect("error sending receiver command to Rust");
+            } else {
+                crate::ANDROID_TX.send(message).unwrap();
             }
         }
     }

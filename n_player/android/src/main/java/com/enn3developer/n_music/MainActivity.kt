@@ -60,9 +60,11 @@ class MainActivity : NativeActivity() {
 
     @SuppressLint("RestrictedApi")
     // It's the playback in the notification
-    private var playback: PlaybackState.Builder? = null
+    public var playback: PlaybackState.Builder? = null
+
     // It's used to set metadata of the song and playback
-    private var mediaSession: MediaSession? = null
+    public var mediaSession: MediaSession? = null
+
     // We set here mediaSession token for style
     private var notification: Notification.Builder? = null
 
@@ -72,9 +74,6 @@ class MainActivity : NativeActivity() {
     private external fun gotDirectory(directory: String)
 
     private external fun gotFile(file: String)
-
-    // Called in mediaSession callback when we interact with notification
-    private external fun receiverNotification(receiver: String, seek: Double)
 
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -122,48 +121,7 @@ class MainActivity : NativeActivity() {
         mediaSession = MediaSession(applicationContext, TAG)
         val handler = Handler(Looper.getMainLooper())
         handler.post {
-            mediaSession?.setCallback(object : MediaSession.Callback() {
-                override fun onPause() {
-                    receiverNotification("TogglePause", 0.0)
-                    mediaSession?.controller?.playbackState?.position?.let {
-                        playback?.setState(
-                                PlaybackState.STATE_PAUSED,
-                            it, 1.0f)
-                    }
-                    mediaSession?.setPlaybackState(playback?.build())
-                    super.onPause()
-                }
-
-                override fun onPlay() {
-                    receiverNotification("TogglePause", 0.0)
-                    mediaSession?.controller?.playbackState?.position?.let {
-                        playback?.setState(
-                            PlaybackState.STATE_PLAYING,
-                            it, 1.0f)
-                    }
-                    mediaSession?.setPlaybackState(playback?.build())
-                    super.onPlay()
-                }
-
-                override fun onSkipToNext() {
-                    receiverNotification("PlayNext", 0.0)
-                    super.onSkipToNext()
-                }
-
-                override fun onSkipToPrevious() {
-                    receiverNotification("PlayPrevious", 0.0)
-                    playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-                    mediaSession?.setPlaybackState(playback?.build())
-                    super.onSkipToPrevious()
-                }
-
-                override fun onSeekTo(pos: Long) {
-                    receiverNotification("Seek", (pos / 1000).toDouble())
-                    playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
-                    mediaSession?.setPlaybackState(playback?.build())
-                    super.onSeekTo(pos)
-                }
-            })
+            mediaSession?.setCallback(MediaCallback(mediaSession!!, playback!!))
         }
         val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
@@ -174,11 +132,10 @@ class MainActivity : NativeActivity() {
             NOTIFICATION_NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         )
-        mediaSession?.controller?.playbackState?.position?.let {
-            playback?.setState(
-                PlaybackState.STATE_PLAYING,
-                it, 1.0f)
-        }
+        playback?.setState(
+            PlaybackState.STATE_PLAYING,
+            0L, 1.0f
+        )
         mediaSession?.setPlaybackState(playback?.build())
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
         notification = Notification.Builder(applicationContext, CHANNEL_ID).apply {
@@ -187,20 +144,27 @@ class MainActivity : NativeActivity() {
         }
     }
 
-    private fun changePlaybackStatus(status: Boolean){
+    private fun changePlaybackStatus(status: Boolean) {
         val playbackState = mediaSession?.controller?.playbackState
         playbackState?.position?.let {
             playback?.setState(
                 if (status)
                     PlaybackState.STATE_PLAYING
                 else PlaybackState.STATE_PAUSED,
-                it, 1.0f)
+                it, 1.0f
+            )
         }
         mediaSession?.setPlaybackState(playback?.build())
     }
 
-    private fun changePlaybackSeek(pos: Double){
-        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, pos.toLong() * 1000, 1.0f) }
+    private fun changePlaybackSeek(pos: Double) {
+        mediaSession?.controller?.playbackState?.state?.let {
+            playback?.setState(
+                it,
+                pos.toLong() * 1000,
+                1.0f
+            )
+        }
         mediaSession?.setPlaybackState(playback?.build())
     }
 
@@ -213,12 +177,14 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         songLength: Double
     ) {
-        val intent = Intent(applicationContext, DummyService::class.java).apply{
+        val intent = Intent(applicationContext, DummyService::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent =
-            PendingIntent.getActivity(applicationContext, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            PendingIntent.getActivity(
+                applicationContext, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
         val duration = songLength.toLong() * 1000
         val metadata = MediaMetadata.Builder()
@@ -264,7 +230,8 @@ class MainActivity : NativeActivity() {
     }
 
     override fun onDestroy() {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
         stopService(Intent(this, DummyService::class.java))
         super.onDestroy()
@@ -320,7 +287,8 @@ class MainActivity : NativeActivity() {
     @SuppressLint("InlinedApi")
     fun checkPermissions(): Boolean {
         val readMediaAudio = ContextCompat.checkSelfPermission(applicationContext, READ_MEDIA_AUDIO)
-        val grantNotification = ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
+        val grantNotification =
+            ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
         return (readMediaAudio == PackageManager.PERMISSION_GRANTED) && (grantNotification == PackageManager.PERMISSION_GRANTED)
     }
 
