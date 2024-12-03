@@ -306,8 +306,9 @@ impl Platform for AndroidPlatform {
     async fn tick(&mut self) {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
             if let crate::MessageAndroidToRust::Callback(msg) = message {
-                let tx = self.tx.clone().unwrap();
-                tx.send(msg).expect("error sending receiver command to Rust");
+                if let Some(tx) = &self.tx {
+                    tx.send_async(msg).await.expect("error sending callback command to runner");
+                }
             } else {
                 crate::ANDROID_TX.send(message).unwrap();
             }
