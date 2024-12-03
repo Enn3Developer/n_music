@@ -56,17 +56,20 @@ pub trait Platform {
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
     where
         Self: Sized,
-    {}
+    {
+    }
     /// Notify the platform that some playback properties have changed and update those accordingly
-    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P)
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P)
     where
         Self: Sized,
-    {}
+    {
+    }
     /// Allows the platform to do operations once in a while
     async fn tick(&mut self)
     where
         Self: Sized,
-    {}
+    {
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -105,11 +108,11 @@ impl Platform for LinuxPlatform {
             "n_music",
             crate::bus_server::linux::MPRISBridge::new(runner, tx.clone()),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         self.server = Some(server);
     }
-    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
         if let Some(server) = &self.server {
             let mut new_properties = vec![];
             for p in properties {
@@ -178,7 +181,7 @@ pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
     jvm: jni::JavaVM,
     callback: jni::objects::GlobalRef,
-    tx: Option<Sender<RunnerMessage>>
+    tx: Option<Sender<RunnerMessage>>,
 }
 
 #[cfg(target_os = "android")]
@@ -187,9 +190,14 @@ impl AndroidPlatform {
         app: slint::android::AndroidApp,
         jvm: jni::JavaVM,
         callback: jni::objects::GlobalRef,
-        tx: Option<Sender<RunnerMessage>>
+        tx: Option<Sender<RunnerMessage>>,
     ) -> Self {
-        Self { app, jvm, callback, tx }
+        Self {
+            app,
+            jvm,
+            callback,
+            tx,
+        }
     }
 }
 
@@ -205,7 +213,7 @@ impl Platform for AndroidPlatform {
             "(Ljava/lang/String;)V",
             &[(&java_string).into()],
         )
-            .unwrap();
+        .unwrap();
     }
 
     async fn internal_dir(&self) -> PathBuf {
@@ -251,11 +259,12 @@ impl Platform for AndroidPlatform {
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(&self.callback, "createNotification", "()V", &[]).unwrap();
+        env.call_method(&self.callback, "createNotification", "()V", &[])
+            .unwrap();
         self.tx = Some(tx);
     }
 
-    async fn tick(&mut self){
+    async fn tick(&mut self) {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
             if let crate::MessageAndroidToRust::Receiver(msg, seek) = message {
                 let tx = self.tx.clone().unwrap();
@@ -267,8 +276,9 @@ impl Platform for AndroidPlatform {
                         tx.send(RunnerMessage::Seek(RunnerSeek::Absolute(seek)));
                         tx.send(RunnerMessage::Play);
                     }),
-                    _ => Ok(())
-                }.expect("error sending receiver command to Rust");
+                    _ => Ok(()),
+                }
+                .expect("error sending receiver command to Rust");
                 print!("{}", msg);
             } else {
                 crate::ANDROID_TX.send(message).unwrap();
@@ -276,32 +286,44 @@ impl Platform for AndroidPlatform {
         }
     }
 
-    async fn properties_changed<P: IntoIterator<Item=Property> + Send>(&self, properties: P) {
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         for p in properties {
             match p {
                 Property::Playing(playing) => {
-                    env.call_method(&self.callback,
-                                    "changePlaybackStatus",
-                                    "(Z)V",
-                                    &[playing.into()])
-                        .unwrap();
+                    env.call_method(
+                        &self.callback,
+                        "changePlaybackStatus",
+                        "(Z)V",
+                        &[playing.into()],
+                    )
+                    .unwrap();
                 }
                 Property::Metadata(metadata) => {
-                    let title = env.new_string(metadata.title.unwrap_or(String::new())).unwrap();
-                    let artist = env.new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", ")).unwrap();
-                    let cover_path = env.new_string(metadata.image_path.unwrap_or(String::new())).unwrap();
-                    env.call_method(&self.callback,
-                                    "changeNotification",
-                                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
-                                    &[(&title).into(), (&artist).into(), (&cover_path).into(), metadata.length.into()])
+                    let title = env
+                        .new_string(metadata.title.unwrap_or(String::new()))
                         .unwrap();
+                    let artist = env
+                        .new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", "))
+                        .unwrap();
+                    let cover_path = env
+                        .new_string(metadata.image_path.unwrap_or(String::new()))
+                        .unwrap();
+                    env.call_method(
+                        &self.callback,
+                        "changeNotification",
+                        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
+                        &[
+                            (&title).into(),
+                            (&artist).into(),
+                            (&cover_path).into(),
+                            metadata.length.into(),
+                        ],
+                    )
+                    .unwrap();
                 }
                 Property::PositionChanged(seek) => {
-                    env.call_method(&self.callback,
-                                    "changePlaybackSeek",
-                                    "(D)V",
-                                    &[seek.into()])
+                    env.call_method(&self.callback, "changePlaybackSeek", "(D)V", &[seek.into()])
                         .unwrap();
                 }
                 _ => {}

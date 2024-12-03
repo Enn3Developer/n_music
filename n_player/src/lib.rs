@@ -393,7 +393,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_receiverNoti
     mut env: jni::JNIEnv<'local>,
     _class: jni::objects::JClass<'local>,
     string: jni::objects::JString<'local>,
-    seek: jni::sys::jdouble
+    seek: jni::sys::jdouble,
 ) {
     ANDROID_TX
         .send(MessageAndroidToRust::Receiver(
@@ -402,7 +402,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_receiverNoti
                 .to_str()
                 .unwrap()
                 .to_string(),
-            seek.into()
+            seek.into(),
         ))
         .unwrap()
 }
