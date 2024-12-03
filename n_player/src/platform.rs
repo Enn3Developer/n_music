@@ -190,14 +190,8 @@ impl AndroidPlatform {
         app: slint::android::AndroidApp,
         jvm: jni::JavaVM,
         callback: jni::objects::GlobalRef,
-        tx: Option<Sender<RunnerMessage>>,
     ) -> Self {
-        Self {
-            app,
-            jvm,
-            callback,
-            tx,
-        }
+        Self { app, jvm, callback, tx: None }
     }
 }
 

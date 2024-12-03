@@ -104,7 +104,7 @@ fn android_main(app: slint::android::AndroidApp) {
             let platform = if let Ok(MessageAndroidToRust::Start(jvm, callback)) =
                 ANDROID_TX.recv_async().await
             {
-                AndroidPlatform::new(app, jvm, callback, None)
+                AndroidPlatform::new(app, jvm, callback)
             } else {
                 unreachable!()
             };
