@@ -181,6 +181,7 @@ pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
     jvm: jni::JavaVM,
     callback: jni::objects::GlobalRef,
+    tx: Option<Sender<RunnerMessage>>,
 }
 
 #[cfg(target_os = "android")]
@@ -190,7 +191,7 @@ impl AndroidPlatform {
         jvm: jni::JavaVM,
         callback: jni::objects::GlobalRef,
     ) -> Self {
-        Self { app, jvm, callback }
+        Self { app, jvm, callback, tx: None }
     }
 }
 
@@ -254,9 +255,63 @@ impl Platform for AndroidPlatform {
         let mut env = self.jvm.attach_current_thread().unwrap();
         env.call_method(&self.callback, "createNotification", "()V", &[])
             .unwrap();
+        self.tx = Some(tx);
+    }
+
+    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        for p in properties {
+            match p {
+                Property::Playing(playing) => {
+                    env.call_method(
+                        &self.callback,
+                        "changePlaybackStatus",
+                        "(Z)V",
+                        &[playing.into()],
+                    )
+                    .unwrap();
+                }
+                Property::Metadata(metadata) => {
+                    let title = env
+                        .new_string(metadata.title.unwrap_or(String::new()))
+                        .unwrap();
+                    let artist = env
+                        .new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", "))
+                        .unwrap();
+                    let cover_path = env
+                        .new_string(metadata.image_path.unwrap_or(String::new()))
+                        .unwrap();
+                    env.call_method(
+                        &self.callback,
+                        "changeNotification",
+                        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
+                        &[
+                            (&title).into(),
+                            (&artist).into(),
+                            (&cover_path).into(),
+                            metadata.length.into(),
+                        ],
+                    )
+                    .unwrap();
+                }
+                Property::PositionChanged(seek) => {
+                    env.call_method(&self.callback, "changePlaybackSeek", "(D)V", &[seek.into()])
+                        .unwrap();
+                }
+                _ => {}
+            }
+        }
     }
 
     async fn tick(&mut self) {
-        while let Ok(message) = crate::ANDROID_TX.try_recv() {}
+        while let Ok(message) = crate::ANDROID_TX.try_recv() {
+            if let crate::MessageAndroidToRust::Callback(msg) = message {
+                if let Some(tx) = &self.tx {
+                    tx.send_async(msg).await.expect("error sending callback command to runner");
+                }
+            } else {
+                crate::ANDROID_TX.send(message).unwrap();
+            }
+        }
     }
 }

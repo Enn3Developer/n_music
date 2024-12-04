@@ -1,4 +1,4 @@
-use crate::runner::Runner;
+use crate::runner::{Runner, RunnerMessage, RunnerSeek};
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
@@ -20,6 +20,7 @@ use zune_core::options::DecoderOptions;
 use zune_image::image::Image;
 use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
+use crate::bus_server::Property::PositionChanged;
 
 slint::include_modules!();
 
@@ -76,6 +77,7 @@ pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
 
 #[cfg(target_os = "android")]
 pub enum MessageAndroidToRust {
+    Callback(RunnerMessage),
     Directory(String),
     File(String),
     Start(jni::JavaVM, jni::objects::GlobalRef),
@@ -384,4 +386,38 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_start<'local
     ANDROID_TX
         .send(MessageAndroidToRust::Start(jvm, callback))
         .unwrap()
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_TogglePause<'local>(
+    _class: jni::objects::JClass<'local>,
+) {
+    ANDROID_TX.send(MessageAndroidToRust::Callback(RunnerMessage::TogglePause)).unwrap()
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'local>(
+    _class: jni::objects::JClass<'local>,
+) {
+    ANDROID_TX.send(MessageAndroidToRust::Callback(RunnerMessage::PlayNext)).unwrap()
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPrevious<'local>(
+    _class: jni::objects::JClass<'local>,
+) {
+    ANDROID_TX.send(MessageAndroidToRust::Callback(RunnerMessage::PlayPrevious)).unwrap()
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local>(
+    _class: jni::objects::JClass<'local>,
+    seek: jni::sys::jdouble,
+) {
+    ANDROID_TX.send(MessageAndroidToRust::Callback(RunnerMessage::Seek(RunnerSeek::Absolute(seek)))).unwrap();
+    ANDROID_TX.send(MessageAndroidToRust::Callback(RunnerMessage::Play)).unwrap()
 }
