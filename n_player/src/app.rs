@@ -8,6 +8,7 @@ use flume::{Receiver, Sender};
 use n_audio::music_track::MusicTrack;
 use n_audio::queue::QueuePlayer;
 use n_audio::remove_ext;
+use pollster::FutureExt;
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::mem;
 use std::ops::DerefMut;
@@ -38,6 +39,14 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
 ) {
     let platform = Arc::new(RwLock::new(platform));
     let settings = Arc::new(RwLock::new(settings));
+
+    let p = platform.clone();
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        p.write().block_on().set_clipboard_text(info.to_string());
+        std::process::exit(1);
+    }));
 
     let tmp = NamedTempFile::new().unwrap();
     let (tx, rx) = flume::unbounded();

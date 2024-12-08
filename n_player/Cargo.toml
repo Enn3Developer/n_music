@@ -73,6 +73,7 @@ rfd = "0.15.0"
 directories = "5.0.1"
 async-channel = "2.3.1"
 open = "5.3.0"
+arboard = "3.4.1"
 
 [features]
 default = ["updater"]

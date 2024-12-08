@@ -40,10 +40,20 @@ async fn ask_file_desktop() -> Vec<PathBuf> {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn set_clipboard_text_desktop(text: String) {
+    use arboard::Clipboard;
+    let mut clipboard = Clipboard::new().unwrap();
+    clipboard.set_text(text).unwrap();
+}
+
 #[allow(unused_variables)]
 #[async_trait]
 /// Abstraction over a number of platforms (desktop and mobile)
 pub trait Platform {
+    /// Ask the platform to "copy" a given text
+    fn set_clipboard_text(&mut self, text: String);
+
     /// Ask underlying platform to open a web link
     async fn open_link(&self, link: String);
     /// Ask underlying platform to get the app directory
@@ -87,6 +97,10 @@ impl LinuxPlatform {
 #[cfg(target_os = "linux")]
 #[async_trait]
 impl Platform for LinuxPlatform {
+    fn set_clipboard_text(&mut self, text: String) {
+        set_clipboard_text_desktop(text);
+    }
+
     async fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
@@ -159,6 +173,10 @@ pub struct DesktopPlatform {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[async_trait]
 impl Platform for DesktopPlatform {
+    fn set_clipboard_text(&mut self, text: String) {
+        set_clipboard_text_desktop(text);
+    }
+
     async fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
@@ -191,13 +209,20 @@ impl AndroidPlatform {
         jvm: jni::JavaVM,
         callback: jni::objects::GlobalRef,
     ) -> Self {
-        Self { app, jvm, callback, tx: None }
+        Self {
+            app,
+            jvm,
+            callback,
+            tx: None,
+        }
     }
 }
 
 #[cfg(target_os = "android")]
 #[async_trait]
 impl Platform for AndroidPlatform {
+    fn set_clipboard_text(&mut self, text: String) {}
+
     async fn open_link(&self, link: String) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         let java_string = env.new_string(link).unwrap();
@@ -307,7 +332,9 @@ impl Platform for AndroidPlatform {
         while let Ok(message) = crate::ANDROID_TX.try_recv() {
             if let crate::MessageAndroidToRust::Callback(msg) = message {
                 if let Some(tx) = &self.tx {
-                    tx.send_async(msg).await.expect("error sending callback command to runner");
+                    tx.send_async(msg)
+                        .await
+                        .expect("error sending callback command to runner");
                 }
             } else {
                 crate::ANDROID_TX.send(message).unwrap();
