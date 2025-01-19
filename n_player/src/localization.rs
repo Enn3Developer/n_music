@@ -39,6 +39,7 @@ pub struct Locale {
     update_text: Option<String>,
     check_update: Option<String>,
     update: Option<String>,
+    rescan: Option<String>,
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
@@ -79,7 +80,8 @@ pub fn localize(denominator: Option<String>, localization: Localization) {
         license,
         update_text,
         check_update,
-        update
+        update,
+        rescan
     );
 }
 

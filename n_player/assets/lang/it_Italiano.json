@@ -12,5 +12,6 @@
   "license": "Licenza",
   "update_text": "Aggiornamenti",
   "check_update": "Controlla aggiornamenti",
-  "update": "Aggiorna"
+  "update": "Aggiorna",
+  "rescan": "Riscannerizza"
 }

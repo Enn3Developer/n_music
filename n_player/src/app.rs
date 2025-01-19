@@ -263,10 +263,23 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
         })
         .unwrap();
     });
+    let path = tx_path.clone();
     settings_data.on_path(move || {
-        let tx_path = tx_path.clone();
+        let tx_path = path.clone();
         slint::spawn_local(async move {
             tx_path.send_async((String::new(), false)).await.unwrap();
+        })
+        .unwrap();
+    });
+    let s = settings.clone();
+    settings_data.on_scan(move || {
+        let tx_path = tx_path.clone();
+        let settings = s.clone();
+        slint::spawn_local(async move {
+            tx_path
+                .send_async((settings.read().await.path.clone(), false))
+                .await
+                .unwrap();
         })
         .unwrap();
     });

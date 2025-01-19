@@ -78,6 +78,19 @@ export component Settings {
 
                 Setting {
                     width: settings.width - 32px;
+                    text: Localization.rescan;
+
+                    Button {
+                        text: Localization.rescan;
+                        colorize-icon: true;
+                        clicked => {
+                            SettingsData.scan()
+                        }
+                    }
+                }
+
+                Setting {
+                    width: settings.width - 32px;
                     text: Localization.language;
                     ComboBox {
                         model: Localization.localizations;

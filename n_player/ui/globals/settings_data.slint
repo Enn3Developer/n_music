@@ -13,6 +13,7 @@ export global SettingsData {
     callback path();
     callback check_update();
     callback update();
+    callback scan();
     public function change_theme(theme: int) {
         self.theme = theme;
         change_theme_callback(theme);

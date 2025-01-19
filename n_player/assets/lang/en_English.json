@@ -12,5 +12,6 @@
   "license": "License",
   "update_text": "Updates",
   "check_update": "Check for updates",
-  "update": "Update"
+  "update": "Update",
+  "rescan": "Rescan"
 }
