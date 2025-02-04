@@ -171,10 +171,14 @@ impl PlayerInterface for MPRISBridge {
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
         let path = self.runner.read().await.path();
-        let track_name = &self.runner.read().await.current_track().await.unwrap();
+        let track_name = self.runner.read().await.current_track().await;
+        if let None = track_name {
+            return Ok(Metadata::new());
+        }
+        let track_name = track_name.unwrap();
         let mut path_buf = PathBuf::new();
         path_buf.push(&path);
-        path_buf.push(track_name);
+        path_buf.push(track_name.as_ref());
         let track = MusicTrack::new(path_buf.to_str().unwrap())
             .expect("can't get track for currently playing song");
         let meta = track.get_meta();
@@ -194,7 +198,7 @@ impl PlayerInterface for MPRISBridge {
             metadata.set_title(Some(if !meta.title.is_empty() {
                 meta.title
             } else {
-                remove_ext(track_name)
+                remove_ext(track_name.as_ref())
             }));
             metadata.set_artist(if meta.artist.is_empty() {
                 None

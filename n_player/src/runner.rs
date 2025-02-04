@@ -1,9 +1,6 @@
 use flume::Receiver;
 use n_audio::queue::QueuePlayer;
 use n_audio::TrackTime;
-use std::fs::File;
-use std::io;
-use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,7 +31,7 @@ pub enum RunnerMessage {
     Pause,
     Play,
     SetVolume(f64),
-    PlayTrack(u16),
+    PlayTrack(usize),
     Seek(RunnerSeek),
 }
 
@@ -63,7 +60,7 @@ impl Runner {
         }
 
         if self.player.has_ended() {
-            if let Err(err) = self.player.play_next().await {
+            if let Err(err) = self.player.play_next(false).await {
                 eprintln!("error happened: {err}");
             }
         }
@@ -74,7 +71,7 @@ impl Runner {
         match message {
             RunnerMessage::PlayNext => {
                 self.player.end_current().await.unwrap();
-                if let Err(err) = self.player.play_next().await {
+                if let Err(err) = self.player.play_next(true).await {
                     eprintln!("error happened: {err}");
                 }
             }
@@ -95,7 +92,7 @@ impl Runner {
                     self.player.pause().await.unwrap();
                 }
                 if !self.player.is_playing() {
-                    if let Err(err) = self.player.play_next().await {
+                    if let Err(err) = self.player.play_next(true).await {
                         eprintln!("error happened: {err}");
                     }
                 }
@@ -106,7 +103,7 @@ impl Runner {
             RunnerMessage::Play => {
                 self.player.unpause().await.unwrap();
                 if !self.player.is_playing() {
-                    if let Err(err) = self.player.play_next().await {
+                    if let Err(err) = self.player.play_next(true).await {
                         eprintln!("error happened: {err}");
                     }
                 }
@@ -148,15 +145,11 @@ impl Runner {
         self.player.path()
     }
 
-    pub fn queue(&self) -> Arc<RwLock<BufReader<File>>> {
+    pub fn queue(&self) -> &[Arc<str>] {
         self.player.queue()
     }
 
-    pub fn index_map(&self) -> Vec<u64> {
-        self.player.index_map()
-    }
-
-    pub fn index(&self) -> u16 {
+    pub fn index(&self) -> usize {
         self.player.index()
     }
 
@@ -168,18 +161,15 @@ impl Runner {
         self.player.is_empty()
     }
 
-    pub async fn get_path_for_file(&self, i: u16) -> Option<PathBuf> {
+    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
         self.player.get_path_for_file(i).await
     }
 
-    pub async fn current_track(&self) -> Option<String> {
+    pub async fn current_track(&self) -> Option<Arc<str>> {
         self.player.current_track_name().await
     }
 
-    pub async fn add_all<P: Into<String>>(
-        &mut self,
-        paths: impl IntoIterator<Item = P>,
-    ) -> io::Result<()> {
+    pub async fn add_all<P: Into<String>>(&mut self, paths: impl IntoIterator<Item = P>) {
         self.player.add_all(paths).await
     }
 

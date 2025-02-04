@@ -214,7 +214,7 @@ pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<Strin
                 }
             }
         }
-        runner.add_all(paths).await.unwrap();
+        runner.add_all(paths).await;
         runner.shrink_to_fit();
         runner.shuffle();
     }

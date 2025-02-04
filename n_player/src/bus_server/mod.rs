@@ -65,7 +65,7 @@ pub async fn run<P: Platform + Send + Sync>(
             let track_name = &guard.current_track().await.unwrap();
             let mut path_buf = PathBuf::new();
             path_buf.push(&path);
-            path_buf.push(track_name);
+            path_buf.push(track_name.as_ref());
             let track = MusicTrack::new(path_buf.to_str().unwrap())
                 .expect("can't get track for currently playing song");
             let meta = track.get_meta();
@@ -85,7 +85,7 @@ pub async fn run<P: Platform + Send + Sync>(
                     title: Some(if !meta.title.is_empty() {
                         meta.title
                     } else {
-                        remove_ext(track_name)
+                        remove_ext(track_name.as_ref())
                     }),
                     artists: if meta.artist.is_empty() {
                         None

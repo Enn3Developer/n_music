@@ -16,3 +16,9 @@ opt-level = 3
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"
+
+[profile.dev.build-override]
+opt-level = 3
+
+[profile.release.build-override]
+opt-level = 3

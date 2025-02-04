@@ -24,7 +24,7 @@ pub type Platform<P: crate::platform::Platform + Send + 'static> = Arc<RwLock<P>
 
 enum Changes {
     Tracks(Vec<TrackData>),
-    Metadata(u16, TrackData),
+    Metadata(usize, TrackData),
 }
 
 #[cfg(feature = "updater")]
@@ -284,7 +284,7 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
         .unwrap();
     });
     let t = tx.clone();
-    app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as u16)).unwrap());
+    app_data.on_clicked(move |i| t.send(RunnerMessage::PlayTrack(i as usize)).unwrap());
     let t = tx.clone();
     app_data.on_play_previous(move || t.send(RunnerMessage::PlayPrevious).unwrap());
     let t = tx.clone();
@@ -310,11 +310,11 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
     rx_tracks: Receiver<Vec<TrackData>>,
     rx_changing: Receiver<()>,
     rx_searching: Receiver<String>,
-    rx_l: Receiver<Option<(u16, FileTrack)>>,
+    rx_l: Receiver<Option<(usize, FileTrack)>>,
 ) {
     let mut interval = tokio::time::interval(Duration::from_millis(250));
     let mut searching = String::new();
-    let mut old_index = u16::MAX;
+    let mut old_index = usize::MAX;
     let mut loaded = 0;
     let mut saved = false;
     let mut changes = vec![];
@@ -326,7 +326,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
         interval.tick().await;
         let guard = r.read().await;
         let mut index = guard.index();
-        let len = guard.len() as u16;
+        let len = guard.len();
         if index > len {
             index = 0;
         }
@@ -420,7 +420,7 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
                             app_data.set_tracks(VecModel::from_slice(&tracks));
                         }
                         Changes::Metadata(index, track) => {
-                            app_data.get_tracks().set_row_data(index as usize, track);
+                            app_data.get_tracks().set_row_data(index, track);
                         }
                     }
                 }
@@ -476,12 +476,12 @@ async fn updater_task<P: crate::platform::Platform + Send + 'static>(
 
 async fn loader_task(
     runner: Runner,
-    tx: Sender<Option<(u16, FileTrack)>>,
-    rx_l: Arc<Mutex<Receiver<u16>>>,
+    tx: Sender<Option<(usize, FileTrack)>>,
+    rx_l: Arc<Mutex<Receiver<usize>>>,
 ) {
     loop {
         if let Ok(index) = rx_l.lock().await.recv_async().await {
-            if index == u16::MAX {
+            if index == usize::MAX {
                 if let Err(e) = tx.send_async(None).await {
                     eprintln!("error happened when signaling end of task, probably because the app was closed: {e}");
                 }
@@ -523,7 +523,7 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
     runner: Runner,
     settings: Settings,
     platform: Platform<P>,
-    tx: Sender<Option<(u16, FileTrack)>>,
+    tx: Sender<Option<(usize, FileTrack)>>,
     rx: Receiver<(String, bool)>,
     tx_tracks: Sender<Vec<TrackData>>,
 ) {
@@ -546,7 +546,7 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
                 guard.clear().await;
                 guard.set_path(path.clone());
                 add_all_tracks_to_player(guard.deref_mut(), path).await;
-                guard.len() as u16
+                guard.len()
             };
 
             let check_timestamp = settings.read().await.check_timestamp().await;
@@ -603,7 +603,7 @@ async fn loader<P: crate::platform::Platform + Send + 'static>(
                 tx_l.send_async(i).await.unwrap();
             }
             for _ in 0..cpus {
-                tx_l.send_async(u16::MAX).await.unwrap();
+                tx_l.send_async(usize::MAX).await.unwrap();
             }
             for task in tasks {
                 task.await.unwrap();
