@@ -1,5 +1,5 @@
 use flume::Receiver;
-use n_audio::queue::QueuePlayer;
+use n_audio::queue::{LoopStatus, QueuePlayer};
 use n_audio::TrackTime;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -175,6 +175,10 @@ impl Runner {
 
     pub fn set_path(&mut self, path: String) {
         self.player.set_path(path)
+    }
+
+    pub fn set_loop_status(&mut self, loop_status: LoopStatus) {
+        self.player.set_loop_status(loop_status)
     }
 
     pub async fn clear(&mut self) {
