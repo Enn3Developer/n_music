@@ -1,4 +1,4 @@
-use crate::runner::Runner;
+use crate::runner::{Runner, RunnerMessage, RunnerSeek};
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
