@@ -11,7 +11,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.Intent.ACTION_MEDIA_BUTTON
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -24,17 +23,13 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.KeyEvent
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.MediaController
-import androidx.media3.session.R.drawable
 
 
 @OptIn(UnstableApi::class)
@@ -61,8 +56,6 @@ class MainActivity : NativeActivity() {
         const val ASK_DIRECTORY = 0
         const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
-        const val CUSTOM_REPLAY_ON = "NPlayer.replayon"
-        const val CUSTOM_REPLAY_OFF = "NPlayer.replayoff"
     }
 
     @SuppressLint("RestrictedApi")
@@ -74,8 +67,6 @@ class MainActivity : NativeActivity() {
 
     // We set here mediaSession token for style
     private var notification: Notification.Builder? = null
-
-    private var rewind_off: Notification.Action? = null
 
     // Called when app is open first time
     private external fun start(activity: MainActivity)
@@ -135,24 +126,12 @@ class MainActivity : NativeActivity() {
         val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
         playback = PlaybackState.Builder()
-            /*.addCustomAction(PlaybackState.CustomAction.Builder(CUSTOM_REPLAY_OFF,
-                "REPEAT OFF", drawable.media3_icon_repeat_off).build())*/
             .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
         val channel = NotificationChannel(
             CHANNEL_ID,
             NOTIFICATION_NAME_SERVICE,
             NotificationManager.IMPORTANCE_LOW
         )
-
-        rewind_off = Notification.Action.Builder(
-            drawable.media3_icon_repeat_off,
-            "Previous",
-            PendingIntent.getBroadcast(applicationContext, 3,
-                Intent(ACTION_MEDIA_BUTTON).putExtra(Intent.EXTRA_KEY_EVENT,
-                    KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_REWIND)
-                ),
-                PendingIntent.FLAG_UPDATE_CURRENT)
-        ).build()
         playback?.setState(
             PlaybackState.STATE_PLAYING,
             0L, 1.0f
@@ -162,27 +141,6 @@ class MainActivity : NativeActivity() {
         notification = Notification.Builder(applicationContext, CHANNEL_ID).apply {
             setSmallIcon(R.mipmap.ic_launcher_round)
             style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
-            setActions(rewind_off)
-        }
-    }
-
-    private fun changeLoopingStatus(status: Boolean) {
-        val pos = mediaSession?.controller?.playbackState?.position!!
-        val state = mediaSession?.controller?.playbackState?.state!!
-        if (status) {
-            val playback = PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
-                .addCustomAction(PlaybackState.CustomAction.Builder(CUSTOM_REPLAY_ON,
-                    "REPEAT ON", drawable.media3_icon_repeat_all).build())
-            playback.setState(state, pos, 1.0f)
-            mediaSession?.setPlaybackState(playback.build())
-        } else {
-            val playback = PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
-                .addCustomAction(PlaybackState.CustomAction.Builder(CUSTOM_REPLAY_OFF,
-                    "REPEAT OFF", drawable.media3_icon_repeat_off).build())
-            playback.setState(state, pos, 1.0f)
-            mediaSession?.setPlaybackState(playback.build())
         }
     }
 
