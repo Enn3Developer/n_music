@@ -9,6 +9,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -102,6 +104,13 @@ class MainActivity : NativeActivity() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
         }
         startActivityForResult(intent, ASK_FILE)
+    }
+
+    @Suppress("unused")
+    private fun set_clipboard_text(text: String){
+        val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(text, text)
+        clipboard.setPrimaryClip(clip)
     }
 
     @Suppress("unused")
