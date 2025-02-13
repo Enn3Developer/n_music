@@ -21,14 +21,13 @@ crate-type = ["lib", "cdylib"]
 slint-build = "1.8.0"
 
 [dependencies]
-slint = { version = "1.8.0", default-features = false, features = ["std", "compat-1-2", "backend-winit"] }
+slint = { version = "1.9.2", default-features = false, features = ["std", "compat-1-2", "backend-winit"] }
 bitcode = { version = "0.6.3", features = ["derive"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 n_audio = { path = "../n_audio" }
 flume = "0.11.0"
 multitag = "0.3.1"
-opusmeta = "1.1.0"
 zune-image = { version = "0.5.0-rc0", default-features = false, features = ["png", "jpeg", "jpeg-xl", "bmp", "threads"] }
 zune-imageprocs = "0.5.0-rc0"
 zune-core = { version = "0.5.0-rc2", default-features = false, features = ["std"] }
