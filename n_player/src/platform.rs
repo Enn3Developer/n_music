@@ -221,7 +221,17 @@ impl AndroidPlatform {
 #[cfg(target_os = "android")]
 #[async_trait]
 impl Platform for AndroidPlatform {
-    fn set_clipboard_text(&mut self, text: String) {}
+    fn set_clipboard_text(&mut self, text: String) {
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        let java_string = env.new_string(text).unwrap();
+        env.call_method(
+            &self.callback,
+            "set_clipboard_text",
+            "(Ljava/lang/String;)V",
+            &[(&java_string).into()],
+        )
+        .unwrap();
+    }
 
     async fn open_link(&self, link: String) {
         let mut env = self.jvm.attach_current_thread().unwrap();
