@@ -54,7 +54,11 @@ impl MusicTrack {
     pub fn get_meta(&self) -> Result<Metadata, io::Error> {
         let mut format = self.get_format()?;
         let track = format.default_track().expect("Can't load tracks");
-        let time_base = track.codec_params.time_base.unwrap();
+        let time_base = track
+            .codec_params
+            .time_base
+            // TODO: add better error
+            .ok_or(io::Error::from(io::ErrorKind::Unsupported))?;
 
         let duration = track
             .codec_params
