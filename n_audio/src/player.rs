@@ -207,7 +207,7 @@ impl Player {
         // Vars used for audio output
         let track = format.default_track().expect("Can't load tracks");
         let track_id = track.id;
-        let time_base = track.codec_params.time_base.unwrap();
+        let time_base = track.codec_params.time_base;
         let duration = track
             .codec_params
             .n_frames
@@ -283,21 +283,23 @@ impl Player {
                 while !format.metadata().is_latest() {
                     format.metadata().pop();
                 }
-                let position = time_base.calc_time(packet.ts());
-                let length = time_base.calc_time(duration);
-                if let Err(err) = tx_t.send(Message::Time(TrackTime {
-                    position: position.seconds as f64 + position.frac,
-                    length: length.seconds as f64 + length.frac,
-                })) {
-                    if let Ok(message) = rx.try_recv() {
-                        if let Message::Exit = message {
-                            exit = true;
-                            break;
-                        }
-                        if exit {
-                            break;
-                        } else {
-                            panic!("Can't send Time message: {}", err);
+                if let Some(time_base) = time_base {
+                    let position = time_base.calc_time(packet.ts());
+                    let length = time_base.calc_time(duration);
+                    if let Err(err) = tx_t.send(Message::Time(TrackTime {
+                        position: position.seconds as f64 + position.frac,
+                        length: length.seconds as f64 + length.frac,
+                    })) {
+                        if let Ok(message) = rx.try_recv() {
+                            if let Message::Exit = message {
+                                exit = true;
+                                break;
+                            }
+                            if exit {
+                                break;
+                            } else {
+                                panic!("Can't send Time message: {}", err);
+                            }
                         }
                     }
                 }
