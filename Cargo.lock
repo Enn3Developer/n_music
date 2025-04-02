@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "n_audio"
-version = "2.0.0-alpha.6"
+version = "2.0.0-alpha.7"
 dependencies = [
  "audiopus",
  "audiopus_sys",
@@ -3904,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "n_player"
-version = "2.0.0-alpha.6"
+version = "2.0.0-alpha.7"
 dependencies = [
  "arboard",
  "async-channel",
