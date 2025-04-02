@@ -1,8 +1,9 @@
+use crate::bus_server::linux::MPRISBridge;
 use crate::bus_server::Property;
 use crate::runner::{Runner, RunnerMessage};
 use async_trait::async_trait;
 use flume::Sender;
-use mpris_server::LoopStatus;
+use mpris_server::{LoopStatus, Server};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -96,6 +97,23 @@ impl LinuxPlatform {
 }
 
 #[cfg(target_os = "linux")]
+impl LinuxPlatform {
+    pub async fn create_server(
+        runner: Arc<RwLock<Runner>>,
+        tx: Sender<RunnerMessage>,
+        unique: bool,
+    ) -> Option<Server<MPRISBridge>> {
+        let name = if !unique {
+            "n_music".to_string()
+        } else {
+            format!("n_music_{}", std::process::id())
+        };
+
+        Server::new(&name, MPRISBridge::new(runner, tx)).await.ok()
+    }
+}
+
+#[cfg(target_os = "linux")]
 #[async_trait]
 impl Platform for LinuxPlatform {
     fn set_clipboard_text(&mut self, text: String) {
@@ -119,12 +137,13 @@ impl Platform for LinuxPlatform {
     }
 
     async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
-        let server = mpris_server::Server::new(
-            "n_music",
-            crate::bus_server::linux::MPRISBridge::new(runner, tx.clone()),
-        )
-        .await
-        .unwrap();
+        let server = Self::create_server(runner.clone(), tx.clone(), false).await;
+
+        let server = match server {
+            None => Self::create_server(runner, tx, true).await.unwrap(),
+            Some(s) => s,
+        };
+
         self.server = Some(server);
     }
     async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
