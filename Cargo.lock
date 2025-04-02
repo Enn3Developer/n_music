@@ -3885,14 +3885,13 @@ name = "n_audio"
 version = "2.0.0-alpha.7"
 dependencies = [
  "audiopus",
- "audiopus_sys",
  "cpal",
  "dasp",
  "flume",
  "multitag",
  "nconsole",
  "once_cell",
- "rand 0.8.5",
+ "rand 0.9.0",
  "rb",
  "serde",
  "serde_json",

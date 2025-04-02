@@ -1,9 +1,7 @@
-use crate::bus_server::linux::MPRISBridge;
 use crate::bus_server::Property;
 use crate::runner::{Runner, RunnerMessage};
 use async_trait::async_trait;
 use flume::Sender;
-use mpris_server::{LoopStatus, Server};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -102,14 +100,19 @@ impl LinuxPlatform {
         runner: Arc<RwLock<Runner>>,
         tx: Sender<RunnerMessage>,
         unique: bool,
-    ) -> Option<Server<MPRISBridge>> {
+    ) -> Option<mpris_server::Server<crate::bus_server::linux::MPRISBridge>> {
         let name = if !unique {
             "n_music".to_string()
         } else {
             format!("n_music_{}", std::process::id())
         };
 
-        Server::new(&name, MPRISBridge::new(runner, tx)).await.ok()
+        mpris_server::Server::new(
+            &name,
+            crate::bus_server::linux::MPRISBridge::new(runner, tx),
+        )
+        .await
+        .ok()
     }
 }
 
@@ -181,8 +184,10 @@ impl Platform for LinuxPlatform {
                     Property::Volume(volume) => mpris_server::Property::Volume(volume),
                     Property::LoopStatus(loop_status) => {
                         let loop_status = match loop_status {
-                            n_audio::queue::LoopStatus::Playlist => LoopStatus::Playlist,
-                            n_audio::queue::LoopStatus::File => LoopStatus::Track,
+                            n_audio::queue::LoopStatus::Playlist => {
+                                mpris_server::LoopStatus::Playlist
+                            }
+                            n_audio::queue::LoopStatus::File => mpris_server::LoopStatus::Track,
                         };
 
                         mpris_server::Property::LoopStatus(loop_status)
