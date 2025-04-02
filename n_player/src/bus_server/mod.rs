@@ -2,6 +2,7 @@ use crate::get_image_squared;
 use crate::platform::Platform;
 use crate::runner::Runner;
 use n_audio::music_track::MusicTrack;
+use n_audio::queue::LoopStatus;
 use n_audio::{remove_ext, TrackTime};
 use std::mem;
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ pub enum Property {
     Metadata(Metadata),
     Volume(f64),
     PositionChanged(f64),
+    LoopStatus(LoopStatus),
 }
 
 pub struct Metadata {
@@ -38,6 +40,7 @@ pub async fn run<P: Platform + Send + Sync>(
     let mut properties = vec![];
     let mut playback = false;
     let mut volume = 1.0;
+    let mut loop_status = LoopStatus::default();
     let mut index = runner.read().await.index();
     let mut time = TrackTime::default();
     let path = runner.read().await.path();
@@ -54,6 +57,11 @@ pub async fn run<P: Platform + Send + Sync>(
             volume = guard.volume();
             properties.push(Property::Volume(volume))
         }
+        if loop_status != guard.loop_status() {
+            loop_status = guard.loop_status();
+            properties.push(Property::LoopStatus(loop_status.clone()));
+        }
+
         let guard_time = guard.time();
         if (time.position - guard_time.position).abs() > 0.5 {
             time = guard_time;

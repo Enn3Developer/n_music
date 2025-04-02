@@ -2,6 +2,7 @@ use crate::bus_server::Property;
 use crate::runner::{Runner, RunnerMessage};
 use async_trait::async_trait;
 use flume::Sender;
+use mpris_server::LoopStatus;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -159,6 +160,14 @@ impl Platform for LinuxPlatform {
                         mpris_server::Property::Metadata(meta)
                     }
                     Property::Volume(volume) => mpris_server::Property::Volume(volume),
+                    Property::LoopStatus(loop_status) => {
+                        let loop_status = match loop_status {
+                            n_audio::queue::LoopStatus::Playlist => LoopStatus::Playlist,
+                            n_audio::queue::LoopStatus::File => LoopStatus::Track,
+                        };
+
+                        mpris_server::Property::LoopStatus(loop_status)
+                    }
                     _ => unreachable!("check skipped somehow"),
                 });
             }

@@ -10,7 +10,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[derive(Default, Eq, PartialEq, Debug)]
+#[derive(Default, Eq, PartialEq, Debug, Clone)]
 pub enum LoopStatus {
     #[default]
     Playlist,
@@ -66,6 +66,10 @@ impl QueuePlayer {
 
     pub fn set_loop_status(&mut self, loop_status: LoopStatus) {
         self.loop_status = loop_status;
+    }
+
+    pub fn loop_status(&self) -> LoopStatus {
+        self.loop_status.clone()
     }
 
     pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {

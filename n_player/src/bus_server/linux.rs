@@ -146,10 +146,26 @@ impl PlayerInterface for MPRISBridge {
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        Ok(LoopStatus::Playlist)
+        let loop_status = self.runner.read().await.loop_status();
+        match loop_status {
+            n_audio::queue::LoopStatus::Playlist => Ok(LoopStatus::Playlist),
+            n_audio::queue::LoopStatus::File => Ok(LoopStatus::Track),
+        }
     }
 
-    async fn set_loop_status(&self, _loop_status: LoopStatus) -> zbus::Result<()> {
+    async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
+        let loop_status = match loop_status {
+            // defaults to playlist
+            LoopStatus::None => n_audio::queue::LoopStatus::Playlist,
+            LoopStatus::Track => n_audio::queue::LoopStatus::File,
+            LoopStatus::Playlist => n_audio::queue::LoopStatus::Playlist,
+        };
+
+        self.tx
+            .send_async(RunnerMessage::LoopStatus(loop_status))
+            .await
+            .expect("can't modify loop status from mpris");
+
         Ok(())
     }
 
