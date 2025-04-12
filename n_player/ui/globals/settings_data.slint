@@ -7,12 +7,9 @@ export global SettingsData {
     in-out property <length> height;
     in-out property <bool> save_window_size;
     in-out property <string> current_path;
-    in-out property <bool> needs_update;
     callback change_theme_callback(int);
     callback toggle_save_window_size(bool);
     callback path();
-    callback check_update();
-    callback update();
     callback scan();
     public function change_theme(theme: int) {
         self.theme = theme;

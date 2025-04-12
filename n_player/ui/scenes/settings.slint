@@ -101,23 +101,6 @@ export component Settings {
                     }
                 }
 
-                Setting {
-                    width: settings.width - 32px;
-                    text: Localization.update_text;
-                    if !SettingsData.needs_update: Button {
-                        text: Localization.check_update;
-                        clicked => {
-                            SettingsData.check_update()
-                        }
-                    }
-                    if SettingsData.needs_update: Button {
-                        text: Localization.update;
-                        clicked => {
-                            SettingsData.update()
-                        }
-                    }
-                }
-
                 VerticalLayout {
                     spacing: 10px;
                     padding: 10px;

@@ -73,7 +73,3 @@ directories = "6.0"
 async-channel = "2.3"
 open = "5.3"
 arboard = "3.4"
-
-[features]
-default = ["updater"]
-updater = ["axoupdater"]

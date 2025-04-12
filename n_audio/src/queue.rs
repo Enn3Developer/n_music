@@ -2,7 +2,7 @@ use crate::music_track::MusicTrack;
 use crate::player::Player;
 use crate::{remove_ext, strip_absolute_path};
 use rand::prelude::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 use std::cmp::PartialEq;
 use std::io;
 use std::io::ErrorKind;
@@ -113,7 +113,7 @@ impl QueuePlayer {
 
     #[inline]
     pub fn shuffle(&mut self) {
-        self.queue.shuffle(&mut thread_rng());
+        self.queue.shuffle(&mut rng());
     }
 
     pub async fn current_track_name(&self) -> Option<Arc<str>> {
