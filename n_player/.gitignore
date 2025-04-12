@@ -2,3 +2,4 @@
 /.idea
 /build
 local.properties
+/node_modules

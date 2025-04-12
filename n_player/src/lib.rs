@@ -29,6 +29,7 @@ pub mod localization;
 pub mod platform;
 pub mod runner;
 pub mod settings;
+pub mod ui;
 
 unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}

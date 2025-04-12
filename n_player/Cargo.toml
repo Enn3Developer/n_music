@@ -1,10 +1,10 @@
 [package]
 name = "n_player"
-version = "2.0.0-alpha.7"
+version = "2.0.0-alpha.8"
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/Enn3Developer/n_music"
-description = "A simple music player written in Rust + Slint"
+description = "A simple music player written in Rust + Dioxus"
 
 [package.metadata.wix]
 upgrade-guid = "7CE90BCB-E720-41CF-AFED-DDB3B0AA49E2"
@@ -21,6 +21,7 @@ crate-type = ["lib", "cdylib"]
 slint-build = "1.10"
 
 [dependencies]
+dioxus = { version = "0.6", features = ["router"] }
 slint = { version = "1.10", default-features = false, features = ["std", "compat-1-2", "backend-winit"] }
 bitcode = { version = "0.6", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -41,7 +42,6 @@ sys-locale = "0.3"
 zstd = "0.13"
 async-trait = "0.1"
 paste = "1.0.15"
-axoupdater = { version = "0.9", default-features = false, features = ["github_releases", "tokio"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = "0.8"
@@ -73,3 +73,24 @@ directories = "6.0"
 async-channel = "2.3"
 open = "5.3"
 arboard = "3.4"
+
+[features]
+default = ["desktop"]
+# The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
+web = ["dioxus/web"]
+# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
+desktop = ["dioxus/desktop"]
+# The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
+mobile = ["dioxus/mobile"]
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

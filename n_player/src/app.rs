@@ -1,7 +1,7 @@
 use crate::localization::{get_locale_denominator, localize};
 use crate::runner::{run, RunnerMessage, RunnerSeek};
 use crate::{
-    add_all_tracks_to_player, bus_server, get_image_squared, AppData, FileTrack, Localization,
+    add_all_tracks_to_player, bus_server, get_image_squared, ui, AppData, FileTrack, Localization,
     MainWindow, SettingsData, Theme, TrackData, WindowSize,
 };
 use flume::{Receiver, Sender};
@@ -27,94 +27,96 @@ enum Changes {
     Metadata(usize, TrackData),
 }
 
-pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
+pub fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     settings: crate::settings::Settings,
     platform: P,
 ) {
-    let platform = Arc::new(RwLock::new(platform));
-    let settings = Arc::new(RwLock::new(settings));
+    ui::run();
 
-    let p = platform.clone();
-    let default_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        default_panic(info);
-        p.write().block_on().set_clipboard_text(info.to_string());
-        std::process::exit(1);
-    }));
-
-    let tmp = NamedTempFile::new().unwrap();
-    let (tx, rx) = flume::unbounded();
-
-    let player = QueuePlayer::new(settings.read().await.path.clone());
-
-    let runner = Arc::new(RwLock::new(crate::runner::Runner::new(player)));
-
-    let r = runner.clone();
-    let tx_t = tx.clone();
-
-    let (tx_l, rx_l) = flume::unbounded();
-    let main_window = MainWindow::new().unwrap();
-
-    let p = platform.clone();
-    p.write().await.add_runner(r.clone(), tx_t.clone()).await;
-    let (tx_path, rx_path) = flume::unbounded();
-    tx_path
-        .send_async((settings.read().await.path.clone(), true))
-        .await
-        .unwrap();
-    let (tx_tracks, rx_tracks) = flume::unbounded();
-    let s = settings.clone();
-    let future = tokio::spawn(async move {
-        let runner_future = tokio::task::spawn(run(r.clone(), rx));
-        let bus_future = tokio::task::spawn(bus_server::run(p.clone(), r.clone(), tmp));
-        let loader_future = tokio::task::spawn(loader(r.clone(), s, p, tx_l, rx_path, tx_tracks));
-
-        let _ = tokio::join!(runner_future, bus_future, loader_future);
-    });
-
-    let (tx_searching, rx_searching) = flume::unbounded();
-    let (tx_changing, rx_changing) = flume::unbounded();
-
-    setup_data(
-        settings.clone(),
-        platform.clone(),
-        main_window.clone_strong(),
-        tx.clone(),
-        tx_searching,
-        tx_changing,
-        tx_path,
-    )
-    .await;
-
-    let window = main_window.as_weak();
-    let r = runner.clone();
-    let s = settings.clone();
-    let p = platform.clone();
-    let updater = tokio::task::spawn(updater_task(
-        r,
-        s,
-        p,
-        window,
-        rx_tracks,
-        rx_changing,
-        rx_searching,
-        rx_l,
-    ));
-
-    tokio::task::block_in_place(|| main_window.run().unwrap());
-
-    updater.abort();
-    future.abort();
-
-    settings.write().await.volume = runner.read().await.volume();
-    if settings.read().await.save_window_size {
-        let width = main_window.get_last_width() as usize;
-        let height = main_window.get_last_height() as usize;
-        settings.write().await.window_size = WindowSize { width, height };
-    } else {
-        settings.write().await.window_size = WindowSize::default();
-    }
-    settings.read().await.save(platform.read().await).await;
+    // let platform = Arc::new(RwLock::new(platform));
+    // let settings = Arc::new(RwLock::new(settings));
+    //
+    // let p = platform.clone();
+    // let default_panic = std::panic::take_hook();
+    // std::panic::set_hook(Box::new(move |info| {
+    //     default_panic(info);
+    //     p.write().block_on().set_clipboard_text(info.to_string());
+    //     std::process::exit(1);
+    // }));
+    //
+    // let tmp = NamedTempFile::new().unwrap();
+    // let (tx, rx) = flume::unbounded();
+    //
+    // let player = QueuePlayer::new(settings.read().await.path.clone());
+    //
+    // let runner = Arc::new(RwLock::new(crate::runner::Runner::new(player)));
+    //
+    // let r = runner.clone();
+    // let tx_t = tx.clone();
+    //
+    // let (tx_l, rx_l) = flume::unbounded();
+    // let main_window = MainWindow::new().unwrap();
+    //
+    // let p = platform.clone();
+    // p.write().await.add_runner(r.clone(), tx_t.clone()).await;
+    // let (tx_path, rx_path) = flume::unbounded();
+    // tx_path
+    //     .send_async((settings.read().await.path.clone(), true))
+    //     .await
+    //     .unwrap();
+    // let (tx_tracks, rx_tracks) = flume::unbounded();
+    // let s = settings.clone();
+    // let future = tokio::spawn(async move {
+    //     let runner_future = tokio::task::spawn(run(r.clone(), rx));
+    //     let bus_future = tokio::task::spawn(bus_server::run(p.clone(), r.clone(), tmp));
+    //     let loader_future = tokio::task::spawn(loader(r.clone(), s, p, tx_l, rx_path, tx_tracks));
+    //
+    //     let _ = tokio::join!(runner_future, bus_future, loader_future);
+    // });
+    //
+    // let (tx_searching, rx_searching) = flume::unbounded();
+    // let (tx_changing, rx_changing) = flume::unbounded();
+    //
+    // setup_data(
+    //     settings.clone(),
+    //     platform.clone(),
+    //     main_window.clone_strong(),
+    //     tx.clone(),
+    //     tx_searching,
+    //     tx_changing,
+    //     tx_path,
+    // )
+    // .await;
+    //
+    // let window = main_window.as_weak();
+    // let r = runner.clone();
+    // let s = settings.clone();
+    // let p = platform.clone();
+    // let updater = tokio::task::spawn(updater_task(
+    //     r,
+    //     s,
+    //     p,
+    //     window,
+    //     rx_tracks,
+    //     rx_changing,
+    //     rx_searching,
+    //     rx_l,
+    // ));
+    //
+    // tokio::task::block_in_place(|| main_window.run().unwrap());
+    //
+    // updater.abort();
+    // future.abort();
+    //
+    // settings.write().await.volume = runner.read().await.volume();
+    // if settings.read().await.save_window_size {
+    //     let width = main_window.get_last_width() as usize;
+    //     let height = main_window.get_last_height() as usize;
+    //     settings.write().await.window_size = WindowSize { width, height };
+    // } else {
+    //     settings.write().await.window_size = WindowSize::default();
+    // }
+    // settings.read().await.save(platform.read().await).await;
 }
 
 async fn setup_data<P: crate::platform::Platform + Send + 'static>(
