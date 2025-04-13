@@ -12,12 +12,12 @@ fn open_link_desktop(link: String) {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-async fn internal_dir_desktop() -> PathBuf {
+fn internal_dir_desktop() -> PathBuf {
     let base_dirs = directories::BaseDirs::new().unwrap();
     let local_data_dir = base_dirs.data_local_dir();
     let app_dir = local_data_dir.join("n_music");
     if !app_dir.exists() {
-        tokio::fs::create_dir(app_dir.as_path()).await.unwrap();
+        std::fs::create_dir(app_dir.as_path()).unwrap();
     }
     app_dir
 }
@@ -57,7 +57,7 @@ pub trait Platform {
     /// Ask underlying platform to open a web link
     async fn open_link(&self, link: String);
     /// Ask underlying platform to get the app directory
-    async fn internal_dir(&self) -> PathBuf;
+    fn internal_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for the music dir
     async fn ask_music_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for files
@@ -127,8 +127,8 @@ impl Platform for LinuxPlatform {
         open_link_desktop(link)
     }
 
-    async fn internal_dir(&self) -> PathBuf {
-        internal_dir_desktop().await
+    fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop()
     }
 
     async fn ask_music_dir(&self) -> PathBuf {
@@ -214,8 +214,8 @@ impl Platform for DesktopPlatform {
         open_link_desktop(link)
     }
 
-    async fn internal_dir(&self) -> PathBuf {
-        internal_dir_desktop().await
+    fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop()
     }
 
     async fn ask_music_dir(&self) -> PathBuf {
@@ -278,7 +278,7 @@ impl Platform for AndroidPlatform {
         .unwrap();
     }
 
-    async fn internal_dir(&self) -> PathBuf {
+    fn internal_dir(&self) -> PathBuf {
         let path = self
             .app
             .external_data_path()

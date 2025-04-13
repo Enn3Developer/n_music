@@ -33,7 +33,8 @@ pub fn SearchBar(#[props(default)] class: String) -> Element {
             input {
                 r#type: "search",
                 class: "grow",
-                placeholder: "Search..."
+                placeholder: "Search...",
+                id: "searchbar",
             }
 
             kbd {

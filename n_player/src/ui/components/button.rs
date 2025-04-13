@@ -24,6 +24,7 @@ pub fn Button(
     #[props(default)] class: String,
     tooltip_position: Option<TooltipPosition>,
     tooltip: Option<String>,
+    onclick: Option<EventHandler<MouseEvent>>,
     children: Element,
 ) -> Element {
     let tooltip_class = format!(
@@ -40,14 +41,38 @@ pub fn Button(
                 class: tooltip_class,
                 "data-tip": tooltip.unwrap(),
 
-                button {
-                    class: "btn {class}",
-
-                    {children}
+                BaseButton {
+                    class,
+                    children,
+                    onclick
                 }
             }
         }
         else {
+            BaseButton {
+                class,
+                children,
+                onclick
+            }
+        }
+    }
+}
+
+#[component]
+pub fn BaseButton(
+    #[props(default)] class: String,
+    onclick: Option<EventHandler<MouseEvent>>,
+    children: Element,
+) -> Element {
+    rsx! {
+        if let Some(onclick) = onclick {
+            button {
+                class: "btn {class}",
+                onclick,
+
+                {children}
+            }
+        } else {
             button {
                 class: "btn {class}",
 

@@ -1,10 +1,9 @@
 use crate::ui::components::button::Button;
 use crate::ui::components::topbar::TopBar;
-use crate::ui::Route;
+use crate::{settings, Theme};
 use dioxus::prelude::*;
 use dioxus_material_icons::MaterialIcon;
-use std::ops::Deref;
-use web_sys::window;
+use strum::IntoEnumIterator;
 
 #[component]
 pub fn SettingData(text: String, children: Element) -> Element {
@@ -29,8 +28,6 @@ pub fn SettingData(text: String, children: Element) -> Element {
 
 #[component]
 pub fn ThemeController() -> Element {
-    let theme = use_signal(|| "default");
-
     rsx! {
         div {
             class: "dropdown mb-72",
@@ -38,9 +35,9 @@ pub fn ThemeController() -> Element {
             div {
                 tabindex: 0,
                 role: "button",
-                class: "btn m-1",
+                class: "btn m-1 min-w-35",
 
-                "Theme"
+                "{use_context::<Signal<settings::Settings>>().read().theme.name()}"
                 svg {
                     width: "12px",
                     height: "12px",
@@ -56,41 +53,22 @@ pub fn ThemeController() -> Element {
 
             ul {
                 tabindex: 0,
-                class: "dropdown-content bg-base-300 rounded-box z-1 w-26 p-2 shadow-2xl",
+                class: "dropdown-content bg-base-300 rounded-box z-1 w-37 shadow-xl",
 
                 li {
-                    input {
-                        r#type: "radio",
-                        name: "theme-dropdown",
-                        class: "theme-controller w-full btn btn-sm btn-block btn-ghost justify-start",
-                        aria_label: "Default",
-                        value: "default",
-                        onselect: move |_| {
+                    for theme in Theme::iter() {
+                        input {
+                            r#type: "radio",
+                            name: "theme-dropdown",
+                            class: "theme-controller w-full btn btn-sm btn-block btn-ghost justify-start",
+                            checked: use_context::<Signal<settings::Settings>>().read().theme == theme,
+                            aria_label: theme.name(),
+                            value: String::from(theme),
+                            onclick: move |_| {
+                                use_context::<Signal<settings::Settings>>().write().theme = theme;
+                                document::eval(&format!("document.documentElement.setAttribute('data-theme', '{}');", String::from(theme)));
+                            }
                         }
-                    }
-
-                    input {
-                        r#type: "radio",
-                        name: "theme-dropdown",
-                        class: "theme-controller w-full btn btn-sm btn-block btn-ghost justify-start",
-                        aria_label: "Retro",
-                        value: "retro",
-                    }
-
-                    input {
-                        r#type: "radio",
-                        name: "theme-dropdown",
-                        class: "theme-controller w-full btn btn-sm btn-block btn-ghost justify-start",
-                        aria_label: "Cyberpunk",
-                        value: "cyberpunk",
-                    }
-
-                    input {
-                        r#type: "radio",
-                        name: "theme-dropdown",
-                        class: "theme-controller w-full btn btn-sm btn-block btn-ghost justify-start",
-                        aria_label: "Light",
-                        value: "light",
                     }
                 }
             }
@@ -114,10 +92,9 @@ pub fn Settings() -> Element {
                 }
                 Button {
                     class: "btn-soft flex-none",
-                    Link {
-                        to: Route::Home {},
-                        MaterialIcon { name: "arrow_back" }
-                    }
+                    onclick: |_| { navigator().go_back() },
+
+                    MaterialIcon { name: "arrow_back" }
                 }
             }
 

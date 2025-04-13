@@ -27,10 +27,7 @@ enum Changes {
     Metadata(usize, TrackData),
 }
 
-pub fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
-    settings: crate::settings::Settings,
-    platform: P,
-) {
+pub fn run_app() {
     ui::run();
 
     // let platform = Arc::new(RwLock::new(platform));
@@ -142,8 +139,6 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
 
     {
         let settings = settings.read().await;
-        settings_data.set_color_scheme(settings.theme.into());
-        settings_data.set_theme(i32::from(settings.theme));
         settings_data.set_width(settings.window_size.width as f32);
         settings_data.set_height(settings.window_size.height as f32);
         settings_data.set_save_window_size(settings.save_window_size);
@@ -175,23 +170,6 @@ async fn setup_data<P: crate::platform::Platform + Send + 'static>(
             })
             .unwrap();
         });
-    let s = settings.clone();
-    let window = main_window.clone_strong();
-    let p = platform.clone();
-    settings_data.on_change_theme_callback(move |theme_name| {
-        if let Ok(theme) = Theme::try_from(theme_name) {
-            window
-                .global::<SettingsData>()
-                .set_color_scheme(theme.into());
-            let s = s.clone();
-            let p = p.clone();
-            slint::spawn_local(async move {
-                s.write().await.theme = theme;
-                s.read().await.save(p.read().await).await;
-            })
-            .unwrap();
-        }
-    });
     let s = settings.clone();
     settings_data.on_toggle_save_window_size(move |save| {
         let s = s.clone();

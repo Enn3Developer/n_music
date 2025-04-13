@@ -14,6 +14,7 @@ use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::path::Path;
+use strum::EnumIter;
 use zune_core::bytestream::ZCursor;
 use zune_core::colorspace::ColorSpace;
 use zune_core::options::DecoderOptions;
@@ -236,20 +237,38 @@ impl Default for WindowSize {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Decode, Encode)]
+#[derive(Copy, Clone, Debug, Default, Decode, Encode, EnumIter, PartialEq)]
 pub enum Theme {
+    Abyss,
+    Aqua,
     #[default]
-    System,
-    Light,
+    Black,
+    Caramellatte,
+    Coffee,
+    Cyberpunk,
     Dark,
+    Dracula,
+    Light,
+    Pastel,
+    Retro,
+    Synthwave,
 }
 
-impl Into<ColorScheme> for Theme {
-    fn into(self) -> ColorScheme {
+impl Theme {
+    pub fn name(&self) -> String {
         match self {
-            Theme::System => ColorScheme::Unknown,
-            Theme::Light => ColorScheme::Light,
-            Theme::Dark => ColorScheme::Dark,
+            Theme::Abyss => "Abyss".into(),
+            Theme::Aqua => "Aqua".into(),
+            Theme::Black => "Black".into(),
+            Theme::Caramellatte => "Caramellatte".into(),
+            Theme::Coffee => "Coffee".into(),
+            Theme::Dark => "Dark".into(),
+            Theme::Dracula => "Dracula".into(),
+            Theme::Light => "Light".into(),
+            Theme::Pastel => "Pastel".into(),
+            Theme::Retro => "Retro".into(),
+            Theme::Cyberpunk => "Cyberpunk".into(),
+            Theme::Synthwave => "Synthwave".into(),
         }
     }
 }
@@ -257,50 +276,18 @@ impl Into<ColorScheme> for Theme {
 impl From<Theme> for String {
     fn from(value: Theme) -> Self {
         match value {
-            Theme::System => String::from("System"),
-            Theme::Light => String::from("Light"),
-            Theme::Dark => String::from("Dark"),
-        }
-    }
-}
-impl From<Theme> for i32 {
-    fn from(value: Theme) -> Self {
-        match value {
-            Theme::System => 0,
-            Theme::Light => 1,
-            Theme::Dark => 2,
-        }
-    }
-}
-
-impl TryFrom<String> for Theme {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if &value == "System" {
-            Ok(Self::System)
-        } else if &value == "Light" {
-            Ok(Self::Light)
-        } else if &value == "Dark" {
-            Ok(Self::Dark)
-        } else {
-            Err(format!("{value} is not a valid theme"))
-        }
-    }
-}
-
-impl TryFrom<i32> for Theme {
-    type Error = String;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        if value == 0 {
-            Ok(Self::System)
-        } else if value == 1 {
-            Ok(Self::Light)
-        } else if value == 2 {
-            Ok(Self::Dark)
-        } else {
-            Err(format!("{value} is not a valid theme"))
+            Theme::Abyss => "abyss".into(),
+            Theme::Aqua => "aqua".into(),
+            Theme::Black => "black".into(),
+            Theme::Caramellatte => "caramellatte".into(),
+            Theme::Coffee => "coffee".into(),
+            Theme::Dark => "dark".into(),
+            Theme::Dracula => "dracula".into(),
+            Theme::Light => "light".into(),
+            Theme::Pastel => "pastel".into(),
+            Theme::Retro => "retro".into(),
+            Theme::Cyberpunk => "cyberpunk".into(),
+            Theme::Synthwave => "synthwave".into(),
         }
     }
 }

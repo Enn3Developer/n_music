@@ -15,8 +15,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     let platform = LinuxPlatform::new();
     // let settings = Settings::read_saved(&platform).await;
-    let settings = Settings::default();
-    n_player::app::run_app(settings, platform)
+    n_player::app::run_app()
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
