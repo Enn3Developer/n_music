@@ -1957,6 +1957,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dioxus-material-icons"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccf38d89d3100bb3dbe38c7c08eef9d87fb81fcec49a4e33ead63fdcf4e67f01"
+dependencies = [
+ "dioxus",
+]
+
+[[package]]
 name = "dioxus-mobile"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4927,6 +4936,7 @@ dependencies = [
  "async-trait",
  "bitcode",
  "dioxus",
+ "dioxus-material-icons",
  "directories",
  "flume",
  "infer 0.19.0",
@@ -4949,6 +4959,7 @@ dependencies = [
  "sys-locale",
  "tempfile",
  "tokio",
+ "web-sys",
  "zstd",
  "zune-core 0.5.0-rc2",
  "zune-image",

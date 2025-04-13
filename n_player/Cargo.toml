@@ -22,6 +22,8 @@ slint-build = "1.10"
 
 [dependencies]
 dioxus = { version = "0.6", features = ["router"] }
+dioxus-material-icons = "3.0"
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
 slint = { version = "1.10", default-features = false, features = ["std", "compat-1-2", "backend-winit"] }
 bitcode = { version = "0.6", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

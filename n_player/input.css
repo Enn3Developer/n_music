@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+    themes: light, retro, cyberpunk, black --default;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
