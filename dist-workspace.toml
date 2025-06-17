@@ -20,6 +20,7 @@ install-updater = false
 
 # Use the latest Ubuntu image available
 [dist.github-custom-runners]
+global = "ubuntu-latest"
 x86_64-unknown-linux-gnu = "ubuntu-latest"
 
 # Install dependencies needed to build for Linux
