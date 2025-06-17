@@ -12,9 +12,6 @@
       <excludeFolder url="file://$MODULE_DIR$/n_player/.gradle" />
       <excludeFolder url="file://$MODULE_DIR$/n_player/.idea" />
       <excludeFolder url="file://$MODULE_DIR$/n_player/build" />
-      <excludeFolder url="file://$MODULE_DIR$/.idea/inspectionProfiles" />
-      <excludeFolder url="file://$MODULE_DIR$/n_player/android/build" />
-      <excludeFolder url="file://$MODULE_DIR$/n_player/android/src/main/jniLibs" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

@@ -17,16 +17,6 @@ opt-level = 3
 [profile.dist]
 inherits = "release"
 
-[profile.wasm-dev]
-inherits = "dev"
-opt-level = 1
-
-[profile.server-dev]
-inherits = "dev"
-
-[profile.android-dev]
-inherits = "dev"
-
 [profile.dev.build-override]
 opt-level = 3
 

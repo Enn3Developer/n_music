@@ -1,9 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
-use pollster::FutureExt;
-
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn main() {
+#[tokio::main]
+async fn main() {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use n_player::platform::DesktopPlatform;
     #[cfg(target_os = "linux")]
@@ -14,8 +13,8 @@ fn main() {
     let platform = DesktopPlatform {};
     #[cfg(target_os = "linux")]
     let platform = LinuxPlatform::new();
-    // let settings = Settings::read_saved(&platform).await;
-    n_player::app::run_app()
+    let settings = Settings::read_saved(&platform).await;
+    n_player::app::run_app(settings, platform).await
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]

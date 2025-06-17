@@ -42,9 +42,11 @@ impl Settings {
         }
     }
 
-    pub fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
-        let storage_file = platform.internal_dir().join("config");
-        Self::read_from_file(storage_file)
+    pub async fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
+        let storage_file = platform.internal_dir().await.join("config");
+        tokio::task::spawn_blocking(|| Self::read_from_file(storage_file))
+            .await
+            .unwrap()
     }
 
     #[cfg(target_os = "android")]
@@ -93,7 +95,7 @@ impl Settings {
     }
 
     pub async fn clear_tracks<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        let tracks_file = platform.internal_dir().join("tracks");
+        let tracks_file = platform.internal_dir().await.join("tracks");
         if tracks_file.exists() {
             tokio::fs::remove_file(&tracks_file).await.unwrap();
         }
@@ -104,7 +106,7 @@ impl Settings {
         platform: P,
         tracks: Vec<FileTrack>,
     ) {
-        let tracks_file = platform.internal_dir().join("tracks");
+        let tracks_file = platform.internal_dir().await.join("tracks");
         let data = bitcode::encode(&tracks);
         tokio::task::spawn_blocking(move || {
             if let Ok(file) = File::create(tracks_file) {
@@ -119,7 +121,7 @@ impl Settings {
         &self,
         platform: P,
     ) -> Vec<FileTrack> {
-        let tracks_file = platform.internal_dir().join("tracks");
+        let tracks_file = platform.internal_dir().await.join("tracks");
 
         tokio::task::spawn_blocking(|| {
             if tracks_file.exists() && tracks_file.is_file() {
@@ -148,7 +150,7 @@ impl Settings {
     }
 
     pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        self.save_and_compress(platform.internal_dir()).await
+        self.save_and_compress(platform.internal_dir().await).await
     }
 
     async fn save_and_compress(&self, config_dir: PathBuf) {
