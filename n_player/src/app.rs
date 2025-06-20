@@ -53,6 +53,8 @@ pub async fn run_app<P: crate::platform::Platform + Send + 'static + Sync>(
     let tx_t = tx.clone();
 
     let (tx_l, rx_l) = flume::unbounded();
+    #[cfg(target_os = "linux")]
+    let _ = slint::set_xdg_app_id("n_music");
     let main_window = MainWindow::new().unwrap();
 
     let p = platform.clone();
