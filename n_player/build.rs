@@ -4,6 +4,7 @@ use std::path::Path;
 
 fn main() {
     println!("cargo::rerun-if-changed=ui/");
+    println!("cargo:rerun-if-changed=assets/lang/");
     slint_build::compile("ui/window.slint").expect("Slint build failed");
     let lang_dir = Path::new("assets").join("lang").read_dir().unwrap();
     let mut localizations = String::from("const LOCALIZATIONS: [(&str, &str); {LEN}] = [");
