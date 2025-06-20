@@ -31,6 +31,20 @@ Cross-platform music player written in Rust + Slint
 
 ## Contribute
 
+### Building
+
+Run in debug mode:
+
+```shell
+cargo run --package n_player
+```
+
+Build in release mode:
+
+```shell
+cargo build --release --package n_player
+```
+
 ### Translations
 
 If your language isn't fully supported by N Music, you can add a language by creating a file in `n_player/assets/lang`.
