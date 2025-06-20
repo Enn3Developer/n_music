@@ -9,6 +9,7 @@ Cross-platform music player written in Rust + Slint
 - Cover art
 - Support media control (Only Linux and Android)
 - Extremely fast and resource efficient
+- Locale support
 
 ## Coming
 
