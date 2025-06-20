@@ -235,7 +235,8 @@ impl Player {
                 match message {
                     Message::Play => is_paused = false,
                     Message::Pause => is_paused = true,
-                    Message::Volume(v) => volume = v,
+                    // from: https://stackoverflow.com/a/1165198
+                    Message::Volume(v) => volume = 1.0 - (1.0 - (v * v)).sqrt(),
                     Message::PlaybackSpeed(speed) => playback_speed = speed,
                     Message::Exit => {
                         exit = true;
