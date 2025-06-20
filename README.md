@@ -26,6 +26,7 @@ Cross-platform music player written in Rust + Slint
 - QoL:
     - [ ] Playlists
     - [ ] Media control for Windows and Mac
+    - [ ] Auto updater (desktop only; opt-out)
 
 ## Contribute
 
