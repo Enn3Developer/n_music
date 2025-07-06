@@ -85,7 +85,10 @@ pub async fn run<P: Platform + Send + Sync>(
                     .unwrap()
                     .save_to(tmp.path(), ImageFormat::PNG)
                     .unwrap();
-                Some(tmp.path().to_str().unwrap().to_string())
+                Some(format!(
+                    "file://{}",
+                    tmp.path().to_str().unwrap()
+                ))
             };
             if let Ok(meta) = meta {
                 properties.push(Property::Metadata(Metadata {
