@@ -70,7 +70,11 @@ pub async fn run<P: Platform + Send + Sync>(
 
         if index != guard.index() {
             index = guard.index();
-            let track_name = &guard.current_track().await.unwrap();
+            let track_name = match guard.current_track().await {
+                Some(track) => track,
+                None => continue,
+            };
+
             let mut path_buf = PathBuf::new();
             path_buf.push(&path);
             path_buf.push(track_name.as_ref());
@@ -78,18 +82,10 @@ pub async fn run<P: Platform + Send + Sync>(
                 .expect("can't get track for currently playing song");
             let meta = track.get_meta();
             let image = get_image_squared(path_buf, 0, 0).await;
-            let image_path = if image.is_none() {
-                None
-            } else {
-                image
-                    .unwrap()
-                    .save_to(tmp.path(), ImageFormat::PNG)
-                    .unwrap();
-                Some(format!(
-                    "file://{}",
-                    tmp.path().to_str().unwrap()
-                ))
-            };
+            let image_path = image.map(|image| {
+                let _ = image.save_to(tmp.path(), ImageFormat::PNG);
+                format!("file://{}", tmp.path().to_str().unwrap())
+            });
             if let Ok(meta) = meta {
                 properties.push(Property::Metadata(Metadata {
                     id: String::from("/n_music"),
