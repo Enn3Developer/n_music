@@ -186,9 +186,14 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         songLength: Double
     ) {
-        val intent = Intent(applicationContext, DummyService::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+        var intent = applicationContext.packageManager.getLaunchIntentForPackage(packageName)
+
+        if (intent == null) {
+            intent = Intent(applicationContext, MainActivity::class.java)
         }
+
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+
         val pendingIntent =
             PendingIntent.getActivity(
                 applicationContext, 0, intent,
@@ -242,7 +247,6 @@ class MainActivity : NativeActivity() {
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
-        stopService(Intent(this, DummyService::class.java))
         super.onDestroy()
     }
 
