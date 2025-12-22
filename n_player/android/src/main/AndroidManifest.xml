@@ -15,9 +15,14 @@
         android:supportsRtl="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
+        <meta-data
+            android:name="com.enn3developer.monochrome_icon"
+            android:resource="@drawable/ic_launcher_monochrome" />
         <activity
             android:name=".MainActivity"
+            android:label="N Player"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:launchMode="singleTask"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
