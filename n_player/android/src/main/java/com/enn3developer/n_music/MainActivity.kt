@@ -58,6 +58,7 @@ class MainActivity : NativeActivity() {
         const val ASK_DIRECTORY = 0
         const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
+        const val ACTIONS = PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO
     }
 
     @SuppressLint("RestrictedApi")
@@ -130,12 +131,13 @@ class MainActivity : NativeActivity() {
         mediaSession = MediaSession(applicationContext, TAG)
         val handler = Handler(Looper.getMainLooper())
         handler.post {
-            mediaSession?.setCallback(MediaCallback(mediaSession!!, playback!!))
+            mediaSession?.setCallback(MediaCallback(mediaSession!!, this))
         }
         val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
         playback = PlaybackState.Builder()
-            .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO)
+            .setActions(ACTIONS)
+            .setActiveQueueItemId(ACTIONS)
         val channel = NotificationChannel(
             CHANNEL_ID,
             NOTIFICATION_NAME_SERVICE,
@@ -148,8 +150,9 @@ class MainActivity : NativeActivity() {
         mediaSession?.setPlaybackState(playback?.build())
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
         notification = Notification.Builder(applicationContext, CHANNEL_ID).apply {
-            setSmallIcon(R.mipmap.ic_launcher_round)
+            setSmallIcon(R.drawable.ic_launcher_monochrome)
             style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
+            setOngoing(true)
         }
     }
 
@@ -186,9 +189,14 @@ class MainActivity : NativeActivity() {
         coverPath: String,
         songLength: Double
     ) {
-        val intent = Intent(applicationContext, DummyService::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+        var intent = applicationContext.packageManager.getLaunchIntentForPackage(packageName)
+
+        if (intent == null) {
+            intent = Intent(applicationContext, MainActivity::class.java)
         }
+
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+
         val pendingIntent =
             PendingIntent.getActivity(
                 applicationContext, 0, intent,
@@ -242,7 +250,6 @@ class MainActivity : NativeActivity() {
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(NOTIFICATION_ID)
-        stopService(Intent(this, DummyService::class.java))
         super.onDestroy()
     }
 

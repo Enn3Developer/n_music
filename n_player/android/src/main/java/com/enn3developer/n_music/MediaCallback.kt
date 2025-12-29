@@ -4,9 +4,11 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 
 // Called in mediaSession callback when we interact with notification
-class MediaCallback(private val mediaSession: MediaSession,
-                    private val playback: PlaybackState.Builder
+class MediaCallback(
+    private val mediaSession: MediaSession,
+    private val activity: MainActivity
 ) : MediaSession.Callback() {
+
     private external fun TogglePause()
     private external fun PlayNext()
     private external fun PlayPrevious()
@@ -14,24 +16,26 @@ class MediaCallback(private val mediaSession: MediaSession,
 
     override fun onPause() {
         TogglePause()
-        mediaSession.controller.playbackState?.position?.let {
-            playback.setState(
-                PlaybackState.STATE_PAUSED,
-                it, 1.0f
-            )
-        }
-        mediaSession.setPlaybackState(playback.build())
+        val position = mediaSession.controller.playbackState?.position ?: 0L
+
+        activity.playback?.setState(
+            PlaybackState.STATE_PAUSED,
+            position, 1.0f
+        )
+
+        mediaSession.setPlaybackState(activity.playback?.build())
         super.onPause()
     }
 
     override fun onPlay() {
         TogglePause()
-        mediaSession.controller.playbackState?.position?.let {
-            playback.setState(
-                PlaybackState.STATE_PLAYING,
-                it, 1.0f)
-        }
-        mediaSession.setPlaybackState(playback.build())
+        val position = mediaSession.controller.playbackState?.position ?: 0L
+
+        activity.playback?.setState(
+            PlaybackState.STATE_PLAYING,
+            position, 1.0f
+        )
+        mediaSession.setPlaybackState(activity.playback?.build())
         super.onPlay()
     }
 
@@ -42,15 +46,15 @@ class MediaCallback(private val mediaSession: MediaSession,
 
     override fun onSkipToPrevious() {
         PlayPrevious()
-        playback.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
-        mediaSession.setPlaybackState(playback.build())
+        activity.playback?.setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+        mediaSession.setPlaybackState(activity.playback?.build())
         super.onSkipToPrevious()
     }
 
     override fun onSeekTo(pos: Long) {
         Seek((pos / 1000).toDouble())
-        playback.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
-        mediaSession.setPlaybackState(playback.build())
+        activity.playback?.setState(PlaybackState.STATE_PLAYING, pos, 1.0f)
+        mediaSession.setPlaybackState(activity.playback?.build())
         super.onSeekTo(pos)
     }
 }
