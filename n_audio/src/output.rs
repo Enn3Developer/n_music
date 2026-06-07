@@ -1,15 +1,15 @@
 //! Platform-dependant Audio Outputs
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::SampleRate;
+use dasp::Sample;
+use rb::*;
 /// This is a modified version of [symphonia-play's `output.rs`](https://github.com/pdeljanov/Symphonia/blob/master/symphonia-play/src/output.rs)
 /// It was originally made by [Philip Deljanov](https://github.com/pdeljanov)
 /// Modifications: support for volume (for all platforms)
 /// Modifications: support for custom name app (only for PulseAudio)
 /// Modifications: completely removed pulseaudio in 1.3.0
 use std::result;
-
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use dasp::Sample;
-use rb::*;
 use symphonia::core::audio::{AudioBufferRef, RawSample, SampleBuffer, SignalSpec};
 use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::units::Duration;
@@ -36,6 +36,8 @@ pub struct CpalAudioOutput;
 trait AudioOutputSample: Sample + ConvertibleSample + RawSample + Send + 'static {}
 
 impl AudioOutputSample for f32 {}
+
+impl AudioOutputSample for i32 {}
 
 impl AudioOutputSample for i16 {}
 
@@ -71,6 +73,9 @@ impl CpalAudioOutput {
             cpal::SampleFormat::F32 => {
                 CpalAudioOutputImpl::<f32>::try_open(spec, duration, &device)
             }
+            cpal::SampleFormat::I32 => {
+                CpalAudioOutputImpl::<i32>::try_open(spec, duration, &device)
+            }
             cpal::SampleFormat::I16 => {
                 CpalAudioOutputImpl::<i16>::try_open(spec, duration, &device)
             }
@@ -78,7 +83,10 @@ impl CpalAudioOutput {
                 CpalAudioOutputImpl::<u16>::try_open(spec, duration, &device)
             }
             _ => {
-                unimplemented!("sample format not yet implemented")
+                unimplemented!(
+                    "sample format not yet implemented: {}",
+                    config.sample_format()
+                )
             }
         }
     }
@@ -104,7 +112,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
         // Output audio stream config.
         let config = cpal::StreamConfig {
             channels: num_channels as cpal::ChannelCount,
-            sample_rate: cpal::SampleRate(spec.rate),
+            sample_rate: SampleRate::from(spec.rate),
             buffer_size: cpal::BufferSize::Default,
         };
 
@@ -115,7 +123,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
         let (ring_buf_producer, ring_buf_consumer) = (ring_buf.producer(), ring_buf.consumer());
 
         let stream_result = device.build_output_stream(
-            &config,
+            config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                 // Write out as many samples as possible from the ring buffer to the audio
                 // output.
