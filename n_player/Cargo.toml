@@ -28,9 +28,9 @@ serde_json = "1.0"
 n_audio = { path = "../n_audio" }
 flume = "0.12"
 multitag = "0.4"
-zune-image = { version = "0.5.0-rc0", default-features = false, features = ["png", "jpeg", "jpeg-xl", "bmp", "threads"] }
-zune-imageprocs = "0.5.0-rc0"
-zune-core = { version = "0.5.0-rc2", default-features = false, features = ["std"] }
+zune-image = { version = "0.5", default-features = false, features = ["png", "jpeg", "jpeg-xl", "bmp", "threads"] }
+zune-imageprocs = "0.5.1"
+zune-core = { version = "0.5.1", default-features = false, features = ["std"] }
 rimage = { version = "0.12.0", default-features = false, features = ["mozjpeg", "resize", "threads", "webp"] }
 tempfile = "3.20"
 tokio = { version = "1.45", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
