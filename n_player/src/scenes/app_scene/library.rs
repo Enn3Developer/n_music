@@ -65,7 +65,10 @@ impl Handle<Tagged<ScanFinished>> for AppScene {
                 settings.add_tracks(internal_dir.clone(), tracks).await;
                 settings.save_timestamp().await;
                 settings.save(internal_dir).await;
+                crate::purge_freed_memory();
             });
+        } else {
+            crate::purge_freed_memory();
         }
     }
 }

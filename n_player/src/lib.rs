@@ -15,6 +15,32 @@ slint::include_modules!();
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+/// Returns freed pages to the OS. jemalloc only purges during allocation
+/// activity, so without this the scan churn (~1GB) stays resident while the
+/// app idles after a scan (see PLAN.md). "arena.4096.purge" purges all arenas
+/// (4096 = MALLCTL_ARENAS_ALL).
+#[cfg(not(target_os = "android"))]
+pub fn purge_freed_memory() {
+    // SAFETY: plain FFI into the already-linked jemalloc, nothing else.
+    // oldp/oldlenp/newp are all null and newlen is 0, so mallctl neither
+    // reads nor writes caller memory; the name is a valid NUL-terminated
+    // string. The call is advisory (madvise freed pages back to the OS) —
+    // it changes no allocator configuration and on failure only returns an
+    // error code, which has no consequence worth handling.
+    unsafe {
+        tikv_jemalloc_sys::mallctl(
+            c"arena.4096.purge".as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+        );
+    }
+}
+
+#[cfg(target_os = "android")]
+pub fn purge_freed_memory() {}
+
 pub mod app;
 pub mod bridges;
 pub mod jobs;
