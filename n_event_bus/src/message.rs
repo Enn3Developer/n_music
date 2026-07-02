@@ -5,8 +5,8 @@ pub trait Message: Any + Send {}
 
 /// A message carrying a job tag so subscribers can drop results from superseded jobs.
 pub struct Tagged<P> {
-    pub tag: u64,
-    pub payload: P,
+    tag: u64,
+    payload: P,
 }
 
 impl<P: Send + 'static> Message for Tagged<P> {}

@@ -17,17 +17,22 @@ use tokio::task::JoinSet;
 /// queue order shared by AppScene's display and PlaybackEngine's queue.
 async fn enumerate_audio_files(path: &str) -> Vec<String> {
     let mut names = vec![];
+
     if let Ok(mut dir) = tokio::fs::read_dir(path).await {
         while let Ok(Some(file)) = dir.next_entry().await {
-            if file.file_type().await.map(|t| t.is_file()).unwrap_or(false) {
-                if let Ok(Some(mime)) = infer::get_from_path(file.path()) {
-                    if mime.mime_type().contains("audio") {
-                        names.push(strip_absolute_path(
-                            file.path().to_string_lossy().to_string(),
-                        ));
-                    }
-                }
+            if !file.file_type().await.map(|t| t.is_file()).unwrap_or(false) {
+                continue;
             }
+            let Ok(Some(mime)) = infer::get_from_path(file.path()) else {
+                continue;
+            };
+            if !mime.mime_type().contains("audio") {
+                continue;
+            }
+
+            names.push(strip_absolute_path(
+                file.path().to_string_lossy().to_string(),
+            ));
         }
     }
     names.shuffle(&mut rng());
