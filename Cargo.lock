@@ -3607,6 +3607,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "n_event_bus"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "tokio",
+]
+
+[[package]]
 name = "n_player"
 version = "2.0.0-alpha.7"
 dependencies = [
@@ -3621,20 +3629,24 @@ dependencies = [
  "mpris-server",
  "multitag",
  "n_audio",
+ "n_event_bus",
  "ndk-context",
  "num_cpus",
  "once_cell",
  "open",
  "paste",
  "pollster",
+ "rand 0.10.1",
  "rfd",
  "rimage",
  "serde",
  "serde_json",
  "slint",
  "slint-build",
+ "symphonia",
  "sys-locale",
  "tempfile",
+ "tikv-jemallocator",
  "tokio",
  "zstd",
  "zune-core 0.5.1",
@@ -6051,6 +6063,26 @@ dependencies = [
  "flate2",
  "jpeg-decoder",
  "weezl",
+]
+
+[[package]]
+name = "tikv-jemalloc-sys"
+version = "0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8aa5b2ab86a2cefa406d889139c162cbb230092f7d1d7cbc1716405d852a3b"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "tikv-jemallocator"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0359b4327f954e0567e69fb191cf1436617748813819c94b8cd4a431422d053a"
+dependencies = [
+ "libc",
+ "tikv-jemalloc-sys",
 ]
 
 [[package]]

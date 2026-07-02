@@ -1,10 +1,5 @@
-use crate::bus_server::Property;
-use crate::runner::{Runner, RunnerMessage};
 use async_trait::async_trait;
-use flume::Sender;
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn open_link_desktop(link: String) {
@@ -47,12 +42,11 @@ fn set_clipboard_text_desktop(text: String) {
     clipboard.set_text(text).unwrap();
 }
 
-#[allow(unused_variables)]
 #[async_trait]
 /// Abstraction over a number of platforms (desktop and mobile)
-pub trait Platform {
+pub trait Platform: Send + Sync {
     /// Ask the platform to "copy" a given text
-    fn set_clipboard_text(&mut self, text: String);
+    fn set_clipboard_text(&self, text: String);
 
     /// Ask underlying platform to open a web link
     async fn open_link(&self, link: String);
@@ -62,64 +56,25 @@ pub trait Platform {
     async fn ask_music_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for files
     async fn ask_file(&self) -> Vec<PathBuf>;
-    /// Notify the platform that a [Runner] is ready and save it in memory
-    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>)
-    where
-        Self: Sized,
-    {
-    }
-    /// Notify the platform that some playback properties have changed and update those accordingly
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P)
-    where
-        Self: Sized,
-    {
-    }
-    /// Allows the platform to do operations once in a while
-    async fn tick(&mut self)
-    where
-        Self: Sized,
-    {
-    }
+    /// JNI handles for the Android bridge
+    #[cfg(target_os = "android")]
+    fn jni_handles(&self) -> (std::sync::Arc<jni::JavaVM>, std::sync::Arc<jni::objects::GlobalRef>);
 }
 
 #[cfg(target_os = "linux")]
-pub struct LinuxPlatform {
-    server: Option<mpris_server::Server<crate::bus_server::linux::MPRISBridge>>,
-}
+pub struct LinuxPlatform;
 
 #[cfg(target_os = "linux")]
 impl LinuxPlatform {
     pub fn new() -> Self {
-        Self { server: None }
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl LinuxPlatform {
-    pub async fn create_server(
-        runner: Arc<RwLock<Runner>>,
-        tx: Sender<RunnerMessage>,
-        unique: bool,
-    ) -> Option<mpris_server::Server<crate::bus_server::linux::MPRISBridge>> {
-        let name = if !unique {
-            "n_music".to_string()
-        } else {
-            format!("n_music_{}", std::process::id())
-        };
-
-        mpris_server::Server::new(
-            &name,
-            crate::bus_server::linux::MPRISBridge::new(runner, tx),
-        )
-        .await
-        .ok()
+        Self
     }
 }
 
 #[cfg(target_os = "linux")]
 #[async_trait]
 impl Platform for LinuxPlatform {
-    fn set_clipboard_text(&mut self, text: String) {
+    fn set_clipboard_text(&self, text: String) {
         set_clipboard_text_desktop(text);
     }
 
@@ -138,66 +93,6 @@ impl Platform for LinuxPlatform {
     async fn ask_file(&self) -> Vec<PathBuf> {
         ask_file_desktop().await
     }
-
-    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
-        let server = Self::create_server(runner.clone(), tx.clone(), false).await;
-
-        let server = match server {
-            None => Self::create_server(runner, tx, true).await.unwrap(),
-            Some(s) => s,
-        };
-
-        self.server = Some(server);
-    }
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
-        if let Some(server) = &self.server {
-            let mut new_properties = vec![];
-            for p in properties {
-                if let Property::PositionChanged(_) = p {
-                    continue;
-                }
-                new_properties.push(match p {
-                    Property::Playing(playing) => {
-                        mpris_server::Property::PlaybackStatus(if playing {
-                            mpris_server::PlaybackStatus::Playing
-                        } else {
-                            mpris_server::PlaybackStatus::Paused
-                        })
-                    }
-                    Property::Metadata(metadata) => {
-                        let mut meta = mpris_server::Metadata::new();
-
-                        meta.set_title(metadata.title);
-                        meta.set_artist(metadata.artists);
-                        meta.set_length(Some(mpris_server::Time::from_secs(
-                            metadata.length as i64,
-                        )));
-                        meta.set_art_url(metadata.image_path);
-                        meta.set_trackid(Some(
-                            mpris_server::zbus::zvariant::ObjectPath::from_string_unchecked(
-                                metadata.id,
-                            ),
-                        ));
-
-                        mpris_server::Property::Metadata(meta)
-                    }
-                    Property::Volume(volume) => mpris_server::Property::Volume(volume),
-                    Property::LoopStatus(loop_status) => {
-                        let loop_status = match loop_status {
-                            n_audio::queue::LoopStatus::Playlist => {
-                                mpris_server::LoopStatus::Playlist
-                            }
-                            n_audio::queue::LoopStatus::File => mpris_server::LoopStatus::Track,
-                        };
-
-                        mpris_server::Property::LoopStatus(loop_status)
-                    }
-                    _ => unreachable!("check skipped somehow"),
-                });
-            }
-            server.properties_changed(new_properties).await.unwrap()
-        }
-    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -206,7 +101,7 @@ pub struct DesktopPlatform {}
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[async_trait]
 impl Platform for DesktopPlatform {
-    fn set_clipboard_text(&mut self, text: String) {
+    fn set_clipboard_text(&self, text: String) {
         set_clipboard_text_desktop(text);
     }
 
@@ -230,9 +125,8 @@ impl Platform for DesktopPlatform {
 #[cfg(target_os = "android")]
 pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
-    jvm: jni::JavaVM,
-    callback: jni::objects::GlobalRef,
-    tx: Option<Sender<RunnerMessage>>,
+    jvm: std::sync::Arc<jni::JavaVM>,
+    callback: std::sync::Arc<jni::objects::GlobalRef>,
 }
 
 #[cfg(target_os = "android")]
@@ -244,21 +138,21 @@ impl AndroidPlatform {
     ) -> Self {
         Self {
             app,
-            jvm,
-            callback,
-            tx: None,
+            jvm: std::sync::Arc::new(jvm),
+            callback: std::sync::Arc::new(callback),
         }
     }
+
 }
 
 #[cfg(target_os = "android")]
 #[async_trait]
 impl Platform for AndroidPlatform {
-    fn set_clipboard_text(&mut self, text: String) {
+    fn set_clipboard_text(&self, text: String) {
         let mut env = self.jvm.attach_current_thread().unwrap();
         let java_string = env.new_string(text).unwrap();
         env.call_method(
-            &self.callback,
+            self.callback.as_ref(),
             "set_clipboard_text",
             "(Ljava/lang/String;)V",
             &[(&java_string).into()],
@@ -270,7 +164,7 @@ impl Platform for AndroidPlatform {
         let mut env = self.jvm.attach_current_thread().unwrap();
         let java_string = env.new_string(link).unwrap();
         env.call_method(
-            &self.callback,
+            self.callback.as_ref(),
             "openLink",
             "(Ljava/lang/String;)V",
             &[(&java_string).into()],
@@ -292,7 +186,7 @@ impl Platform for AndroidPlatform {
 
     async fn ask_music_dir(&self) -> PathBuf {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(&self.callback, "askDirectory", "()V", &[])
+        env.call_method(self.callback.as_ref(), "askDirectory", "()V", &[])
             .unwrap();
         while let Ok(message) = crate::ANDROID_TX.recv() {
             if let crate::MessageAndroidToRust::Directory(path) = message {
@@ -307,7 +201,7 @@ impl Platform for AndroidPlatform {
 
     async fn ask_file(&self) -> Vec<PathBuf> {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(&self.callback, "askFile", "()V", &[])
+        env.call_method(self.callback.as_ref(), "askFile", "()V", &[])
             .unwrap();
         while let Ok(message) = crate::ANDROID_TX.recv() {
             if let crate::MessageAndroidToRust::File(path) = message {
@@ -319,69 +213,12 @@ impl Platform for AndroidPlatform {
         vec![]
     }
 
-    async fn add_runner(&mut self, runner: Arc<RwLock<Runner>>, tx: Sender<RunnerMessage>) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(&self.callback, "createNotification", "()V", &[])
-            .unwrap();
-        self.tx = Some(tx);
-    }
-
-    async fn properties_changed<P: IntoIterator<Item = Property> + Send>(&self, properties: P) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        for p in properties {
-            match p {
-                Property::Playing(playing) => {
-                    env.call_method(
-                        &self.callback,
-                        "changePlaybackStatus",
-                        "(Z)V",
-                        &[playing.into()],
-                    )
-                    .unwrap();
-                }
-                Property::Metadata(metadata) => {
-                    let title = env
-                        .new_string(metadata.title.unwrap_or(String::new()))
-                        .unwrap();
-                    let artist = env
-                        .new_string(metadata.artists.unwrap_or(vec![String::new()]).join(", "))
-                        .unwrap();
-                    let cover_path = env
-                        .new_string(metadata.image_path.unwrap_or(String::new()))
-                        .unwrap();
-                    env.call_method(
-                        &self.callback,
-                        "changeNotification",
-                        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
-                        &[
-                            (&title).into(),
-                            (&artist).into(),
-                            (&cover_path).into(),
-                            metadata.length.into(),
-                        ],
-                    )
-                    .unwrap();
-                }
-                Property::PositionChanged(seek) => {
-                    env.call_method(&self.callback, "changePlaybackSeek", "(D)V", &[seek.into()])
-                        .unwrap();
-                }
-                _ => {}
-            }
-        }
-    }
-
-    async fn tick(&mut self) {
-        while let Ok(message) = crate::ANDROID_TX.try_recv() {
-            if let crate::MessageAndroidToRust::Callback(msg) = message {
-                if let Some(tx) = &self.tx {
-                    tx.send_async(msg)
-                        .await
-                        .expect("error sending callback command to runner");
-                }
-            } else {
-                crate::ANDROID_TX.send(message).unwrap();
-            }
-        }
+    fn jni_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<jni::JavaVM>,
+        std::sync::Arc<jni::objects::GlobalRef>,
+    ) {
+        (self.jvm.clone(), self.callback.clone())
     }
 }

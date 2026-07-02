@@ -1,0 +1,13 @@
+[package]
+name = "n_event_bus"
+version = "0.1.0"
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+edition = "2021"
+description = "UI-framework-agnostic typed event bus with scenes and cancellable background jobs"
+
+[dependencies]
+flume = "0.12"
+tokio = { version = "1.45", features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time"] }

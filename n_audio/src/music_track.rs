@@ -1,7 +1,6 @@
 use crate::{remove_ext, Metadata, TrackTime, PROBE};
 use multitag::Tag;
 use std::ffi::OsStr;
-use std::io::Cursor;
 use std::path::Path;
 use std::{fs, io};
 use symphonia::core::formats::{FormatOptions, FormatReader};
@@ -33,11 +32,12 @@ impl MusicTrack {
 
     /// Returns the `FormatReader` provided by Symphonia
     pub fn get_format(&self) -> Result<Box<dyn FormatReader>, io::Error> {
-        let file = fs::read(&self.path)?;
-        let media_stream = MediaSourceStream::new(
-            Box::new(Cursor::new(file)),
-            std::default::Default::default(),
-        );
+        // Stream from the file instead of slurping it whole: reading entire
+        // tracks into RAM makes a library scan churn gigabytes through the
+        // allocator, which glibc never returns to the OS.
+        let file = fs::File::open(&self.path)?;
+        let media_stream =
+            MediaSourceStream::new(Box::new(file), std::default::Default::default());
         let mut hint = Hint::new();
         hint.with_extension(self.ext.as_ref());
         let meta_ops = MetadataOptions::default();

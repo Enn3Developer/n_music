@@ -26,7 +26,10 @@ bitcode = { version = "0.6", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 n_audio = { path = "../n_audio" }
+n_event_bus = { path = "../n_event_bus" }
 flume = "0.12"
+rand = "0.10"
+symphonia = { version = "0.5", default-features = false }
 multitag = "0.4"
 zune-image = { version = "0.5", default-features = false, features = ["png", "jpeg", "jpeg-xl", "bmp", "threads"] }
 zune-imageprocs = "0.5.1"
@@ -56,6 +59,7 @@ jni = "0.22"
 once_cell = "1.20"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
+tikv-jemallocator = "0.6"
 rfd = "0.17"
 directories = "6.0"
 async-channel = "2.3"

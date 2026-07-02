@@ -4,7 +4,6 @@ use bitcode::{Decode, Encode};
 use std::fs::File;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{BufReader, BufWriter, Cursor};
-use std::ops::Deref;
 use std::path::PathBuf;
 
 #[derive(Debug, Decode, Encode)]
@@ -42,7 +41,7 @@ impl Settings {
         }
     }
 
-    pub async fn read_saved<P: Deref<Target = impl Platform>>(platform: P) -> Self {
+    pub async fn read_saved(platform: &(impl Platform + ?Sized)) -> Self {
         let storage_file = platform.internal_dir().await.join("config");
         tokio::task::spawn_blocking(|| Self::read_from_file(storage_file))
             .await
@@ -94,19 +93,15 @@ impl Settings {
         Ok(hasher.finish())
     }
 
-    pub async fn clear_tracks<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        let tracks_file = platform.internal_dir().await.join("tracks");
+    pub async fn clear_tracks(&self, internal_dir: PathBuf) {
+        let tracks_file = internal_dir.join("tracks");
         if tracks_file.exists() {
             tokio::fs::remove_file(&tracks_file).await.unwrap();
         }
     }
 
-    pub async fn add_tracks<P: Deref<Target = impl Platform>>(
-        &self,
-        platform: P,
-        tracks: Vec<FileTrack>,
-    ) {
-        let tracks_file = platform.internal_dir().await.join("tracks");
+    pub async fn add_tracks(&self, internal_dir: PathBuf, tracks: Vec<FileTrack>) {
+        let tracks_file = internal_dir.join("tracks");
         let data = bitcode::encode(&tracks);
         tokio::task::spawn_blocking(move || {
             if let Ok(file) = File::create(tracks_file) {
@@ -117,11 +112,8 @@ impl Settings {
         .unwrap();
     }
 
-    pub async fn read_tracks<P: Deref<Target = impl Platform>>(
-        &self,
-        platform: P,
-    ) -> Vec<FileTrack> {
-        let tracks_file = platform.internal_dir().await.join("tracks");
+    pub async fn read_tracks(&self, internal_dir: PathBuf) -> Vec<FileTrack> {
+        let tracks_file = internal_dir.join("tracks");
 
         tokio::task::spawn_blocking(|| {
             if tracks_file.exists() && tracks_file.is_file() {
@@ -149,8 +141,8 @@ impl Settings {
         .unwrap()
     }
 
-    pub async fn save<P: Deref<Target = impl Platform>>(&self, platform: P) {
-        self.save_and_compress(platform.internal_dir().await).await
+    pub async fn save(&self, internal_dir: PathBuf) {
+        self.save_and_compress(internal_dir).await
     }
 
     async fn save_and_compress(&self, config_dir: PathBuf) {

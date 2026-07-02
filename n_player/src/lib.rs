@@ -1,37 +1,44 @@
-use crate::runner::{Runner, RunnerMessage, RunnerSeek};
 use bitcode::{Decode, Encode};
 #[cfg(target_os = "android")]
 use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
-use multitag::data::Picture;
-use multitag::Tag;
 #[cfg(target_os = "android")]
 use once_cell::sync::Lazy;
-use rimage::codecs::webp::WebPDecoder;
-use rimage::operations::resize::{FilterType, ResizeAlg};
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
-use std::ffi::OsStr;
-use std::fmt::Debug;
-use std::io::Cursor;
-use std::path::Path;
-use zune_core::bytestream::ZCursor;
-use zune_core::colorspace::ColorSpace;
-use zune_core::options::DecoderOptions;
-use zune_image::image::Image;
-use zune_image::traits::{DecoderTrait, OperationsTrait};
-use zune_imageprocs::crop::Crop;
 
 slint::include_modules!();
 
+// glibc parks scan-churn in per-thread arenas and never returns it to the OS
+// (see PLAN.md's memory findings); jemalloc decays dirty pages back to the OS.
+// Kept off Android to not complicate the NDK build.
+#[cfg(not(target_os = "android"))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 pub mod app;
-pub mod bus_server;
+pub mod bridges;
+pub mod jobs;
 pub mod localization;
+pub mod messages;
 pub mod platform;
-pub mod runner;
+pub mod playback;
+pub mod scenes;
+pub mod services;
 pub mod settings;
 
 unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
+
+/// Media-session commands coming from the Android side, re-emitted as bus
+/// messages by AndroidEventJob.
+#[cfg(target_os = "android")]
+pub enum MediaCommand {
+    TogglePause,
+    PlayNext,
+    PlayPrevious,
+    SeekAbsolute(f64),
+    Play,
+}
 
 #[cfg(target_os = "android")]
 pub struct SenderReceiver<M> {
@@ -76,7 +83,7 @@ pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
 
 #[cfg(target_os = "android")]
 pub enum MessageAndroidToRust {
-    Callback(RunnerMessage),
+    Callback(MediaCommand),
     Directory(String),
     File(String),
     Start(jni::JavaVM, jni::objects::GlobalRef),
@@ -111,113 +118,6 @@ fn android_main(app: slint::android::AndroidApp) {
 
             run_app(Settings::read_saved(&platform).await, platform).await;
         });
-}
-
-pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
-    path: P,
-    width: usize,
-    height: usize,
-) -> Option<Image> {
-    if let Ok(image) = tokio::task::spawn_blocking(move || get_image(path)).await {
-        if !image.is_empty() {
-            let zune_image =
-                if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
-                    Some(image)
-                } else if let Ok(mut webp_decoder) = WebPDecoder::try_new(Cursor::new(&image)) {
-                    if let Ok(image) = webp_decoder.decode() {
-                        Some(image)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-            if let Some(mut zune_image) = zune_image {
-                zune_image.convert_color(ColorSpace::RGB).unwrap();
-                let (w, h) = zune_image.dimensions();
-                let mut size = w;
-                if w != h {
-                    let difference = w.abs_diff(h);
-                    let min = w.min(h);
-                    size = min;
-                    let is_height = h < w;
-                    let x = if is_height { difference / 2 } else { 0 };
-                    let y = if !is_height { difference / 2 } else { 0 };
-                    tokio::task::block_in_place(|| {
-                        Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
-                    });
-                }
-                tokio::task::block_in_place(|| {
-                    rimage::operations::resize::Resize::new(
-                        if width == 0 { size } else { width },
-                        if height == 0 { size } else { height },
-                        ResizeAlg::Convolution(FilterType::Hamming),
-                    )
-                    .execute(&mut zune_image)
-                    .unwrap()
-                });
-                Some(zune_image)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
-pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
-    if let Ok(tag) = Tag::read_from_path(path.as_ref()) {
-        if let Some(album) = tag.get_album_info() {
-            if let Some(cover) = album.cover {
-                return cover.data;
-            } else {
-                if let Tag::OpusTag { inner } = tag {
-                    let cover = inner.pictures().first().cloned().map(Picture::from);
-                    if let Some(cover) = cover {
-                        return cover.data;
-                    }
-                } else if let Tag::Id3Tag { inner } = tag {
-                    let cover = inner.pictures().next().cloned().map(Picture::from);
-                    if let Some(cover) = cover {
-                        return cover.data;
-                    }
-                } else {
-                    eprintln!("not an opus or mp3 tag {path:?}");
-                }
-            }
-        } else {
-            eprintln!("no album for {path:?}");
-        }
-    }
-
-    vec![]
-}
-
-pub async fn add_all_tracks_to_player<P: AsRef<Path> + AsRef<OsStr> + From<String>>(
-    runner: &mut Runner,
-    path: P,
-) {
-    if let Ok(mut dir) = tokio::fs::read_dir(path).await {
-        let mut paths = vec![];
-        while let Ok(Some(file)) = dir.next_entry().await {
-            if file.file_type().await.unwrap().is_file() {
-                if let Ok(Some(mime)) = infer::get_from_path(&file.path()) {
-                    if mime.mime_type().contains("audio") {
-                        let mut p = file.path().to_str().unwrap().to_string();
-                        p.shrink_to_fit();
-                        paths.push(p);
-                    }
-                }
-            }
-        }
-        runner.add_all(paths).await;
-        runner.shrink_to_fit();
-        runner.shuffle();
-    }
 }
 
 #[derive(Copy, Clone, Debug, Decode, Encode)]
@@ -393,7 +293,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_TogglePause
     _class: jni::objects::JClass<'local>,
 ) {
     ANDROID_TX
-        .send(MessageAndroidToRust::Callback(RunnerMessage::TogglePause))
+        .send(MessageAndroidToRust::Callback(MediaCommand::TogglePause))
         .unwrap()
 }
 
@@ -403,7 +303,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'l
     _class: jni::objects::JClass<'local>,
 ) {
     ANDROID_TX
-        .send(MessageAndroidToRust::Callback(RunnerMessage::PlayNext))
+        .send(MessageAndroidToRust::Callback(MediaCommand::PlayNext))
         .unwrap()
 }
 
@@ -413,7 +313,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPreviou
     _class: jni::objects::JClass<'local>,
 ) {
     ANDROID_TX
-        .send(MessageAndroidToRust::Callback(RunnerMessage::PlayPrevious))
+        .send(MessageAndroidToRust::Callback(MediaCommand::PlayPrevious))
         .unwrap()
 }
 
@@ -424,11 +324,11 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local
     seek: jni::sys::jdouble,
 ) {
     ANDROID_TX
-        .send(MessageAndroidToRust::Callback(RunnerMessage::Seek(
-            RunnerSeek::Absolute(seek),
+        .send(MessageAndroidToRust::Callback(MediaCommand::SeekAbsolute(
+            seek,
         )))
         .unwrap();
     ANDROID_TX
-        .send(MessageAndroidToRust::Callback(RunnerMessage::Play))
+        .send(MessageAndroidToRust::Callback(MediaCommand::Play))
         .unwrap()
 }
