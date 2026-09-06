@@ -56,9 +56,13 @@ pub trait Platform: Send + Sync {
     async fn ask_music_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for files
     async fn ask_file(&self) -> Vec<PathBuf>;
-    /// JNI handles for the Android bridge
     #[cfg(target_os = "android")]
-    fn jni_handles(&self) -> (std::sync::Arc<jni::JavaVM>, std::sync::Arc<jni::objects::GlobalRef>);
+    fn jni_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<jni::JavaVM>,
+        std::sync::Arc<jni::objects::GlobalRef>,
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -142,7 +146,6 @@ impl AndroidPlatform {
             callback: std::sync::Arc::new(callback),
         }
     }
-
 }
 
 #[cfg(target_os = "android")]

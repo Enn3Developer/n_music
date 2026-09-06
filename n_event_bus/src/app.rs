@@ -18,8 +18,6 @@ fn sync_thunk<S: Scene>(subscriber: &mut dyn Subscriber, ctx: &Ctx) -> Option<Ui
         .and_then(|scene| scene.sync(ctx))
 }
 
-/// Owns all subscribers and the bus; drains the queue per incoming event and
-/// flushes UI patches for the scenes touched in that cycle.
 pub struct App {
     subscribers: HashMap<SubscriberId, Box<dyn Subscriber>>,
     scene_meta: HashMap<SubscriberId, SyncFn>,
@@ -43,7 +41,6 @@ impl App {
         }
     }
 
-    /// Generic entry point: any [Subscriber] can receive messages, no UI involved.
     pub fn register_subscriber<S: Subscriber>(&mut self, subscriber: S) -> SubscriberId {
         let id = SubscriberId(self.next_id);
         self.next_id += 1;
@@ -57,7 +54,6 @@ impl App {
         id
     }
 
-    /// [register_subscriber](Self::register_subscriber) plus mounting and a UI-sync pass.
     pub fn register_scene<S: Scene>(&mut self, mut scene: S) -> SubscriberId {
         let mut out = Outbox::new();
         scene.on_mount(&Ctx { jobs: &self.jobs }, &mut out);
@@ -75,8 +71,6 @@ impl App {
         self.bus.enqueue(envelope);
     }
 
-    /// Drains the queue, dispatching each envelope to its subscribers and
-    /// enqueueing whatever their outboxes emit, until nothing is pending.
     pub fn dispatch_all(&mut self) {
         while let Some(envelope) = self.bus.pop() {
             for (id, thunk) in self.bus.subscribers_for(envelope.tid()) {
@@ -98,8 +92,6 @@ impl App {
         }
     }
 
-    /// Syncs the scenes touched since the last flush and applies their patches
-    /// in one UI-thread hop.
     pub fn flush_ui(&mut self) {
         let touched = mem::take(&mut self.touched);
         let mut patches = Vec::new();
@@ -126,18 +118,12 @@ impl App {
         }
     }
 
-    /// Async replacement for a blocking main loop: consumes events until the
-    /// sending side is dropped.
     pub async fn run_loop(&mut self, rx: flume::Receiver<Event>) {
-        // Dispatch whatever on_mount emitted and sync the initial UI state.
         self.dispatch_all();
         self.flush_ui();
 
         while let Ok(event) = rx.recv_async().await {
             self.enqueue_event(event);
-            // Fold everything already pending into this cycle: one dispatch
-            // and one UI hop per burst, not per message — otherwise a scan
-            // streaming per-track metadata queues a UI patch per track.
             while let Ok(event) = rx.try_recv() {
                 self.enqueue_event(event);
             }

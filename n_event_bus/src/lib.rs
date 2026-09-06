@@ -22,19 +22,14 @@ pub use ui::{UiPatch, UiThread};
 
 use std::any::Any;
 
-/// The only dependency every handler mechanically needs: the ability to start jobs.
-/// App-specific dependencies are constructor-injected into each subscriber instead.
 pub struct Ctx<'a> {
     pub jobs: &'a JobControl,
 }
 
-/// A subscriber's typed reaction to one message type.
 pub trait Handle<T: Message> {
     fn handle(&mut self, msg: &T, ctx: &Ctx, out: &mut Outbox);
 }
 
-/// Type-erased dispatch entry: downcasts subscriber and message back to their
-/// concrete types and calls the right [Handle] impl.
 pub type Thunk = fn(&mut dyn Subscriber, &dyn Any, &Ctx, &mut Outbox);
 
 pub fn thunk<S, T>() -> Thunk

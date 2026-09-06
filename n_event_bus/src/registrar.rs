@@ -4,8 +4,6 @@ use crate::{thunk, Handle, Thunk};
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-/// Collects the `(TypeId, Thunk)` pairs a subscriber type declares in
-/// [Subscriber::register]; [crate::App::register_subscriber] feeds them into the bus index.
 pub struct Registrar<S: Subscriber> {
     pairs: Vec<(TypeId, Thunk)>,
     _marker: PhantomData<fn(S)>,

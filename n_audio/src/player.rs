@@ -153,11 +153,20 @@ impl Player {
 
     /// Ends the current track playing, if any
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub async fn end_current(&self) -> Result<(), SendError<Message>> {
-        if let Some(tx) = &self.tx {
-            tx.send_async(Message::Exit).await?;
+    pub async fn end_current(&mut self) -> Result<(), SendError<Message>> {
+        let result = if let Some(tx) = self.tx.take() {
+            tx.send_async(Message::Exit).await
+        } else {
+            Ok(())
+        };
+        if let Some(thread) = self.thread.take() {
+            let _ = tokio::task::spawn_blocking(move || thread.join()).await;
         }
-        Ok(())
+        self.rx_t = None;
+        self.rx_e = None;
+        self.cached_get_time = None;
+        self.is_paused = false;
+        result
     }
 
     /// Plays a certain track given its file path

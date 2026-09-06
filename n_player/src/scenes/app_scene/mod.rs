@@ -3,8 +3,8 @@ mod playback_mirror;
 
 use crate::jobs::scan::ScanJob;
 use crate::messages::{
-    PlaybackChanged, PositionChanged, ScanRequested, SearchChanged, TrackChanged,
-    ViewportChanging, VolumeChanged,
+    PlaybackChanged, PositionChanged, ScanRequested, SearchChanged, TrackChanged, ViewportChanging,
+    VolumeChanged,
 };
 use crate::platform::Platform;
 use crate::settings::Settings;
@@ -21,14 +21,11 @@ pub enum Changes {
     Metadata(usize, TrackData),
 }
 
-/// Mirrors ui/scenes/app.slint's `App` component: the track list + search
-/// (library half) and a display copy of PlaybackEngine's state (playback half).
 pub struct AppScene {
     window: Weak<MainWindow>,
     settings: Arc<RwLock<Settings>>,
     platform: Arc<dyn Platform>,
     scan_job: Option<RunningJob>,
-    // Playback mirror.
     playing_index: i32,
     position: f64,
     position_str: String,
@@ -36,7 +33,6 @@ pub struct AppScene {
     playback: bool,
     volume: f64,
     skip_time: bool,
-    // Library.
     track_count: usize,
     loaded: usize,
     changes: Vec<Changes>,
@@ -81,13 +77,11 @@ impl Subscriber for AppScene {
     }
 
     fn register(reg: &mut Registrar<Self>) {
-        // Playback mirror.
         reg.on::<PlaybackChanged>();
         reg.on::<TrackChanged>();
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<ViewportChanging>();
-        // Library.
         reg.on::<ScanRequested>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);

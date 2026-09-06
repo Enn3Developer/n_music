@@ -9,8 +9,6 @@ use n_event_bus::{Ctx, Handle, Outbox, Tagged};
 
 impl Handle<ScanRequested> for AppScene {
     fn handle(&mut self, msg: &ScanRequested, ctx: &Ctx, _out: &mut Outbox) {
-        // Dropping a previous RunningJob aborts a still-in-flight scan; its
-        // tag keeps any already-queued results from landing.
         self.scan_job = Some(ctx.jobs.spawn_stream(ScanJob {
             settings: self.settings.clone(),
             platform: self.platform.clone(),
@@ -65,10 +63,7 @@ impl Handle<Tagged<ScanFinished>> for AppScene {
                 settings.add_tracks(internal_dir.clone(), tracks).await;
                 settings.save_timestamp().await;
                 settings.save(internal_dir).await;
-                crate::purge_freed_memory();
             });
-        } else {
-            crate::purge_freed_memory();
         }
     }
 }

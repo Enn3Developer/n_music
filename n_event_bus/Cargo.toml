@@ -8,6 +8,3 @@ description = "UI-framework-agnostic typed event bus with scenes and cancellable
 [dependencies]
 flume = "0.12"
 tokio = { version = "1.45", features = ["rt", "sync", "time"] }
-
-[dev-dependencies]
-tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time"] }

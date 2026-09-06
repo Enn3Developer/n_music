@@ -32,12 +32,8 @@ impl MusicTrack {
 
     /// Returns the `FormatReader` provided by Symphonia
     pub fn get_format(&self) -> Result<Box<dyn FormatReader>, io::Error> {
-        // Stream from the file instead of slurping it whole: reading entire
-        // tracks into RAM makes a library scan churn gigabytes through the
-        // allocator, which glibc never returns to the OS.
         let file = fs::File::open(&self.path)?;
-        let media_stream =
-            MediaSourceStream::new(Box::new(file), std::default::Default::default());
+        let media_stream = MediaSourceStream::new(Box::new(file), std::default::Default::default());
         let mut hint = Hint::new();
         hint.with_extension(self.ext.as_ref());
         let meta_ops = MetadataOptions::default();

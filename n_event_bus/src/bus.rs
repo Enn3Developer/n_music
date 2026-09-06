@@ -3,11 +3,9 @@ use crate::Thunk;
 use std::any::TypeId;
 use std::collections::{HashMap, VecDeque};
 
-/// Registration identity for any subscriber, scene or not.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SubscriberId(pub(crate) u64);
 
-/// `TypeId`-indexed subscriptions plus the pending message queue.
 #[derive(Default)]
 pub struct Bus {
     index: HashMap<TypeId, Vec<(SubscriberId, Thunk)>>,

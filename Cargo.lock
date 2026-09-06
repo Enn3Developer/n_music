@@ -3646,7 +3646,6 @@ dependencies = [
  "symphonia",
  "sys-locale",
  "tempfile",
- "tikv-jemalloc-sys",
  "tikv-jemallocator",
  "tokio",
  "zstd",

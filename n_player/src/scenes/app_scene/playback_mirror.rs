@@ -30,8 +30,6 @@ impl Handle<PositionChanged> for AppScene {
     }
 }
 
-/// The user is scrubbing the seek slider: don't overwrite the displayed time
-/// with the playing position on the next sync.
 impl Handle<ViewportChanging> for AppScene {
     fn handle(&mut self, _msg: &ViewportChanging, _ctx: &Ctx, _out: &mut Outbox) {
         self.skip_time = true;

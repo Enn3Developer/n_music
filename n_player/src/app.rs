@@ -1,8 +1,7 @@
 use crate::localization::localize;
 use crate::messages::{
-    LocaleChangeRequested, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack, Seek,
-    SearchChanged, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize,
-    ViewportChanging,
+    LocaleChangeRequested, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack, SearchChanged,
+    Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize, ViewportChanging,
 };
 use crate::platform::Platform;
 use crate::playback::PlaybackEngine;
@@ -17,8 +16,6 @@ use tokio::sync::RwLock;
 
 pub type Settings = Arc<RwLock<crate::settings::Settings>>;
 
-/// The one seam between n_event_bus and Slint: applies each dispatch cycle's
-/// patches in a single event-loop hop.
 struct SlintUi;
 
 impl UiThread for SlintUi {
@@ -106,8 +103,6 @@ pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings,
         .await;
 }
 
-/// Populates the globals' initial values and wires every Slint callback to a
-/// typed bus message (plus the one bus-less case, open_link).
 async fn setup_data(
     settings: Settings,
     platform: Arc<dyn Platform>,
@@ -136,7 +131,6 @@ async fn setup_data(
         settings_data.set_current_path(settings.path.clone().into());
     }
 
-    // Stateless fire-and-forget platform call; no reason to route it through the bus.
     app_data.on_open_link(move |link| {
         let platform = platform.clone();
         slint::spawn_local(async move { platform.open_link(link.into()).await }).unwrap();

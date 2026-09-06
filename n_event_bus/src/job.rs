@@ -4,8 +4,6 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Background work spawned on tokio that reports back through the bus,
-/// tagging everything it emits with `tag` so a superseded run can be ignored.
 pub trait Job: Send + 'static {
     fn run(
         self,
@@ -15,7 +13,6 @@ pub trait Job: Send + 'static {
     ) -> impl Future<Output = ()> + Send;
 }
 
-/// Cooperative cancellation flag a long-running job should check between steps.
 #[derive(Clone, Default)]
 pub struct JobToken {
     cancelled: Arc<AtomicBool>,
@@ -35,7 +32,6 @@ impl JobToken {
     }
 }
 
-/// Owns the spawned task; dropping it aborts the task and flips the token.
 pub struct JobHandle {
     join: tokio::task::JoinHandle<()>,
     token: Option<JobToken>,
@@ -50,7 +46,6 @@ impl Drop for JobHandle {
     }
 }
 
-/// A job the caller keeps around to tag-check incoming [Tagged] results against.
 pub struct RunningJob {
     tag: u64,
     _handle: JobHandle,
@@ -61,13 +56,11 @@ impl RunningJob {
         self.tag
     }
 
-    /// Returns the payload only if it comes from this job and not a superseded one.
     pub fn open<'a, P>(&self, tagged: &'a Tagged<P>) -> Option<&'a P> {
         tagged.open(self.tag)
     }
 }
 
-/// Spawns jobs and hands out unique tags; clone-cheap, lives in [crate::Ctx].
 #[derive(Clone)]
 pub struct JobControl {
     writer: EventWriter,
@@ -90,8 +83,6 @@ impl JobControl {
         self.next.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// A cancellable job emitting a stream of results; dropping the returned
-    /// [RunningJob] aborts it.
     pub fn spawn_stream<J: Job>(&self, job: J) -> RunningJob {
         let tag = self.next_tag();
         let token = JobToken::new();
@@ -105,7 +96,6 @@ impl JobControl {
         }
     }
 
-    /// A single-result job; dropping the returned [RunningJob] aborts it.
     pub fn spawn_oneshot<J: Job>(&self, job: J) -> RunningJob {
         let tag = self.next_tag();
         let join = tokio::spawn(job.run(tag, self.writer.clone(), None));
@@ -115,15 +105,12 @@ impl JobControl {
         }
     }
 
-    /// Fire-and-forget: nobody tracks or cancels it.
     pub fn spawn_detached<J: Job>(&self, job: J) {
         let tag = self.next_tag();
         tokio::spawn(job.run(tag, self.writer.clone(), None));
     }
 }
 
-/// Declares the message types a job emits, generating `J::subscribe(reg)` so a
-/// subscriber registers for all of them in one call.
 #[macro_export]
 macro_rules! job_emits {
     ($job:ty => $($msg:ty),+ $(,)?) => {

@@ -18,8 +18,6 @@ enum UiChange {
     Locale(String),
 }
 
-/// Mirrors ui/scenes/settings.slint's `Settings` component: theme, locale,
-/// window-size persistence and music-path changes.
 pub struct SettingsScene {
     window: Weak<MainWindow>,
     settings: Arc<RwLock<Settings>>,
@@ -44,7 +42,6 @@ impl SettingsScene {
         }
     }
 
-    /// Applies `change` to the settings and persists them, off the dispatch thread.
     fn update_settings(&self, change: impl FnOnce(&mut Settings) + Send + 'static) {
         let settings = self.settings.clone();
         let platform = self.platform.clone();
@@ -73,7 +70,6 @@ impl Subscriber for SettingsScene {
 
 impl Scene for SettingsScene {
     fn on_mount(&mut self, _ctx: &Ctx, out: &mut Outbox) {
-        // The startup library scan the old run_app sent eagerly.
         out.emit(ScanRequested { check_cache: true });
     }
 
@@ -154,7 +150,6 @@ impl Handle<PathChangeRequested> for SettingsScene {
     }
 }
 
-/// Keeps the in-memory settings volume current so the exit-time save persists it.
 impl Handle<VolumeChanged> for SettingsScene {
     fn handle(&mut self, msg: &VolumeChanged, _ctx: &Ctx, _out: &mut Outbox) {
         let volume = msg.0;

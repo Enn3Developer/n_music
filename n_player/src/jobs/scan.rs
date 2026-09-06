@@ -13,8 +13,6 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, Semaphore};
 use tokio::task::JoinSet;
 
-/// Enumerates (already shuffled) audio file names in `path`; the order is the
-/// queue order shared by AppScene's display and PlaybackEngine's queue.
 async fn enumerate_audio_files(path: &str) -> Vec<String> {
     let mut names = vec![];
 
@@ -40,8 +38,6 @@ async fn enumerate_audio_files(path: &str) -> Vec<String> {
     names
 }
 
-/// Async port of the old loader()/loader_task(): enumerate, serve from cache
-/// when valid, otherwise load metadata concurrently and stream it back.
 pub struct ScanJob {
     pub settings: Arc<RwLock<Settings>>,
     pub platform: Arc<dyn Platform>,

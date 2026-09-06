@@ -1,19 +1,13 @@
 use crate::messages::{
-    LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged,
-    Seek, SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
+    LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
+    SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
 };
-use crate::services::image::get_image_squared;
-use n_audio::music_track::MusicTrack;
-use n_audio::remove_ext;
-use n_event_bus::{Ctx, EventWriter, Handle, Outbox, Registrar, Subscriber};
+use crate::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
+use n_event_bus::{Ctx, EventWriter, Handle, Outbox, Registrar, Subscriber, Tagged};
 use std::any::Any;
 use std::sync::{Arc, RwLock};
 use tempfile::NamedTempFile;
-use zune_image::codecs::ImageFormat;
 
-/// Playback state snapshot shared between the bus subscriber (writes) and the
-/// D-Bus property getters (reads); replaces the old shared Runner handle.
-#[derive(Default)]
 pub struct MprisState {
     playing: bool,
     volume: f64,
@@ -22,13 +16,23 @@ pub struct MprisState {
     metadata: mpris_server::Metadata,
 }
 
-/// Bus subscriber replacing bus_server/mod.rs: consumes PlaybackEngine's
-/// *Changed stream and forwards it to the MPRIS D-Bus server. Not a Scene —
-/// it never touches the UI.
+impl Default for MprisState {
+    fn default() -> Self {
+        Self {
+            playing: false,
+            volume: n_audio::queue::QueuePlayer::default().get_volume() as f64,
+            position: 0.0,
+            loop_status: n_audio::queue::LoopStatus::default(),
+            metadata: mpris_server::Metadata::new(),
+        }
+    }
+}
+
 pub struct MprisBridge {
     server: Arc<mpris_server::Server<MprisAdapter>>,
     state: Arc<RwLock<MprisState>>,
-    tmp: Arc<NamedTempFile>,
+    tmp: Option<NamedTempFile>,
+    metadata_loader: MetadataLoader,
 }
 
 impl MprisBridge {
@@ -38,19 +42,21 @@ impl MprisBridge {
             writer,
             state: state.clone(),
         };
-        // Same unique-name fallback as the old LinuxPlatform::create_server.
         let server = match mpris_server::Server::new("n_music", adapter(writer.clone())).await {
             Ok(server) => server,
             Err(_) => {
                 let name = format!("n_music_{}", std::process::id());
-                mpris_server::Server::new(&name, adapter(writer)).await.ok()?
+                mpris_server::Server::new(&name, adapter(writer))
+                    .await
+                    .ok()?
             }
         };
 
         Some(Self {
             server: Arc::new(server),
             state,
-            tmp: Arc::new(NamedTempFile::new().ok()?),
+            tmp: None,
+            metadata_loader: MetadataLoader::default(),
         })
     }
 
@@ -72,6 +78,7 @@ impl Subscriber for MprisBridge {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<PlaybackChanged>();
         reg.on::<TrackChanged>();
+        MetadataJob::subscribe(reg);
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<LoopStatusChanged>();
@@ -106,8 +113,6 @@ impl Handle<LoopStatusChanged> for MprisBridge {
     }
 }
 
-/// Position feeds the D-Bus `Position` getter only; the old bus_server
-/// explicitly skipped it in properties_changed too.
 impl Handle<PositionChanged> for MprisBridge {
     fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.state.write().unwrap().position = msg.0.position;
@@ -115,57 +120,40 @@ impl Handle<PositionChanged> for MprisBridge {
 }
 
 impl Handle<TrackChanged> for MprisBridge {
-    fn handle(&mut self, msg: &TrackChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        let path = msg.path.clone();
-        let name = msg.name.clone();
-        let server = self.server.clone();
-        let state = self.state.clone();
-        let tmp = self.tmp.clone();
-        tokio::spawn(async move {
-            let Ok(track) = MusicTrack::new(path.to_string_lossy().to_string()) else {
-                return;
-            };
-            let Ok(Ok(meta)) = tokio::task::spawn_blocking(move || track.get_meta()).await else {
-                return;
-            };
-            let image = get_image_squared(path, 0, 0).await;
-            let image_path = image.map(|image| {
-                let _ = image.save_to(tmp.path(), ImageFormat::PNG);
-                format!("file://{}", tmp.path().to_str().unwrap())
-            });
-
-            let mut metadata = mpris_server::Metadata::new();
-            metadata.set_title(Some(if !meta.title.is_empty() {
-                meta.title
-            } else {
-                remove_ext(name.as_ref())
-            }));
-            metadata.set_artist(if meta.artist.is_empty() {
-                None
-            } else {
-                Some(vec![meta.artist])
-            });
-            metadata.set_length(Some(mpris_server::Time::from_secs(
-                meta.time.length as i64,
-            )));
-            metadata.set_art_url(image_path);
-            metadata.set_trackid(Some(
-                mpris_server::zbus::zvariant::ObjectPath::from_static_str_unchecked("/n_music"),
-            ));
-
-            state.write().unwrap().metadata = metadata.clone();
-            if let Err(err) = server
-                .properties_changed([mpris_server::Property::Metadata(metadata)])
-                .await
-            {
-                eprintln!("error notifying mpris: {err}");
-            }
-        });
+    fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
+        self.metadata_loader.load(msg.path.clone(), ctx);
     }
 }
 
-/// The D-Bus handler: MPRIS commands become bus messages, MPRIS property
-/// reads come from the shared snapshot.
+impl Handle<Tagged<MetadataLoaded>> for MprisBridge {
+    fn handle(&mut self, msg: &Tagged<MetadataLoaded>, _ctx: &Ctx, _out: &mut Outbox) {
+        let Some(loaded) = self.metadata_loader.take(msg) else {
+            return;
+        };
+        let meta = loaded.metadata;
+        let mut metadata = mpris_server::Metadata::new();
+        metadata.set_title(Some(meta.title));
+        metadata.set_artist(if meta.artist.is_empty() {
+            None
+        } else {
+            Some(vec![meta.artist])
+        });
+        metadata.set_length(Some(mpris_server::Time::from_secs(meta.time.length as i64)));
+        metadata.set_art_url(
+            loaded
+                .cover
+                .as_ref()
+                .map(|file| format!("file://{}", file.path().display())),
+        );
+        metadata.set_trackid(Some(
+            mpris_server::zbus::zvariant::ObjectPath::from_static_str_unchecked("/n_music"),
+        ));
+        self.tmp = loaded.cover;
+        self.state.write().unwrap().metadata = metadata.clone();
+        self.notify(mpris_server::Property::Metadata(metadata));
+    }
+}
+
 pub struct MprisAdapter {
     writer: EventWriter,
     state: Arc<RwLock<MprisState>>,
@@ -173,8 +161,8 @@ pub struct MprisAdapter {
 
 use mpris_server::zbus::fdo;
 use mpris_server::{
-    zbus, LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface,
-    Time, TrackId, Volume,
+    zbus, LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
+    TrackId, Volume,
 };
 
 impl RootInterface for MprisAdapter {
@@ -291,7 +279,6 @@ impl PlayerInterface for MprisAdapter {
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
         let loop_status = match loop_status {
-            // defaults to playlist
             LoopStatus::None => n_audio::queue::LoopStatus::Playlist,
             LoopStatus::Track => n_audio::queue::LoopStatus::File,
             LoopStatus::Playlist => n_audio::queue::LoopStatus::Playlist,

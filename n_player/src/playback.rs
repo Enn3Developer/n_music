@@ -16,8 +16,6 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// Probes the track's container format off-thread (the one blocking part of
-/// starting playback) and reports it back through the bus.
 pub struct LoadTrackJob {
     pub path: PathBuf,
 }
@@ -26,34 +24,33 @@ job_emits!(LoadTrackJob => Tagged<TrackLoaded>);
 
 impl Job for LoadTrackJob {
     async fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
-        let track = match MusicTrack::new(self.path.to_string_lossy().to_string()) {
-            Ok(track) => track,
+        let result = tokio::task::spawn_blocking(move || {
+            MusicTrack::new(self.path.to_string_lossy().to_string())?.get_format()
+        })
+        .await;
+        let format = match result {
+            Ok(Ok(format)) => Some(format),
+            Ok(Err(err)) => {
+                eprintln!("error loading track: {err}");
+                None
+            }
             Err(err) => {
-                eprintln!("error happened: {err}");
-                return;
+                eprintln!("error loading track: {err}");
+                None
             }
         };
-        match tokio::task::spawn_blocking(move || track.get_format()).await {
-            Ok(Ok(format)) => {
-                writer.emit_tagged(tag, TrackLoaded(Mutex::new(Some(format))));
-            }
-            Ok(Err(err)) => eprintln!("error happened: {err}"),
-            Err(err) => eprintln!("error happened: {err}"),
-        }
+        writer.emit_tagged(tag, TrackLoaded(Mutex::new(format)));
     }
 }
 
-/// The only owner of QueuePlayer. Consumes playback commands, anchors state
-/// diffing on Tick and emits the *Changed stream everyone else mirrors.
-///
-/// Index and loop bookkeeping live here (not in QueuePlayer) because starting
-/// a track goes through LoadTrackJob instead of QueuePlayer's async play().
 pub struct PlaybackEngine {
     player: QueuePlayer,
     index: usize,
     loop_status: LoopStatus,
     current_time: TrackTime,
     load_job: Option<RunningJob>,
+    pending_pause: bool,
+    pending_seek: Option<f64>,
     last_playback: bool,
     last_volume: f64,
     last_index: usize,
@@ -70,6 +67,8 @@ impl PlaybackEngine {
             loop_status: LoopStatus::default(),
             current_time: TrackTime::default(),
             load_job: None,
+            pending_pause: false,
+            pending_seek: None,
             last_playback: false,
             last_volume: volume,
             last_index: usize::MAX - 1,
@@ -87,19 +86,21 @@ impl PlaybackEngine {
             return;
         }
         self.index = index % self.player.len();
+        self.pending_pause = false;
+        self.pending_seek = None;
+        self.current_time = TrackTime::default();
         if let Err(err) = self.player.end_current().block_on() {
             eprintln!("error happened: {err}");
         }
         if let Some(path) = self.player.get_path_for_file(self.index).block_on() {
-            // Storing the new job drops (aborts) a still-loading previous one,
-            // and its tag gates a late TrackLoaded from a superseded load.
             self.load_job = Some(ctx.jobs.spawn_oneshot(LoadTrackJob { path }));
         }
     }
 
-    /// `force` mirrors the old `play_next(true)`: advance even when looping a single file.
     fn advance(&mut self, force: bool, ctx: &Ctx) {
-        let index = if force || self.loop_status == LoopStatus::Playlist {
+        let index = if self.index >= self.player.len() {
+            0
+        } else if force || self.loop_status == LoopStatus::Playlist {
             self.index.wrapping_add(1)
         } else {
             self.index
@@ -108,7 +109,7 @@ impl PlaybackEngine {
     }
 
     fn previous(&mut self, ctx: &Ctx) {
-        if self.current_time.position > 3.0 {
+        if self.load_job.is_none() && self.current_time.position > 3.0 {
             if let Err(err) = self.player.seek_to(0, 0.0).block_on() {
                 eprintln!("error happened while asking to seek: {err}");
             }
@@ -122,8 +123,6 @@ impl PlaybackEngine {
         }
     }
 
-    /// Diff current state against the last emitted copy; the Tick handler calls
-    /// this unconditionally, command handlers call it for lower latency.
     fn diff_and_emit(&mut self, out: &mut Outbox) {
         let playback = self.playback();
         if playback != self.last_playback {
@@ -205,12 +204,17 @@ impl Handle<PlayPrevious> for PlaybackEngine {
 
 impl Handle<TogglePause> for PlaybackEngine {
     fn handle(&mut self, _msg: &TogglePause, ctx: &Ctx, out: &mut Outbox) {
-        if self.player.is_paused() {
-            self.player.unpause().block_on().unwrap();
+        if self.load_job.is_some() {
+            self.pending_pause = !self.pending_pause;
+        } else if self.player.is_paused() {
+            if let Err(err) = self.player.unpause().block_on() {
+                eprintln!("error resuming playback: {err}");
+            }
+        } else if self.player.is_playing() {
+            if let Err(err) = self.player.pause().block_on() {
+                eprintln!("error pausing playback: {err}");
+            }
         } else {
-            self.player.pause().block_on().unwrap();
-        }
-        if !self.player.is_playing() {
             self.advance(true, ctx);
         }
         self.diff_and_emit(out);
@@ -219,16 +223,23 @@ impl Handle<TogglePause> for PlaybackEngine {
 
 impl Handle<Pause> for PlaybackEngine {
     fn handle(&mut self, _msg: &Pause, _ctx: &Ctx, out: &mut Outbox) {
-        self.player.pause().block_on().unwrap();
+        if self.load_job.is_some() {
+            self.pending_pause = true;
+        } else if let Err(err) = self.player.pause().block_on() {
+            eprintln!("error pausing playback: {err}");
+        }
         self.diff_and_emit(out);
     }
 }
 
 impl Handle<Play> for PlaybackEngine {
     fn handle(&mut self, _msg: &Play, ctx: &Ctx, out: &mut Outbox) {
-        self.player.unpause().block_on().unwrap();
-        if !self.player.is_playing() {
+        if self.load_job.is_some() {
+            self.pending_pause = false;
+        } else if !self.player.is_playing() {
             self.advance(true, ctx);
+        } else if let Err(err) = self.player.unpause().block_on() {
+            eprintln!("error resuming playback: {err}");
         }
         self.diff_and_emit(out);
     }
@@ -240,6 +251,10 @@ impl Handle<Seek> for PlaybackEngine {
             Seek::Absolute(value) => *value,
             Seek::Relative(value) => self.current_time.position + value,
         };
+        if self.load_job.is_some() {
+            self.pending_seek = Some(seek);
+            return;
+        }
         if let Err(err) = self
             .player
             .seek_to(seek.trunc() as u64, seek.fract())
@@ -253,7 +268,9 @@ impl Handle<Seek> for PlaybackEngine {
 
 impl Handle<SetVolume> for PlaybackEngine {
     fn handle(&mut self, msg: &SetVolume, _ctx: &Ctx, out: &mut Outbox) {
-        self.player.set_volume(msg.0 as f32).block_on().unwrap();
+        if let Err(err) = self.player.set_volume(msg.0 as f32).block_on() {
+            eprintln!("error setting volume: {err}");
+        }
         self.diff_and_emit(out);
     }
 }
@@ -267,6 +284,9 @@ impl Handle<SetLoopStatus> for PlaybackEngine {
 
 impl Handle<QueueReplaced> for PlaybackEngine {
     fn handle(&mut self, msg: &QueueReplaced, _ctx: &Ctx, out: &mut Outbox) {
+        self.load_job = None;
+        self.pending_pause = false;
+        self.pending_seek = None;
         self.player.clear().block_on();
         self.player.set_path(msg.path.clone());
         self.player
@@ -284,10 +304,24 @@ impl Handle<Tagged<TrackLoaded>> for PlaybackEngine {
         let Some(loaded) = self.load_job.as_ref().and_then(|job| job.open(msg)) else {
             return;
         };
-        if let Some(format) = loaded.0.lock().unwrap().take() {
-            // Explicit deref: QueuePlayer's own async play() would shadow
-            // Player's synchronous play(format).
+        let format = loaded.0.lock().unwrap().take();
+        self.load_job = None;
+        if let Some(format) = format {
             self.player.deref_mut().play(format);
+            if self.pending_pause {
+                if let Err(err) = self.player.pause().block_on() {
+                    eprintln!("error pausing playback: {err}");
+                }
+            }
+            if let Some(seek) = self.pending_seek.take() {
+                if let Err(err) = self
+                    .player
+                    .seek_to(seek.trunc() as u64, seek.fract())
+                    .block_on()
+                {
+                    eprintln!("error seeking: {err}");
+                }
+            }
         }
         self.diff_and_emit(out);
     }

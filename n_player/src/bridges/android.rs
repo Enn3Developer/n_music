@@ -1,19 +1,13 @@
 use crate::messages::{
-    Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek, TogglePause,
-    TrackChanged,
+    Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek, TogglePause, TrackChanged,
 };
-use crate::services::image::get_image_squared;
+use crate::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
 use crate::{MediaCommand, MessageAndroidToRust, ANDROID_TX};
-use n_audio::music_track::MusicTrack;
-use n_audio::remove_ext;
-use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, Subscriber};
+use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, Subscriber, Tagged};
 use std::any::Any;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use zune_image::codecs::ImageFormat;
 
-/// Replaces Platform::tick()'s 250ms poll of ANDROID_TX with a push-based
-/// loop re-emitting media-session callbacks as bus messages.
 pub struct AndroidEventJob;
 
 impl Job for AndroidEventJob {
@@ -24,14 +18,10 @@ impl Job for AndroidEventJob {
                     MediaCommand::TogglePause => writer.emit(TogglePause),
                     MediaCommand::PlayNext => writer.emit(PlayNext),
                     MediaCommand::PlayPrevious => writer.emit(PlayPrevious),
-                    MediaCommand::SeekAbsolute(position) => {
-                        writer.emit(Seek::Absolute(position))
-                    }
+                    MediaCommand::SeekAbsolute(position) => writer.emit(Seek::Absolute(position)),
                     MediaCommand::Play => writer.emit(Play),
                 }
             } else {
-                // Not ours (directory/file dialog results): put it back for
-                // the Platform methods waiting on it.
                 let _ = ANDROID_TX.send(message);
                 tokio::task::yield_now().await;
             }
@@ -39,12 +29,11 @@ impl Job for AndroidEventJob {
     }
 }
 
-/// Consumes PlaybackEngine's *Changed stream and forwards it to the Android
-/// media notification over JNI. Not a Scene — it never touches the UI.
 pub struct AndroidBridge {
     jvm: Arc<jni::JavaVM>,
     callback: Arc<jni::objects::GlobalRef>,
-    tmp: Arc<NamedTempFile>,
+    tmp: Option<NamedTempFile>,
+    metadata_loader: MetadataLoader,
     last_position: f64,
 }
 
@@ -57,7 +46,8 @@ impl AndroidBridge {
         Self {
             jvm,
             callback,
-            tmp: Arc::new(NamedTempFile::new().unwrap()),
+            tmp: None,
+            metadata_loader: MetadataLoader::default(),
             last_position: 0.0,
         }
     }
@@ -71,6 +61,7 @@ impl Subscriber for AndroidBridge {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<PlaybackChanged>();
         reg.on::<TrackChanged>();
+        MetadataJob::subscribe(reg);
         reg.on::<PositionChanged>();
     }
 }
@@ -90,7 +81,6 @@ impl Handle<PlaybackChanged> for AndroidBridge {
 
 impl Handle<PositionChanged> for AndroidBridge {
     fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        // Same 0.5s threshold the old bus_server applied before notifying.
         if (msg.0.position - self.last_position).abs() > 0.5 {
             self.last_position = msg.0.position;
             let mut env = self.jvm.attach_current_thread().unwrap();
@@ -106,49 +96,38 @@ impl Handle<PositionChanged> for AndroidBridge {
 }
 
 impl Handle<TrackChanged> for AndroidBridge {
-    fn handle(&mut self, msg: &TrackChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        let path = msg.path.clone();
-        let name = msg.name.clone();
-        let jvm = self.jvm.clone();
-        let callback = self.callback.clone();
-        let tmp = self.tmp.clone();
-        tokio::spawn(async move {
-            let Ok(track) = MusicTrack::new(path.to_string_lossy().to_string()) else {
-                return;
-            };
-            let Ok(Ok(meta)) = tokio::task::spawn_blocking(move || track.get_meta()).await else {
-                return;
-            };
-            let image = get_image_squared(path, 0, 0).await;
-            let cover_path = image
-                .map(|image| {
-                    let _ = image.save_to(tmp.path(), ImageFormat::PNG);
-                    tmp.path().to_str().unwrap().to_string()
-                })
-                .unwrap_or_default();
+    fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
+        self.metadata_loader.load(msg.path.clone(), ctx);
+    }
+}
 
-            let title = if !meta.title.is_empty() {
-                meta.title
-            } else {
-                remove_ext(name.as_ref())
-            };
-
-            let mut env = jvm.attach_current_thread().unwrap();
-            let title = env.new_string(title).unwrap();
-            let artist = env.new_string(meta.artist).unwrap();
-            let cover_path = env.new_string(cover_path).unwrap();
-            env.call_method(
-                callback.as_ref(),
-                "changeNotification",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
-                &[
-                    (&title).into(),
-                    (&artist).into(),
-                    (&cover_path).into(),
-                    meta.time.length.into(),
-                ],
-            )
-            .unwrap();
-        });
+impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
+    fn handle(&mut self, msg: &Tagged<MetadataLoaded>, _ctx: &Ctx, _out: &mut Outbox) {
+        let Some(loaded) = self.metadata_loader.take(msg) else {
+            return;
+        };
+        let meta = loaded.metadata;
+        let cover_path = loaded
+            .cover
+            .as_ref()
+            .map(|file| file.path().to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.tmp = loaded.cover;
+        let mut env = self.jvm.attach_current_thread().unwrap();
+        let title = env.new_string(meta.title).unwrap();
+        let artist = env.new_string(meta.artist).unwrap();
+        let cover_path = env.new_string(cover_path).unwrap();
+        env.call_method(
+            self.callback.as_ref(),
+            "changeNotification",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
+            &[
+                (&title).into(),
+                (&artist).into(),
+                (&cover_path).into(),
+                meta.time.length.into(),
+            ],
+        )
+        .unwrap();
     }
 }
