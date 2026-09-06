@@ -1,13 +1,8 @@
 use crate::message::{Envelope, Message, Tagged};
-use std::time::Duration;
-
-pub struct Tick;
-
-impl Message for Tick {}
 
 pub enum Event {
     Bus(Envelope),
-    Tick,
+    Shutdown,
 }
 
 #[derive(Clone)]
@@ -16,6 +11,15 @@ pub struct EventWriter {
 }
 
 impl EventWriter {
+    pub fn channel() -> (Self, EventReceiver) {
+        let (tx, rx) = flume::unbounded();
+        (Self::new(tx), rx)
+    }
+
+    pub fn shutdown(&self) {
+        let _ = self.tx.send(Event::Shutdown);
+    }
+
     pub fn new(tx: flume::Sender<Event>) -> Self {
         Self { tx }
     }
@@ -29,14 +33,4 @@ impl EventWriter {
     }
 }
 
-pub fn spawn_ticker(writer: EventWriter, interval: Duration) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(interval);
-        loop {
-            interval.tick().await;
-            if writer.tx.send_async(Event::Tick).await.is_err() {
-                break;
-            }
-        }
-    });
-}
+pub type EventReceiver = flume::Receiver<Event>;

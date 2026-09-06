@@ -27,15 +27,6 @@ async fn ask_music_dir_desktop() -> PathBuf {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-async fn ask_file_desktop() -> Vec<PathBuf> {
-    if let Some(path) = rfd::AsyncFileDialog::new().pick_files().await {
-        path.into_iter().map(|fd| PathBuf::from(fd)).collect()
-    } else {
-        vec![]
-    }
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn set_clipboard_text_desktop(text: String) {
     use arboard::Clipboard;
     let mut clipboard = Clipboard::new().unwrap();
@@ -53,9 +44,7 @@ pub trait Platform: Send + Sync {
     /// Ask underlying platform to get the app directory
     async fn internal_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for the music dir
-    async fn ask_music_dir(&self) -> PathBuf;
-    /// Ask underlying platform to ask user for files
-    async fn ask_file(&self) -> Vec<PathBuf>;
+    async fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter);
     #[cfg(target_os = "android")]
     fn jni_handles(
         &self,
@@ -90,12 +79,11 @@ impl Platform for LinuxPlatform {
         internal_dir_desktop().await
     }
 
-    async fn ask_music_dir(&self) -> PathBuf {
-        ask_music_dir_desktop().await
-    }
-
-    async fn ask_file(&self) -> Vec<PathBuf> {
-        ask_file_desktop().await
+    async fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {
+        writer.emit_tagged(
+            tag,
+            crate::jobs::settings::DirectoryChosen(ask_music_dir_desktop().await),
+        );
     }
 }
 
@@ -117,12 +105,11 @@ impl Platform for DesktopPlatform {
         internal_dir_desktop().await
     }
 
-    async fn ask_music_dir(&self) -> PathBuf {
-        ask_music_dir_desktop().await
-    }
-
-    async fn ask_file(&self) -> Vec<PathBuf> {
-        ask_file_desktop().await
+    async fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {
+        writer.emit_tagged(
+            tag,
+            crate::jobs::settings::DirectoryChosen(ask_music_dir_desktop().await),
+        );
     }
 }
 
@@ -137,14 +124,10 @@ pub struct AndroidPlatform {
 impl AndroidPlatform {
     pub fn new(
         app: slint::android::AndroidApp,
-        jvm: jni::JavaVM,
-        callback: jni::objects::GlobalRef,
+        jvm: std::sync::Arc<jni::JavaVM>,
+        callback: std::sync::Arc<jni::objects::GlobalRef>,
     ) -> Self {
-        Self {
-            app,
-            jvm: std::sync::Arc::new(jvm),
-            callback: std::sync::Arc::new(callback),
-        }
+        Self { app, jvm, callback }
     }
 }
 
@@ -187,33 +170,15 @@ impl Platform for AndroidPlatform {
         path
     }
 
-    async fn ask_music_dir(&self) -> PathBuf {
+    async fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
         let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(self.callback.as_ref(), "askDirectory", "()V", &[])
-            .unwrap();
-        while let Ok(message) = crate::ANDROID_TX.recv() {
-            if let crate::MessageAndroidToRust::Directory(path) = message {
-                println!("got directory from user");
-                return PathBuf::from(path);
-            } else {
-                crate::ANDROID_TX.send(message).unwrap();
-            }
-        }
-        PathBuf::new()
-    }
-
-    async fn ask_file(&self) -> Vec<PathBuf> {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(self.callback.as_ref(), "askFile", "()V", &[])
-            .unwrap();
-        while let Ok(message) = crate::ANDROID_TX.recv() {
-            if let crate::MessageAndroidToRust::File(path) = message {
-                return vec![PathBuf::from(path)];
-            } else {
-                crate::ANDROID_TX.send(message).unwrap();
-            }
-        }
-        vec![]
+        env.call_method(
+            self.callback.as_ref(),
+            "askDirectory",
+            "(J)V",
+            &[jni::objects::JValue::Long(tag as i64)],
+        )
+        .unwrap();
     }
 
     fn jni_handles(

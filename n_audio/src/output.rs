@@ -21,6 +21,7 @@ pub trait AudioOutput {
         -> Result<()>;
     fn pending_frames(&self) -> usize;
     fn discard_queued(&mut self);
+    fn set_paused(&mut self, paused: bool) -> Result<()>;
 }
 
 #[allow(dead_code)]
@@ -33,6 +34,14 @@ pub enum AudioOutputError {
 }
 
 pub type Result<T> = result::Result<T, AudioOutputError>;
+
+impl std::fmt::Display for AudioOutputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for AudioOutputError {}
 
 pub struct CpalAudioOutput;
 
@@ -104,7 +113,7 @@ where
     sample_rate: u32,
     ring_buf_producer: Producer<T>,
     sample_buf: SampleBuffer<T>,
-    _stream: cpal::Stream,
+    stream: cpal::Stream,
     queue_access: Arc<Mutex<Instant>>,
 }
 
@@ -157,11 +166,13 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
                     let mut device_buffered_until = callback_queue_access.lock().unwrap();
                     let written = ring_buf_consumer.read(data).unwrap_or(0);
                     let timestamp = info.timestamp();
-                    *device_buffered_until = Instant::now()
-                        + timestamp.playback.duration_since(timestamp.callback)
-                        + WallDuration::from_secs_f64(
-                            data.len() as f64 / num_channels as f64 / spec.rate as f64,
-                        );
+                    if written > 0 {
+                        *device_buffered_until = Instant::now()
+                            + timestamp.playback.duration_since(timestamp.callback)
+                            + WallDuration::from_secs_f64(
+                                written as f64 / num_channels as f64 / spec.rate as f64,
+                            );
+                    }
                     written
                 };
                 // Mute any remaining samples.
@@ -194,7 +205,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             sample_rate: spec.rate,
             ring_buf_producer,
             sample_buf,
-            _stream: stream,
+            stream,
             queue_access,
         }))
     }
@@ -217,13 +228,14 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
         self.sample_buf.copy_interleaved_ref(decoded);
 
         // Write all the interleaved samples to the ring buffer.
-        let mut samples: Vec<T> = self.sample_buf.samples()[skip_frames * self.channels..].to_vec();
+        let samples = &mut self.sample_buf.samples_mut()[skip_frames * self.channels..];
         for sample in samples.iter_mut() {
             *sample = sample.mul_amp(volume.to_sample());
         }
 
-        while let Some(written) = self.ring_buf_producer.write_blocking(samples.as_slice()) {
-            samples = samples[written..].to_vec();
+        let mut remaining = &samples[..];
+        while let Some(written) = self.ring_buf_producer.write_blocking(remaining) {
+            remaining = &remaining[written..];
         }
 
         Ok(())
@@ -236,6 +248,15 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
             .as_secs_f64()
             * self.sample_rate as f64;
         self.ring_buf.count() / self.channels + device_frames.ceil() as usize
+    }
+
+    fn set_paused(&mut self, paused: bool) -> Result<()> {
+        if paused {
+            self.stream.pause()
+        } else {
+            self.stream.play()
+        }
+        .map_err(|_| AudioOutputError::PlayStreamError)
     }
 
     fn discard_queued(&mut self) {

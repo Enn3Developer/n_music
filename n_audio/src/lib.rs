@@ -5,7 +5,6 @@ use crate::dca::DcaReader;
 use crate::opus::OpusDecoder;
 use crate::raw::RawReader;
 use once_cell::sync::Lazy;
-use symphonia::core::units::Time;
 use symphonia::default::{register_enabled_codecs, register_enabled_formats};
 use symphonia_core::probe::Probe;
 
@@ -36,18 +35,6 @@ pub static PROBE: Lazy<Probe> = Lazy::new(|| {
 #[derive(Debug)]
 pub enum NError {
     NoTrack,
-}
-
-/// Messages sent inside the `Player`
-pub enum Message {
-    Play,
-    Pause,
-    End,
-    Exit,
-    Seek(Time, u64),
-    Time(TrackTime, u64),
-    Volume(f32),
-    PlaybackSpeed(f32),
 }
 
 /// Returns the file name without its extension

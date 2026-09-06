@@ -31,11 +31,17 @@ impl Job for MetadataJob {
             writer.emit_tagged(tag, MetadataLoaded(Mutex::new(None)));
             return;
         };
-        let cover = get_image_squared(self.path, 0, 0).await.and_then(|image| {
-            let file = NamedTempFile::new().ok()?;
-            image.save_to(file.path(), ImageFormat::PNG).ok()?;
-            Some(file)
-        });
+        let image = get_image_squared(self.path, 0, 0).await;
+        let cover = tokio::task::spawn_blocking(move || {
+            image.and_then(|image| {
+                let file = NamedTempFile::new().ok()?;
+                image.save_to(file.path(), ImageFormat::PNG).ok()?;
+                Some(file)
+            })
+        })
+        .await
+        .ok()
+        .flatten();
         writer.emit_tagged(
             tag,
             MetadataLoaded(Mutex::new(Some(TrackMetadata { metadata, cover }))),

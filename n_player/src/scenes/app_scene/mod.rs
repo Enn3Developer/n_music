@@ -3,17 +3,13 @@ mod playback_mirror;
 
 use crate::jobs::scan::ScanJob;
 use crate::messages::{
-    PlaybackChanged, PositionChanged, ScanRequested, SearchChanged, TrackChanged, VolumeChanged,
+    PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged, VolumeChanged,
 };
-use crate::platform::Platform;
-use crate::settings::Settings;
 use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Registrar, RunningJob, Scene, Subscriber, UiPatch};
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::any::Any;
 use std::mem;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub enum Changes {
     Tracks(Vec<TrackData>),
@@ -22,8 +18,6 @@ pub enum Changes {
 
 pub struct AppScene {
     window: Weak<MainWindow>,
-    settings: Arc<RwLock<Settings>>,
-    platform: Arc<dyn Platform>,
     scan_job: Option<RunningJob>,
     playing_index: i32,
     position: f64,
@@ -39,18 +33,14 @@ pub struct AppScene {
     search_dirty: bool,
     save_y: bool,
     progress_dirty: bool,
+    dirty: bool,
+    visible: bool,
 }
 
 impl AppScene {
-    pub fn new(
-        window: Weak<MainWindow>,
-        settings: Arc<RwLock<Settings>>,
-        platform: Arc<dyn Platform>,
-    ) -> Self {
+    pub fn new(window: Weak<MainWindow>, volume: f64) -> Self {
         Self {
             window,
-            settings,
-            platform,
             scan_job: None,
             playing_index: 0,
             position: 0.0,
@@ -58,7 +48,7 @@ impl AppScene {
             position_str: String::from("00:00"),
             length: 0.0,
             playback: false,
-            volume: 1.0,
+            volume,
             track_count: 0,
             loaded: 0,
             changes: vec![],
@@ -66,6 +56,8 @@ impl AppScene {
             search_dirty: false,
             save_y: false,
             progress_dirty: false,
+            dirty: true,
+            visible: true,
         }
     }
 }
@@ -80,7 +72,9 @@ impl Subscriber for AppScene {
         reg.on::<TrackChanged>();
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
-        reg.on::<ScanRequested>();
+        reg.on::<ScanLibrary>();
+        reg.on::<crate::messages::Shutdown>();
+        reg.on::<crate::messages::AppVisibilityChanged>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);
     }
@@ -88,6 +82,12 @@ impl Subscriber for AppScene {
 
 impl Scene for AppScene {
     fn sync(&mut self, _ctx: &Ctx) -> Option<UiPatch> {
+        if !self.visible
+            || !(self.dirty || self.progress_dirty || self.search_dirty || !self.changes.is_empty())
+        {
+            return None;
+        }
+        self.dirty = false;
         let playing = self.playing_index;
         let position = self.position;
         let seek_revision = self.seek_revision;
@@ -180,5 +180,23 @@ impl Scene for AppScene {
                 }
             }
         }))
+    }
+}
+
+impl n_event_bus::Handle<crate::messages::Shutdown> for AppScene {
+    fn handle(&mut self, _: &crate::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
+        self.scan_job = None;
+        self.visible = false;
+    }
+}
+impl n_event_bus::Handle<crate::messages::AppVisibilityChanged> for AppScene {
+    fn handle(
+        &mut self,
+        msg: &crate::messages::AppVisibilityChanged,
+        _: &Ctx,
+        _: &mut n_event_bus::Outbox,
+    ) {
+        self.visible = msg.0;
+        self.dirty = true;
     }
 }

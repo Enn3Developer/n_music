@@ -1,17 +1,16 @@
 use super::{AppScene, Changes};
 use crate::jobs::scan::ScanJob;
 use crate::messages::{
-    QueueReplaced, ScanFinished, ScanRequested, SearchChanged, TrackMetadataLoaded,
-    TracksEnumerated,
+    QueueReplaced, ScanFinished, ScanLibrary, SearchChanged, TrackMetadataLoaded, TracksEnumerated,
 };
 use crate::TrackData;
 use n_event_bus::{Ctx, Handle, Outbox, Tagged};
 
-impl Handle<ScanRequested> for AppScene {
-    fn handle(&mut self, msg: &ScanRequested, ctx: &Ctx, _out: &mut Outbox) {
+impl Handle<ScanLibrary> for AppScene {
+    fn handle(&mut self, msg: &ScanLibrary, ctx: &Ctx, _out: &mut Outbox) {
         self.scan_job = Some(ctx.jobs.spawn_stream(ScanJob {
-            settings: self.settings.clone(),
-            platform: self.platform.clone(),
+            settings: msg.settings.clone(),
+            internal_dir: msg.internal_dir.clone(),
             check_cache: msg.check_cache,
         }));
         self.loaded = 0;
@@ -53,16 +52,13 @@ impl Handle<Tagged<ScanFinished>> for AppScene {
         let Some(finished) = self.scan_job.as_ref().and_then(|job| job.open(msg)) else {
             return;
         };
+        self.loaded = self.track_count;
         self.progress_dirty = true;
         if let Some(tracks) = finished.tracks.clone() {
-            let settings = self.settings.clone();
-            let platform = self.platform.clone();
-            tokio::spawn(async move {
-                let internal_dir = platform.internal_dir().await;
-                let mut settings = settings.write().await;
-                settings.add_tracks(internal_dir.clone(), tracks).await;
-                settings.save_timestamp().await;
-                settings.save(internal_dir).await;
+            _out.emit(crate::messages::CacheReady {
+                path: finished.path.clone(),
+                timestamp: finished.timestamp,
+                tracks,
             });
         }
     }

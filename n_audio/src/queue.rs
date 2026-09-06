@@ -1,5 +1,4 @@
-use crate::music_track::MusicTrack;
-use crate::player::Player;
+use crate::player::{PlaybackTask, Player};
 use crate::{remove_ext, strip_absolute_path};
 use rand::prelude::SliceRandom;
 use rand::rng;
@@ -72,7 +71,7 @@ impl QueuePlayer {
         self.loop_status.clone()
     }
 
-    pub async fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
+    pub fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
         Some(PathBuf::from(&self.path).join(self.queue.get(i)?.as_ref()))
     }
 
@@ -87,11 +86,11 @@ impl QueuePlayer {
     }
 
     #[inline]
-    pub async fn add<P: Into<Arc<str>>>(&mut self, path: P) {
+    pub fn add<P: Into<Arc<str>>>(&mut self, path: P) {
         self.queue.push(path.into());
     }
 
-    pub async fn add_all<P: Into<String>>(&mut self, paths: impl IntoIterator<Item = P>) {
+    pub fn add_all<P: Into<String>>(&mut self, paths: impl IntoIterator<Item = P>) {
         self.queue.append(
             &mut paths
                 .into_iter()
@@ -106,7 +105,8 @@ impl QueuePlayer {
     }
 
     #[inline]
-    pub async fn clear(&mut self) {
+    pub fn clear(&mut self) {
+        self.player.end_current();
         self.queue.clear();
         self.index = usize::MAX - 1;
     }
@@ -116,49 +116,55 @@ impl QueuePlayer {
         self.queue.shuffle(&mut rng());
     }
 
-    pub async fn current_track_name(&self) -> Option<Arc<str>> {
+    pub fn current_track_name(&self) -> Option<Arc<str>> {
         self.queue.get(self.index).map(|t| t.clone())
     }
 
-    pub async fn play(&mut self) -> io::Result<()> {
-        let track = MusicTrack::new(
-            self.get_path_for_file(self.index)
-                .await
-                .ok_or(io::Error::from(ErrorKind::NotFound))?
-                .to_str()
-                .unwrap(),
-        )?;
-        let format = tokio::task::spawn_blocking(move || track.get_format()).await??;
+    pub fn prepare_index(&mut self, index: usize) -> io::Result<PlaybackTask> {
+        if self.queue.is_empty() {
+            return Err(ErrorKind::NotFound.into());
+        }
+        self.index = index % self.len();
+        let path = self
+            .get_path_for_file(self.index)
+            .ok_or(ErrorKind::NotFound)?;
+        Ok(self.player.prepare_path(path))
+    }
 
-        self.player.play(format);
+    pub fn prepare_next(&mut self, ignore_loop: bool) -> io::Result<PlaybackTask> {
+        let index = if self.index >= self.len() {
+            0
+        } else if ignore_loop || self.loop_status == LoopStatus::Playlist {
+            self.index + 1
+        } else {
+            self.index
+        };
+        self.prepare_index(index)
+    }
+
+    pub fn prepare_previous(&mut self) -> io::Result<PlaybackTask> {
+        let index = if self.index == 0 || self.index >= self.len() {
+            self.len().saturating_sub(1)
+        } else {
+            self.index - 1
+        };
+        self.prepare_index(index)
+    }
+
+    pub fn play(&mut self) -> io::Result<()> {
+        self.play_index(self.index)
+    }
+    pub fn play_index(&mut self, index: usize) -> io::Result<()> {
+        self.prepare_index(index)?.spawn();
         Ok(())
     }
-
-    pub async fn play_index(&mut self, index: usize) -> io::Result<()> {
-        self.index = index;
-
-        self.play().await
+    pub fn play_next(&mut self, ignore_loop: bool) -> io::Result<()> {
+        self.prepare_next(ignore_loop)?.spawn();
+        Ok(())
     }
-
-    pub async fn play_next(&mut self, ignore_loop: bool) -> io::Result<()> {
-        if ignore_loop || self.loop_status == LoopStatus::Playlist {
-            self.index += 1;
-
-            if self.index >= self.len() {
-                self.index = 0;
-            }
-        }
-        self.play().await
-    }
-
-    pub async fn play_previous(&mut self) -> io::Result<()> {
-        if self.index == 0 {
-            self.index = self.len();
-        }
-
-        self.index -= 1;
-
-        self.play().await
+    pub fn play_previous(&mut self) -> io::Result<()> {
+        self.prepare_previous()?.spawn();
+        Ok(())
     }
 
     pub fn get_index_from_track_name(&self, name: &str) -> Option<usize> {

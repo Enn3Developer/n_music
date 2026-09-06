@@ -1,5 +1,4 @@
 use crate::messages::{ScanFinished, TrackMetadataLoaded, TracksEnumerated};
-use crate::platform::Platform;
 use crate::services::image::get_image_squared;
 use crate::settings::Settings;
 use crate::{FileTrack, TrackData};
@@ -10,15 +9,14 @@ use rand::prelude::SliceRandom;
 use rand::rng;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Semaphore};
 use tokio::task::JoinSet;
 
-async fn enumerate_audio_files(path: &str) -> Vec<String> {
+fn enumerate_audio_files(path: &str) -> Vec<String> {
     let mut names = vec![];
 
-    if let Ok(mut dir) = tokio::fs::read_dir(path).await {
-        while let Ok(Some(file)) = dir.next_entry().await {
-            if !file.file_type().await.map(|t| t.is_file()).unwrap_or(false) {
+    if let Ok(dir) = std::fs::read_dir(path) {
+        for file in dir.flatten() {
+            if !file.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 continue;
             }
             let Ok(Some(mime)) = infer::get_from_path(file.path()) else {
@@ -39,8 +37,8 @@ async fn enumerate_audio_files(path: &str) -> Vec<String> {
 }
 
 pub struct ScanJob {
-    pub settings: Arc<RwLock<Settings>>,
-    pub platform: Arc<dyn Platform>,
+    pub settings: Settings,
+    pub internal_dir: PathBuf,
     pub check_cache: bool,
 }
 
@@ -48,19 +46,30 @@ job_emits!(ScanJob => Tagged<TracksEnumerated>, Tagged<TrackMetadataLoaded>, Tag
 
 impl Job for ScanJob {
     async fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
-        let path = self.settings.read().await.path.clone();
-        let names = enumerate_audio_files(&path).await;
+        let path = self.settings.path.clone();
+        let scan_path = path.clone();
+        let names = tokio::task::spawn_blocking(move || enumerate_audio_files(&scan_path))
+            .await
+            .unwrap_or_default();
         let len = names.len();
 
-        let internal_dir = self.platform.internal_dir().await;
+        let internal_dir = self.internal_dir;
+        let timestamp = self.settings.timestamp().await.ok();
         let (check_timestamp, file_tracks) = {
-            let settings = self.settings.read().await;
+            let settings = &self.settings;
             (
                 settings.check_timestamp().await,
                 settings.read_tracks(internal_dir.clone()).await,
             )
         };
-        let is_cached = check_timestamp && !file_tracks.is_empty() && self.check_cache;
+        let is_cached = check_timestamp
+            && !file_tracks.is_empty()
+            && self.check_cache
+            && names.iter().all(|name| {
+                file_tracks
+                    .iter()
+                    .any(|track| track.path == remove_ext(name))
+            });
         println!("check timestamp: {check_timestamp}; is cached: {is_cached}");
 
         let mut tracks = Vec::with_capacity(len);
@@ -97,27 +106,35 @@ impl Job for ScanJob {
         );
 
         if is_cached {
-            writer.emit_tagged(tag, ScanFinished { tracks: None });
+            writer.emit_tagged(
+                tag,
+                ScanFinished {
+                    tracks: None,
+                    path,
+                    timestamp,
+                },
+            );
             return;
         }
 
-        self.settings
-            .read()
-            .await
-            .clear_tracks(internal_dir.clone())
-            .await;
-
-        let semaphore = Arc::new(Semaphore::new(num_cpus::get() * 4));
+        let concurrency = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .min(4);
+        let mut file_tracks = Vec::with_capacity(len);
         let mut tasks = JoinSet::new();
         for (index, name) in names.into_iter().enumerate() {
             if token.as_ref().map(JobToken::is_cancelled).unwrap_or(false) {
                 return;
             }
-            let semaphore = semaphore.clone();
+            if tasks.len() >= concurrency {
+                if let Some(Ok(Some(track))) = tasks.join_next().await {
+                    file_tracks.push(track);
+                }
+            }
             let writer = writer.clone();
             let track_path = Path::new(&path).join(&name);
             tasks.spawn(async move {
-                let _permit = semaphore.acquire_owned().await.ok()?;
                 let file_track = load_metadata(index, name, track_path).await?;
                 writer.emit_tagged(
                     tag,
@@ -130,7 +147,6 @@ impl Job for ScanJob {
             });
         }
 
-        let mut file_tracks = Vec::with_capacity(len);
         while let Some(result) = tasks.join_next().await {
             if let Ok(Some(file_track)) = result {
                 file_tracks.push(file_track);
@@ -139,7 +155,9 @@ impl Job for ScanJob {
         writer.emit_tagged(
             tag,
             ScanFinished {
-                tracks: Some(file_tracks),
+                tracks: Some(Arc::new(file_tracks)),
+                path,
+                timestamp,
             },
         );
     }

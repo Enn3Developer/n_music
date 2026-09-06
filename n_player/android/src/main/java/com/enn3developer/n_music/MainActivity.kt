@@ -24,6 +24,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.SystemClock
 import android.os.Looper
 import android.widget.Toast
 import androidx.annotation.OptIn
@@ -56,7 +57,6 @@ class MainActivity : NativeActivity() {
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "NMusic"
         const val ASK_DIRECTORY = 0
-        const val ASK_FILE = 1
         const val REQUEST_PERMISSION_CODE = 1
         const val ACTIONS = PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO
     }
@@ -74,9 +74,10 @@ class MainActivity : NativeActivity() {
     // Called when app is open first time
     private external fun start(activity: MainActivity)
 
-    private external fun gotDirectory(directory: String)
+    private external fun gotDirectory(directory: String, requestId: Long)
+    private external fun visibilityChanged(visible: Boolean)
+    private var directoryRequest: Long? = null
 
-    private external fun gotFile(file: String)
 
     private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(p0: Context?, p1: Intent?) {
@@ -90,21 +91,15 @@ class MainActivity : NativeActivity() {
     }
 
     @Suppress("unused")
-    private fun askDirectory() {
-        println("asking directory")
-        //Check if permission has been granted
-        if (!checkPermissions()) {
-            requestPermissions()
-        } else {
-            askDirectoryWithPermission()
+    private fun askDirectory(requestId: Long) {
+        runOnUiThread {
+            directoryRequest = requestId
+            if (!checkPermissions()) {
+                requestPermissions()
+            } else {
+                askDirectoryWithPermission()
+            }
         }
-    }
-
-    @Suppress("unused")
-    private fun askFile() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-        }
-        startActivityForResult(intent, ASK_FILE)
     }
 
     @Suppress("unused")
@@ -131,7 +126,7 @@ class MainActivity : NativeActivity() {
         mediaSession = MediaSession(applicationContext, TAG)
         val handler = Handler(Looper.getMainLooper())
         handler.post {
-            mediaSession?.setCallback(MediaCallback(mediaSession!!, this))
+            mediaSession?.setCallback(MediaCallback())
         }
         val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
@@ -144,8 +139,8 @@ class MainActivity : NativeActivity() {
             NotificationManager.IMPORTANCE_LOW
         )
         playback?.setState(
-            PlaybackState.STATE_PLAYING,
-            0L, 1.0f
+            PlaybackState.STATE_PAUSED,
+            0L, 0.0f
         )
         mediaSession?.setPlaybackState(playback?.build())
         NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
@@ -156,27 +151,13 @@ class MainActivity : NativeActivity() {
         }
     }
 
-    private fun changePlaybackStatus(status: Boolean) {
-        val playbackState = mediaSession?.controller?.playbackState
-        playbackState?.position?.let {
-            playback?.setState(
-                if (status)
-                    PlaybackState.STATE_PLAYING
-                else PlaybackState.STATE_PAUSED,
-                it, 1.0f
-            )
-        }
-        mediaSession?.setPlaybackState(playback?.build())
-    }
-
-    private fun changePlaybackSeek(pos: Double) {
-        mediaSession?.controller?.playbackState?.state?.let {
-            playback?.setState(
-                it,
-                pos.toLong() * 1000,
-                1.0f
-            )
-        }
+    private fun changePlaybackState(playing: Boolean, position: Double) {
+        playback?.setState(
+            if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+            (position * 1000.0).toLong(),
+            if (playing) 1.0f else 0.0f,
+            SystemClock.elapsedRealtime()
+        )
         mediaSession?.setPlaybackState(playback?.build())
     }
 
@@ -215,10 +196,8 @@ class MainActivity : NativeActivity() {
                 }
             }
             .build()
-        mediaSession?.controller?.playbackState?.state?.let { playback?.setState(it, 0L, 1.0f) }
         mediaSession?.apply {
             setMetadata(metadata)
-            setPlaybackState(playback?.build())
         }
         notification?.apply {
             setContentTitle(title)
@@ -253,31 +232,31 @@ class MainActivity : NativeActivity() {
         super.onDestroy()
     }
 
+    override fun onResume() {
+        super.onResume()
+        visibilityChanged(true)
+    }
+
+    override fun onPause() {
+        visibilityChanged(false)
+        super.onPause()
+    }
+
+    private fun finishDirectory(path: String) {
+        directoryRequest?.let { gotDirectory(path, it) }
+        directoryRequest = null
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (resultCode == RESULT_OK) {
-            println("activity result ok")
-            if (requestCode == ASK_DIRECTORY) {
-                println("activity ask directory")
-                data?.data?.also { uri ->
-                    println("got data")
-                    if (uri.path != null) {
-                        println("path is not null")
-                        val contentResolver = applicationContext.contentResolver
-                        val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        contentResolver.takePersistableUriPermission(uri, takeFlags)
-                        val path = uri.path!!.replace("/tree/primary:", "/storage/emulated/0/")
-                        Toast.makeText(applicationContext, "Loading music...", Toast.LENGTH_LONG)
-                            .show()
-                        gotDirectory(path)
-                    }
-                }
-            } else if (requestCode == ASK_FILE) {
-                data?.data?.also { uri ->
-                    val path = uri.path!!.replace("/tree/primary:", "/storage/emulated/0/")
-                    gotFile(path)
-                }
-            }
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != ASK_DIRECTORY) return
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri?.path == null) {
+            finishDirectory("")
+            return
         }
+        applicationContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        finishDirectory(uri.path!!.replace("/tree/primary:", "/storage/emulated/0/"))
     }
 
     override fun onRequestPermissionsResult(
@@ -291,12 +270,13 @@ class MainActivity : NativeActivity() {
                 if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     Toast.makeText(applicationContext, "Permission granted", Toast.LENGTH_SHORT)
                         .show()
-                    askDirectoryWithPermission()
+                    if (directoryRequest != null) askDirectoryWithPermission()
                 } else {
+                    finishDirectory("")
                     Toast.makeText(applicationContext, "Permission denied", Toast.LENGTH_SHORT)
                         .show()
                 }
-            }
+            } else { finishDirectory("") }
         }
     }
 

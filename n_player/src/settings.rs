@@ -3,10 +3,10 @@ use crate::{FileTrack, Theme, WindowSize};
 use bitcode::{Decode, Encode};
 use std::fs::File;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::{BufReader, BufWriter, Cursor};
+use std::io::{BufWriter, Cursor};
 use std::path::PathBuf;
 
-#[derive(Debug, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode)]
 pub struct Settings {
     pub path: String,
     pub volume: f64,
@@ -78,12 +78,6 @@ impl Settings {
         false
     }
 
-    pub async fn save_timestamp(&mut self) {
-        if let Ok(timestamp) = self.timestamp().await {
-            self.timestamp = Some(timestamp);
-        }
-    }
-
     pub async fn timestamp(&self) -> std::io::Result<u64> {
         let mut hasher = DefaultHasher::default();
         tokio::fs::metadata(&self.path)
@@ -93,37 +87,24 @@ impl Settings {
         Ok(hasher.finish())
     }
 
-    pub async fn clear_tracks(&self, internal_dir: PathBuf) {
-        let tracks_file = internal_dir.join("tracks");
-        if tracks_file.exists() {
-            tokio::fs::remove_file(&tracks_file).await.unwrap();
-        }
-    }
-
-    pub async fn add_tracks(&self, internal_dir: PathBuf, tracks: Vec<FileTrack>) {
-        let tracks_file = internal_dir.join("tracks");
-        let data = bitcode::encode(&tracks);
-        tokio::task::spawn_blocking(move || {
-            if let Ok(file) = File::create(tracks_file) {
-                zstd::stream::copy_encode(BufReader::new(Cursor::new(data)), file, 9).unwrap();
-            }
-        })
-        .await
-        .unwrap();
-    }
-
     pub async fn read_tracks(&self, internal_dir: PathBuf) -> Vec<FileTrack> {
         let tracks_file = internal_dir.join("tracks");
 
-        tokio::task::spawn_blocking(|| {
+        let path = self.path.clone();
+        let timestamp = self.timestamp;
+        tokio::task::spawn_blocking(move || {
             if tracks_file.exists() && tracks_file.is_file() {
                 let mut data = vec![];
                 if let Ok(_) = zstd::stream::copy_decode(
                     File::open(tracks_file).unwrap(),
                     BufWriter::new(Cursor::new(&mut data)),
                 ) {
-                    if let Ok(tracks) = bitcode::decode::<Vec<FileTrack>>(&data) {
-                        tracks
+                    if let Ok(cache) = bitcode::decode::<TrackCache>(&data) {
+                        if cache.path == path && cache.timestamp == timestamp {
+                            cache.tracks
+                        } else {
+                            vec![]
+                        }
                     } else {
                         eprintln!("not encoded");
                         vec![]
@@ -140,28 +121,6 @@ impl Settings {
         .await
         .unwrap()
     }
-
-    pub async fn save(&self, internal_dir: PathBuf) {
-        self.save_and_compress(internal_dir).await
-    }
-
-    async fn save_and_compress(&self, config_dir: PathBuf) {
-        let storage_file = config_dir.join("config");
-        if storage_file.exists() {
-            tokio::fs::remove_file(&storage_file).await.unwrap();
-        }
-        let data = bitcode::encode(self);
-        tokio::task::spawn_blocking(|| {
-            zstd::stream::copy_encode(
-                BufReader::new(Cursor::new(data)),
-                File::create(storage_file).unwrap(),
-                9,
-            )
-            .unwrap();
-        })
-        .await
-        .unwrap();
-    }
 }
 
 impl Default for Settings {
@@ -176,4 +135,11 @@ impl Default for Settings {
             timestamp: None,
         }
     }
+}
+
+#[derive(Encode, Decode)]
+pub struct TrackCache {
+    pub path: String,
+    pub timestamp: Option<u64>,
+    pub tracks: Vec<FileTrack>,
 }

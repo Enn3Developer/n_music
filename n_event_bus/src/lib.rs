@@ -11,7 +11,7 @@ pub mod ui;
 
 pub use app::App;
 pub use bus::{Bus, SubscriberId};
-pub use event::{spawn_ticker, Event, EventWriter, Tick};
+pub use event::{Event, EventReceiver, EventWriter};
 pub use job::{Job, JobControl, JobHandle, JobToken, RunningJob};
 pub use message::{Envelope, Message, Tagged};
 pub use outbox::Outbox;

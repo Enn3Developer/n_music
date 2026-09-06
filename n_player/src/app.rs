@@ -4,17 +4,12 @@ use crate::messages::{
     Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize,
 };
 use crate::platform::Platform;
-use crate::playback::PlaybackEngine;
+use crate::runner::Runner;
 use crate::scenes::{AppScene, SettingsScene};
 use crate::{AppData, Localization, MainWindow, SettingsData, WindowSize};
-use n_audio::queue::QueuePlayer;
-use n_event_bus::{spawn_ticker, App, EventWriter, JobControl, UiPatch, UiThread};
+use n_event_bus::{App, EventWriter, JobControl, UiPatch, UiThread};
 use slint::ComponentHandle;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
-
-pub type Settings = Arc<RwLock<crate::settings::Settings>>;
 
 struct SlintUi;
 
@@ -29,8 +24,19 @@ impl UiThread for SlintUi {
 }
 
 pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings, platform: P) {
+    let (writer, rx) = EventWriter::channel();
+    run_app_with_events(settings, platform, writer, rx, Vec::new()).await;
+}
+
+pub async fn run_app_with_events<P: Platform + 'static>(
+    settings: crate::settings::Settings,
+    platform: P,
+    writer: EventWriter,
+    rx: n_event_bus::EventReceiver,
+    pending: Vec<n_event_bus::Event>,
+) {
     let platform: Arc<dyn Platform> = Arc::new(platform);
-    let settings: Settings = Arc::new(RwLock::new(settings));
+    let internal_dir = platform.internal_dir().await;
 
     let p = platform.clone();
     let default_panic = std::panic::take_hook();
@@ -44,73 +50,55 @@ pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings,
     let _ = slint::set_xdg_app_id("n_music");
     let main_window = MainWindow::new().unwrap();
 
-    let (tx, rx) = flume::unbounded();
-    let writer = EventWriter::new(tx);
-
-    setup_data(
-        settings.clone(),
-        platform.clone(),
-        &main_window,
-        writer.clone(),
-    )
-    .await;
+    setup_data(&settings, &main_window, writer.clone()).await;
 
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone(), Box::new(SlintUi));
 
-    let path = settings.read().await.path.clone();
-    app.register_subscriber(PlaybackEngine::new(QueuePlayer::new(path)));
-    app.register_scene(AppScene::new(
-        main_window.as_weak(),
-        settings.clone(),
-        platform.clone(),
-    ));
+    let path = settings.path.clone();
+    app.register_subscriber(Runner::new(path, settings.volume));
+    app.register_scene(AppScene::new(main_window.as_weak(), settings.volume));
     app.register_scene(SettingsScene::new(
         main_window.as_weak(),
         settings.clone(),
         platform.clone(),
-        writer.clone(),
+        internal_dir,
     ));
     #[cfg(target_os = "linux")]
-    if let Some(bridge) = crate::bridges::mpris::MprisBridge::new(writer.clone()).await {
+    if let Some(bridge) =
+        crate::bridges::mpris::MprisBridge::new(writer.clone(), settings.volume).await
+    {
         app.register_subscriber(bridge);
     }
     #[cfg(target_os = "android")]
     {
         let (jvm, callback) = platform.jni_handles();
         app.register_subscriber(crate::bridges::android::AndroidBridge::new(jvm, callback));
-        jobs.spawn_detached(crate::bridges::android::AndroidEventJob);
     }
 
-    spawn_ticker(writer.clone(), Duration::from_millis(50));
+    for event in pending {
+        if let n_event_bus::Event::Bus(envelope) = event {
+            app.enqueue(envelope);
+        }
+    }
     let bus_task = tokio::spawn(async move { app.run_loop(rx).await });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
-    bus_task.abort();
-
-    if settings.read().await.save_window_size {
-        let width = main_window.get_last_width() as usize;
-        let height = main_window.get_last_height() as usize;
-        settings.write().await.window_size = WindowSize { width, height };
-    } else {
-        settings.write().await.window_size = WindowSize::default();
-    }
-    settings
-        .read()
-        .await
-        .save(platform.internal_dir().await)
-        .await;
+    writer.emit(crate::messages::Shutdown(WindowSize {
+        width: main_window.get_last_width() as usize,
+        height: main_window.get_last_height() as usize,
+    }));
+    let _ = bus_task.await;
 }
 
 async fn setup_data(
-    settings: Settings,
-    platform: Arc<dyn Platform>,
+    settings: &crate::settings::Settings,
     main_window: &MainWindow,
     writer: EventWriter,
 ) {
     localize(
-        settings.read().await.locale.clone(),
+        settings.locale.clone(),
         main_window.global::<Localization>(),
     );
 
@@ -122,7 +110,6 @@ async fn setup_data(
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
 
     {
-        let settings = settings.read().await;
         settings_data.set_color_scheme(settings.theme.into());
         settings_data.set_theme(i32::from(settings.theme));
         settings_data.set_width(settings.window_size.width as f32);
@@ -131,10 +118,8 @@ async fn setup_data(
         settings_data.set_current_path(settings.path.clone().into());
     }
 
-    app_data.on_open_link(move |link| {
-        let platform = platform.clone();
-        slint::spawn_local(async move { platform.open_link(link.into()).await }).unwrap();
-    });
+    let w = writer.clone();
+    app_data.on_open_link(move |link| w.emit(crate::messages::OpenLink(link.into())));
 
     let w = writer.clone();
     main_window

@@ -1,8 +1,4 @@
 use bitcode::{Decode, Encode};
-#[cfg(target_os = "android")]
-use flume::{Receiver, RecvError, SendError, Sender, TryRecvError};
-#[cfg(target_os = "android")]
-use once_cell::sync::Lazy;
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 
@@ -18,7 +14,7 @@ pub mod jobs;
 pub mod localization;
 pub mod messages;
 pub mod platform;
-pub mod playback;
+pub mod runner;
 pub mod scenes;
 pub mod services;
 pub mod settings;
@@ -27,91 +23,58 @@ unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
 
 #[cfg(target_os = "android")]
-pub enum MediaCommand {
-    TogglePause,
-    PlayNext,
-    PlayPrevious,
-    SeekAbsolute(f64),
-    Play,
-}
-
+pub static ANDROID_BUS: std::sync::LazyLock<(
+    n_event_bus::EventWriter,
+    std::sync::Mutex<Option<n_event_bus::EventReceiver>>,
+)> = std::sync::LazyLock::new(|| {
+    let (writer, receiver) = n_event_bus::EventWriter::channel();
+    (writer, std::sync::Mutex::new(Some(receiver)))
+});
 #[cfg(target_os = "android")]
-pub struct SenderReceiver<M> {
-    tx: Sender<M>,
-    rx: Receiver<M>,
-}
-
+pub struct AndroidStarted(
+    pub std::sync::Arc<jni::JavaVM>,
+    pub std::sync::Arc<jni::objects::GlobalRef>,
+);
 #[cfg(target_os = "android")]
-impl<M> SenderReceiver<M> {
-    pub fn new() -> Self {
-        let (tx, rx) = flume::unbounded();
-        Self { tx, rx }
-    }
-
-    pub fn send(&self, message: M) -> Result<(), SendError<M>> {
-        self.tx.send(message)
-    }
-
-    pub fn recv(&self) -> Result<M, RecvError> {
-        self.rx.recv()
-    }
-
-    pub fn try_recv(&self) -> Result<M, TryRecvError> {
-        self.rx.try_recv()
-    }
-
-    pub async fn send_async(&self, message: M) -> Result<(), SendError<M>> {
-        self.tx.send_async(message).await
-    }
-
-    pub async fn recv_async(&self) -> Result<M, RecvError> {
-        self.rx.recv_async().await
-    }
-}
-
-#[cfg(target_os = "android")]
-pub static ANDROID_RX: Lazy<SenderReceiver<MessageRustToAndroid>> =
-    Lazy::new(|| SenderReceiver::new());
-#[cfg(target_os = "android")]
-pub static ANDROID_TX: Lazy<SenderReceiver<MessageAndroidToRust>> =
-    Lazy::new(|| SenderReceiver::new());
-
-#[cfg(target_os = "android")]
-pub enum MessageAndroidToRust {
-    Callback(MediaCommand),
-    Directory(String),
-    File(String),
-    Start(jni::JavaVM, jni::objects::GlobalRef),
-}
-#[cfg(target_os = "android")]
-pub enum MessageRustToAndroid {
-    AskDirectory,
-    OpenLink(String),
-}
+impl n_event_bus::Message for AndroidStarted {}
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
-    use crate::app::run_app;
-    use crate::platform::AndroidPlatform;
-    use crate::settings::Settings;
-
     slint::android::init(app.clone()).unwrap();
-
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            let platform = if let Ok(MessageAndroidToRust::Start(jvm, callback)) =
-                ANDROID_TX.recv_async().await
-            {
-                AndroidPlatform::new(app, jvm, callback)
-            } else {
-                unreachable!()
-            };
-
-            run_app(Settings::read_saved(&platform).await, platform).await;
+            let rx = ANDROID_BUS
+                .1
+                .lock()
+                .unwrap()
+                .take()
+                .expect("Android bus already running");
+            let mut pending = Vec::new();
+            while let Ok(event) = rx.recv_async().await {
+                if let n_event_bus::Event::Bus(envelope) = &event {
+                    if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
+                        let platform = platform::AndroidPlatform::new(
+                            app,
+                            started.0.clone(),
+                            started.1.clone(),
+                        );
+                        app::run_app_with_events(
+                            settings::Settings::read_saved(&platform).await,
+                            platform,
+                            ANDROID_BUS.0.clone(),
+                            rx,
+                            pending,
+                        )
+                        .await;
+                        return;
+                    }
+                }
+                pending.push(event);
+            }
         });
 }
 
@@ -237,93 +200,80 @@ impl From<FileTrack> for TrackData {
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory<'local>(
     mut env: jni::JNIEnv<'local>,
-    _class: jni::objects::JClass<'local>,
+    _: jni::objects::JClass<'local>,
     string: jni::objects::JString<'local>,
+    tag: jni::sys::jlong,
 ) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::Directory(
-            env.get_string(&string)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        ))
-        .unwrap()
+    if let Ok(path) = env.get_string(&string) {
+        ANDROID_BUS.0.emit_tagged(
+            tag as u64,
+            jobs::settings::DirectoryChosen(std::path::PathBuf::from(
+                path.to_string_lossy().into_owned(),
+            )),
+        );
+    }
 }
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotFile<'local>(
-    mut env: jni::JNIEnv<'local>,
-    _class: jni::objects::JClass<'local>,
-    string: jni::objects::JString<'local>,
-) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::File(
-            env.get_string(&string)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        ))
-        .unwrap()
-}
-
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_start<'local>(
     env: jni::JNIEnv<'local>,
-    _class: jni::objects::JClass<'local>,
+    _: jni::objects::JClass<'local>,
     callback: jni::objects::JObject<'local>,
 ) {
-    let jvm = env.get_java_vm().unwrap();
-    let callback = env.new_global_ref(callback).unwrap();
-    ANDROID_TX
-        .send(MessageAndroidToRust::Start(jvm, callback))
-        .unwrap()
+    ANDROID_BUS.0.emit(AndroidStarted(
+        std::sync::Arc::new(env.get_java_vm().unwrap()),
+        std::sync::Arc::new(env.new_global_ref(callback).unwrap()),
+    ));
 }
-
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_TogglePause<'local>(
-    _class: jni::objects::JClass<'local>,
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_visibilityChanged<'local>(
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
+    visible: jni::sys::jboolean,
 ) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::Callback(MediaCommand::TogglePause))
-        .unwrap()
+    ANDROID_BUS
+        .0
+        .emit(messages::AppVisibilityChanged(visible != 0));
 }
-
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Pause<'local>(
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
+) {
+    ANDROID_BUS.0.emit(messages::Pause);
+}
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Play<'local>(
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
+) {
+    ANDROID_BUS.0.emit(messages::Play);
+}
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'local>(
-    _class: jni::objects::JClass<'local>,
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::Callback(MediaCommand::PlayNext))
-        .unwrap()
+    ANDROID_BUS.0.emit(messages::PlayNext);
 }
-
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPrevious<'local>(
-    _class: jni::objects::JClass<'local>,
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::Callback(MediaCommand::PlayPrevious))
-        .unwrap()
+    ANDROID_BUS.0.emit(messages::PlayPrevious);
 }
-
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local>(
-    _class: jni::objects::JClass<'local>,
+    _: jni::JNIEnv<'local>,
+    _: jni::objects::JClass<'local>,
     seek: jni::sys::jdouble,
 ) {
-    ANDROID_TX
-        .send(MessageAndroidToRust::Callback(MediaCommand::SeekAbsolute(
-            seek,
-        )))
-        .unwrap();
-    ANDROID_TX
-        .send(MessageAndroidToRust::Callback(MediaCommand::Play))
-        .unwrap()
+    ANDROID_BUS.0.emit(messages::Seek::Absolute(seek));
 }

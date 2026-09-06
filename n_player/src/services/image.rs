@@ -17,7 +17,8 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
     width: usize,
     height: usize,
 ) -> Option<Image> {
-    if let Ok(image) = tokio::task::spawn_blocking(move || get_image(path)).await {
+    tokio::task::spawn_blocking(move || {
+        let image = get_image(path);
         if !image.is_empty() {
             let zune_image =
                 if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
@@ -43,11 +44,11 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                     let is_height = h < w;
                     let x = if is_height { difference / 2 } else { 0 };
                     let y = if !is_height { difference / 2 } else { 0 };
-                    tokio::task::block_in_place(|| {
+                    {
                         Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
-                    });
+                    }
                 }
-                tokio::task::block_in_place(|| {
+                {
                     rimage::operations::resize::Resize::new(
                         if width == 0 { size } else { width },
                         if height == 0 { size } else { height },
@@ -55,7 +56,7 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                     )
                     .execute(&mut zune_image)
                     .unwrap()
-                });
+                }
                 Some(zune_image)
             } else {
                 None
@@ -63,9 +64,10 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
         } else {
             None
         }
-    } else {
-        None
-    }
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {

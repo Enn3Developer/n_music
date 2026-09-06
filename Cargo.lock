@@ -3594,7 +3594,6 @@ dependencies = [
  "audiopus",
  "cpal",
  "dasp",
- "flume",
  "multitag",
  "once_cell",
  "rand 0.10.1",
@@ -3619,20 +3618,16 @@ name = "n_player"
 version = "2.0.0-alpha.7"
 dependencies = [
  "arboard",
- "async-channel",
  "async-trait",
  "bitcode",
  "directories",
- "flume",
  "infer",
- "jni 0.22.4",
+ "jni 0.21.1",
  "mpris-server",
  "multitag",
  "n_audio",
  "n_event_bus",
  "ndk-context",
- "num_cpus",
- "once_cell",
  "open",
  "paste",
  "pollster",
@@ -3831,16 +3826,6 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
-]
-
-[[package]]
-name = "num_cpus"
-version = "1.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
-dependencies = [
- "hermit-abi 0.5.2",
- "libc",
 ]
 
 [[package]]

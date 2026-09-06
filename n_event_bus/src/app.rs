@@ -1,5 +1,5 @@
 use crate::bus::{Bus, SubscriberId};
-use crate::event::{Event, Tick};
+use crate::event::Event;
 use crate::job::JobControl;
 use crate::message::Envelope;
 use crate::scene::Scene;
@@ -111,11 +111,12 @@ impl App {
         }
     }
 
-    fn enqueue_event(&mut self, event: Event) {
+    fn enqueue_event(&mut self, event: Event) -> bool {
         match event {
             Event::Bus(envelope) => self.bus.enqueue(envelope),
-            Event::Tick => self.bus.enqueue(Envelope::new(Tick)),
+            Event::Shutdown => return true,
         }
+        false
     }
 
     pub async fn run_loop(&mut self, rx: flume::Receiver<Event>) {
@@ -123,12 +124,15 @@ impl App {
         self.flush_ui();
 
         while let Ok(event) = rx.recv_async().await {
-            self.enqueue_event(event);
+            let mut shutdown = self.enqueue_event(event);
             while let Ok(event) = rx.try_recv() {
-                self.enqueue_event(event);
+                shutdown |= self.enqueue_event(event);
             }
             self.dispatch_all();
             self.flush_ui();
+            if shutdown {
+                break;
+            }
         }
     }
 }
