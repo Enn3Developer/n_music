@@ -28,7 +28,7 @@ serde_json = "1.0"
 n_audio = { path = "../n_audio" }
 n_event_bus = { path = "../n_event_bus" }
 rand = "0.10"
-symphonia = { version = "0.5", default-features = false }
+symphonia = { version = "0.6.1", default-features = false }
 multitag = "0.4"
 zune-image = { version = "0.5", default-features = false, features = ["png", "jpeg", "jpeg-xl", "bmp", "threads"] }
 zune-imageprocs = "0.5.1"

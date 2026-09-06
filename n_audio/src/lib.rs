@@ -1,12 +1,12 @@
 use std::path::Path;
-use symphonia::core::codecs::CodecRegistry;
+use symphonia::core::codecs::registry::CodecRegistry;
 
 use crate::dca::DcaReader;
 use crate::opus::OpusDecoder;
 use crate::raw::RawReader;
 use once_cell::sync::Lazy;
 use symphonia::default::{register_enabled_codecs, register_enabled_formats};
-use symphonia_core::probe::Probe;
+use symphonia_core::formats::probe::Probe;
 
 mod dca;
 pub mod music_track;
@@ -20,14 +20,14 @@ mod raw;
 pub static CODEC_REGISTRY: Lazy<CodecRegistry> = Lazy::new(|| {
     let mut registry = CodecRegistry::new();
     register_enabled_codecs(&mut registry);
-    registry.register_all::<OpusDecoder>();
+    registry.register_audio_decoder::<OpusDecoder>();
     registry
 });
 
 pub static PROBE: Lazy<Probe> = Lazy::new(|| {
     let mut probe = Probe::default();
-    probe.register_all::<DcaReader>();
-    probe.register_all::<RawReader>();
+    probe.register_format::<DcaReader>();
+    probe.register_format::<RawReader>();
     register_enabled_formats(&mut probe);
     probe
 });

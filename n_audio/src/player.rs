@@ -2,8 +2,8 @@ use crate::{output, TrackTime, CODEC_REGISTRY};
 use std::io;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::units::Time;
 
 use crate::music_track::MusicTrack;
@@ -286,7 +286,10 @@ impl PlaybackControl {
         let mut state = self.0.state.lock().unwrap();
         state.revision = state.revision.wrapping_add(1);
         let revision = state.revision;
-        state.seek = Some((Time::from(seconds), revision));
+        state.seek = Some((
+            Time::try_from_secs_f64(seconds).unwrap_or_default(),
+            revision,
+        ));
         state.version = state.version.wrapping_add(1);
         self.0.changed.notify_all();
         revision
@@ -389,21 +392,27 @@ fn run(
     }
     let mut completion = Completion(control.clone(), false);
     let track = format
-        .default_track()
+        .default_track(TrackType::Audio)
         .ok_or_else(|| io::Error::other("No audio track"))?;
     let track_id = track.id;
     let time_base = track
-        .codec_params
         .time_base
         .ok_or_else(|| io::Error::other("No audio time base"))?;
-    let duration = track.codec_params.n_frames.unwrap_or(0) + track.codec_params.start_ts;
-    let length = time_base.calc_time(duration);
-    let length = length.seconds as f64 + length.frac;
+    let length = track
+        .duration
+        .and_then(|duration| time_base.calc_duration(duration))
+        .map(|time| time.as_secs_f64())
+        .unwrap_or(0.0);
+    let params = track
+        .codec_params
+        .as_ref()
+        .and_then(|params| params.audio())
+        .ok_or_else(|| io::Error::other("No audio codec parameters"))?;
     let mut decoder = CODEC_REGISTRY
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(params, &AudioDecoderOptions::default())
         .map_err(io::Error::other)?;
     let mut output: Option<Box<dyn output::AudioOutput>> = None;
-    let mut output_spec: Option<symphonia::core::audio::SignalSpec> = None;
+    let mut output_spec: Option<symphonia::core::audio::AudioSpec> = None;
     let mut output_capacity = 0;
     let mut paused = control.is_paused();
     let mut version = u64::MAX;
@@ -455,8 +464,10 @@ fn run(
                         output.discard_queued();
                     }
                     seek_target = Some(seeked.required_ts);
-                    let position = time_base.calc_time(seeked.required_ts);
-                    position_floor = position.seconds as f64 + position.frac;
+                    let position = time_base
+                        .calc_time(seeked.required_ts)
+                        .ok_or_else(|| io::Error::other("Seek time out of range"))?;
+                    position_floor = position.as_secs_f64();
                     time.position = position_floor;
                     draining = false;
                 }
@@ -483,12 +494,12 @@ fn run(
             emit(PlaybackEvent::Paused(false));
         }
         if draining {
-            if let (Some(output), Some(spec)) = (&output, output_spec) {
+            if let (Some(output), Some(spec)) = (&output, &output_spec) {
                 let pending = output.pending_frames();
                 if pending > 0 {
                     control.wait(
                         version,
-                        Duration::from_secs_f64(pending as f64 / spec.rate as f64),
+                        Duration::from_secs_f64(pending as f64 / spec.rate() as f64),
                     );
                     continue;
                 }
@@ -496,16 +507,14 @@ fn run(
             break;
         }
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(symphonia::core::errors::Error::IoError(err))
-                if err.kind() == io::ErrorKind::UnexpectedEof =>
-            {
+            Ok(Some(packet)) => packet,
+            Ok(None) => {
                 draining = true;
                 continue;
             }
             Err(err) => return Err(io::Error::other(err)),
         };
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
         while !format.metadata().is_latest() {
@@ -516,10 +525,13 @@ fn run(
             Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
             Err(err) => return Err(io::Error::other(err)),
         };
+        let packet_start = packet.pts.saturating_add(packet.trim_start);
         let skip_frames = match seek_target {
-            Some(target) if packet.ts() < target => {
-                let skip = time_base.calc_time(target - packet.ts());
-                ((skip.seconds as f64 + skip.frac) * decoded.spec().rate as f64).round() as usize
+            Some(target) if packet_start < target => {
+                let skip = time_base
+                    .calc_duration(target.abs_delta(packet_start))
+                    .ok_or_else(|| io::Error::other("Seek duration out of range"))?;
+                (skip.as_secs_f64() * decoded.spec().rate() as f64).round() as usize
             }
             _ => 0,
         };
@@ -528,12 +540,14 @@ fn run(
         }
         seek_target = None;
         let frames = decoded.frames();
-        let source_rate = decoded.spec().rate;
-        let mut spec = *decoded.spec();
-        spec.rate = (spec.rate as f32 * controls.speed).round() as u32;
-        let capacity = decoded.capacity() as u64;
-        if output_spec != Some(spec) || output_capacity < capacity {
-            output = Some(output::try_open(spec, capacity).map_err(io::Error::other)?);
+        let source_rate = decoded.spec().rate();
+        let spec = symphonia::core::audio::AudioSpec::new(
+            (source_rate as f32 * controls.speed).round() as u32,
+            decoded.spec().channels().clone(),
+        );
+        let capacity = decoded.capacity();
+        if output_spec.as_ref() != Some(&spec) || output_capacity < capacity {
+            output = Some(output::try_open(spec.clone(), capacity).map_err(io::Error::other)?);
             output_spec = Some(spec);
             output_capacity = capacity;
         }
@@ -546,11 +560,12 @@ fn run(
             output
                 .write(decoded, output_volume, skip_frames)
                 .map_err(io::Error::other)?;
-            let start = time_base.calc_time(packet.ts());
-            time.position =
-                (start.seconds as f64 + start.frac + frames as f64 / source_rate as f64
-                    - output.pending_frames() as f64 / source_rate as f64)
-                    .max(position_floor);
+            let start = time_base
+                .calc_time(packet_start)
+                .ok_or_else(|| io::Error::other("Packet time out of range"))?;
+            time.position = (start.as_secs_f64() + frames as f64 / source_rate as f64
+                - output.pending_frames() as f64 / source_rate as f64)
+                .max(position_floor);
             control.publish(time, revision);
             if force_report
                 || progress_interval.is_some_and(|interval| last_report.elapsed() >= interval)

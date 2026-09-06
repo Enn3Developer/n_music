@@ -12,13 +12,15 @@ use rb::*;
 use std::result;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as WallDuration, Instant};
-use symphonia::core::audio::{AudioBufferRef, RawSample, SampleBuffer, SignalSpec};
-use symphonia::core::conv::ConvertibleSample;
-use symphonia::core::units::Duration;
+use symphonia::core::audio::{conv::ConvertibleSample, AudioSpec, GenericAudioBufferRef};
 
 pub trait AudioOutput {
-    fn write(&mut self, decoded: AudioBufferRef<'_>, volume: f32, skip_frames: usize)
-        -> Result<()>;
+    fn write(
+        &mut self,
+        decoded: GenericAudioBufferRef<'_>,
+        volume: f32,
+        skip_frames: usize,
+    ) -> Result<()>;
     fn pending_frames(&self) -> usize;
     fn discard_queued(&mut self);
     fn set_paused(&mut self, paused: bool) -> Result<()>;
@@ -45,7 +47,7 @@ impl std::error::Error for AudioOutputError {}
 
 pub struct CpalAudioOutput;
 
-trait AudioOutputSample: Sample + ConvertibleSample + RawSample + Send + 'static {}
+trait AudioOutputSample: Sample + ConvertibleSample + Send + 'static {}
 
 impl AudioOutputSample for f32 {}
 
@@ -56,7 +58,7 @@ impl AudioOutputSample for i16 {}
 impl AudioOutputSample for u16 {}
 
 impl CpalAudioOutput {
-    pub fn try_open(spec: SignalSpec, duration: Duration) -> Result<Box<dyn AudioOutput>> {
+    pub fn try_open(spec: AudioSpec, capacity: usize) -> Result<Box<dyn AudioOutput>> {
         // Get default host.
         let host = cpal::default_host();
 
@@ -83,16 +85,16 @@ impl CpalAudioOutput {
         // Select proper playback routine based on sample format.
         match config.sample_format() {
             cpal::SampleFormat::F32 => {
-                CpalAudioOutputImpl::<f32>::try_open(spec, duration, &device)
+                CpalAudioOutputImpl::<f32>::try_open(spec, capacity, &device)
             }
             cpal::SampleFormat::I32 => {
-                CpalAudioOutputImpl::<i32>::try_open(spec, duration, &device)
+                CpalAudioOutputImpl::<i32>::try_open(spec, capacity, &device)
             }
             cpal::SampleFormat::I16 => {
-                CpalAudioOutputImpl::<i16>::try_open(spec, duration, &device)
+                CpalAudioOutputImpl::<i16>::try_open(spec, capacity, &device)
             }
             cpal::SampleFormat::U16 => {
-                CpalAudioOutputImpl::<u16>::try_open(spec, duration, &device)
+                CpalAudioOutputImpl::<u16>::try_open(spec, capacity, &device)
             }
             _ => {
                 unimplemented!(
@@ -112,20 +114,20 @@ where
     channels: usize,
     sample_rate: u32,
     ring_buf_producer: Producer<T>,
-    sample_buf: SampleBuffer<T>,
+    sample_buf: Vec<T>,
     stream: cpal::Stream,
     queue_access: Arc<Mutex<Instant>>,
 }
 
 impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
     pub fn try_open(
-        spec: SignalSpec,
-        duration: Duration,
+        spec: AudioSpec,
+        capacity: usize,
         device: &cpal::Device,
     ) -> Result<Box<dyn AudioOutput>> {
-        let num_channels = spec.channels.count();
+        let num_channels = spec.channels().count();
 
-        let requested_frames = (spec.rate / 100).max(1);
+        let requested_frames = (spec.rate() / 100).max(1);
         let buffer_size = device
             .supported_output_configs()
             .ok()
@@ -134,8 +136,8 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
                     .filter(|config| {
                         config.channels() as usize == num_channels
                             && config.sample_format() == <T as cpal::SizedSample>::FORMAT
-                            && config.min_sample_rate() <= spec.rate
-                            && config.max_sample_rate() >= spec.rate
+                            && config.min_sample_rate() <= spec.rate()
+                            && config.max_sample_rate() >= spec.rate()
                     })
                     .find_map(|config| match config.buffer_size() {
                         cpal::SupportedBufferSize::Range { min, max } => {
@@ -147,16 +149,17 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             .unwrap_or(cpal::BufferSize::Default);
         let config = cpal::StreamConfig {
             channels: num_channels as cpal::ChannelCount,
-            sample_rate: SampleRate::from(spec.rate),
+            sample_rate: SampleRate::from(spec.rate()),
             buffer_size,
         };
-        let ring_len = (spec.rate as usize / 20).max(1) * num_channels;
+        let ring_len = (spec.rate() as usize / 20).max(1) * num_channels;
 
         let ring_buf = SpscRb::new(ring_len);
         let (ring_buf_producer, ring_buf_consumer) = (ring_buf.producer(), ring_buf.consumer());
 
         let queue_access = Arc::new(Mutex::new(Instant::now()));
         let callback_queue_access = queue_access.clone();
+        let sample_rate = spec.rate();
         let stream_result = device.build_output_stream(
             config,
             move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
@@ -170,7 +173,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
                         *device_buffered_until = Instant::now()
                             + timestamp.playback.duration_since(timestamp.callback)
                             + WallDuration::from_secs_f64(
-                                written as f64 / num_channels as f64 / spec.rate as f64,
+                                written as f64 / num_channels as f64 / sample_rate as f64,
                             );
                     }
                     written
@@ -197,12 +200,12 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             return Err(AudioOutputError::PlayStreamError);
         }
 
-        let sample_buf = SampleBuffer::<T>::new(duration, spec);
+        let sample_buf = Vec::with_capacity(capacity * num_channels);
 
         Ok(Box::new(CpalAudioOutputImpl {
             ring_buf,
             channels: num_channels,
-            sample_rate: spec.rate,
+            sample_rate: spec.rate(),
             ring_buf_producer,
             sample_buf,
             stream,
@@ -214,7 +217,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
 impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
     fn write(
         &mut self,
-        decoded: AudioBufferRef<'_>,
+        decoded: GenericAudioBufferRef<'_>,
         volume: f32,
         skip_frames: usize,
     ) -> Result<()> {
@@ -225,10 +228,10 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
 
         // Audio samples must be interleaved for cpal. Interleave the samples in the audio
         // buffer into the sample buffer.
-        self.sample_buf.copy_interleaved_ref(decoded);
+        decoded.copy_to_vec_interleaved(&mut self.sample_buf);
 
         // Write all the interleaved samples to the ring buffer.
-        let samples = &mut self.sample_buf.samples_mut()[skip_frames * self.channels..];
+        let samples = &mut self.sample_buf[skip_frames * self.channels..];
         for sample in samples.iter_mut() {
             *sample = sample.mul_amp(volume.to_sample());
         }
@@ -265,6 +268,6 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
     }
 }
 
-pub fn try_open(spec: SignalSpec, duration: Duration) -> Result<Box<dyn AudioOutput>> {
-    CpalAudioOutput::try_open(spec, duration)
+pub fn try_open(spec: AudioSpec, capacity: usize) -> Result<Box<dyn AudioOutput>> {
+    CpalAudioOutput::try_open(spec, capacity)
 }

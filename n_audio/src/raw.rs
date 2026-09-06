@@ -1,30 +1,49 @@
 use std::io::{Seek, SeekFrom};
 use symphonia::core::{
-    audio::Channels,
-    codecs::{CodecParameters, CODEC_TYPE_PCM_F32LE},
-    errors::{self as symph_err, Result as SymphResult, SeekErrorKind},
+    audio::layouts,
+    codecs::{
+        audio::{well_known::CODEC_ID_PCM_F32LE, AudioCodecParameters},
+        CodecParameters,
+    },
+    common::FourCc,
+    errors::{self as symph_err, Error as SymphError, Result as SymphResult, SeekErrorKind},
     formats::prelude::*,
-    io::{MediaSource, MediaSourceStream, ReadBytes, SeekBuffered},
+    formats::probe::{ProbeFormatData, ProbeableFormat, Score, Scoreable},
+    io::{MediaSource, MediaSourceStream, ReadBytes, ScopedStream, SeekBuffered},
     meta::{Metadata as SymphMetadata, MetadataLog},
-    probe::{Descriptor, Instantiate, QueryDescriptor},
-    units::TimeStamp,
+    packet::Packet,
+    units::{Duration, TimeBase, Timestamp},
 };
 
 // Original code from the Songbird project
 
-impl QueryDescriptor for RawReader {
-    fn query() -> &'static [Descriptor] {
+const FORMAT_INFO: FormatInfo = FormatInfo {
+    format: FormatId::new(FourCc::new(*b"SBRW")),
+    short_name: "raw",
+    long_name: "Raw arbitrary-length f32 audio container.",
+};
+
+impl Scoreable for RawReader<'_> {
+    fn score(_source: ScopedStream<&mut MediaSourceStream<'_>>) -> SymphResult<Score> {
+        Ok(Score::Supported(255))
+    }
+}
+
+impl<'s> ProbeableFormat<'s> for RawReader<'_> {
+    fn try_probe_new(
+        source: MediaSourceStream<'s>,
+        options: FormatOptions,
+    ) -> SymphResult<Box<dyn FormatReader + 's>> {
+        Ok(Box::new(RawReader::try_new(source, options)?))
+    }
+
+    fn probe_data() -> &'static [ProbeFormatData] {
         &[symphonia_core::support_format!(
-            "raw",
-            "Raw arbitrary-length f32 audio container.",
+            FORMAT_INFO,
             &["rawf32"],
             &[],
             &[b"SbirdRaw"]
         )]
-    }
-
-    fn score(_context: &[u8]) -> u8 {
-        255
     }
 }
 
@@ -36,16 +55,17 @@ impl QueryDescriptor for RawReader {
 /// * the channel count, as a little-endian `u32`.
 ///
 /// The remainder of the file is interleaved little-endian `f32` samples.
-pub struct RawReader {
-    source: MediaSourceStream,
+pub struct RawReader<'s> {
+    source: MediaSourceStream<'s>,
+    media_info: MediaInfo,
     track: Track,
     meta: MetadataLog,
-    curr_ts: TimeStamp,
-    max_ts: Option<TimeStamp>,
+    curr_ts: Timestamp,
+    max_ts: Option<Timestamp>,
 }
 
-impl FormatReader for RawReader {
-    fn try_new(mut source: MediaSourceStream, _options: &FormatOptions) -> SymphResult<Self> {
+impl<'s> RawReader<'s> {
+    fn try_new(mut source: MediaSourceStream<'s>, options: FormatOptions) -> SymphResult<Self> {
         let mut magic = [0u8; 8];
         ReadBytes::read_buf_exact(&mut source, &mut magic[..])?;
 
@@ -56,44 +76,57 @@ impl FormatReader for RawReader {
 
         let sample_rate = source.read_u32()?;
         let n_chans = source.read_u32()?;
+        if sample_rate < 50 {
+            return symph_err::decode_error("rawf32: invalid sample rate");
+        }
 
         let chans = match n_chans {
-            1 => Channels::FRONT_LEFT,
-            2 => Channels::FRONT_LEFT | Channels::FRONT_RIGHT,
+            1 => layouts::CHANNEL_LAYOUT_MONO,
+            2 => layouts::CHANNEL_LAYOUT_STEREO,
             _ => {
                 return symph_err::decode_error(
                     "rawf32: channel layout is not stereo or mono for fmt_pcm",
-                )
+                );
             }
         };
 
-        let mut codec_params = CodecParameters::new();
+        let mut codec_params = AudioCodecParameters::new();
 
         codec_params
-            .for_codec(CODEC_TYPE_PCM_F32LE)
+            .for_codec(CODEC_ID_PCM_F32LE)
             .with_bits_per_coded_sample((std::mem::size_of::<f32>() as u32) * 8)
             .with_bits_per_sample((std::mem::size_of::<f32>() as u32) * 8)
             .with_sample_rate(sample_rate)
-            .with_time_base(TimeBase::new(1, sample_rate))
-            .with_sample_format(symphonia_core::sample::SampleFormat::F32)
+            .with_sample_format(symphonia_core::audio::sample::SampleFormat::F32)
             .with_max_frames_per_packet(sample_rate as u64 / 50)
             .with_channels(chans);
 
         Ok(Self {
             source,
-            track: Track {
-                id: 0,
-                language: None,
-                codec_params,
+            media_info: {
+                let mut info = MediaInfo::default();
+                info.time_base = TimeBase::try_from_recip(sample_rate);
+                info
             },
-            meta: MetadataLog::default(),
-            curr_ts: 0,
+            track: {
+                let mut track = Track::new(0);
+                track.with_codec_params(CodecParameters::Audio(codec_params));
+                track
+            },
+            meta: options.external_data.metadata.unwrap_or_default(),
+            curr_ts: Timestamp::ZERO,
             max_ts: None,
         })
     }
+}
 
-    fn cues(&self) -> &[Cue] {
-        &[]
+impl FormatReader for RawReader<'_> {
+    fn format_info(&self) -> &FormatInfo {
+        &FORMAT_INFO
+    }
+
+    fn media_info(&self) -> &MediaInfo {
+        &self.media_info
     }
 
     fn metadata(&mut self) -> SymphMetadata<'_> {
@@ -104,16 +137,22 @@ impl FormatReader for RawReader {
         let can_backseek = self.source.is_seekable();
 
         let track = &self.track;
-        let rate = track.codec_params.sample_rate;
+        let rate = track
+            .codec_params
+            .as_ref()
+            .and_then(|params| params.audio())
+            .and_then(|params| params.sample_rate);
         let ts = match to {
             SeekTo::Time { time, .. } => {
                 if let Some(rate) = rate {
-                    TimeBase::new(1, rate).calc_timestamp(time)
+                    TimeBase::try_from_recip(rate)
+                        .and_then(|base| base.calc_timestamp(time))
+                        .ok_or(SymphError::SeekError(SeekErrorKind::OutOfRange))?
                 } else {
                     return symph_err::seek_error(SeekErrorKind::Unseekable);
                 }
             }
-            SeekTo::TimeStamp { ts, .. } => ts,
+            SeekTo::Timestamp { ts, .. } => ts,
         };
 
         if let Some(max_ts) = self.max_ts {
@@ -130,11 +169,20 @@ impl FormatReader for RawReader {
 
         let chan_count = track
             .codec_params
+            .as_ref()
+            .and_then(|params| params.audio())
+            .unwrap()
             .channels
+            .as_ref()
             .expect("Channel count is built into format.")
             .count() as u64;
 
-        let seek_pos = 16 + (std::mem::size_of::<f32>() as u64) * (ts * chan_count);
+        let seek_pos = u64::try_from(ts.get())
+            .ok()
+            .and_then(|ts| ts.checked_mul(chan_count))
+            .and_then(|samples| samples.checked_mul(std::mem::size_of::<f32>() as u64))
+            .and_then(|bytes| bytes.checked_add(16))
+            .ok_or(SymphError::SeekError(SeekErrorKind::OutOfRange))?;
 
         self.source.seek(SeekFrom::Start(seek_pos))?;
         self.curr_ts = ts;
@@ -150,20 +198,23 @@ impl FormatReader for RawReader {
         std::slice::from_ref(&self.track)
     }
 
-    fn default_track(&self) -> Option<&Track> {
-        Some(&self.track)
-    }
-
-    fn next_packet(&mut self) -> SymphResult<Packet> {
+    fn next_packet(&mut self) -> SymphResult<Option<Packet>> {
         let track = &self.track;
         let rate = track
             .codec_params
+            .as_ref()
+            .and_then(|params| params.audio())
+            .unwrap()
             .sample_rate
             .expect("Sample rate is built into format.") as usize;
 
         let chan_count = track
             .codec_params
+            .as_ref()
+            .and_then(|params| params.audio())
+            .unwrap()
             .channels
+            .as_ref()
             .expect("Channel count is built into format.")
             .count();
 
@@ -172,15 +223,28 @@ impl FormatReader for RawReader {
         // Aim for 20ms (50Hz).
         let buf = self.source.read_boxed_slice((rate / 50) * sample_unit)?;
 
+        if buf.is_empty() {
+            self.max_ts = Some(self.curr_ts);
+            return Ok(None);
+        }
+        if buf.len() % sample_unit != 0 {
+            return symph_err::decode_error("rawf32: incomplete audio frame");
+        }
         let sample_ct = (buf.len() / sample_unit) as u64;
-        let out = Packet::new_from_boxed_slice(0, self.curr_ts, sample_ct, buf);
+        let out = Packet::new(0, self.curr_ts, Duration::from(sample_ct), buf);
 
-        self.curr_ts += sample_ct;
+        self.curr_ts = self
+            .curr_ts
+            .checked_add(Duration::from(sample_ct))
+            .ok_or(SymphError::DecodeError("Timestamp overflow"))?;
 
-        Ok(out)
+        Ok(Some(out))
     }
 
-    fn into_inner(self: Box<Self>) -> MediaSourceStream {
+    fn into_inner<'s>(self: Box<Self>) -> MediaSourceStream<'s>
+    where
+        Self: 's,
+    {
         self.source
     }
 }
