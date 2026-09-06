@@ -55,7 +55,10 @@ pub struct PlaybackEngine {
     last_volume: f64,
     last_index: usize,
     last_loop_status: LoopStatus,
-    last_position: f64,
+    last_time: TrackTime,
+    seek_revision: i32,
+    last_seek_revision: i32,
+    pending_seek_revision: Option<i32>,
 }
 
 impl PlaybackEngine {
@@ -73,7 +76,10 @@ impl PlaybackEngine {
             last_volume: volume,
             last_index: usize::MAX - 1,
             last_loop_status: LoopStatus::default(),
-            last_position: 0.0,
+            last_time: TrackTime::default(),
+            seek_revision: 0,
+            last_seek_revision: 0,
+            pending_seek_revision: None,
         }
     }
 
@@ -81,10 +87,17 @@ impl PlaybackEngine {
         !self.player.is_paused() && self.player.is_playing()
     }
 
+    fn acknowledge_seek(&mut self) {
+        if let Some(revision) = self.pending_seek_revision.take() {
+            self.seek_revision = revision;
+        }
+    }
+
     fn start_track(&mut self, index: usize, ctx: &Ctx) {
         if self.player.is_empty() {
             return;
         }
+        self.acknowledge_seek();
         self.index = index % self.player.len();
         self.pending_pause = false;
         self.pending_seek = None;
@@ -141,9 +154,10 @@ impl PlaybackEngine {
             out.emit(LoopStatusChanged(self.loop_status.clone()));
         }
 
-        if self.current_time.position != self.last_position {
-            self.last_position = self.current_time.position;
-            out.emit(PositionChanged(self.current_time));
+        if self.current_time != self.last_time || self.seek_revision != self.last_seek_revision {
+            self.last_time = self.current_time;
+            self.last_seek_revision = self.seek_revision;
+            out.emit(PositionChanged(self.current_time, self.seek_revision));
         }
 
         if self.index != self.last_index {
@@ -248,11 +262,20 @@ impl Handle<Play> for PlaybackEngine {
 impl Handle<Seek> for PlaybackEngine {
     fn handle(&mut self, msg: &Seek, _ctx: &Ctx, out: &mut Outbox) {
         let seek = match msg {
+            Seek::FromUi { position, revision } => {
+                self.pending_seek_revision = Some(*revision);
+                *position
+            }
             Seek::Absolute(value) => *value,
             Seek::Relative(value) => self.current_time.position + value,
         };
         if self.load_job.is_some() {
             self.pending_seek = Some(seek);
+            return;
+        }
+        if !self.player.is_playing() {
+            self.acknowledge_seek();
+            self.diff_and_emit(out);
             return;
         }
         if let Err(err) = self
@@ -261,6 +284,7 @@ impl Handle<Seek> for PlaybackEngine {
             .block_on()
         {
             eprintln!("error happened while asking to seek: {err}");
+            self.acknowledge_seek();
         }
         self.diff_and_emit(out);
     }
@@ -285,6 +309,7 @@ impl Handle<SetLoopStatus> for PlaybackEngine {
 impl Handle<QueueReplaced> for PlaybackEngine {
     fn handle(&mut self, msg: &QueueReplaced, _ctx: &Ctx, out: &mut Outbox) {
         self.load_job = None;
+        self.acknowledge_seek();
         self.pending_pause = false;
         self.pending_seek = None;
         self.player.clear().block_on();
@@ -320,8 +345,11 @@ impl Handle<Tagged<TrackLoaded>> for PlaybackEngine {
                     .block_on()
                 {
                     eprintln!("error seeking: {err}");
+                    self.acknowledge_seek();
                 }
             }
+        } else {
+            self.acknowledge_seek();
         }
         self.diff_and_emit(out);
     }
@@ -331,6 +359,7 @@ impl Handle<Tick> for PlaybackEngine {
     fn handle(&mut self, _msg: &Tick, ctx: &Ctx, out: &mut Outbox) {
         if let Some(time) = self.player.get_time() {
             self.current_time = time;
+            self.acknowledge_seek();
         }
         if self.player.has_ended() {
             self.advance(false, ctx);

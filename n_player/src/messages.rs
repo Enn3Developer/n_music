@@ -19,6 +19,7 @@ pub struct TogglePause;
 pub struct Pause;
 pub struct Play;
 pub enum Seek {
+    FromUi { position: f64, revision: i32 },
     Absolute(f64),
     Relative(f64),
 }
@@ -32,10 +33,9 @@ pub struct TrackChanged {
     pub name: Arc<str>,
 }
 pub struct VolumeChanged(pub f64);
-pub struct PositionChanged(pub TrackTime);
+pub struct PositionChanged(pub TrackTime, pub i32);
 pub struct LoopStatusChanged(pub LoopStatus);
 
-pub struct ViewportChanging;
 pub struct SearchChanged(pub String);
 
 pub struct ScanRequested {
@@ -80,7 +80,6 @@ messages!(
     VolumeChanged,
     PositionChanged,
     LoopStatusChanged,
-    ViewportChanging,
     SearchChanged,
     ScanRequested,
     QueueReplaced,

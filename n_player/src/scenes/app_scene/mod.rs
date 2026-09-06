@@ -3,8 +3,7 @@ mod playback_mirror;
 
 use crate::jobs::scan::ScanJob;
 use crate::messages::{
-    PlaybackChanged, PositionChanged, ScanRequested, SearchChanged, TrackChanged, ViewportChanging,
-    VolumeChanged,
+    PlaybackChanged, PositionChanged, ScanRequested, SearchChanged, TrackChanged, VolumeChanged,
 };
 use crate::platform::Platform;
 use crate::settings::Settings;
@@ -28,11 +27,11 @@ pub struct AppScene {
     scan_job: Option<RunningJob>,
     playing_index: i32,
     position: f64,
+    seek_revision: i32,
     position_str: String,
     length: f64,
     playback: bool,
     volume: f64,
-    skip_time: bool,
     track_count: usize,
     loaded: usize,
     changes: Vec<Changes>,
@@ -55,11 +54,11 @@ impl AppScene {
             scan_job: None,
             playing_index: 0,
             position: 0.0,
+            seek_revision: 0,
             position_str: String::from("00:00"),
             length: 0.0,
             playback: false,
             volume: 1.0,
-            skip_time: false,
             track_count: 0,
             loaded: 0,
             changes: vec![],
@@ -81,7 +80,6 @@ impl Subscriber for AppScene {
         reg.on::<TrackChanged>();
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
-        reg.on::<ViewportChanging>();
         reg.on::<ScanRequested>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);
@@ -92,11 +90,11 @@ impl Scene for AppScene {
     fn sync(&mut self, _ctx: &Ctx) -> Option<UiPatch> {
         let playing = self.playing_index;
         let position = self.position;
+        let seek_revision = self.seek_revision;
         let position_str = self.position_str.clone();
         let length = self.length;
         let playback = self.playback;
         let volume = self.volume;
-        let skip_time = mem::take(&mut self.skip_time);
 
         let changes = mem::take(&mut self.changes);
         let updated_search = mem::take(&mut self.search_dirty);
@@ -117,7 +115,7 @@ impl Scene for AppScene {
             let app_data = window.global::<AppData>();
             app_data.set_playing(playing);
             app_data.set_position_time(position_str.into());
-            if !skip_time {
+            if !app_data.get_seeking() && seek_revision == app_data.get_seek_revision() {
                 app_data.set_time(position as f32);
             }
             app_data.set_length(length as f32);

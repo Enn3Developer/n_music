@@ -19,11 +19,12 @@ export global AppData {
     callback play_previous();
     callback toggle_pause();
     callback play_next();
-    callback seek(float);
+    callback seek(float, int);
     callback set_volume(float);
     callback searching(string);
     callback open_link(string);
-    callback changing();
+    in-out property <bool> seeking;
+    in-out property <int> seek_revision;
     public function scroll() {
         // height is negative
         viewport-y = min((playing - 1) * -84px - 50px, 0px);

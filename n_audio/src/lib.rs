@@ -44,8 +44,8 @@ pub enum Message {
     Pause,
     End,
     Exit,
-    Seek(Time),
-    Time(TrackTime),
+    Seek(Time, u64),
+    Time(TrackTime, u64),
     Volume(f32),
     PlaybackSpeed(f32),
 }

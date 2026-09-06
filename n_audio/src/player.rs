@@ -19,6 +19,7 @@ pub struct Player {
     volume: f32,
     playback_speed: f32,
     cached_get_time: Option<TrackTime>,
+    seek_revision: u64,
     thread: Option<JoinHandle<()>>,
     tx: Option<Sender<Message>>,
     rx_t: Option<Receiver<Message>>,
@@ -33,6 +34,7 @@ impl Player {
             volume,
             playback_speed,
             cached_get_time: None,
+            seek_revision: 0,
             thread: None,
             tx: None,
             rx_t: None,
@@ -100,18 +102,18 @@ impl Player {
     /// Seeks to the set timestamp
     /// Be aware that if the timestamp isn't valid the track thread will panic
     /// It only errors if it can't send the message (so something serious may have happened)
-    pub async fn seek_to(&self, seconds: u64, mut frac: f64) -> Result<(), SendError<Message>> {
+    pub async fn seek_to(&mut self, seconds: u64, mut frac: f64) -> Result<(), SendError<Message>> {
         if let Some(tx) = &self.tx {
             if seconds == 0 && frac == 0.0 {
                 frac = 0.01;
             }
 
             let time = Time { seconds, frac };
-            if let Some(mut time) = self.cached_get_time {
-                time.position = seconds as f64 + frac;
-            }
 
-            tx.send_async(Message::Seek(time)).await?;
+            let revision = self.seek_revision.wrapping_add(1);
+            tx.send_async(Message::Seek(time, revision)).await?;
+            self.seek_revision = revision;
+            self.cached_get_time = None;
         }
         Ok(())
     }
@@ -122,8 +124,10 @@ impl Player {
 
         if let Some(rx_t) = &self.rx_t {
             while let Ok(message) = rx_t.try_recv() {
-                if let Message::Time(time) = message {
-                    last = Some(time);
+                if let Message::Time(time, revision) = message {
+                    if revision == self.seek_revision {
+                        last = Some(time);
+                    }
                 }
             }
         }
@@ -199,6 +203,8 @@ impl Player {
             thread::spawn(move || Self::thread_fn(format, rx, tx_t, tx_e, volume, playback_speed));
 
         self.is_paused = false;
+        self.seek_revision = 0;
+        self.cached_get_time = None;
         self.rx_e = Some(rx_e);
         self.rx_t = Some(rx_t);
         self.tx = Some(tx);
@@ -226,7 +232,7 @@ impl Player {
         let mut decoder = CODEC_REGISTRY
             .make(&track.codec_params, &DecoderOptions::default())
             .expect("Can't load decoder");
-        let mut audio_output = None;
+        let mut audio_output: Option<Box<dyn output::AudioOutput>> = None;
 
         let mut spec = None;
         let mut dur = None;
@@ -234,6 +240,10 @@ impl Player {
         // Vars used to control audio output
         let mut is_paused = false;
         let mut exit = false;
+        let mut seek_target = None;
+        let mut seek_revision = 0;
+        let mut reported_time = TrackTime::default();
+        let mut position_floor = 0.0;
 
         loop {
             if let Some(message) = if is_paused {
@@ -251,22 +261,44 @@ impl Player {
                         exit = true;
                         break;
                     }
-                    Message::Seek(time) => {
-                        if let Err(err) = format.seek(
-                            SeekMode::Coarse,
+                    Message::Seek(time, revision) => {
+                        seek_revision = revision;
+                        match format.seek(
+                            SeekMode::Accurate,
                             SeekTo::Time {
                                 time,
                                 track_id: Some(track_id),
                             },
                         ) {
-                            println!("error seeking");
-                            if !err.to_string().contains("end of stream") {
+                            Ok(seeked) => {
+                                decoder.reset();
+                                if let Some(output) = &mut audio_output {
+                                    output.discard_queued();
+                                }
+                                seek_target = Some(seeked.required_ts);
+                                if let Some(time_base) = time_base {
+                                    let position = time_base.calc_time(seeked.required_ts);
+                                    let length = time_base.calc_time(duration);
+                                    position_floor = position.seconds as f64 + position.frac;
+                                    reported_time = TrackTime {
+                                        position: position_floor,
+                                        length: length.seconds as f64 + length.frac,
+                                    };
+                                    if is_paused {
+                                        let _ =
+                                            tx_t.send(Message::Time(reported_time, seek_revision));
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                let _ = tx_t.send(Message::Time(reported_time, seek_revision));
+                                if err.to_string().contains("end of stream") {
+                                    break;
+                                }
                                 eprintln!(
                                     "Couldn't seek to position {}+{}\nError: {}",
                                     time.seconds, time.frac, err
                                 );
-                            } else {
-                                break;
                             }
                         }
                     }
@@ -293,29 +325,23 @@ impl Player {
                 while !format.metadata().is_latest() {
                     format.metadata().pop();
                 }
-                if let Some(time_base) = time_base {
-                    let position = time_base.calc_time(packet.ts());
-                    let length = time_base.calc_time(duration);
-                    if let Err(err) = tx_t.send(Message::Time(TrackTime {
-                        position: position.seconds as f64 + position.frac,
-                        length: length.seconds as f64 + length.frac,
-                    })) {
-                        if let Ok(message) = rx.try_recv() {
-                            if let Message::Exit = message {
-                                exit = true;
-                                break;
-                            }
-                            if exit {
-                                break;
-                            } else {
-                                panic!("Can't send Time message: {}", err);
-                            }
-                        }
-                    }
-                }
 
                 match decoder.decode(&packet) {
                     Ok(decoded) => {
+                        let skip_frames = match (seek_target, time_base) {
+                            (Some(target), Some(base)) if packet.ts() < target => {
+                                let skip = base.calc_time(target - packet.ts());
+                                ((skip.seconds as f64 + skip.frac) * decoded.spec().rate as f64)
+                                    .round() as usize
+                            }
+                            _ => 0,
+                        };
+                        if skip_frames >= decoded.frames() {
+                            continue;
+                        }
+                        seek_target = None;
+                        let frames = decoded.frames();
+                        let sample_rate = decoded.spec().rate;
                         if audio_output.is_none() {
                             let mut tmp_spec = *decoded.spec();
                             tmp_spec.rate = (tmp_spec.rate as f32 * playback_speed).round() as u32;
@@ -343,7 +369,20 @@ impl Player {
                         }
 
                         if let Some(audio_output) = &mut audio_output {
-                            audio_output.write(decoded, volume).unwrap()
+                            audio_output.write(decoded, volume, skip_frames).unwrap();
+                            if let Some(base) = time_base {
+                                let start = base.calc_time(packet.ts());
+                                let length = base.calc_time(duration);
+                                let position = start.seconds as f64
+                                    + start.frac
+                                    + frames as f64 / sample_rate as f64
+                                    - audio_output.pending_frames() as f64 / sample_rate as f64;
+                                reported_time = TrackTime {
+                                    position: position.max(position_floor),
+                                    length: length.seconds as f64 + length.frac,
+                                };
+                                let _ = tx_t.send(Message::Time(reported_time, seek_revision));
+                            }
                         }
                     }
                     Err(symphonia::core::errors::Error::DecodeError(err)) => {

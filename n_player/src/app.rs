@@ -1,7 +1,7 @@
 use crate::localization::localize;
 use crate::messages::{
     LocaleChangeRequested, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack, SearchChanged,
-    Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize, ViewportChanging,
+    Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize,
 };
 use crate::platform::Platform;
 use crate::playback::PlaybackEngine;
@@ -82,7 +82,7 @@ pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings,
         jobs.spawn_detached(crate::bridges::android::AndroidEventJob);
     }
 
-    spawn_ticker(writer.clone(), Duration::from_millis(250));
+    spawn_ticker(writer.clone(), Duration::from_millis(50));
     let bus_task = tokio::spawn(async move { app.run_loop(rx).await });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
@@ -158,10 +158,14 @@ async fn setup_data(
     let w = writer.clone();
     app_data.on_play_next(move || w.emit(PlayNext));
     let w = writer.clone();
-    app_data.on_seek(move |time| w.emit(Seek::Absolute(time as f64)));
+    app_data.on_seek(move |time, revision| {
+        w.emit(Seek::FromUi {
+            position: time as f64,
+            revision,
+        });
+    });
     let w = writer.clone();
     app_data.on_set_volume(move |volume| w.emit(SetVolume(volume as f64)));
     let w = writer.clone();
     app_data.on_searching(move |searching| w.emit(SearchChanged(searching.to_string())));
-    app_data.on_changing(move || writer.emit(ViewportChanging));
 }

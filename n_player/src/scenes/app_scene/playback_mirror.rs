@@ -1,7 +1,5 @@
 use super::AppScene;
-use crate::messages::{
-    PlaybackChanged, PositionChanged, TrackChanged, ViewportChanging, VolumeChanged,
-};
+use crate::messages::{PlaybackChanged, PositionChanged, TrackChanged, VolumeChanged};
 use n_event_bus::{Ctx, Handle, Outbox};
 
 impl Handle<PlaybackChanged> for AppScene {
@@ -25,13 +23,8 @@ impl Handle<VolumeChanged> for AppScene {
 impl Handle<PositionChanged> for AppScene {
     fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.position = msg.0.position;
+        self.seek_revision = msg.1;
         self.length = msg.0.length;
         self.position_str = msg.0.format_pos();
-    }
-}
-
-impl Handle<ViewportChanging> for AppScene {
-    fn handle(&mut self, _msg: &ViewportChanging, _ctx: &Ctx, _out: &mut Outbox) {
-        self.skip_time = true;
     }
 }
