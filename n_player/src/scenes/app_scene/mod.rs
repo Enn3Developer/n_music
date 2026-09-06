@@ -34,6 +34,9 @@ pub struct AppScene {
     save_y: bool,
     progress_dirty: bool,
     dirty: bool,
+    position_dirty: bool,
+    position_text_dirty: bool,
+    length_dirty: bool,
     visible: bool,
 }
 
@@ -57,6 +60,9 @@ impl AppScene {
             save_y: false,
             progress_dirty: false,
             dirty: true,
+            position_dirty: true,
+            position_text_dirty: true,
+            length_dirty: true,
             visible: true,
         }
     }
@@ -83,15 +89,22 @@ impl Subscriber for AppScene {
 impl Scene for AppScene {
     fn sync(&mut self, _ctx: &Ctx) -> Option<UiPatch> {
         if !self.visible
-            || !(self.dirty || self.progress_dirty || self.search_dirty || !self.changes.is_empty())
+            || !(self.dirty
+                || self.position_dirty
+                || self.progress_dirty
+                || self.search_dirty
+                || !self.changes.is_empty())
         {
             return None;
         }
-        self.dirty = false;
+        let state_dirty = mem::take(&mut self.dirty);
+        let position_dirty = mem::take(&mut self.position_dirty) || state_dirty;
+        let position_text_dirty = mem::take(&mut self.position_text_dirty) || state_dirty;
+        let length_dirty = mem::take(&mut self.length_dirty) || state_dirty;
         let playing = self.playing_index;
         let position = self.position;
         let seek_revision = self.seek_revision;
-        let position_str = self.position_str.clone();
+        let position_str = position_text_dirty.then(|| self.position_str.clone());
         let length = self.length;
         let playback = self.playback;
         let volume = self.volume;
@@ -99,13 +112,14 @@ impl Scene for AppScene {
         let changes = mem::take(&mut self.changes);
         let updated_search = mem::take(&mut self.search_dirty);
         let save_y = mem::take(&mut self.save_y);
-        let new_loaded = !changes.is_empty() || mem::take(&mut self.progress_dirty);
+        let progress_dirty = mem::take(&mut self.progress_dirty);
+        let new_loaded = !changes.is_empty() || progress_dirty;
         let progress = if self.track_count > 0 {
             self.loaded as f64 / self.track_count as f64
         } else {
             0.0
         };
-        let search = self.search.to_lowercase();
+        let search = (updated_search || new_loaded).then(|| self.search.to_lowercase());
 
         let window = self.window.clone();
         Some(Box::new(move || {
@@ -113,14 +127,23 @@ impl Scene for AppScene {
                 return;
             };
             let app_data = window.global::<AppData>();
-            app_data.set_playing(playing);
-            app_data.set_position_time(position_str.into());
-            if !app_data.get_seeking() && seek_revision == app_data.get_seek_revision() {
+            if state_dirty {
+                app_data.set_playing(playing);
+                app_data.set_playback(playback);
+                app_data.set_volume(volume as f32);
+            }
+            if let Some(position_str) = position_str {
+                app_data.set_position_time(position_str.into());
+            }
+            if position_dirty
+                && !app_data.get_seeking()
+                && seek_revision == app_data.get_seek_revision()
+            {
                 app_data.set_time(position as f32);
             }
-            app_data.set_length(length as f32);
-            app_data.set_playback(playback);
-            app_data.set_volume(volume as f32);
+            if length_dirty {
+                app_data.set_length(length as f32);
+            }
 
             if new_loaded {
                 let progress = if progress == 1.0 {
@@ -142,7 +165,7 @@ impl Scene for AppScene {
                 }
             }
 
-            if updated_search || new_loaded {
+            if let Some(search) = search {
                 let tracks = app_data.get_tracks();
                 let mut counter = 0;
                 if save_y {

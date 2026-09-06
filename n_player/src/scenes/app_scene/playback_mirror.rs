@@ -25,10 +25,16 @@ impl Handle<VolumeChanged> for AppScene {
 
 impl Handle<PositionChanged> for AppScene {
     fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        self.dirty = true;
+        self.position_dirty = true;
+        if self.position.floor() != msg.0.position.floor() {
+            self.position_str = msg.0.format_pos();
+            self.position_text_dirty = true;
+        }
+        if self.length != msg.0.length {
+            self.length = msg.0.length;
+            self.length_dirty = true;
+        }
         self.position = msg.0.position;
         self.seek_revision = msg.1;
-        self.length = msg.0.length;
-        self.position_str = msg.0.format_pos();
     }
 }

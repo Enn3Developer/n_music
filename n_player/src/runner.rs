@@ -26,7 +26,7 @@ impl Runner {
     pub fn new(path: String, volume: f64) -> Self {
         let mut player = QueuePlayer::new(path);
         player.set_volume(volume as f32);
-        player.set_progress_interval(Some(Duration::from_millis(50)));
+        player.set_progress_interval(Some(Duration::from_millis(250)));
         Self {
             player,
             job: None,
@@ -225,7 +225,7 @@ impl Handle<AppVisibilityChanged> for Runner {
     fn handle(&mut self, msg: &AppVisibilityChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.visible = msg.0;
         self.player
-            .set_progress_interval(self.visible.then_some(Duration::from_millis(50)));
+            .set_progress_interval(self.visible.then_some(Duration::from_millis(250)));
     }
 }
 

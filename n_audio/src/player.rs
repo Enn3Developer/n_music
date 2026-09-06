@@ -416,6 +416,8 @@ fn run(
     };
     let mut last_report = Instant::now();
     let mut force_report = true;
+    let mut last_volume = f32::NAN;
+    let mut output_volume = 0.0;
     let mut draining = false;
     let mut progress_interval = Some(Duration::from_millis(50));
     emit(PlaybackEvent::Started { length, paused });
@@ -536,10 +538,13 @@ fn run(
             output_capacity = capacity;
         }
         if let Some(output) = &mut output {
-            let volume = controls.volume.clamp(0.0, 1.0);
-            let volume = 1.0 - (1.0 - volume * volume).sqrt();
+            if last_volume != controls.volume {
+                last_volume = controls.volume;
+                let volume = controls.volume.clamp(0.0, 1.0);
+                output_volume = 1.0 - (1.0 - volume * volume).sqrt();
+            }
             output
-                .write(decoded, volume, skip_frames)
+                .write(decoded, output_volume, skip_frames)
                 .map_err(io::Error::other)?;
             let start = time_base.calc_time(packet.ts());
             time.position =
