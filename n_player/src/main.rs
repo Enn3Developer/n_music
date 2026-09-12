@@ -1,8 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn main() {
+    // Installer hooks must finish before starting Tokio, audio, or the UI.
+    velopack::VelopackApp::build().run();
+    run();
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[tokio::main]
-async fn main() {
+async fn run() {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     use n_player::platform::DesktopPlatform;
     #[cfg(target_os = "linux")]

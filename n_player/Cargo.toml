@@ -6,12 +6,6 @@ edition = "2021"
 repository = "https://github.com/Enn3Developer/n_music"
 description = "A simple music player written in Rust + Slint"
 
-[package.metadata.wix]
-upgrade-guid = "7CE90BCB-E720-41CF-AFED-DDB3B0AA49E2"
-path-guid = "D9DF9822-756A-4015-85DD-99173166A5DC"
-license = false
-eula = false
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -46,6 +40,10 @@ paste = "1.0.15"
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris-server = "0.10"
 
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+# Keep this in sync with vpk in .config/dotnet-tools.json.
+velopack = "=1.2.0"
+
 [target.'cfg(target_os = "android")'.dependencies.slint]
 version = "1.16"
 default-features = false
@@ -56,8 +54,10 @@ ndk-context = "0.1"
 jni = "0.21"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-tikv-jemallocator = "0.6"
 rfd = "0.17"
 directories = "6.0"
 open = "5.3"
 arboard = "3.4"
+
+[target.'cfg(all(not(target_os = "android"), not(target_env = "msvc")))'.dependencies]
+tikv-jemallocator = "0.6"
