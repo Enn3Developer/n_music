@@ -1,0 +1,150 @@
+name: Android build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      sign:
+        type: boolean
+        default: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        description: Base64-encoded upload keystore file
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        description: Keystore password
+        required: false
+      ANDROID_KEY_ALIAS:
+        description: Upload key alias inside the keystore
+        required: false
+      ANDROID_KEY_PASSWORD:
+        description: Upload key password
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Check release signing secrets
+        if: inputs.sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required Actions secret: $name"
+              exit 1
+            fi
+          done
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK and native build tools
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+          sudo apt-get update
+          sudo apt-get install -y clang mold cmake ninja-build pkg-config
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-arm64-v8a
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Build native library
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          bash n_player/compile_rust_release.sh
+      - name: Check 16 KB native alignment
+        run: |
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+
+          library = Path('n_player/android/build/rustJniLibs/arm64-v8a/libn_player.so').read_bytes()
+          assert library[:6] == b'\x7fELF\x02\x01', 'Expected a little-endian ELF64 library'
+          assert struct.unpack_from('<H', library, 18)[0] == 183, 'Expected ARM64'
+          offset = struct.unpack_from('<Q', library, 32)[0]
+          entry_size, count = struct.unpack_from('<HH', library, 54)
+          alignments = []
+          for index in range(count):
+              header = struct.unpack_from('<IIQQQQQQ', library, offset + index * entry_size)
+              if header[0] == 1:
+                  alignments.append(header[7])
+          assert alignments and all(value >= 16384 for value in alignments), alignments
+          print('Native library load segments support 16 KB alignment')
+          PY
+      - name: Restore upload keystore
+        if: inputs.sign
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/n-music-upload.jks"
+      - name: Build APK and app bundle
+        working-directory: n_player
+        env:
+          REQUIRE_SIGNING: ${{ inputs.sign }}
+          ANDROID_KEYSTORE_PATH: ${{ inputs.sign && format('{0}/n-music-upload.jks', runner.temp) || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ inputs.sign && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ inputs.sign && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ inputs.sign && secrets.ANDROID_KEY_PASSWORD || '' }}
+        run: |
+          ./gradlew :android:assembleRelease :android:bundleRelease \
+            -PrequireAndroidSigning="$REQUIRE_SIGNING" --no-daemon --no-configuration-cache
+      - name: Verify and collect artifacts
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          SIGNED: ${{ inputs.sign }}
+        run: |
+          output=target/android-release
+          mkdir -p "$output"
+          apk=n_player/android/build/outputs/apk/release/android-release-unsigned.apk
+          suffix=-unsigned
+          if [[ "$SIGNED" == true ]]; then
+            apk=n_player/android/build/outputs/apk/release/android-release.apk
+            suffix=
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
+            signature_log="$RUNNER_TEMP/n-music-bundle-signature.txt"
+            if ! jarsigner -J-Duser.language=en -verify \
+              n_player/android/build/outputs/bundle/release/android-release.aab > "$signature_log" 2>&1 \
+              || ! grep -q '^jar verified\.' "$signature_log"; then
+              cat "$signature_log" >&2
+              exit 1
+            fi
+            echo 'APK and app bundle signatures verified'
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
+          unzip -l "$apk" | grep 'lib/arm64-v8a/libn_player.so'
+          cp "$apk" "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.apk"
+          cp n_player/android/build/outputs/bundle/release/android-release.aab \
+            "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.aab"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: target/android-release/*
+          if-no-files-found: error
+      - name: Remove upload keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/n-music-upload.jks"

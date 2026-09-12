@@ -3,20 +3,63 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def cargoVersion = (new File(rootDir, 'Cargo.toml').text =~ /(?m)^version\s*=\s*"([^"]+)"/)
+if (!cargoVersion.find()) {
+    throw new GradleException('Cannot read the n_player version from Cargo.toml')
+}
+def appVersionName = cargoVersion.group(1)
+def appVersionCode = providers.gradleProperty('androidVersionCode').get().toInteger()
+if (appVersionCode < 1 || appVersionCode > 2100000000) {
+    throw new GradleException('androidVersionCode must be between 1 and 2100000000')
+}
+def signingValues = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD',
+                     'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'].collectEntries {
+    [(it): providers.environmentVariable(it).orNull]
+}
+def hasSigning = signingValues.values().every { it }
+if (signingValues.values().any { it } && !hasSigning) {
+    throw new GradleException('Provide all four Android signing environment variables')
+}
+if (providers.gradleProperty('requireAndroidSigning').orElse('false').get().toBoolean() && !hasSigning) {
+    throw new GradleException('Android release signing credentials are required')
+}
+
 android {
-    ndkVersion "28.0.12433566"
-    compileSdk 34
+    ndkVersion "28.2.13676358"
+    compileSdk 36
+    buildToolsVersion "35.0.0"
 
     defaultConfig {
         applicationId "com.enn3developer.n_music"
         minSdk 30
-        targetSdk 34
-        versionCode 16845056
-        versionName "2.0.0-alpha.6"
+        targetSdk 36
+        versionCode appVersionCode
+        versionName appVersionName
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    sourceSets {
+        main.jniLibs.srcDirs = [layout.buildDirectory.dir('rustJniLibs')]
+    }
+
+    signingConfigs {
+        if (hasSigning) {
+            release {
+                storeFile file(signingValues.ANDROID_KEYSTORE_PATH)
+                storePassword signingValues.ANDROID_KEYSTORE_PASSWORD
+                keyAlias signingValues.ANDROID_KEY_ALIAS
+                keyPassword signingValues.ANDROID_KEY_PASSWORD
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (hasSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

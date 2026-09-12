@@ -13,3 +13,10 @@ Cargo.lock
 /.idea
 /lsp
 *.keystore
+*.jks
+/.android-signing/
+/n_player/.gradle/
+/n_player/build/
+/n_player/android/build/
+/n_player/android/src/main/jniLibs/
+/n_player/local.properties

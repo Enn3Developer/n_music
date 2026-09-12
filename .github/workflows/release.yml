@@ -3,6 +3,11 @@ name: Release
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      sign_android:
+        description: Build signed Android downloads for initial Play Console setup
+        type: boolean
+        default: false
   push:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
@@ -136,8 +141,20 @@ jobs:
           path: target/velopack/${{ matrix.runtime }}/*
           if-no-files-found: error
 
+  android:
+    needs: plan
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      sign: ${{ (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && inputs.sign_android) }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+      ANDROID_KEY_ALIAS: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEY_ALIAS || '' }}
+      ANDROID_KEY_PASSWORD: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEY_PASSWORD || '' }}
+
   publish:
-    needs: [plan, package]
+    needs: [plan, package, android]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
@@ -148,6 +165,10 @@ jobs:
           pattern: velopack-*
           path: artifacts
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-arm64
+          path: artifacts
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,3 +185,33 @@ jobs:
             --title "N Music $RELEASE_VERSION" --generate-notes \
             "${flags[@]}" artifacts/*
           gh release edit "$RELEASE_TAG" --draft=false
+
+  google-play:
+    needs: [plan, publish]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: google-play-internal
+      cancel-in-progress: false
+    steps:
+      - name: Check Play credentials
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [[ -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo '::error::Missing required Actions secret: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-arm64
+          path: android-release
+      - name: Upload to internal testing
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.enn3developer.n_music
+          releaseFiles: android-release/*.aab
+          tracks: internal
+          status: completed
+          releaseName: ${{ needs.plan.outputs.version }}

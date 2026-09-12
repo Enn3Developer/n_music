@@ -3,5 +3,5 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
 
 [target.aarch64-linux-android]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
+# cargo-ndk selects the NDK linker. Align native libraries for 16 KB devices.
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
