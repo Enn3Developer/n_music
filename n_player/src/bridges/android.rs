@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 pub struct AndroidBridge {
     jvm: Arc<jni::JavaVM>,
-    callback: Arc<jni::objects::GlobalRef>,
+    callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     notification: Option<RunningJob>,
     pending: Option<TrackMetadata>,
     metadata_loader: MetadataLoader,
@@ -17,11 +17,20 @@ pub struct AndroidBridge {
 }
 
 impl AndroidBridge {
-    pub fn new(jvm: Arc<jni::JavaVM>, callback: Arc<jni::objects::GlobalRef>) -> Self {
-        let mut env = jvm.attach_current_thread().unwrap();
-        env.call_method(callback.as_ref(), "createNotification", "()V", &[])
-            .unwrap();
-        drop(env);
+    pub fn new(
+        jvm: Arc<jni::JavaVM>,
+        callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
+    ) -> Self {
+        jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            env.call_method(
+                callback.as_ref(),
+                jni::jni_str!("createNotification"),
+                jni::jni_sig!("()V"),
+                &[],
+            )?;
+            Ok(())
+        })
+        .unwrap();
         Self {
             jvm,
             callback,
@@ -50,14 +59,17 @@ impl Subscriber for AndroidBridge {
 
 impl AndroidBridge {
     fn update_playback(&self) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(
-            self.callback.as_ref(),
-            "changePlaybackState",
-            "(ZD)V",
-            &[self.playing.into(), self.position.into()],
-        )
-        .unwrap();
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("changePlaybackState"),
+                    jni::jni_sig!("(ZD)V"),
+                    &[self.playing.into(), self.position.into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
     }
 }
 impl Handle<PlaybackChanged> for AndroidBridge {
@@ -105,7 +117,7 @@ impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
 }
 struct NotificationJob {
     jvm: Arc<jni::JavaVM>,
-    callback: Arc<jni::objects::GlobalRef>,
+    callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     metadata: TrackMetadata,
 }
 struct NotificationFinished;
@@ -120,21 +132,24 @@ impl Job for NotificationJob {
                 .as_ref()
                 .map(|file| file.path().to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let mut env = self.jvm.attach_current_thread()?;
-            let title = env.new_string(meta.title)?;
-            let artist = env.new_string(meta.artist)?;
-            let cover_path = env.new_string(cover_path)?;
-            env.call_method(
-                self.callback.as_ref(),
-                "changeNotification",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V",
-                &[
-                    (&title).into(),
-                    (&artist).into(),
-                    (&cover_path).into(),
-                    meta.time.length.into(),
-                ],
-            )?;
+            self.jvm
+                .attach_current_thread(|env| -> jni::errors::Result<()> {
+                    let title = env.new_string(meta.title)?;
+                    let artist = env.new_string(meta.artist)?;
+                    let cover_path = env.new_string(cover_path)?;
+                    env.call_method(
+                        self.callback.as_ref(),
+                        jni::jni_str!("changeNotification"),
+                        jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;D)V"),
+                        &[
+                            (&title).into(),
+                            (&artist).into(),
+                            (&cover_path).into(),
+                            meta.time.length.into(),
+                        ],
+                    )?;
+                    Ok(())
+                })?;
             Ok(())
         })
         .await;

@@ -33,7 +33,7 @@ pub static ANDROID_BUS: std::sync::LazyLock<(
 #[cfg(target_os = "android")]
 pub struct AndroidStarted(
     pub std::sync::Arc<jni::JavaVM>,
-    pub std::sync::Arc<jni::objects::GlobalRef>,
+    pub std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
 );
 #[cfg(target_os = "android")]
 impl n_event_bus::Message for AndroidStarted {}
@@ -199,47 +199,50 @@ impl From<FileTrack> for TrackData {
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory<'local>(
-    mut env: jni::JNIEnv<'local>,
+    mut env: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     string: jni::objects::JString<'local>,
     tag: jni::sys::jlong,
 ) {
-    if let Ok(path) = env.get_string(&string) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let path = string.try_to_string(env)?;
         ANDROID_BUS.0.emit_tagged(
             tag as u64,
-            jobs::settings::DirectoryChosen(std::path::PathBuf::from(
-                path.to_string_lossy().into_owned(),
-            )),
+            jobs::settings::DirectoryChosen(std::path::PathBuf::from(path)),
         );
-    }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_start<'local>(
-    env: jni::JNIEnv<'local>,
+    mut env: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     callback: jni::objects::JObject<'local>,
 ) {
-    ANDROID_BUS.0.emit(AndroidStarted(
-        std::sync::Arc::new(env.get_java_vm().unwrap()),
-        std::sync::Arc::new(env.new_global_ref(callback).unwrap()),
-    ));
+    env.with_env(|env| -> jni::errors::Result<()> {
+        ANDROID_BUS.0.emit(AndroidStarted(
+            std::sync::Arc::new(env.get_java_vm()?),
+            std::sync::Arc::new(env.new_global_ref(&callback)?),
+        ));
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_visibilityChanged<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     visible: jni::sys::jboolean,
 ) {
-    ANDROID_BUS
-        .0
-        .emit(messages::AppVisibilityChanged(visible != 0));
+    ANDROID_BUS.0.emit(messages::AppVisibilityChanged(visible));
 }
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Pause<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(messages::Pause);
@@ -247,7 +250,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Pause<'loca
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Play<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(messages::Play);
@@ -255,7 +258,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Play<'local
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(messages::PlayNext);
@@ -263,7 +266,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'l
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPrevious<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(messages::PlayPrevious);
@@ -271,7 +274,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPreviou
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local>(
-    _: jni::JNIEnv<'local>,
+    _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     seek: jni::sys::jdouble,
 ) {

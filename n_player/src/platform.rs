@@ -50,7 +50,7 @@ pub trait Platform: Send + Sync {
         &self,
     ) -> (
         std::sync::Arc<jni::JavaVM>,
-        std::sync::Arc<jni::objects::GlobalRef>,
+        std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     );
 }
 
@@ -117,7 +117,7 @@ impl Platform for DesktopPlatform {
 pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
     jvm: std::sync::Arc<jni::JavaVM>,
-    callback: std::sync::Arc<jni::objects::GlobalRef>,
+    callback: std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
 }
 
 #[cfg(target_os = "android")]
@@ -125,7 +125,7 @@ impl AndroidPlatform {
     pub fn new(
         app: slint::android::AndroidApp,
         jvm: std::sync::Arc<jni::JavaVM>,
-        callback: std::sync::Arc<jni::objects::GlobalRef>,
+        callback: std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     ) -> Self {
         Self { app, jvm, callback }
     }
@@ -135,27 +135,33 @@ impl AndroidPlatform {
 #[async_trait]
 impl Platform for AndroidPlatform {
     fn set_clipboard_text(&self, text: String) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        let java_string = env.new_string(text).unwrap();
-        env.call_method(
-            self.callback.as_ref(),
-            "set_clipboard_text",
-            "(Ljava/lang/String;)V",
-            &[(&java_string).into()],
-        )
-        .unwrap();
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let java_string = env.new_string(text)?;
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("set_clipboard_text"),
+                    jni::jni_sig!("(Ljava/lang/String;)V"),
+                    &[(&java_string).into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
     }
 
     async fn open_link(&self, link: String) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        let java_string = env.new_string(link).unwrap();
-        env.call_method(
-            self.callback.as_ref(),
-            "openLink",
-            "(Ljava/lang/String;)V",
-            &[(&java_string).into()],
-        )
-        .unwrap();
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let java_string = env.new_string(link)?;
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("openLink"),
+                    jni::jni_sig!("(Ljava/lang/String;)V"),
+                    &[(&java_string).into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
     }
 
     async fn internal_dir(&self) -> PathBuf {
@@ -171,21 +177,24 @@ impl Platform for AndroidPlatform {
     }
 
     async fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
-        let mut env = self.jvm.attach_current_thread().unwrap();
-        env.call_method(
-            self.callback.as_ref(),
-            "askDirectory",
-            "(J)V",
-            &[jni::objects::JValue::Long(tag as i64)],
-        )
-        .unwrap();
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("askDirectory"),
+                    jni::jni_sig!("(J)V"),
+                    &[jni::objects::JValue::Long(tag as i64)],
+                )?;
+                Ok(())
+            })
+            .unwrap();
     }
 
     fn jni_handles(
         &self,
     ) -> (
         std::sync::Arc<jni::JavaVM>,
-        std::sync::Arc<jni::objects::GlobalRef>,
+        std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     ) {
         (self.jvm.clone(), self.callback.clone())
     }
