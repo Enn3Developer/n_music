@@ -11,7 +11,7 @@ case "$runtime" in
   win-x64)
     target=x86_64-pc-windows-msvc
     executable=n_music_desktop.exe
-    options+=(--icon n_player/assets/icons/icon.ico --framework vcredist143-x64)
+    options+=(--icon n_music_desktop/assets/icons/icon.ico --framework vcredist143-x64)
     ;;
   osx-arm64) target=aarch64-apple-darwin ;;
   *) echo "Unsupported runtime: $runtime" >&2; exit 1 ;;
@@ -41,8 +41,8 @@ if [[ "$runtime" == linux-x64 ]]; then
   mkdir -p "$pack_dir/usr/bin" "$pack_dir/usr/lib"
   cp "$binary" "$pack_dir/usr/bin/$executable"
   cp LICENSE "$pack_dir/usr/bin/LICENSE"
-  cp n_player/assets/icons/icon.png "$pack_dir/NMusic.png"
-  cp n_player/assets/icons/icon.png "$pack_dir/.DirIcon"
+  cp n_music_desktop/assets/icons/icon.png "$pack_dir/NMusic.png"
+  cp n_music_desktop/assets/icons/icon.png "$pack_dir/.DirIcon"
   cat > "$pack_dir/NMusic.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -83,9 +83,9 @@ if [[ "$runtime" == osx-arm64 ]]; then
   iconset="$stage/NMusic.iconset"
   mkdir -p "$iconset"
   for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" n_player/assets/icons/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    sips -z "$size" "$size" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
     double=$((size * 2))
-    sips -z "$double" "$double" n_player/assets/icons/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+    sips -z "$double" "$double" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
   done
   iconutil -c icns "$iconset" -o "$stage/NMusic.icns"
   options+=(--icon "$stage/NMusic.icns" --bundleId com.enn3developer.n-music)

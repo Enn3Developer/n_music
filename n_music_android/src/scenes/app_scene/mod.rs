@@ -1,12 +1,12 @@
 mod library;
 mod playback_mirror;
 
-use crate::jobs::scan::ScanJob;
-use crate::messages::{
+use crate::{AppData, MainWindow, TrackData};
+use n_event_bus::{Ctx, Registrar, RunningJob, Subscriber};
+use n_player::jobs::scan::ScanJob;
+use n_player::messages::{
     PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged, VolumeChanged,
 };
-use crate::{AppData, MainWindow, TrackData};
-use n_event_bus::{Ctx, Registrar, RunningJob, Scene, Subscriber, UiPatch};
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::any::Any;
 use std::mem;
@@ -79,15 +79,15 @@ impl Subscriber for AppScene {
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<ScanLibrary>();
-        reg.on::<crate::messages::Shutdown>();
-        reg.on::<crate::messages::AppVisibilityChanged>();
+        reg.on::<n_player::messages::Shutdown>();
+        reg.on::<n_player::messages::AppVisibilityChanged>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);
     }
 }
 
-impl Scene for AppScene {
-    fn sync(&mut self, _ctx: &Ctx) -> Option<UiPatch> {
+impl AppScene {
+    pub(crate) fn apply_ui(&mut self) {
         if !self.visible
             || !(self.dirty
                 || self.position_dirty
@@ -95,7 +95,7 @@ impl Scene for AppScene {
                 || self.search_dirty
                 || !self.changes.is_empty())
         {
-            return None;
+            return;
         }
         let state_dirty = mem::take(&mut self.dirty);
         let position_dirty = mem::take(&mut self.position_dirty) || state_dirty;
@@ -122,7 +122,7 @@ impl Scene for AppScene {
         let search = (updated_search || new_loaded).then(|| self.search.to_lowercase());
 
         let window = self.window.clone();
-        Some(Box::new(move || {
+        let _ = slint::invoke_from_event_loop(move || {
             let Some(window) = window.upgrade() else {
                 return;
             };
@@ -202,24 +202,25 @@ impl Scene for AppScene {
                     app_data.set_viewport_y(app_data.get_saved_y());
                 }
             }
-        }))
+        });
     }
 }
 
-impl n_event_bus::Handle<crate::messages::Shutdown> for AppScene {
-    fn handle(&mut self, _: &crate::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
+impl n_event_bus::Handle<n_player::messages::Shutdown> for AppScene {
+    fn handle(&mut self, _: &n_player::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
         self.scan_job = None;
         self.visible = false;
     }
 }
-impl n_event_bus::Handle<crate::messages::AppVisibilityChanged> for AppScene {
+impl n_event_bus::Handle<n_player::messages::AppVisibilityChanged> for AppScene {
     fn handle(
         &mut self,
-        msg: &crate::messages::AppVisibilityChanged,
+        msg: &n_player::messages::AppVisibilityChanged,
         _: &Ctx,
         _: &mut n_event_bus::Outbox,
     ) {
         self.visible = msg.0;
         self.dirty = true;
+        self.apply_ui();
     }
 }

@@ -16,6 +16,15 @@ impl AndroidPlatform {
     ) -> Self {
         Self { app, jvm, callback }
     }
+
+    pub fn jni_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<jni::JavaVM>,
+        std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
+    ) {
+        (self.jvm.clone(), self.callback.clone())
+    }
 }
 
 #[async_trait]

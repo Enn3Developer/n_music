@@ -1,7 +1,13 @@
 #![cfg(target_os = "android")]
 
+slint::include_modules!();
+
+mod app;
 mod bridge;
+mod localization;
 mod platform;
+mod scenes;
+mod ui;
 
 use n_event_bus::{EventWriter, Message};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -43,17 +49,12 @@ fn android_main(app: slint::android::AndroidApp) {
                             started.0.clone(),
                             started.1.clone(),
                         );
-                        let bridge =
-                            bridge::AndroidBridge::new(started.0.clone(), started.1.clone());
-                        n_player::app::run_app_with_events(
+                        crate::app::run(
                             n_player::settings::Settings::read_saved(&platform).await,
                             platform,
                             ANDROID_BUS.0.clone(),
                             rx,
                             pending,
-                            move |app| {
-                                app.register_subscriber(bridge);
-                            },
                         )
                         .await;
                         return;

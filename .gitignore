@@ -15,7 +15,6 @@ Cargo.lock
 *.keystore
 *.jks
 /.android-signing/
-/n_player/build/
 /n_music_android/.gradle/
 /n_music_android/build/
 /n_music_android/android/build/

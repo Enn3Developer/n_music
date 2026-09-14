@@ -1,7 +1,7 @@
 use crate::messages::{ScanFinished, TrackMetadataLoaded, TracksEnumerated};
 use crate::services::image::get_image_squared;
 use crate::settings::Settings;
-use crate::{FileTrack, TrackData};
+use crate::FileTrack;
 use n_audio::music_track::MusicTrack;
 use n_audio::{remove_ext, strip_absolute_path};
 use n_event_bus::{job_emits, EventWriter, Job, JobToken, Tagged};
@@ -73,25 +73,22 @@ impl Job for ScanJob {
         println!("check timestamp: {check_timestamp}; is cached: {is_cached}");
 
         let mut tracks = Vec::with_capacity(len);
-        for (i, name) in names.iter().enumerate() {
+        for name in names.iter() {
             if is_cached {
                 let track_without_ext = remove_ext(name);
                 if let Some(file_track) = file_tracks
                     .iter()
                     .find(|file_track| file_track.path == track_without_ext)
                 {
-                    let mut track: TrackData = file_track.clone().into();
-                    track.index = i as i32;
-                    tracks.push(track);
+                    tracks.push(file_track.clone());
                 }
             } else {
-                tracks.push(TrackData {
-                    artist: Default::default(),
-                    cover: Default::default(),
-                    time: Default::default(),
-                    title: remove_ext(name).into(),
-                    index: i as i32,
-                    visible: true,
+                tracks.push(FileTrack {
+                    path: remove_ext(name),
+                    title: remove_ext(name),
+                    artist: String::new(),
+                    length: 0.0,
+                    image: vec![],
                 });
             }
         }

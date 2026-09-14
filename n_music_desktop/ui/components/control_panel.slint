@@ -1,0 +1,118 @@
+import {TrackData} from "./../data/track_data.slint";
+import { Slider, Button } from "std-widgets.slint";
+import { AppData } from "../globals/app_data.slint";
+
+export component ControlPanel {
+    in property <TrackData> playing_track: AppData.tracks[AppData.playing];
+    control-panel := HorizontalLayout {
+        spacing: 10px;
+        padding: 10px;
+        image := Image {
+            width: 72px;
+            height: 72px;
+            source: playing_track.cover;
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                width: control-panel.width;
+                spacing: 10px;
+                alignment: start;
+                position := Text {
+                    vertical-alignment: center;
+                    text: AppData.position_time;
+                    width: 35px;
+                }
+
+                time_slider := Slider {
+                    minimum: 0.0;
+                    maximum: AppData.length > 1.0 ? AppData.length : 1.0;
+                    width: (control-panel.width - image.width - position.width - length.width - (AppData.android ? 0 : 45px) - parent.spacing * (AppData.android ? 2 : 4) - control-panel.padding * 2) / (AppData.android ? 1 : 2);
+                    value <=> AppData.time;
+                    changed(value) => {
+                        AppData.seeking = true;
+                    }
+                    released(value) => {
+                        AppData.seek_revision += 1;
+                        AppData.seeking = false;
+                        AppData.seek(value, AppData.seek_revision);
+                    }
+                }
+
+                length := Text {
+                    vertical-alignment: center;
+                    text: playing_track.time;
+                    width: 35px;
+                }
+
+                if !AppData.android: volume_slider := Slider {
+                    minimum: 0.0;
+                    maximum: 1.0;
+                    width: (control-panel.width - image.width - position.width - length.width - 45px - parent.spacing * 4 - control-panel.padding * 2) / 2;
+                    value: AppData.volume;
+                    changed(value) => {
+                        AppData.set_volume(value)
+                    }
+                }
+
+                if !AppData.android: volume := Text {
+                    vertical-alignment: center;
+                    text: round(AppData.volume * 100.0) + "%";
+                    width: 45px;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    width: control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing - buttons.width;
+                    Text {
+                        text: playing_track.title;
+                        overflow: elide;
+                        font-size: 12px;
+                    }
+
+                    Text {
+                        text: playing_track.artist;
+                        overflow: elide;
+                        font-size: 12px;
+                    }
+                }
+
+                buttons := HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+                    width: previous.width + toggle-pause.width + next.width + self.spacing * 2;
+                    previous := Button {
+                        icon: @image-url("../../assets/icons/previous.svg");
+                        colorize-icon: true;
+                        width: 64px;
+                        clicked => {
+                            AppData.play_previous();
+                            AppData.time = 0.0;
+                        }
+                    }
+
+                    toggle_pause := Button {
+                        icon: AppData.playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                        colorize-icon: true;
+                        width: 64px;
+                        clicked => {
+                            AppData.toggle_pause()
+                        }
+                    }
+
+                    next := Button {
+                        icon: @image-url("../../assets/icons/next.svg");
+                        colorize-icon: true;
+                        width: 64px;
+                        clicked => {
+                            AppData.play_next()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -5,9 +5,7 @@ pub mod job;
 pub mod message;
 pub mod outbox;
 pub mod registrar;
-pub mod scene;
 pub mod subscriber;
-pub mod ui;
 
 pub use app::App;
 pub use bus::{Bus, SubscriberId};
@@ -16,9 +14,7 @@ pub use job::{Job, JobControl, JobHandle, JobToken, RunningJob};
 pub use message::{Envelope, Message, Tagged};
 pub use outbox::Outbox;
 pub use registrar::Registrar;
-pub use scene::Scene;
 pub use subscriber::Subscriber;
-pub use ui::{UiPatch, UiThread};
 
 use std::any::Any;
 

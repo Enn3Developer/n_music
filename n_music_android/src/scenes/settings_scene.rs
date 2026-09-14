@@ -1,10 +1,12 @@
-use crate::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted};
 use crate::localization::{get_locale_denominator, localize};
-use crate::messages::*;
-use crate::platform::Platform;
-use crate::settings::Settings;
-use crate::{FileTrack, Localization, MainWindow, SettingsData, Theme, WindowSize};
-use n_event_bus::{Ctx, Handle, Outbox, Registrar, RunningJob, Scene, Subscriber, Tagged, UiPatch};
+use crate::ui::color_scheme;
+use crate::{Localization, MainWindow, SettingsData};
+use n_event_bus::{Ctx, Handle, Outbox, Registrar, RunningJob, Subscriber, Tagged};
+use n_player::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted};
+use n_player::messages::*;
+use n_player::platform::Platform;
+use n_player::settings::Settings;
+use n_player::{FileTrack, Theme, WindowSize};
 use slint::{ComponentHandle, Weak};
 use std::{any::Any, mem, path::PathBuf, sync::Arc};
 
@@ -86,17 +88,14 @@ impl Subscriber for SettingsScene {
         DirectoryJob::subscribe(reg);
     }
 }
-impl Scene for SettingsScene {
-    fn on_mount(&mut self, _: &Ctx, out: &mut Outbox) {
-        out.emit(ScanRequested { check_cache: true });
-    }
-    fn sync(&mut self, _: &Ctx) -> Option<UiPatch> {
+impl SettingsScene {
+    fn apply_ui(&mut self) {
         let changes = mem::take(&mut self.ui_changes);
         if changes.is_empty() {
-            return None;
+            return;
         }
         let window = self.window.clone();
-        Some(Box::new(move || {
+        let _ = slint::invoke_from_event_loop(move || {
             let Some(window) = window.upgrade() else {
                 return;
             };
@@ -104,7 +103,7 @@ impl Scene for SettingsScene {
                 match change {
                     UiChange::Theme(theme) => window
                         .global::<SettingsData>()
-                        .set_color_scheme(theme.into()),
+                        .set_color_scheme(color_scheme(theme)),
                     UiChange::Locale(locale) => {
                         localize(Some(locale), window.global::<Localization>())
                     }
@@ -113,7 +112,7 @@ impl Scene for SettingsScene {
                         .set_current_path(path.into()),
                 }
             }
-        }))
+        });
     }
 }
 impl Handle<ThemeChangeRequested> for SettingsScene {
@@ -124,6 +123,7 @@ impl Handle<ThemeChangeRequested> for SettingsScene {
         self.settings.theme = theme;
         self.ui_changes.push(UiChange::Theme(theme));
         self.persist(ctx);
+        self.apply_ui();
     }
 }
 impl Handle<LocaleChangeRequested> for SettingsScene {
@@ -132,6 +132,7 @@ impl Handle<LocaleChangeRequested> for SettingsScene {
         self.settings.locale = Some(locale.clone());
         self.ui_changes.push(UiChange::Locale(locale));
         self.persist(ctx);
+        self.apply_ui();
     }
 }
 impl Handle<ToggleSaveWindowSize> for SettingsScene {
@@ -167,6 +168,7 @@ impl Handle<Tagged<DirectoryChosen>> for SettingsScene {
         self.tracks = None;
         self.ui_changes.push(UiChange::Path(path));
         self.persist(ctx);
+        self.apply_ui();
         out.emit(ScanRequested { check_cache: false });
     }
 }

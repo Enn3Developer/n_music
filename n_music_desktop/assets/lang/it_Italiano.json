@@ -1,0 +1,17 @@
+{
+  "settings": "Impostazioni",
+  "search": "Cerca...",
+  "theme": "Tema",
+  "window_size": "Salva dimensioni della finestra",
+  "music_path": "Percorso musica",
+  "language": "Lingua",
+  "theme_system": "Sistema",
+  "theme_light": "Chiaro",
+  "theme_dark": "Scuro",
+  "credits": "Sviluppato da Enn3DevPlayer e altri",
+  "license": "Licenza",
+  "update_text": "Aggiornamenti",
+  "check_update": "Controlla aggiornamenti",
+  "update": "Aggiorna",
+  "rescan": "Riscannerizza"
+}

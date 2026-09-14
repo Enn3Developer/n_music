@@ -1,0 +1,14 @@
+import {Palette} from "std-widgets.slint";
+
+export component Separator {
+    HorizontalLayout {
+        alignment: center;
+        padding-top: parent.padding-top;
+        padding-bottom: parent.padding-bottom;
+        Rectangle {
+            width: parent.width - 20px;
+            height: 1px;
+            background: Palette.border;
+        }
+    }
+}

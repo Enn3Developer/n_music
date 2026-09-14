@@ -1,21 +1,11 @@
 use bitcode::{Decode, Encode};
-use slint::private_unstable_api::re_exports::ColorScheme;
-use slint::SharedPixelBuffer;
 
-slint::include_modules!();
-
-pub mod app;
 pub mod jobs;
-pub mod localization;
 pub mod messages;
 pub mod platform;
 pub mod runner;
-pub mod scenes;
 pub mod services;
 pub mod settings;
-
-unsafe impl Send for TrackData {}
-unsafe impl Sync for TrackData {}
 
 #[derive(Copy, Clone, Debug, Decode, Encode)]
 pub struct WindowSize {
@@ -38,16 +28,6 @@ pub enum Theme {
     System,
     Light,
     Dark,
-}
-
-impl Into<ColorScheme> for Theme {
-    fn into(self) -> ColorScheme {
-        match self {
-            Theme::System => ColorScheme::Unknown,
-            Theme::Light => ColorScheme::Light,
-            Theme::Dark => ColorScheme::Dark,
-        }
-    }
 }
 
 impl From<Theme> for String {
@@ -108,29 +88,4 @@ pub struct FileTrack {
     pub artist: String,
     pub length: f64,
     pub image: Vec<u8>,
-}
-
-impl From<FileTrack> for TrackData {
-    fn from(mut value: FileTrack) -> Self {
-        value.artist.shrink_to_fit();
-        value.title.shrink_to_fit();
-        value.image.shrink_to_fit();
-        Self {
-            artist: value.artist.into(),
-            cover: if !value.image.is_empty() {
-                slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&value.image, 128, 128))
-            } else {
-                Default::default()
-            },
-            index: 0,
-            time: format!(
-                "{:02}:{:02}",
-                (value.length / 60.0).floor() as u64,
-                value.length.floor() as u64 % 60
-            )
-            .into(),
-            title: value.title.into(),
-            visible: true,
-        }
-    }
 }

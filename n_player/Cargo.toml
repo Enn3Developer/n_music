@@ -4,21 +4,15 @@ version.workspace = true
 authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/Enn3Developer/n_music"
-description = "Core library of N Music, a simple music player written in Rust + Slint"
+description = "UI-agnostic core of N Music, a simple music player written in Rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["lib"]
 
-[build-dependencies]
-slint-build = "1.17"
-
 [dependencies]
-slint = { version = "1.17", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg-wgpu"] }
 bitcode = { version = "0.6", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 n_audio = { path = "../n_audio" }
 n_event_bus = { path = "../n_event_bus" }
 rand = "0.10"
@@ -30,15 +24,8 @@ rimage = { version = "0.12.0", default-features = false, features = ["mozjpeg", 
 tempfile = "3.20"
 tokio = { version = "1.45", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 infer = { version = "0.22", default-features = false, features = ["std"] }
-sys-locale = "0.3"
 zstd = "0.14"
 async-trait = "0.1"
-paste = "1.0.15"
-
-[target.'cfg(target_os = "android")'.dependencies.slint]
-version = "1.17"
-default-features = false
-features = ["backend-android-activity-06"]
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"

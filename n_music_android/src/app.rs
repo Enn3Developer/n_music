@@ -1,41 +1,28 @@
 use crate::localization::localize;
-use crate::messages::{
-    LocaleChangeRequested, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack, SearchChanged,
-    Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleSaveWindowSize,
-};
-use crate::platform::Platform;
-use crate::runner::Runner;
 use crate::scenes::{AppScene, SettingsScene};
-use crate::{AppData, Localization, MainWindow, SettingsData, WindowSize};
-use n_event_bus::{App, EventWriter, JobControl, UiPatch, UiThread};
+use crate::ui::color_scheme;
+use crate::{AppData, Localization, MainWindow, SettingsData};
+use n_event_bus::{App, EventWriter, JobControl};
+use n_player::messages::{
+    LocaleChangeRequested, OpenLink, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack,
+    ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause,
+    ToggleSaveWindowSize,
+};
+use n_player::platform::Platform;
+use n_player::runner::Runner;
+use n_player::settings::Settings;
+use n_player::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
 
-struct SlintUi;
-
-impl UiThread for SlintUi {
-    fn apply(&self, patches: Vec<UiPatch>) {
-        let _ = slint::invoke_from_event_loop(move || {
-            for patch in patches {
-                patch();
-            }
-        });
-    }
-}
-
-pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings, platform: P) {
-    let (writer, rx) = EventWriter::channel();
-    run_app_with_events(settings, platform, writer, rx, Vec::new(), |_| {}).await;
-}
-
-pub async fn run_app_with_events<P: Platform + 'static, F: FnOnce(&mut App)>(
-    settings: crate::settings::Settings,
-    platform: P,
+pub async fn run(
+    settings: Settings,
+    platform: crate::platform::AndroidPlatform,
     writer: EventWriter,
     rx: n_event_bus::EventReceiver,
     pending: Vec<n_event_bus::Event>,
-    setup: F,
 ) {
+    let (jvm, callback) = platform.jni_handles();
     let platform: Arc<dyn Platform> = Arc::new(platform);
     let internal_dir = platform.internal_dir().await;
 
@@ -47,61 +34,54 @@ pub async fn run_app_with_events<P: Platform + 'static, F: FnOnce(&mut App)>(
         std::process::exit(1);
     }));
 
-    #[cfg(target_os = "linux")]
-    let _ = slint::set_xdg_app_id("n_music");
     let main_window = MainWindow::new().unwrap();
 
     setup_data(&settings, &main_window, writer.clone()).await;
 
     let jobs = JobControl::new(writer.clone());
-    let mut app = App::new(jobs.clone(), Box::new(SlintUi));
+    let mut app = App::new(jobs.clone());
 
-    let path = settings.path.clone();
-    app.register_subscriber(Runner::new(path, settings.volume));
-    app.register_scene(AppScene::new(main_window.as_weak(), settings.volume));
-    app.register_scene(SettingsScene::new(
+    app.register_subscriber(Runner::new(settings.path.clone(), settings.volume));
+    let mut app_scene = AppScene::new(main_window.as_weak(), settings.volume);
+    app_scene.apply_ui();
+    app.register_subscriber(app_scene);
+    app.register_subscriber(SettingsScene::new(
         main_window.as_weak(),
         settings.clone(),
         platform.clone(),
         internal_dir,
     ));
-    setup(&mut app);
+
+    app.register_subscriber(crate::bridge::AndroidBridge::new(jvm, callback));
 
     for event in pending {
         if let n_event_bus::Event::Bus(envelope) = event {
             app.enqueue(envelope);
         }
     }
+    writer.emit(ScanRequested { check_cache: true });
     let bus_task = tokio::spawn(async move { app.run_loop(rx).await });
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
-    writer.emit(crate::messages::Shutdown(WindowSize {
+    writer.emit(n_player::messages::Shutdown(WindowSize {
         width: main_window.get_last_width() as usize,
         height: main_window.get_last_height() as usize,
     }));
     let _ = bus_task.await;
 }
 
-async fn setup_data(
-    settings: &crate::settings::Settings,
-    main_window: &MainWindow,
-    writer: EventWriter,
-) {
-    localize(
-        settings.locale.clone(),
-        main_window.global::<Localization>(),
-    );
+async fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {
+    localize(settings.locale.clone(), main_window.global::<Localization>());
 
     let settings_data = main_window.global::<SettingsData>();
     let app_data = main_window.global::<AppData>();
 
-    #[cfg(target_os = "android")]
-    app_data.set_android(true);
     app_data.set_version(env!("CARGO_PKG_VERSION").into());
+    app_data.set_android(true);
 
     {
-        settings_data.set_color_scheme(settings.theme.into());
+        settings_data.set_color_scheme(color_scheme(settings.theme));
         settings_data.set_theme(i32::from(settings.theme));
         settings_data.set_width(settings.window_size.width as f32);
         settings_data.set_height(settings.window_size.height as f32);
@@ -110,7 +90,7 @@ async fn setup_data(
     }
 
     let w = writer.clone();
-    app_data.on_open_link(move |link| w.emit(crate::messages::OpenLink(link.into())));
+    app_data.on_open_link(move |link| w.emit(OpenLink(link.into())));
 
     let w = writer.clone();
     main_window
@@ -123,7 +103,7 @@ async fn setup_data(
     let w = writer.clone();
     settings_data.on_path(move || w.emit(PathChangeRequested));
     let w = writer.clone();
-    settings_data.on_scan(move || w.emit(crate::messages::ScanRequested { check_cache: false }));
+    settings_data.on_scan(move || w.emit(ScanRequested { check_cache: false }));
 
     let w = writer.clone();
     app_data.on_clicked(move |i| w.emit(PlayTrack(i as usize)));

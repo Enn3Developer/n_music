@@ -1,4 +1,4 @@
-use crate::{FileTrack, TrackData, WindowSize};
+use crate::{FileTrack, WindowSize};
 use n_audio::queue::LoopStatus;
 use n_audio::TrackTime;
 use n_event_bus::Message;
@@ -54,7 +54,7 @@ pub struct ScanRequested {
 pub struct TracksEnumerated {
     pub path: String,
     pub names: Vec<String>,
-    pub tracks: Vec<TrackData>,
+    pub tracks: Vec<FileTrack>,
 }
 pub struct TrackMetadataLoaded {
     pub index: usize,
