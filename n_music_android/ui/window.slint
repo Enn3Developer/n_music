@@ -1,13 +1,10 @@
-import {TrackData} from "./data/track_data.slint";
-import {Palette} from "std-widgets.slint";
-import {App} from "./scenes/app.slint";
+import { App } from "scenes/app.slint";
 import { Settings } from "scenes/settings.slint";
 import { Localization } from "globals/localization.slint";
 import { SettingsData } from "globals/settings_data.slint";
 import { AppData } from "globals/app_data.slint";
-import { AndroidWindow } from "android_window.slint";
 
-export { Localization, SettingsData, AppData, AndroidWindow }
+export { Localization, SettingsData, AppData }
 
 export component MainWindow inherits Window {
     in-out property <bool> settings;
@@ -17,8 +14,12 @@ export component MainWindow inherits Window {
     icon: @image-url("../assets/icons/icon.png");
     preferred-width: SettingsData.width;
     preferred-height: SettingsData.height;
-    min-width: 400px;
+    min-width: 320px;
     min-height: 300px;
+    changed settings => {
+        // Replacing the app scene can destroy a slider before it receives cancel.
+        AppData.seeking = false;
+    }
     if !settings: App {
         width: parent.width;
         height: parent.height;

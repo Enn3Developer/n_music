@@ -82,12 +82,12 @@ export component ControlPanel {
 
                 buttons := HorizontalLayout {
                     alignment: end;
-                    spacing: 10px;
-                    width: previous.width + toggle-pause.width + next.width + self.spacing * 2;
+                    spacing: 8px;
+                    width: previous.width + toggle-pause.width + next.width + repeat.width + self.spacing * 3;
                     previous := Button {
                         icon: @image-url("../../assets/icons/previous.svg");
                         colorize-icon: true;
-                        width: 64px;
+                        width: 48px;
                         clicked => {
                             AppData.play_previous();
                             AppData.time = 0.0;
@@ -97,7 +97,7 @@ export component ControlPanel {
                     toggle_pause := Button {
                         icon: AppData.playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
                         colorize-icon: true;
-                        width: 64px;
+                        width: 48px;
                         clicked => {
                             AppData.toggle_pause()
                         }
@@ -106,9 +106,19 @@ export component ControlPanel {
                     next := Button {
                         icon: @image-url("../../assets/icons/next.svg");
                         colorize-icon: true;
-                        width: 64px;
+                        width: 48px;
                         clicked => {
                             AppData.play_next()
+                        }
+                    }
+
+                    repeat := Button {
+                        icon: AppData.repeat_one ? @image-url("../../assets/icons/repeat_on.svg") : @image-url("../../assets/icons/repeat_off.svg");
+                        colorize-icon: true;
+                        width: 48px;
+                        accessible-label: AppData.repeat_one ? "Repeat one" : "Repeat all";
+                        clicked => {
+                            AppData.toggle_repeat();
                         }
                     }
                 }

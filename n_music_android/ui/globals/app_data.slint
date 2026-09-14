@@ -4,6 +4,7 @@ export global AppData {
     in property <[TrackData]> tracks;
     in property <int> playing;
     in property <bool> playback;
+    in property <bool> repeat_one;
     in property <string> position_time;
     in property <float> time;
     in property <float> length;
@@ -19,6 +20,7 @@ export global AppData {
     callback play_previous();
     callback toggle_pause();
     callback play_next();
+    callback toggle_repeat();
     callback seek(float, int);
     callback set_volume(float);
     callback searching(string);

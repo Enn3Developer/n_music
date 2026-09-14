@@ -1,0 +1,174 @@
+import { TextField } from "../../material-1.0/ui/components/text_field.slint";
+import { StateLayer, StateLayerArea } from "../../material-1.0/ui/components/state_layer.slint";
+import { MaterialPalette } from "../../material-1.0/ui/styling/material_palette.slint";
+import { MaterialStyleMetrics } from "../../material-1.0/ui/styling/material_style_metrics.slint";
+import { MaterialTypography } from "../../material-1.0/ui/styling/material_typography.slint";
+import { MaterialText } from "../../material-1.0/ui/components/material_text.slint";
+import { ScrollView } from "../../material-1.0/ui/components/scroll_view.slint";
+import { Elevation } from "../../material-1.0/ui/components/elevation.slint";
+import { Icons } from "../../material-1.0/ui/icons/icons.slint";
+
+component ComboBoxItem {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+
+    callback clicked();
+
+    min-height: max(MaterialStyleMetrics.size_48, layout.min-height);
+
+    background_layer := Rectangle {
+        state_area := StateLayerArea {
+            color: MaterialPalette.on_surface;
+
+            layout := HorizontalLayout {
+                padding-left: MaterialStyleMetrics.padding_16;
+                padding-right: self.padding-left;
+                padding-top: MaterialStyleMetrics.padding_12;
+                padding-bottom: self.padding-top;
+
+                MaterialText {
+                    horizontal-stretch: 1;
+                    text: root.text;
+                    style: MaterialTypography.body_large;
+                    color: MaterialPalette.on_surface;
+                    vertical-alignment: center;
+                }
+            }
+
+            clicked => {
+                root.clicked();
+            }
+        }
+    }
+
+    states [
+        disabled when !root.enabled: {
+            state_area.opacity: MaterialPalette.disable_opacity;
+        }
+        selected when root.selected: {
+            background_layer.background: MaterialPalette.surface_container_highest;
+        }
+    ]
+}
+
+export component ComboBox {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <[string]> model;
+    in-out property <int> current_index: -1;
+    in-out property <string> current_value;
+    out property <bool> has_focus: text_field.has_focus;
+
+    callback selected(string);
+
+    property <length> item_height: MaterialStyleMetrics.size_48;
+    in-out property <int> max_displayed_items: 6;
+
+    min-width: text_field.min-width;
+    min-height: text_field.min-height;
+    forward-focus: text_field;
+    accessible-role: combobox;
+    accessible-enabled: root.enabled;
+    accessible-expandable: true;
+    accessible-value <=> current_value;
+    accessible-action-expand => { menu.show(); }
+
+    text_field := TextField {
+        width: 100%;
+        height: 100%;
+        trailing_icon: Icons.arrow_drop_down;
+        read_only: true;
+        text: root.current_value;
+        label: root.label;
+    }
+
+    StateLayer {
+        width: 100%;
+        height: 100%;
+        background: MaterialPalette.on_surface;
+        has_hover: touch_area.has_hover;
+        enabled: root.enabled;
+    }
+
+    touch_area := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+
+        clicked => {
+            menu.show();
+        }
+    }
+
+    menu := PopupWindow {
+        x: 0;
+        width: root.width;
+        close_policy: close_on_click_outside;
+        forward-focus: popup_focus_trap;
+
+        popup_focus_trap := FocusScope {
+            width: 100%;
+
+            VerticalLayout {
+                alignment: start;
+
+                TextField {
+                    width: root.width;
+                    trailing_icon: Icons.arrow_drop_up;
+                    text: root.current_value;
+                    label: root.label;
+                    read_only: true;
+
+                    trailing_icon_clicked => {
+                        menu.close();
+                    }
+                }
+
+                Rectangle {
+                    width: 100%;
+                    height: min(max(root.item_height, root.model.length * root.item_height), root.max_displayed_items * root.item_height) + MaterialStyleMetrics.padding_8 * 2;
+
+                    Elevation {
+                        width: 100%;
+                        height: 100%;
+                        level: 2;
+                        border_radius: MaterialStyleMetrics.border_radius_4;
+                        background: MaterialPalette.surface_container;
+
+                        ScrollView {
+                            VerticalLayout {
+                                padding-top: MaterialStyleMetrics.padding_8;
+                                padding-bottom: self.padding-top;
+
+                                for text[index] in root.model: ComboBoxItem {
+                                    text: text;
+                                    selected: index == root.current_index;
+
+                                    clicked => {
+                                        root.update_selection(index);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function update_selection(index: int) {
+        root.current_index = index;
+        root.current_value = root.model[index];
+        menu.close();
+        root.selected(root.current_value);
+    }
+
+    changed current_index => {
+        if root.current_index >= 0 && root.current_index < root.model.length {
+            root.current_value = root.model[root.current_index];
+        } else {
+            root.current_value = "";
+        }
+    }
+}

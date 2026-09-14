@@ -20,10 +20,15 @@ pub fn to_track_data(mut value: FileTrack, index: i32) -> TrackData {
     value.image.shrink_to_fit();
     TrackData {
         artist: value.artist.into(),
-        cover: if !value.image.is_empty() {
-            slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&value.image, 128, 128))
-        } else {
-            Default::default()
+        cover: match value.image.len() {
+            // Older library caches contain RGB thumbnails; new scans retain alpha.
+            len if len == 128 * 128 * 3 => {
+                slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&value.image, 128, 128))
+            }
+            len if len == 128 * 128 * 4 => slint::Image::from_rgba8(
+                SharedPixelBuffer::clone_from_slice(&value.image, 128, 128),
+            ),
+            _ => Default::default(),
         },
         index,
         time: format!(

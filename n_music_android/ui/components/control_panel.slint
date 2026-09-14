@@ -1,114 +1,168 @@
-import {TrackData} from "./../data/track_data.slint";
-import { Slider, Button } from "std-widgets.slint";
+import { TrackData } from "../data/track_data.slint";
 import { AppData } from "../globals/app_data.slint";
+import { MediaButton } from "media_buttons.slint";
+import { Slider } from "slider.slint";
+import {
+    MaterialPalette,
+    MaterialTypography,
+    MaterialStyleMetrics,
+    MaterialText
+} from "../../material-1.0/material.slint";
 
 export component ControlPanel {
     in property <TrackData> playing_track: AppData.tracks[AppData.playing];
-    control-panel := HorizontalLayout {
-        spacing: 10px;
-        padding: 10px;
-        image := Image {
-            width: 72px;
-            height: 72px;
-            source: playing_track.cover;
-        }
 
-        VerticalLayout {
+    vertical-stretch: 0;
+
+    Rectangle {
+        background: MaterialPalette.surface_container;
+        border-top-left-radius: 24px;
+        border-top-right-radius: 24px;
+        height: control-panel.preferred-height;
+
+        control-panel := VerticalLayout {
+            padding: MaterialStyleMetrics.padding_8;
+            padding-bottom: 16px;
+            spacing: MaterialStyleMetrics.spacing_8;
+
             HorizontalLayout {
-                width: control-panel.width;
-                spacing: 10px;
+                spacing: MaterialStyleMetrics.spacing_8;
                 alignment: start;
-                position := Text {
+
+                MaterialText {
+                    text: root.playing_track.artist;
+                    style: MaterialTypography.body_medium;
+                    color: MaterialPalette.on_surface_variant;
                     vertical-alignment: center;
-                    text: AppData.position_time;
-                    width: 35px;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    overflow: elide;
                 }
 
-                time_slider := Slider {
-                    minimum: 0.0;
-                    maximum: AppData.length > 1.0 ? AppData.length : 1.0;
-                    width: (control-panel.width - image.width - position.width - length.width - (AppData.android ? 0 : 45px) - parent.spacing * (AppData.android ? 2 : 4) - control-panel.padding * 2) / (AppData.android ? 1 : 2);
-                    value <=> AppData.time;
-                    changed(value) => {
-                        AppData.seeking = true;
-                    }
-                    released(value) => {
-                        AppData.seek_revision += 1;
-                        AppData.seeking = false;
-                        AppData.seek(value, AppData.seek_revision);
-                    }
-                }
-
-                length := Text {
+                MaterialText {
+                    text: "\u{2022}";
+                    style: MaterialTypography.body_medium;
+                    color: MaterialPalette.on_surface_variant;
                     vertical-alignment: center;
-                    text: playing_track.time;
-                    width: 35px;
+                    horizontal-stretch: 0;
                 }
 
-                if !AppData.android: volume_slider := Slider {
-                    minimum: 0.0;
-                    maximum: 1.0;
-                    width: (control-panel.width - image.width - position.width - length.width - 45px - parent.spacing * 4 - control-panel.padding * 2) / 2;
-                    value: AppData.volume;
-                    changed(value) => {
-                        AppData.set_volume(value)
-                    }
-                }
-
-                if !AppData.android: volume := Text {
+                MaterialText {
+                    text: root.playing_track.title;
+                    style: MaterialTypography.title_medium;
+                    color: MaterialPalette.on_surface;
                     vertical-alignment: center;
-                    text: round(AppData.volume * 100.0) + "%";
-                    width: 45px;
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    overflow: elide;
                 }
             }
 
             HorizontalLayout {
-                spacing: 10px;
-                VerticalLayout {
-                    alignment: center;
-                    width: control-panel.width - image.width - control-panel.padding * 2 - parent.spacing - control-panel.spacing - buttons.width;
-                    Text {
-                        text: playing_track.title;
-                        overflow: elide;
-                        font-size: 12px;
-                    }
+                spacing: MaterialStyleMetrics.spacing_8;
 
-                    Text {
-                        text: playing_track.artist;
-                        overflow: elide;
-                        font-size: 12px;
+                Rectangle {
+                    width: 72px;
+                    height: 72px;
+                    border-radius: MaterialStyleMetrics.border_radius_8;
+                    clip: true;
+
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.playing_track.cover;
+                        image-fit: cover;
                     }
                 }
 
-                buttons := HorizontalLayout {
-                    alignment: end;
-                    spacing: 10px;
-                    width: previous.width + toggle-pause.width + next.width + self.spacing * 2;
-                    previous := Button {
-                        icon: @image-url("../../assets/icons/previous.svg");
-                        colorize-icon: true;
-                        width: 64px;
-                        clicked => {
-                            AppData.play_previous();
-                            AppData.time = 0.0;
+                VerticalLayout {
+                    spacing: MaterialStyleMetrics.spacing_8;
+                    horizontal-stretch: 1;
+
+                    HorizontalLayout {
+                        spacing: MaterialStyleMetrics.spacing_12;
+
+                        MaterialText {
+                            text: AppData.position_time;
+                            style: MaterialTypography.label_medium;
+                            color: MaterialPalette.on_surface_variant;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+
+                        Slider {
+                            minimum: 0.0;
+                            maximum: AppData.length > 1.0 ? AppData.length : 1.0;
+                            value <=> AppData.time;
+                            accessible-label: "Playback position";
+
+                            value_changed(value) => {
+                                AppData.seeking = true;
+                            }
+
+                            released(value) => {
+                                AppData.seek_revision += 1;
+                                AppData.seeking = false;
+                                AppData.seek(value, AppData.seek_revision);
+                            }
+
+                            canceled => {
+                                AppData.seeking = false;
+                            }
+                        }
+
+                        MaterialText {
+                            text: root.playing_track.time;
+                            style: MaterialTypography.label_medium;
+                            color: MaterialPalette.on_surface_variant;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
                         }
                     }
 
-                    toggle_pause := Button {
-                        icon: AppData.playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
-                        colorize-icon: true;
-                        width: 64px;
-                        clicked => {
-                            AppData.toggle_pause()
-                        }
-                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: MaterialStyleMetrics.spacing_8;
 
-                    next := Button {
-                        icon: @image-url("../../assets/icons/next.svg");
-                        colorize-icon: true;
-                        width: 64px;
-                        clicked => {
-                            AppData.play_next()
+                        MediaButton {
+                            icon: @image-url("../../assets/icons/previous.svg");
+                            bg-color: MaterialPalette.surface_container_highest;
+                            accessible-label: "Previous track";
+                            clicked => {
+                                AppData.play_previous();
+                                AppData.time = 0.0;
+                            }
+                        }
+
+                        MediaButton {
+                            icon: AppData.playback ? @image-url("../../assets/icons/pause.svg") : @image-url("../../assets/icons/play.svg");
+                            bg-color: MaterialPalette.primary_container;
+                            icon-color: MaterialPalette.on_primary_container;
+                            accessible-label: AppData.playback ? "Pause" : "Play";
+                            clicked => {
+                                AppData.toggle_pause();
+                            }
+                        }
+
+                        MediaButton {
+                            icon: @image-url("../../assets/icons/next.svg");
+                            bg-color: MaterialPalette.surface_container_highest;
+                            accessible-label: "Next track";
+                            clicked => {
+                                AppData.play_next();
+                            }
+                        }
+
+                        MediaButton {
+                            icon: AppData.repeat_one ? @image-url("../../assets/icons/repeat_on.svg") : @image-url("../../assets/icons/repeat_off.svg");
+                            bg-color: AppData.repeat_one ? MaterialPalette.primary_container : MaterialPalette.surface_container_highest;
+                            icon-color: AppData.repeat_one ? MaterialPalette.on_primary_container : MaterialPalette.on_surface;
+                            accessible-label: AppData.repeat_one ? "Repeat one" : "Repeat all";
+                            accessible-checkable: true;
+                            accessible-checked: AppData.repeat_one;
+                            clicked => {
+                                AppData.toggle_repeat();
+                            }
                         }
                     }
                 }

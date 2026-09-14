@@ -32,6 +32,38 @@ const REPEAT_MODE_ONE: i32 = 1;
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
     slint::android::init(app.clone()).unwrap();
+
+    {
+        use slint::fontique_010::fontique;
+
+        let mut collection = slint::fontique_010::shared_collection();
+
+        let cjk_paths = [
+            "/system/fonts/NotoSansCJK-Regular.ttc",
+            "/system/fonts/NotoSansSC-Regular.otf",
+            "/system/fonts/NotoSansTC-Regular.otf",
+            "/system/fonts/NotoSansJP-Regular.otf",
+            "/system/fonts/NotoSansKR-Regular.otf",
+            "/system/fonts/DroidSansFallback.ttf",
+        ];
+
+        for path in cjk_paths {
+            if let Ok(font_bytes) = std::fs::read(path) {
+                let blob = fontique::Blob::new(std::sync::Arc::new(font_bytes));
+                let fonts = collection.register_fonts(blob, None);
+                let script_tags = ["Hira", "Kana", "Hani", "Hang"];
+                for tag in script_tags {
+                    if let Ok(script) = tag.parse::<fontique::Script>() {
+                        collection.append_fallbacks(
+                            fontique::FallbackKey::new(script, None),
+                            fonts.iter().map(|x| x.0),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

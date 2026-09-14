@@ -1,0 +1,132 @@
+import { MaterialPalette } from "../../material-1.0/ui/styling/material_palette.slint";
+import { MaterialStyleMetrics } from "../../material-1.0/ui/styling/material_style_metrics.slint";
+import { MaterialTypography } from "../../material-1.0/ui/styling/material_typography.slint";
+import { MaterialText } from "../../material-1.0/ui/components/material_text.slint";
+import { IconButton } from "../../material-1.0/ui/components/icon_button.slint";
+import { Icons } from "../../material-1.0/ui/icons/icons.slint";
+
+component SearchTextInput {
+    in-out property <string> text <=> text_input.text;
+    in property <string> placeholder_text;
+    out property <bool> has_focus <=> text_input.has_focus;
+    property <length> computed_x;
+
+    callback accepted(text: string);
+    callback edited(text: string);
+    callback key_pressed(event: KeyEvent) -> EventResult;
+    callback key_released(event: KeyEvent) -> EventResult;
+
+    forward-focus: text_input;
+    horizontal-stretch: 1;
+    min-width: 0px;
+
+    Rectangle {
+        clip: true;
+
+        text_input := TextInput {
+            x: min(0px, max(parent.width - self.width - self.text_cursor_width, root.computed_x));
+            width: max(parent.width - self.text-cursor-width, self.preferred-width);
+            height: 100%;
+            font-size: MaterialTypography.body_large.font_size;
+            font-weight: MaterialTypography.body_large.font_weight;
+            vertical-alignment: center;
+            single-line: true;
+            color: MaterialPalette.on_surface;
+            selection-background-color: MaterialPalette.secondary_container;
+            selection-foreground-color: self.color;
+            accessible-label: root.placeholder_text;
+            accessible-placeholder-text: root.placeholder_text;
+
+            cursor_position_changed(cursor_position) => {
+                if cursor_position.x + root.computed_x < 0 {
+                    root.computed_x = -cursor_position.x;
+                } else if cursor_position.x + root.computed_x > parent.width - self.text_cursor_width {
+                    root.computed_x = parent.width - cursor_position.x - self.text_cursor_width;
+                }
+            }
+
+            accepted => { root.accepted(self.text); }
+            edited => { root.edited(self.text); }
+            key_pressed(event) => { root.key_pressed(event) }
+            key_released(event) => { root.key_released(event) }
+        }
+
+        if root.text == "" && root.placeholder_text != "": MaterialText {
+            width: 100%;
+            height: 100%;
+            text: root.placeholder_text;
+            color: MaterialPalette.on_surface_variant;
+            vertical-alignment: center;
+            style: MaterialTypography.body_large;
+            accessible-role: none;
+        }
+    }
+}
+
+export component SearchBar {
+    in property <image> leading_icon: Icons.menu;
+    in property <image> trailing_icon;
+    in property <string> placeholder_text;
+    in-out property <string> text;
+
+    callback accepted(text: string);
+    callback edited(text: string);
+    callback leading_clicked();
+    callback trailing_clicked();
+
+    property <bool> is_active: input.has_focus || root.text != "";
+    min-height: MaterialStyleMetrics.size_56;
+    forward-focus: input;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: MaterialPalette.surface_container_high;
+        border-radius: MaterialStyleMetrics.border_radius_28;
+
+        HorizontalLayout {
+            height: MaterialStyleMetrics.size_56;
+            padding: MaterialStyleMetrics.padding_4;
+            spacing: MaterialStyleMetrics.spacing_4;
+
+            IconButton {
+                icon: root.is_active ? Icons.arrow_back : root.leading_icon;
+                accessible-label: root.is_active ? "Dismiss search keyboard" : root.placeholder_text;
+                clicked => {
+                    if root.is_active {
+                        input.clear-focus();
+                    } else {
+                        input.focus();
+                        root.leading_clicked();
+                    }
+                }
+            }
+
+            input := SearchTextInput {
+                text <=> root.text;
+                placeholder_text: root.placeholder_text;
+
+                edited => { root.edited(self.text); }
+                accepted => {
+                    root.accepted(self.text);
+                    self.clear-focus();
+                }
+            }
+
+            if root.is_active && root.text != "": IconButton {
+                icon: Icons.close;
+                accessible-label: "Clear search";
+                clicked => {
+                    root.text = "";
+                    root.edited("");
+                    input.clear-focus();
+                }
+            }
+
+            if !root.is_active && root.trailing_icon.width > 0: IconButton {
+                icon: root.trailing_icon;
+                clicked => { root.trailing_clicked(); }
+            }
+        }
+    }
+}

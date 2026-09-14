@@ -1,7 +1,7 @@
 use crate::messages::{
     AppVisibilityChanged, LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlayTrack,
     PlaybackChanged, PositionChanged, QueueReplaced, Seek, SetLoopStatus, SetVolume, Shutdown,
-    TrackChanged, TogglePause, VolumeChanged,
+    TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
 };
 use crate::player::{PlaybackEvent, PlaybackTask, Player};
 use crate::TrackTime;
@@ -299,6 +299,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<Seek>();
         reg.on::<SetVolume>();
         reg.on::<SetLoopStatus>();
+        reg.on::<ToggleRepeat>();
         reg.on::<QueueReplaced>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<Shutdown>();
@@ -404,6 +405,16 @@ impl Handle<SetLoopStatus> for QueuePlayer {
             self.set_loop_status(msg.0.clone());
             out.emit(LoopStatusChanged(self.loop_status()));
         }
+    }
+}
+
+impl Handle<ToggleRepeat> for QueuePlayer {
+    fn handle(&mut self, _: &ToggleRepeat, ctx: &Ctx, out: &mut Outbox) {
+        let status = match self.loop_status {
+            LoopStatus::Playlist => LoopStatus::File,
+            LoopStatus::File => LoopStatus::Playlist,
+        };
+        self.handle(&SetLoopStatus(status), ctx, out);
     }
 }
 

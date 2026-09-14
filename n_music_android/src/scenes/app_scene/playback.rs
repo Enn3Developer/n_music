@@ -1,6 +1,16 @@
 use super::AppScene;
 use n_event_bus::{Ctx, Handle, Outbox};
-use n_music_core::messages::{PlaybackChanged, PositionChanged, TrackChanged, VolumeChanged};
+use n_music_core::messages::{
+    LoopStatusChanged, PlaybackChanged, PositionChanged, TrackChanged, VolumeChanged,
+};
+
+impl Handle<LoopStatusChanged> for AppScene {
+    fn handle(&mut self, msg: &LoopStatusChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        self.dirty = true;
+        self.loop_status = msg.0.clone();
+        self.apply_ui();
+    }
+}
 
 impl Handle<PlaybackChanged> for AppScene {
     fn handle(&mut self, msg: &PlaybackChanged, _ctx: &Ctx, _out: &mut Outbox) {

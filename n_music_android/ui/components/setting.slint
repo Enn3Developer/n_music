@@ -1,22 +1,43 @@
+import {
+    MaterialText,
+    MaterialTypography,
+    MaterialPalette,
+    MaterialStyleMetrics
+} from "../../material-1.0/material.slint";
+
 export component Setting {
     in property <string> text;
-    in property <int> children: 1;
-    horizontal := HorizontalLayout {
-        width: parent.width;
-        max-height: 20px;
-        Text {
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            text: text;
-            font-size: 14px;
-            width: horizontal.width - children.width;
+    in property <string> supporting_text;
+
+    min-height: MaterialStyleMetrics.size_56;
+
+    HorizontalLayout {
+        spacing: MaterialStyleMetrics.spacing_16;
+        alignment: space-between;
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+
+            MaterialText {
+                text: root.text;
+                style: MaterialTypography.body_large;
+                color: MaterialPalette.on_surface;
+                wrap: word-wrap;
+            }
+
+            if root.supporting_text != "": MaterialText {
+                text: root.supporting_text;
+                style: MaterialTypography.body_medium;
+                color: MaterialPalette.on_surface_variant;
+                wrap: word-wrap;
+            }
         }
 
-        children := HorizontalLayout {
-            alignment: end;
-            max-height: parent.max-height;
-            spacing: 10px;
-            width: horizontal.width / 2 + self.spacing * (root.children - 1);
+        HorizontalLayout {
+            alignment: center;
+            spacing: MaterialStyleMetrics.spacing_8;
             @children
         }
     }

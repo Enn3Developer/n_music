@@ -5,8 +5,10 @@ use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Registrar, RunningJob, Subscriber};
 use n_music_core::jobs::scan::ScanJob;
 use n_music_core::messages::{
-    PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged, VolumeChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged,
+    VolumeChanged,
 };
+use n_music_core::queue::LoopStatus;
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::any::Any;
 use std::mem;
@@ -25,6 +27,7 @@ pub struct AppScene {
     position_str: String,
     length: f64,
     playback: bool,
+    loop_status: LoopStatus,
     volume: f64,
     track_count: usize,
     loaded: usize,
@@ -41,7 +44,7 @@ pub struct AppScene {
 }
 
 impl AppScene {
-    pub fn new(window: Weak<MainWindow>, volume: f64) -> Self {
+    pub fn new(window: Weak<MainWindow>, volume: f64, loop_status: LoopStatus) -> Self {
         Self {
             window,
             scan_job: None,
@@ -51,6 +54,7 @@ impl AppScene {
             position_str: String::from("00:00"),
             length: 0.0,
             playback: false,
+            loop_status,
             volume,
             track_count: 0,
             loaded: 0,
@@ -75,6 +79,7 @@ impl Subscriber for AppScene {
 
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<PlaybackChanged>();
+        reg.on::<LoopStatusChanged>();
         reg.on::<TrackChanged>();
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
@@ -107,6 +112,7 @@ impl AppScene {
         let position_str = position_text_dirty.then(|| self.position_str.clone());
         let length = self.length;
         let playback = self.playback;
+        let repeat_one = self.loop_status == LoopStatus::File;
         let volume = self.volume;
 
         let changes = mem::take(&mut self.changes);
@@ -130,6 +136,7 @@ impl AppScene {
             if state_dirty {
                 app_data.set_playing(playing);
                 app_data.set_playback(playback);
+                app_data.set_repeat_one(repeat_one);
                 app_data.set_volume(volume as f32);
             }
             if let Some(position_str) = position_str {
@@ -207,7 +214,12 @@ impl AppScene {
 }
 
 impl n_event_bus::Handle<n_music_core::messages::Shutdown> for AppScene {
-    fn handle(&mut self, _: &n_music_core::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
+    fn handle(
+        &mut self,
+        _: &n_music_core::messages::Shutdown,
+        _: &Ctx,
+        _: &mut n_event_bus::Outbox,
+    ) {
         self.scan_job = None;
         self.visible = false;
     }

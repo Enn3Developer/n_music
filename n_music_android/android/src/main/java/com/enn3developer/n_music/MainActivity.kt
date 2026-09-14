@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +17,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import java.io.File
 
 class MainActivity : NativeActivity() {
@@ -43,6 +46,7 @@ class MainActivity : NativeActivity() {
     private external fun gotDirectory(directory: String, requestId: Long)
     private external fun visibilityChanged(visible: Boolean)
     private var directoryRequest: Long? = null
+    private var theme: Int = 0 // App theme: 0 = System, 1 = Light, 2 = Dark
 
     private fun askDirectoryWithPermission() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
@@ -72,6 +76,38 @@ class MainActivity : NativeActivity() {
     private fun openLink(link: String) {
         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
         startActivity(browserIntent)
+    }
+
+    @Suppress("unused")
+    private fun set_theme(value: Int) {
+        theme = value
+        updateStatusBarAppearance()
+    }
+
+    private fun updateStatusBarAppearance() {
+        runOnUiThread {
+            val window = this.window
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+
+            val isLight = when (theme) {
+                1 -> true
+                2 -> false
+                else -> {
+                    val currentNightMode =
+                        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+                    currentNightMode == Configuration.UI_MODE_NIGHT_NO
+                }
+            }
+
+            window.statusBarColor = if (isLight) Color.WHITE else Color.BLACK
+
+            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = isLight
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateStatusBarAppearance()
     }
 
     // It's the playback shown in the notification

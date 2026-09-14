@@ -34,7 +34,7 @@ pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
                 };
 
             if let Some(mut zune_image) = zune_image {
-                zune_image.convert_color(ColorSpace::RGB).unwrap();
+                zune_image.convert_color(ColorSpace::RGBA).unwrap();
                 let (w, h) = zune_image.dimensions();
                 let mut size = w;
                 if w != h {

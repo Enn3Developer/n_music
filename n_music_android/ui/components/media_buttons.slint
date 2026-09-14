@@ -1,0 +1,49 @@
+import {
+    MaterialPalette,
+    StateLayerArea,
+    Icon
+} from "../../material-1.0/material.slint";
+
+export component MediaButton {
+    in property <image> icon;
+    in property <length> size: 48px;
+    in property <length> icon-size: 24px;
+    in property <length> border-radius: self.size / 5;
+    in property <color> bg-color: transparent;
+    in property <color> icon-color: MaterialPalette.on_surface;
+
+    callback clicked();
+
+    width: self.size;
+    height: self.size;
+    accessible-role: button;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: state-area;
+
+    Rectangle {
+        background: root.bg-color;
+        border-radius: root.border-radius;
+        clip: true;
+
+        state-area := StateLayerArea {
+            border-radius: root.border-radius;
+            color: root.icon-color;
+
+            clicked => { root.clicked(); }
+
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+
+                    Icon {
+                        source: root.icon;
+                        width: root.icon-size;
+                        height: root.icon-size;
+                        colorize: root.icon-color;
+                    }
+                }
+            }
+        }
+    }
+}

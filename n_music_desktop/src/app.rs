@@ -5,7 +5,7 @@ use crate::{AppData, Localization, MainWindow, SettingsData};
 use n_event_bus::{App, EventWriter, JobControl};
 use n_music_core::messages::{
     LocaleChangeRequested, OpenLink, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack,
-    ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause,
+    ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleRepeat,
     ToggleSaveWindowSize,
 };
 use n_music_core::platform::Platform;
@@ -44,8 +44,9 @@ pub async fn run<P: Platform + 'static>(
 
     let mut player = QueuePlayer::new(settings.path.clone());
     player.set_volume(settings.volume as f32);
+    let loop_status = player.loop_status();
     app.register_subscriber(player);
-    let mut app_scene = AppScene::new(main_window.as_weak(), settings.volume);
+    let mut app_scene = AppScene::new(main_window.as_weak(), settings.volume, loop_status);
     app_scene.apply_ui();
     app.register_subscriber(app_scene);
     app.register_subscriber(SettingsScene::new(
@@ -78,7 +79,10 @@ pub async fn run<P: Platform + 'static>(
 }
 
 async fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {
-    localize(settings.locale.clone(), main_window.global::<Localization>());
+    localize(
+        settings.locale.clone(),
+        main_window.global::<Localization>(),
+    );
 
     let settings_data = main_window.global::<SettingsData>();
     let app_data = main_window.global::<AppData>();
@@ -116,6 +120,8 @@ async fn setup_data(settings: &Settings, main_window: &MainWindow, writer: Event
     app_data.on_play_previous(move || w.emit(PlayPrevious));
     let w = writer.clone();
     app_data.on_toggle_pause(move || w.emit(TogglePause));
+    let w = writer.clone();
+    app_data.on_toggle_repeat(move || w.emit(ToggleRepeat));
     let w = writer.clone();
     app_data.on_play_next(move || w.emit(PlayNext));
     let w = writer.clone();

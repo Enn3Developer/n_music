@@ -1,6 +1,7 @@
 use n_music_core::queue::LoopStatus;
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, TrackChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, ThemeChangeRequested,
+    TrackChanged,
 };
 use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
 use n_event_bus::{
@@ -27,6 +28,7 @@ impl AndroidBridge {
     pub fn new(
         jvm: Arc<jni::JavaVM>,
         callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
+        theme: i32,
     ) -> Self {
         jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_method(
@@ -38,7 +40,7 @@ impl AndroidBridge {
             Ok(())
         })
         .unwrap();
-        Self {
+        let bridge = Self {
             jvm,
             callback,
             notification: None,
@@ -46,7 +48,9 @@ impl AndroidBridge {
             metadata_loader: MetadataLoader::default(),
             position: 0.0,
             playing: false,
-        }
+        };
+        bridge.change_theme(theme);
+        bridge
     }
 }
 
@@ -60,6 +64,7 @@ impl Subscriber for AndroidBridge {
         reg.on::<TrackChanged>();
         reg.on::<QueueReplaced>();
         reg.on::<LoopStatusChanged>();
+        reg.on::<ThemeChangeRequested>();
         MetadataJob::subscribe(reg);
         NotificationJob::subscribe(reg);
         reg.on::<PositionChanged>();
@@ -89,6 +94,20 @@ impl AndroidBridge {
                     jni::jni_str!("changeRepeatMode"),
                     jni::jni_sig!("(I)V"),
                     &[mode.into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn change_theme(&self, theme: i32) {
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("set_theme"),
+                    jni::jni_sig!("(I)V"),
+                    &[theme.into()],
                 )?;
                 Ok(())
             })
@@ -154,6 +173,12 @@ impl Handle<LoopStatusChanged> for AndroidBridge {
             LoopStatus::File => REPEAT_MODE_ONE,
         };
         self.change_repeat_mode(mode);
+    }
+}
+
+impl Handle<ThemeChangeRequested> for AndroidBridge {
+    fn handle(&mut self, msg: &ThemeChangeRequested, _: &Ctx, _: &mut Outbox) {
+        self.change_theme(msg.0);
     }
 }
 

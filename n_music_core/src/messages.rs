@@ -24,6 +24,7 @@ pub enum Seek {
 }
 pub struct SetVolume(pub f64);
 pub struct SetLoopStatus(pub LoopStatus);
+pub struct ToggleRepeat;
 
 pub struct PlaybackChanged(pub bool);
 pub struct TrackChanged {
@@ -93,6 +94,7 @@ messages!(
     Seek,
     SetVolume,
     SetLoopStatus,
+    ToggleRepeat,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,

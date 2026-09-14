@@ -1,0 +1,139 @@
+import { MaterialPalette } from "../../material-1.0/ui/styling/material_palette.slint";
+
+export component ScrollBar {
+    in property <bool> enabled: true;
+    out property <bool> has_hover: touch_area.has_hover;
+    in-out property <bool> horizontal;
+    in-out property <length> maximum;
+    in-out property <length> page_size;
+    in-out property <length> value;
+    in property <ScrollBarPolicy> policy: ScrollBarPolicy.as_needed;
+
+    property <length> track_size: (root.horizontal ? root.width : root.height) - 2 * root.offset;
+    property <length> offset: 2px;
+    property <length> track_gap: 8px;
+
+    visible: root.policy == ScrollBarPolicy.always_on || (root.policy == ScrollBarPolicy.as_needed && root.maximum > 0);
+
+    Rectangle {
+        width: !root.horizontal ? 8px : max(0px, thumb.x - root.track_gap);
+        height: root.horizontal ? 8px : max(0px, thumb.y - root.track_gap);
+        x: !root.horizontal ? parent.width - self.width - 4px : 0;
+        y: root.horizontal ? parent.height - self.height - 4px : 0;
+        border-radius: 4px;
+        background: MaterialPalette.secondary_container;
+    }
+
+    Rectangle {
+        width: !root.horizontal ? 8px : max(0px, parent.width - (thumb.x + thumb.width + root.track_gap));
+        height: root.horizontal ? 8px : max(0px, parent.height - (thumb.y + thumb.height + root.track_gap));
+        x: !root.horizontal ? parent.width - self.width - 4px : thumb.x + thumb.width + root.track_gap;
+        y: root.horizontal ? parent.height - self.height - 4px : thumb.y + thumb.height + root.track_gap;
+        border-radius: 4px;
+        background: MaterialPalette.secondary_container;
+    }
+
+    thumb := Rectangle {
+        property <length> thumb_length: root.maximum <= 0px ? 0px : max(min(32px, root.track_size), root.track_size * root.page_size / (root.maximum + root.page_size));
+        property <length> normal_thickness: 8px;
+
+        width: !root.horizontal ? self.normal_thickness : self.thumb_length;
+        height: root.horizontal ? self.normal_thickness : self.thumb_length;
+        x: !root.horizontal ? parent.width - self.width - 4px : root.offset + (root.track_size - self.width) * (-root.value / max(1px, root.maximum));
+        y: root.horizontal ? parent.height - self.height - 4px : root.offset + (root.track_size - self.height) * (-root.value / max(1px, root.maximum));
+        border-radius: (root.horizontal ? self.height : self.width) / 2;
+        background: MaterialPalette.primary;
+    }
+
+    touch_area := TouchArea {
+        property <length> pressed_value;
+        width: parent.width;
+        height: parent.height;
+        enabled: root.enabled;
+
+        pointer_event(event) => {
+            if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                self.pressed_value = -root.value;
+            }
+        }
+
+        moved => {
+            if self.enabled && self.pressed {
+                root.value = -max(0px, min(root.maximum, self.pressed_value + (
+                    root.horizontal ? (self.mouse_x - self.pressed_x) * (root.maximum / max(1px, root.track_size - thumb.width))
+                                    : (self.mouse_y - self.pressed_y) * (root.maximum / max(1px, root.track_size - thumb.height))
+                )));
+            }
+        }
+
+        scroll_event(event) => {
+            if root.horizontal && event.delta_x != 0 {
+                root.value = max(-root.maximum, min(0px, root.value + event.delta_x));
+                return accept;
+            } else if !root.horizontal && event.delta_y != 0 {
+                root.value = max(-root.maximum, min(0px, root.value + event.delta_y));
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component ScrollView {
+    in property <bool> enabled: true;
+    out property <length> visible_width <=> flickable.width;
+    out property <length> visible_height <=> flickable.height;
+    in-out property <length> viewport_width <=> flickable.viewport_width;
+    in-out property <length> viewport_height <=> flickable.viewport_height;
+    in-out property <length> viewport_x <=> flickable.viewport_x;
+    in-out property <length> viewport_y <=> flickable.viewport_y;
+    in property <ScrollBarPolicy> vertical_scrollbar_policy <=> vertical_bar.policy;
+    in property <ScrollBarPolicy> horizontal_scrollbar_policy <=> horizontal_bar.policy;
+    in-out property <bool> has_focus;
+
+    callback scrolled <=> flickable.flicked;
+
+    property <length> interactive_bar_size: 32px;
+    property <length> layout_bar_size: 8px;
+
+    min-height: 50px;
+    min-width: 50px;
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+    preferred-height: 100%;
+    preferred-width: 100%;
+
+    flickable := Flickable {
+        x: 0;
+        y: 0;
+        interactive: root.enabled;
+        viewport_y <=> vertical_bar.value;
+        viewport_x <=> horizontal_bar.value;
+        width: root.width - (root.vertical_scrollbar_policy != ScrollBarPolicy.always_off ? root.layout_bar_size : 0px);
+        height: root.height;
+
+        @children
+    }
+
+    vertical_bar := ScrollBar {
+        enabled: root.enabled;
+        x: parent.width - self.width;
+        y: 0;
+        width: root.visible ? root.interactive_bar_size : 0px;
+        height: root.vertical_scrollbar_policy != ScrollBarPolicy.always_off ? parent.height - horizontal_bar.height : parent.height;
+        horizontal: false;
+        maximum: flickable.viewport_height - flickable.height;
+        page_size: flickable.height;
+    }
+
+    horizontal_bar := ScrollBar {
+        enabled: root.enabled;
+        x: 0;
+        y: parent.height - self.height;
+        width: vertical_bar.visible ? parent.width - vertical_bar.width : parent.width;
+        height: root.horizontal_scrollbar_policy != ScrollBarPolicy.always_off ? root.interactive_bar_size : 0px;
+        horizontal: true;
+        maximum: flickable.viewport_width - flickable.width;
+        page_size: flickable.width;
+    }
+}
