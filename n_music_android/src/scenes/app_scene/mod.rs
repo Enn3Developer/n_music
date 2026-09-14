@@ -1,5 +1,5 @@
 mod library;
-mod playback_mirror;
+mod playback;
 
 use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Registrar, RunningJob, Subscriber};
