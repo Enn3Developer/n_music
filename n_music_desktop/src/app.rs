@@ -56,9 +56,10 @@ pub async fn run<P: Platform + 'static>(
         internal_dir,
     ));
 
-    #[cfg(target_os = "linux")]
-    if let Some(bridge) = crate::mpris::MprisBridge::new(writer.clone(), settings.volume).await {
-        app.register_subscriber(bridge);
+    if let Some(media) =
+        n_music_media_notification::MediaNotification::new(writer.clone(), settings.volume).await
+    {
+        app.register_subscriber(media);
     }
 
     for event in pending {

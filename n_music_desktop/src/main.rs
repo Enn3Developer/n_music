@@ -8,8 +8,6 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 mod app;
 mod localization;
-#[cfg(target_os = "linux")]
-mod mpris;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 mod platform;
 mod scenes;

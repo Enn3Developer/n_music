@@ -3746,9 +3746,9 @@ dependencies = [
  "arboard",
  "async-trait",
  "directories",
- "mpris-server",
  "n_event_bus",
  "n_music_core",
+ "n_music_media_notification",
  "open",
  "paste",
  "rfd",
@@ -3757,10 +3757,28 @@ dependencies = [
  "slint",
  "slint-build",
  "sys-locale",
- "tempfile",
  "tikv-jemallocator",
  "tokio",
  "velopack",
+]
+
+[[package]]
+name = "n_music_media_notification"
+version = "2.0.0-alpha.11"
+dependencies = [
+ "block2 0.6.2",
+ "dispatch2",
+ "flume",
+ "mpris-server",
+ "n_event_bus",
+ "n_music_core",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "objc2-media-player",
+ "tempfile",
+ "tokio",
+ "windows",
 ]
 
 [[package]]
@@ -4309,6 +4327,20 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
+]
+
+[[package]]
+name = "objc2-media-player"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85f2a98483f6e76313cb85a5a185eaa3cda86a177b13a8852d56cbd0085bf635"
+dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]

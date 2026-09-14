@@ -5,11 +5,13 @@ members = [
     "n_music_desktop",
     "n_music_android",
     "n_event_bus",
+    "n_music_media_notification",
 ]
 default-members = [
     "n_music_core",
     "n_music_desktop",
     "n_event_bus",
+    "n_music_media_notification",
 ]
 
 [workspace.package]

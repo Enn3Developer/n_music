@@ -1,0 +1,56 @@
+[package]
+name = "n_music_media_notification"
+version.workspace = true
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+edition = "2021"
+license = "GPL-3.0-only"
+description = "OS media integration (MPRIS, Windows SMTC, macOS Now Playing) for N Music"
+homepage = "https://github.com/Enn3Developer/n_music"
+repository = "https://github.com/Enn3Developer/n_music"
+
+[dependencies]
+n_music_core = { path = "../n_music_core" }
+n_event_bus = { path = "../n_event_bus" }
+tempfile = "3.20"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+mpris-server = "0.10"
+tokio = { version = "1.45", features = ["rt"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+flume = "0.12"
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Media",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSImage"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSDictionary",
+    "NSGeometry",
+    "NSObject",
+    "NSString",
+    "NSValue",
+] }
+objc2-media-player = { version = "0.3", default-features = false, features = [
+    "std",
+    "MPMediaItem",
+    "MPNowPlayingInfoCenter",
+    "MPRemoteCommand",
+    "MPRemoteCommandCenter",
+    "MPRemoteCommandEvent",
+    "block2",
+    "objc2-app-kit",
+    "objc2-core-foundation",
+] }
