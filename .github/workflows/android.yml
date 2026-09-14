@@ -34,7 +34,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Check release signing secrets
@@ -51,12 +51,12 @@ jobs:
               exit 1
             fi
           done
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v5
+      - uses: android-actions/setup-android@v4
       - name: Install Android SDK and native build tools
         run: |
           sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;28.2.13676358'
@@ -140,7 +140,7 @@ jobs:
           cp "$apk" "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.apk"
           cp n_music_android/android/build/outputs/bundle/release/android-release.aab \
             "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.aab"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-arm64
           path: target/android-release/*

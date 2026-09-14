@@ -3694,7 +3694,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_android"
-version = "2.0.0-alpha.9"
+version = "2.0.0-alpha.10"
 dependencies = [
  "async-trait",
  "jni 0.22.4",
@@ -3712,7 +3712,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_core"
-version = "2.0.0-alpha.9"
+version = "2.0.0-alpha.10"
 dependencies = [
  "async-trait",
  "audiopus",
@@ -3741,7 +3741,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_desktop"
-version = "2.0.0-alpha.9"
+version = "2.0.0-alpha.10"
 dependencies = [
  "arboard",
  "async-trait",

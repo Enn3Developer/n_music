@@ -26,8 +26,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Validate release version
@@ -73,13 +73,13 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
       - name: Install Rust target
@@ -135,7 +135,7 @@ jobs:
           cd target/velopack-smoke
           "${images[0]}" --appimage-extract > /dev/null
           ./squashfs-root/AppRun --veloapp-install "$RELEASE_VERSION"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: velopack-${{ matrix.runtime }}
           path: target/velopack/${{ matrix.runtime }}/*
@@ -160,12 +160,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: velopack-*
           path: artifacts
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: android-arm64
           path: artifacts
@@ -202,7 +202,7 @@ jobs:
             echo '::error::Missing required Actions secret: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON'
             exit 1
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: android-arm64
           path: android-release
