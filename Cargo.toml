@@ -1,10 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "n_player",
-    "n_audio",
+    "n_music_core",
+    "n_music_desktop",
+    "n_music_android",
     "n_event_bus",
 ]
+default-members = [
+    "n_music_core",
+    "n_music_desktop",
+    "n_event_bus",
+]
+
+[workspace.package]
+version = "2.0.0-alpha.9"
 
 [profile.dev]
 opt-level = 1

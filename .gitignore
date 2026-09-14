@@ -15,8 +15,8 @@ Cargo.lock
 *.keystore
 *.jks
 /.android-signing/
-/n_player/.gradle/
-/n_player/build/
-/n_player/android/build/
-/n_player/android/src/main/jniLibs/
-/n_player/local.properties
+/n_music_android/.gradle/
+/n_music_android/build/
+/n_music_android/android/build/
+/n_music_android/android/src/main/jniLibs/
+/n_music_android/local.properties

@@ -1,0 +1,23 @@
+export component Setting {
+    in property <string> text;
+    in property <int> children: 1;
+    horizontal := HorizontalLayout {
+        width: parent.width;
+        max-height: 20px;
+        Text {
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            text: text;
+            font-size: 14px;
+            width: horizontal.width - children.width;
+        }
+
+        children := HorizontalLayout {
+            alignment: end;
+            max-height: parent.max-height;
+            spacing: 10px;
+            width: horizontal.width / 2 + self.spacing * (root.children - 1);
+            @children
+        }
+    }
+}

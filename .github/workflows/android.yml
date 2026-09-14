@@ -75,14 +75,14 @@ jobs:
       - name: Build native library
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-          bash n_player/compile_rust_release.sh
+          bash n_music_android/compile_rust_release.sh
       - name: Check 16 KB native alignment
         run: |
           python3 - <<'PY'
           import struct
           from pathlib import Path
 
-          library = Path('n_player/android/build/rustJniLibs/arm64-v8a/libn_player.so').read_bytes()
+          library = Path('n_music_android/android/build/rustJniLibs/arm64-v8a/libn_music_android.so').read_bytes()
           assert library[:6] == b'\x7fELF\x02\x01', 'Expected a little-endian ELF64 library'
           assert struct.unpack_from('<H', library, 18)[0] == 183, 'Expected ARM64'
           offset = struct.unpack_from('<Q', library, 32)[0]
@@ -103,7 +103,7 @@ jobs:
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/n-music-upload.jks"
       - name: Build APK and app bundle
-        working-directory: n_player
+        working-directory: n_music_android
         env:
           REQUIRE_SIGNING: ${{ inputs.sign }}
           ANDROID_KEYSTORE_PATH: ${{ inputs.sign && format('{0}/n-music-upload.jks', runner.temp) || '' }}
@@ -120,15 +120,15 @@ jobs:
         run: |
           output=target/android-release
           mkdir -p "$output"
-          apk=n_player/android/build/outputs/apk/release/android-release-unsigned.apk
+          apk=n_music_android/android/build/outputs/apk/release/android-release-unsigned.apk
           suffix=-unsigned
           if [[ "$SIGNED" == true ]]; then
-            apk=n_player/android/build/outputs/apk/release/android-release.apk
+            apk=n_music_android/android/build/outputs/apk/release/android-release.apk
             suffix=
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
             signature_log="$RUNNER_TEMP/n-music-bundle-signature.txt"
             if ! jarsigner -J-Duser.language=en -verify \
-              n_player/android/build/outputs/bundle/release/android-release.aab > "$signature_log" 2>&1 \
+              n_music_android/android/build/outputs/bundle/release/android-release.aab > "$signature_log" 2>&1 \
               || ! grep -q '^jar verified\.' "$signature_log"; then
               cat "$signature_log" >&2
               exit 1
@@ -136,9 +136,9 @@ jobs:
             echo 'APK and app bundle signatures verified'
           fi
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
-          unzip -l "$apk" | grep 'lib/arm64-v8a/libn_player.so'
+          unzip -l "$apk" | grep 'lib/arm64-v8a/libn_music_android.so'
           cp "$apk" "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.apk"
-          cp n_player/android/build/outputs/bundle/release/android-release.aab \
+          cp n_music_android/android/build/outputs/bundle/release/android-release.aab \
             "$output/NMusic-$RELEASE_VERSION-android-arm64$suffix.aab"
       - uses: actions/upload-artifact@v4
         with:

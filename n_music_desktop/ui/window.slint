@@ -1,0 +1,36 @@
+import {TrackData} from "./data/track_data.slint";
+import {Palette} from "std-widgets.slint";
+import {App} from "./scenes/app.slint";
+import { Settings } from "scenes/settings.slint";
+import { Localization } from "globals/localization.slint";
+import { SettingsData } from "globals/settings_data.slint";
+import { AppData } from "globals/app_data.slint";
+import { AndroidWindow } from "android_window.slint";
+
+export { Localization, SettingsData, AppData, AndroidWindow }
+
+export component MainWindow inherits Window {
+    in-out property <bool> settings;
+    out property <length> last-width <=> self.width;
+    out property <length> last-height <=> self.height;
+    title: "N Music - " + AppData.tracks[AppData.playing].title;
+    icon: @image-url("../assets/icons/icon.png");
+    preferred-width: SettingsData.width;
+    preferred-height: SettingsData.height;
+    min-width: 400px;
+    min-height: 300px;
+    if !settings: App {
+        width: parent.width;
+        height: parent.height;
+        settings => {
+            parent.settings = true;
+        }
+    }
+    if settings: Settings {
+        width: parent.width;
+        height: parent.height;
+        exit => {
+            parent.settings = false;
+        }
+    }
+}
