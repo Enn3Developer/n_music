@@ -3716,6 +3716,7 @@ version = "2.0.0-alpha.9"
 dependencies = [
  "async-trait",
  "jni 0.22.4",
+ "n_audio",
  "n_event_bus",
  "n_player",
  "ndk-context",

@@ -2,74 +2,39 @@ package com.enn3developer.n_music
 
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.READ_MEDIA_AUDIO
-import android.annotation.SuppressLint
 import android.app.NativeActivity
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
-import android.media.AudioManager
-import android.media.MediaMetadata
-import android.media.session.MediaSession
-import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.SystemClock
-import android.os.Looper
 import android.widget.Toast
-import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.media3.common.util.UnstableApi
+import java.io.File
 
-
-@OptIn(UnstableApi::class)
 class MainActivity : NativeActivity() {
     companion object {
         init {
-            // Load the STL first to workaround issues on old Android versions:
-            // "if your app targets a version of Android earlier than Android 4.3
-            // (Android API level 18),
-            // and you use libc++_shared.so, you must load the shared library before any other
-            // library that depends on it."
-            // See https://developer.android.com/ndk/guides/cpp-support#shared_runtimes
-            //System.loadLibrary("c++_shared");
-
             // Load the native library.
-            // The name "android-game" depends on your CMake configuration, must be
-            // consistent here and inside AndroidManifest.xml
             System.loadLibrary("n_music_android")
         }
 
         const val NOTIFICATION_NAME_SERVICE = "NPlayer"
-        const val NOTIFICATION_ID = 1
-        const val CHANNEL_ID = "NMusic"
         const val ASK_DIRECTORY = 0
         const val REQUEST_PERMISSION_CODE = 1
-        const val ACTIONS = PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_SEEK_TO
+
+        @JvmStatic external fun mediaPause()
+        @JvmStatic external fun mediaPlay()
+        @JvmStatic external fun mediaPlayNext()
+        @JvmStatic external fun mediaPlayPrevious()
+        @JvmStatic external fun mediaSeek(seek: Double)
+        @JvmStatic external fun mediaRepeatMode(mode: Int)
     }
-
-    @SuppressLint("RestrictedApi")
-    // It's the playback in the notification
-    public var playback: PlaybackState.Builder? = null
-
-    // It's used to set metadata of the song and playback
-    public var mediaSession: MediaSession? = null
-
-    // We set here mediaSession token for style
-    private var notification: Notification.Builder? = null
 
     // Called when app is open first time
     private external fun start(activity: MainActivity)
@@ -78,15 +43,8 @@ class MainActivity : NativeActivity() {
     private external fun visibilityChanged(visible: Boolean)
     private var directoryRequest: Long? = null
 
-
-    private val bluetoothBroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(p0: Context?, p1: Intent?) {
-        }
-    }
-
     private fun askDirectoryWithPermission() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         startActivityForResult(intent, ASK_DIRECTORY)
     }
 
@@ -103,7 +61,7 @@ class MainActivity : NativeActivity() {
     }
 
     @Suppress("unused")
-    private fun set_clipboard_text(text: String){
+    private fun set_clipboard_text(text: String) {
         val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(text, text)
         clipboard.setPrimaryClip(clip)
@@ -115,121 +73,51 @@ class MainActivity : NativeActivity() {
         startActivity(browserIntent)
     }
 
-    @SuppressLint("RestrictedApi")
+    // It's the playback shown in the notification
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @Suppress("unused")
     private fun createNotification() {
-        if (!checkPermissions()) {
-            requestPermissions()
+        runOnUiThread {
+            if (!checkPermissions()) {
+                requestPermissions()
+            }
         }
-        val TAG = "PlaybackService"
-        mediaSession = MediaSession(applicationContext, TAG)
-        val handler = Handler(Looper.getMainLooper())
-        handler.post {
-            mediaSession?.setCallback(MediaCallback())
-        }
-        val bluetoothReceiver = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
-        applicationContext.registerReceiver(bluetoothBroadcastReceiver, bluetoothReceiver)
-        playback = PlaybackState.Builder()
-            .setActions(ACTIONS)
-            .setActiveQueueItemId(ACTIONS)
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            NOTIFICATION_NAME_SERVICE,
-            NotificationManager.IMPORTANCE_LOW
-        )
-        playback?.setState(
-            PlaybackState.STATE_PAUSED,
-            0L, 0.0f
-        )
-        mediaSession?.setPlaybackState(playback?.build())
-        NotificationManagerCompat.from(applicationContext).createNotificationChannel(channel)
-        notification = Notification.Builder(applicationContext, CHANNEL_ID).apply {
-            setSmallIcon(R.drawable.ic_launcher_monochrome)
-            style = Notification.MediaStyle().setMediaSession(mediaSession?.sessionToken)
-            setOngoing(true)
-        }
+        startService(Intent(this, PlaybackService::class.java))
     }
 
+    @Suppress("unused")
     private fun changePlaybackState(playing: Boolean, position: Double) {
-        playback?.setState(
-            if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
-            (position * 1000.0).toLong(),
-            if (playing) 1.0f else 0.0f,
-            SystemClock.elapsedRealtime()
-        )
-        mediaSession?.setPlaybackState(playback?.build())
+        PlaybackController.updatePlayback(playing, (position * 1000.0).toLong())
     }
 
-    @OptIn(UnstableApi::class)
-    @SuppressLint("RestrictedApi")
     @Suppress("unused")
     private fun changeNotification(
         title: String,
         artists: String,
         coverPath: String,
-        songLength: Double
+        songLength: Double,
     ) {
-        var intent = applicationContext.packageManager.getLaunchIntentForPackage(packageName)
-
-        if (intent == null) {
-            intent = Intent(applicationContext, MainActivity::class.java)
+        val artwork = if (coverPath.isNotEmpty()) {
+            runCatching { File(coverPath).readBytes() }.getOrNull()
+        } else {
+            null
         }
+        PlaybackController.updateMetadata(title, artists, artwork, (songLength * 1000.0).toLong())
+    }
 
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+    @Suppress("unused")
+    private fun changeRepeatMode(mode: Int) {
+        PlaybackController.setRepeatMode(mode)
+    }
 
-        val pendingIntent =
-            PendingIntent.getActivity(
-                applicationContext, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-        val duration = songLength.toLong() * 1000
-        val metadata = MediaMetadata.Builder()
-            .apply {
-                putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                putString(MediaMetadata.METADATA_KEY_ARTIST, artists)
-                putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
-                if (coverPath.isNotEmpty()) {
-                    val cover = BitmapFactory.decodeFile(coverPath)
-                    putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, cover)
-                }
-            }
-            .build()
-        mediaSession?.apply {
-            setMetadata(metadata)
-        }
-        notification?.apply {
-            setContentTitle(title)
-            setContentText(artists)
-            setContentIntent(pendingIntent)
-            val cover = BitmapFactory.decodeFile(coverPath)
-            if (cover != null) {
-                setLargeIcon(cover)
-            }
-        }
-        with(getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager) {
-            if (ActivityCompat.checkSelfPermission(
-                    applicationContext,
-                    POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                return@with
-            }
-            notify(NOTIFICATION_ID, notification?.build())
-        }
+    @Suppress("unused")
+    private fun changeQueue(names: String) {
+        PlaybackController.setQueue(if (names.isEmpty()) emptyList() else names.split('\u001f'))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         start(this)
-    }
-
-    override fun onDestroy() {
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(NOTIFICATION_ID)
-        super.onDestroy()
     }
 
     override fun onResume() {
@@ -255,14 +143,17 @@ class MainActivity : NativeActivity() {
             finishDirectory("")
             return
         }
-        applicationContext.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        applicationContext.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
         finishDirectory(uri.path!!.replace("/tree/primary:", "/storage/emulated/0/"))
     }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
-        grantResults: IntArray
+        grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
@@ -276,24 +167,27 @@ class MainActivity : NativeActivity() {
                     Toast.makeText(applicationContext, "Permission denied", Toast.LENGTH_SHORT)
                         .show()
                 }
-            } else { finishDirectory("") }
+            } else {
+                finishDirectory("")
+            }
         }
     }
 
-    @SuppressLint("InlinedApi")
+    @Suppress("unused")
     fun checkPermissions(): Boolean {
-        val readMediaAudio = ContextCompat.checkSelfPermission(applicationContext, READ_MEDIA_AUDIO)
+        val readMediaAudio =
+            ContextCompat.checkSelfPermission(applicationContext, READ_MEDIA_AUDIO)
         val grantNotification =
             ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
-        return (readMediaAudio == PackageManager.PERMISSION_GRANTED) && (grantNotification == PackageManager.PERMISSION_GRANTED)
+        return (readMediaAudio == PackageManager.PERMISSION_GRANTED) &&
+            (grantNotification == PackageManager.PERMISSION_GRANTED)
     }
 
-    @SuppressLint("InlinedApi")
     private fun requestPermissions() {
         ActivityCompat.requestPermissions(
             this,
             arrayOf(READ_MEDIA_AUDIO, POST_NOTIFICATIONS),
-            REQUEST_PERMISSION_CODE
+            REQUEST_PERMISSION_CODE,
         )
     }
 }

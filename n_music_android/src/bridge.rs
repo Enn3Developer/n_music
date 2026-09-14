@@ -1,10 +1,17 @@
-use n_player::messages::{PlaybackChanged, PositionChanged, TrackChanged};
+use n_audio::queue::LoopStatus;
+use n_player::messages::{
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, TrackChanged,
+};
 use n_player::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
 };
 use std::any::Any;
 use std::sync::Arc;
+
+// androidx.media3.common.Player REPEAT_MODE_OFF / ONE / ALL
+const REPEAT_MODE_ONE: i32 = 1;
+const REPEAT_MODE_ALL: i32 = 2;
 
 pub struct AndroidBridge {
     jvm: Arc<jni::JavaVM>,
@@ -51,6 +58,8 @@ impl Subscriber for AndroidBridge {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<PlaybackChanged>();
         reg.on::<TrackChanged>();
+        reg.on::<QueueReplaced>();
+        reg.on::<LoopStatusChanged>();
         MetadataJob::subscribe(reg);
         NotificationJob::subscribe(reg);
         reg.on::<PositionChanged>();
@@ -71,6 +80,37 @@ impl AndroidBridge {
             })
             .unwrap();
     }
+
+    fn change_repeat_mode(&self, mode: i32) {
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("changeRepeatMode"),
+                    jni::jni_sig!("(I)V"),
+                    &[mode.into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn change_queue(&self, names: &[String]) {
+        // U+001F (unit separator) cannot appear in a path, so it is a safe delimiter.
+        let joined = names.join("\u{1f}");
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                let string = env.new_string(joined)?;
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("changeQueue"),
+                    jni::jni_sig!("(Ljava/lang/String;)V"),
+                    &[(&string).into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
 }
 impl Handle<PlaybackChanged> for AndroidBridge {
     fn handle(&mut self, msg: &PlaybackChanged, _: &Ctx, _: &mut Outbox) {
@@ -84,6 +124,22 @@ impl Handle<PositionChanged> for AndroidBridge {
         if msg.2 {
             self.update_playback();
         }
+    }
+}
+
+impl Handle<QueueReplaced> for AndroidBridge {
+    fn handle(&mut self, msg: &QueueReplaced, _: &Ctx, _: &mut Outbox) {
+        self.change_queue(&msg.names);
+    }
+}
+
+impl Handle<LoopStatusChanged> for AndroidBridge {
+    fn handle(&mut self, msg: &LoopStatusChanged, _: &Ctx, _: &mut Outbox) {
+        let mode = match msg.0 {
+            LoopStatus::Playlist => REPEAT_MODE_ALL,
+            LoopStatus::File => REPEAT_MODE_ONE,
+        };
+        self.change_repeat_mode(mode);
     }
 }
 

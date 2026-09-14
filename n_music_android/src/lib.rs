@@ -26,6 +26,9 @@ pub struct AndroidStarted(
 );
 impl Message for AndroidStarted {}
 
+// androidx.media3.common.Player REPEAT_MODE_OFF / ONE / ALL
+const REPEAT_MODE_ONE: i32 = 1;
+
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
     slint::android::init(app.clone()).unwrap();
@@ -108,38 +111,53 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_visibilityCh
         .emit(n_player::messages::AppVisibilityChanged(visible));
 }
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Pause<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPause<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(n_player::messages::Pause);
 }
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Play<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlay<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(n_player::messages::Play);
 }
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlayNext<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(n_player::messages::PlayNext);
 }
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPrevious<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlayPrevious<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
     ANDROID_BUS.0.emit(n_player::messages::PlayPrevious);
 }
 #[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local>(
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     seek: jni::sys::jdouble,
 ) {
     ANDROID_BUS.0.emit(n_player::messages::Seek::Absolute(seek));
+}
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatMode<'local>(
+    _: jni::EnvUnowned<'local>,
+    _: jni::objects::JClass<'local>,
+    mode: jni::sys::jint,
+) {
+    let loop_status = if mode == REPEAT_MODE_ONE {
+        n_audio::queue::LoopStatus::File
+    } else {
+        n_audio::queue::LoopStatus::Playlist
+    };
+    ANDROID_BUS
+        .0
+        .emit(n_player::messages::SetLoopStatus(loop_status));
 }
