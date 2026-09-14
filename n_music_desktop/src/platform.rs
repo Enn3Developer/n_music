@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use n_player::jobs::settings::DirectoryChosen;
-use n_player::platform::Platform;
+use n_music_core::jobs::settings::DirectoryChosen;
+use n_music_core::platform::Platform;
 use std::path::PathBuf;
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

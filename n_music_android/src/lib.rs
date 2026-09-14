@@ -53,7 +53,7 @@ fn android_main(app: slint::android::AndroidApp) {
                             started.1.clone(),
                         );
                         crate::app::run(
-                            n_player::settings::Settings::read_saved(&platform).await,
+                            n_music_core::settings::Settings::read_saved(&platform).await,
                             platform,
                             ANDROID_BUS.0.clone(),
                             rx,
@@ -79,7 +79,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory
         let path = string.try_to_string(env)?;
         ANDROID_BUS.0.emit_tagged(
             tag as u64,
-            n_player::jobs::settings::DirectoryChosen(std::path::PathBuf::from(path)),
+            n_music_core::jobs::settings::DirectoryChosen(std::path::PathBuf::from(path)),
         );
         Ok(())
     })
@@ -108,35 +108,35 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_visibilityCh
 ) {
     ANDROID_BUS
         .0
-        .emit(n_player::messages::AppVisibilityChanged(visible));
+        .emit(n_music_core::messages::AppVisibilityChanged(visible));
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPause<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_BUS.0.emit(n_player::messages::Pause);
+    ANDROID_BUS.0.emit(n_music_core::messages::Pause);
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlay<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_BUS.0.emit(n_player::messages::Play);
+    ANDROID_BUS.0.emit(n_music_core::messages::Play);
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlayNext<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_BUS.0.emit(n_player::messages::PlayNext);
+    ANDROID_BUS.0.emit(n_music_core::messages::PlayNext);
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlayPrevious<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
 ) {
-    ANDROID_BUS.0.emit(n_player::messages::PlayPrevious);
+    ANDROID_BUS.0.emit(n_music_core::messages::PlayPrevious);
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'local>(
@@ -144,7 +144,7 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'l
     _: jni::objects::JClass<'local>,
     seek: jni::sys::jdouble,
 ) {
-    ANDROID_BUS.0.emit(n_player::messages::Seek::Absolute(seek));
+    ANDROID_BUS.0.emit(n_music_core::messages::Seek::Absolute(seek));
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatMode<'local>(
@@ -153,11 +153,11 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatM
     mode: jni::sys::jint,
 ) {
     let loop_status = if mode == REPEAT_MODE_ONE {
-        n_audio::queue::LoopStatus::File
+        n_music_core::queue::LoopStatus::File
     } else {
-        n_audio::queue::LoopStatus::Playlist
+        n_music_core::queue::LoopStatus::Playlist
     };
     ANDROID_BUS
         .0
-        .emit(n_player::messages::SetLoopStatus(loop_status));
+        .emit(n_music_core::messages::SetLoopStatus(loop_status));
 }

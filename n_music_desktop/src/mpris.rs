@@ -1,8 +1,8 @@
-use n_player::messages::{
+use n_music_core::messages::{
     LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
     SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
 };
-use n_player::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
+use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
 };
@@ -14,7 +14,7 @@ pub struct MprisState {
     playing: bool,
     volume: f64,
     position: f64,
-    loop_status: n_audio::queue::LoopStatus,
+    loop_status: n_music_core::queue::LoopStatus,
     metadata: mpris_server::Metadata,
 }
 
@@ -22,9 +22,9 @@ impl Default for MprisState {
     fn default() -> Self {
         Self {
             playing: false,
-            volume: n_audio::queue::QueuePlayer::default().get_volume() as f64,
+            volume: n_music_core::queue::QueuePlayer::default().get_volume() as f64,
             position: 0.0,
-            loop_status: n_audio::queue::LoopStatus::default(),
+            loop_status: n_music_core::queue::LoopStatus::default(),
             metadata: mpris_server::Metadata::new(),
         }
     }
@@ -157,8 +157,8 @@ impl Handle<LoopStatusChanged> for MprisBridge {
         self.state.write().unwrap().loop_status = msg.0.clone();
         self.notify(
             mpris_server::Property::LoopStatus(match msg.0 {
-                n_audio::queue::LoopStatus::Playlist => mpris_server::LoopStatus::Playlist,
-                n_audio::queue::LoopStatus::File => mpris_server::LoopStatus::Track,
+                n_music_core::queue::LoopStatus::Playlist => mpris_server::LoopStatus::Playlist,
+                n_music_core::queue::LoopStatus::File => mpris_server::LoopStatus::Track,
             }),
             ctx,
         );
@@ -323,16 +323,16 @@ impl PlayerInterface for MprisAdapter {
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
         match self.state.read().unwrap().loop_status {
-            n_audio::queue::LoopStatus::Playlist => Ok(LoopStatus::Playlist),
-            n_audio::queue::LoopStatus::File => Ok(LoopStatus::Track),
+            n_music_core::queue::LoopStatus::Playlist => Ok(LoopStatus::Playlist),
+            n_music_core::queue::LoopStatus::File => Ok(LoopStatus::Track),
         }
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
         let loop_status = match loop_status {
-            LoopStatus::None => n_audio::queue::LoopStatus::Playlist,
-            LoopStatus::Track => n_audio::queue::LoopStatus::File,
-            LoopStatus::Playlist => n_audio::queue::LoopStatus::Playlist,
+            LoopStatus::None => n_music_core::queue::LoopStatus::Playlist,
+            LoopStatus::Track => n_music_core::queue::LoopStatus::File,
+            LoopStatus::Playlist => n_music_core::queue::LoopStatus::Playlist,
         };
         self.writer.emit(SetLoopStatus(loop_status));
         Ok(())

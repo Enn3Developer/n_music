@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use n_player::platform::Platform;
+use n_music_core::platform::Platform;
 use std::path::PathBuf;
 
 pub struct AndroidPlatform {

@@ -2,11 +2,11 @@ use crate::localization::{get_locale_denominator, localize};
 use crate::ui::color_scheme;
 use crate::{Localization, MainWindow, SettingsData};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, RunningJob, Subscriber, Tagged};
-use n_player::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted};
-use n_player::messages::*;
-use n_player::platform::Platform;
-use n_player::settings::Settings;
-use n_player::{FileTrack, Theme, WindowSize};
+use n_music_core::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted};
+use n_music_core::messages::*;
+use n_music_core::platform::Platform;
+use n_music_core::settings::Settings;
+use n_music_core::{FileTrack, Theme, WindowSize};
 use slint::{ComponentHandle, Weak};
 use std::{any::Any, mem, path::PathBuf, sync::Arc};
 

@@ -1,4 +1,6 @@
+use crate::messages::{PlaybackChanged, PlaybackFailed, PositionChanged, TrackEnded};
 use crate::{output, TrackTime, CODEC_REGISTRY};
+use n_event_bus::EventWriter;
 use std::io;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -7,7 +9,6 @@ use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::units::Time;
 
 use crate::music_track::MusicTrack;
-use std::path::Path;
 use std::thread;
 
 pub struct Player {
@@ -118,16 +119,6 @@ impl Player {
     pub fn prepare_path(&mut self, path: std::path::PathBuf) -> PlaybackTask {
         self.prepare(PlaybackSource::Path(path))
     }
-    pub fn play_from_path<P: AsRef<Path>>(&mut self, path: P) {
-        self.prepare_path(path.as_ref().to_owned()).spawn();
-    }
-    pub fn play_from_track(&mut self, track: &MusicTrack) -> io::Result<()> {
-        self.play(track.get_format()?);
-        Ok(())
-    }
-    pub fn play(&mut self, format: Box<dyn FormatReader>) {
-        self.prepare(PlaybackSource::Format(format)).spawn();
-    }
 }
 impl Drop for Player {
     fn drop(&mut self) {
@@ -142,7 +133,6 @@ impl Default for Player {
 
 enum PlaybackSource {
     Path(std::path::PathBuf),
-    Format(Box<dyn FormatReader>),
 }
 pub struct PlaybackTask {
     source: Option<PlaybackSource>,
@@ -150,7 +140,11 @@ pub struct PlaybackTask {
     output_access: Arc<Mutex<()>>,
 }
 impl PlaybackTask {
-    pub fn run(mut self, emit: impl FnMut(PlaybackEvent)) -> io::Result<()> {
+    pub fn run(
+        mut self,
+        writer: EventWriter,
+        pending_seek_revision: Arc<Mutex<Option<i32>>>,
+    ) -> io::Result<()> {
         let _output = self
             .output_access
             .lock()
@@ -159,22 +153,19 @@ impl PlaybackTask {
             return Ok(());
         }
         let result = (|| {
-            let format = match self.source.take().unwrap() {
-                PlaybackSource::Path(path) => {
-                    MusicTrack::new(path.to_string_lossy().into_owned())?.get_format()?
-                }
-                PlaybackSource::Format(format) => format,
-            };
-            run(format, self.control.clone(), emit)
+            let PlaybackSource::Path(path) = self.source.take().unwrap();
+            let format = MusicTrack::new(path.to_string_lossy().into_owned())?.get_format()?;
+            run(format, self.control.clone(), &writer, &pending_seek_revision)
         })();
-        if result.is_err() {
+        if let Err(error) = &result {
             self.control.stop();
+            writer.emit(PlaybackFailed(error.to_string()));
         }
         result
     }
-    pub fn spawn(self) {
+    pub fn spawn(self, writer: EventWriter, pending_seek_revision: Arc<Mutex<Option<i32>>>) {
         thread::spawn(move || {
-            if let Err(error) = self.run(|_| {}) {
+            if let Err(error) = self.run(writer, pending_seek_revision) {
                 eprintln!("error playing track: {error}");
             }
         });
@@ -187,21 +178,6 @@ impl Drop for PlaybackTask {
             self.control.stop();
         }
     }
-}
-
-pub enum PlaybackEvent {
-    Started {
-        length: f64,
-        paused: bool,
-    },
-    Position {
-        time: TrackTime,
-        revision: u64,
-        discontinuity: bool,
-    },
-    Paused(bool),
-    Ended,
-    Failed(String),
 }
 
 struct State {
@@ -385,7 +361,8 @@ impl Drop for Completion {
 fn run(
     mut format: Box<dyn FormatReader>,
     control: PlaybackControl,
-    mut emit: impl FnMut(PlaybackEvent),
+    writer: &EventWriter,
+    pending_seek_revision: &Mutex<Option<i32>>,
 ) -> io::Result<()> {
     if !control.begin() {
         return Ok(());
@@ -429,7 +406,13 @@ fn run(
     let mut output_volume = 0.0;
     let mut draining = false;
     let mut progress_interval = Some(Duration::from_millis(50));
-    emit(PlaybackEvent::Started { length, paused });
+    let mut emit_revision = 0i32;
+    writer.emit(PositionChanged(
+        TrackTime { position: 0.0, length },
+        emit_revision,
+        true,
+    ));
+    writer.emit(PlaybackChanged(!paused));
 
     loop {
         let controls = control.controls(version, paused && !force_report);
@@ -454,6 +437,9 @@ fn run(
         }
         if let Some((target, next_revision)) = controls.seek {
             revision = next_revision;
+            if let Some(ui_revision) = pending_seek_revision.lock().unwrap().take() {
+                emit_revision = ui_revision;
+            }
             match format.seek(
                 SeekMode::Accurate,
                 SeekTo::Time {
@@ -481,20 +467,16 @@ fn run(
         if paused {
             if force_report {
                 control.publish(time, revision);
-                emit(PlaybackEvent::Position {
-                    time,
-                    revision,
-                    discontinuity: true,
-                });
+                writer.emit(PositionChanged(time, emit_revision, true));
                 force_report = false;
             }
             if pause_changed {
-                emit(PlaybackEvent::Paused(true));
+                writer.emit(PlaybackChanged(false));
             }
             continue;
         }
         if pause_changed {
-            emit(PlaybackEvent::Paused(false));
+            writer.emit(PlaybackChanged(true));
         }
         if draining {
             if let (Some(output), Some(spec)) = (&output, &output_spec) {
@@ -577,11 +559,7 @@ fn run(
             if force_report
                 || progress_interval.is_some_and(|interval| last_report.elapsed() >= interval)
             {
-                emit(PlaybackEvent::Position {
-                    time,
-                    revision,
-                    discontinuity: force_report,
-                });
+                writer.emit(PositionChanged(time, emit_revision, force_report));
                 last_report = Instant::now();
                 force_report = false;
             }
@@ -589,14 +567,10 @@ fn run(
     }
     time.position = length;
     control.publish(time, revision);
-    emit(PlaybackEvent::Position {
-        time,
-        revision,
-        discontinuity: true,
-    });
+    writer.emit(PositionChanged(time, emit_revision, true));
     drop(output);
     completion.1 = true;
     drop(completion);
-    emit(PlaybackEvent::Ended);
+    writer.emit(TrackEnded);
     Ok(())
 }

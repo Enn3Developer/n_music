@@ -4,17 +4,23 @@ use symphonia::core::codecs::registry::CodecRegistry;
 use crate::dca::DcaReader;
 use crate::opus::OpusDecoder;
 use crate::raw::RawReader;
+use bitcode::{Decode, Encode};
 use once_cell::sync::Lazy;
 use symphonia::default::{register_enabled_codecs, register_enabled_formats};
 use symphonia_core::formats::probe::Probe;
 
 mod dca;
+pub mod jobs;
+pub mod messages;
 pub mod music_track;
 mod opus;
 mod output;
+pub mod platform;
 pub mod player;
 pub mod queue;
 mod raw;
+pub mod services;
+pub mod settings;
 
 /// Default Symphonia [`CodecRegistry`], including the (audiopus-backed) Opus codec.
 pub static CODEC_REGISTRY: Lazy<CodecRegistry> = Lazy::new(|| {
@@ -42,7 +48,7 @@ pub enum NError {
 /// # Example
 /// ```
 /// use std::path::Path;
-/// use n_audio::remove_ext;
+/// use n_music_core::remove_ext;
 /// let filename = "file.1.txt";
 /// assert_eq!(remove_ext(filename), "file.1");
 /// ```
@@ -103,4 +109,87 @@ pub struct Metadata {
     pub time: TrackTime,
     pub artist: String,
     pub title: String,
+}
+
+#[derive(Copy, Clone, Debug, Decode, Encode)]
+pub struct WindowSize {
+    pub width: usize,
+    pub height: usize,
+}
+
+impl Default for WindowSize {
+    fn default() -> Self {
+        Self {
+            width: 450,
+            height: 625,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, Decode, Encode)]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl From<Theme> for String {
+    fn from(value: Theme) -> Self {
+        match value {
+            Theme::System => String::from("System"),
+            Theme::Light => String::from("Light"),
+            Theme::Dark => String::from("Dark"),
+        }
+    }
+}
+impl From<Theme> for i32 {
+    fn from(value: Theme) -> Self {
+        match value {
+            Theme::System => 0,
+            Theme::Light => 1,
+            Theme::Dark => 2,
+        }
+    }
+}
+
+impl TryFrom<String> for Theme {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if &value == "System" {
+            Ok(Self::System)
+        } else if &value == "Light" {
+            Ok(Self::Light)
+        } else if &value == "Dark" {
+            Ok(Self::Dark)
+        } else {
+            Err(format!("{value} is not a valid theme"))
+        }
+    }
+}
+
+impl TryFrom<i32> for Theme {
+    type Error = String;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        if value == 0 {
+            Ok(Self::System)
+        } else if value == 1 {
+            Ok(Self::Light)
+        } else if value == 2 {
+            Ok(Self::Dark)
+        } else {
+            Err(format!("{value} is not a valid theme"))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct FileTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub length: f64,
+    pub image: Vec<u8>,
 }

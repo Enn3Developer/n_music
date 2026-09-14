@@ -3,15 +3,15 @@ use crate::scenes::{AppScene, SettingsScene};
 use crate::ui::color_scheme;
 use crate::{AppData, Localization, MainWindow, SettingsData};
 use n_event_bus::{App, EventWriter, JobControl};
-use n_player::messages::{
+use n_music_core::messages::{
     LocaleChangeRequested, OpenLink, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack,
     ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause,
     ToggleSaveWindowSize,
 };
-use n_player::platform::Platform;
-use n_player::runner::Runner;
-use n_player::settings::Settings;
-use n_player::WindowSize;
+use n_music_core::platform::Platform;
+use n_music_core::queue::QueuePlayer;
+use n_music_core::settings::Settings;
+use n_music_core::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
 
@@ -41,7 +41,9 @@ pub async fn run(
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone());
 
-    app.register_subscriber(Runner::new(settings.path.clone(), settings.volume));
+    let mut player = QueuePlayer::new(settings.path.clone());
+    player.set_volume(settings.volume as f32);
+    app.register_subscriber(player);
     let mut app_scene = AppScene::new(main_window.as_weak(), settings.volume);
     app_scene.apply_ui();
     app.register_subscriber(app_scene);
@@ -64,7 +66,7 @@ pub async fn run(
 
     tokio::task::block_in_place(|| main_window.run().unwrap());
 
-    writer.emit(n_player::messages::Shutdown(WindowSize {
+    writer.emit(n_music_core::messages::Shutdown(WindowSize {
         width: main_window.get_last_width() as usize,
         height: main_window.get_last_height() as usize,
     }));

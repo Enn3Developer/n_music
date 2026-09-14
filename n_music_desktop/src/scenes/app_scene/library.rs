@@ -1,8 +1,8 @@
 use super::{AppScene, Changes};
 use crate::ui::to_track_data;
 use n_event_bus::{Ctx, Handle, Outbox, Tagged};
-use n_player::jobs::scan::ScanJob;
-use n_player::messages::{
+use n_music_core::jobs::scan::ScanJob;
+use n_music_core::messages::{
     QueueReplaced, ScanFinished, ScanLibrary, SearchChanged, TrackMetadataLoaded, TracksEnumerated,
 };
 
@@ -63,7 +63,7 @@ impl Handle<Tagged<ScanFinished>> for AppScene {
         self.loaded = self.track_count;
         self.progress_dirty = true;
         if let Some(tracks) = finished.tracks.clone() {
-            _out.emit(n_player::messages::CacheReady {
+            _out.emit(n_music_core::messages::CacheReady {
                 path: finished.path.clone(),
                 timestamp: finished.timestamp,
                 tracks,

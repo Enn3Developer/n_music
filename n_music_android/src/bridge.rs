@@ -1,8 +1,8 @@
-use n_audio::queue::LoopStatus;
-use n_player::messages::{
+use n_music_core::queue::LoopStatus;
+use n_music_core::messages::{
     LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, TrackChanged,
 };
-use n_player::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
+use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
 };

@@ -3685,24 +3685,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "n_audio"
-version = "2.0.0-alpha.9"
-dependencies = [
- "audiopus",
- "cpal",
- "dasp",
- "multitag",
- "once_cell",
- "rand 0.10.2",
- "rtrb",
- "serde",
- "serde_json",
- "symphonia",
- "symphonia-core",
- "tokio",
-]
-
-[[package]]
 name = "n_event_bus"
 version = "0.1.0"
 dependencies = [
@@ -3716,9 +3698,8 @@ version = "2.0.0-alpha.9"
 dependencies = [
  "async-trait",
  "jni 0.22.4",
- "n_audio",
  "n_event_bus",
- "n_player",
+ "n_music_core",
  "ndk-context",
  "paste",
  "serde",
@@ -3730,6 +3711,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "n_music_core"
+version = "2.0.0-alpha.9"
+dependencies = [
+ "async-trait",
+ "audiopus",
+ "bitcode",
+ "cpal",
+ "dasp",
+ "directories",
+ "infer",
+ "multitag",
+ "n_event_bus",
+ "once_cell",
+ "rand 0.10.2",
+ "rimage",
+ "rtrb",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "symphonia-core",
+ "tempfile",
+ "tokio",
+ "zstd",
+ "zune-core",
+ "zune-image",
+ "zune-imageprocs",
+]
+
+[[package]]
 name = "n_music_desktop"
 version = "2.0.0-alpha.9"
 dependencies = [
@@ -3737,9 +3747,8 @@ dependencies = [
  "async-trait",
  "directories",
  "mpris-server",
- "n_audio",
  "n_event_bus",
- "n_player",
+ "n_music_core",
  "open",
  "paste",
  "rfd",
@@ -3752,27 +3761,6 @@ dependencies = [
  "tikv-jemallocator",
  "tokio",
  "velopack",
-]
-
-[[package]]
-name = "n_player"
-version = "2.0.0-alpha.9"
-dependencies = [
- "async-trait",
- "bitcode",
- "directories",
- "infer",
- "multitag",
- "n_audio",
- "n_event_bus",
- "rand 0.10.2",
- "rimage",
- "tempfile",
- "tokio",
- "zstd",
- "zune-core",
- "zune-image",
- "zune-imageprocs",
 ]
 
 [[package]]

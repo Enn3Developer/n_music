@@ -1,6 +1,6 @@
 use crate::services::image::get_image_squared;
-use n_audio::music_track::MusicTrack;
-use n_audio::Metadata;
+use crate::music_track::MusicTrack;
+use crate::Metadata;
 use n_event_bus::{job_emits, Ctx, EventWriter, Job, JobToken, RunningJob, Tagged};
 use std::path::PathBuf;
 use std::sync::Mutex;

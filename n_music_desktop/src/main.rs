@@ -25,7 +25,7 @@ fn main() {
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[tokio::main]
 async fn run() {
-    use n_player::settings::Settings;
+    use n_music_core::settings::Settings;
 
     #[cfg(target_os = "linux")]
     let platform = platform::LinuxPlatform::new();

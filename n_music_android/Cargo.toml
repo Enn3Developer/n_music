@@ -13,8 +13,7 @@ crate-type = ["cdylib"]
 slint-build = "1.17"
 
 [target.'cfg(target_os = "android")'.dependencies]
-n_player = { path = "../n_player" }
-n_audio = { path = "../n_audio" }
+n_music_core = { path = "../n_music_core" }
 n_event_bus = { path = "../n_event_bus" }
 slint = { version = "1.17", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06"] }
 serde = { version = "1.0", features = ["derive"] }

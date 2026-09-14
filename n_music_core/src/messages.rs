@@ -1,6 +1,5 @@
-use crate::{FileTrack, WindowSize};
-use n_audio::queue::LoopStatus;
-use n_audio::TrackTime;
+use crate::queue::LoopStatus;
+use crate::{FileTrack, TrackTime, WindowSize};
 use n_event_bus::Message;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,6 +33,11 @@ pub struct TrackChanged {
 pub struct VolumeChanged(pub f64);
 pub struct PositionChanged(pub TrackTime, pub i32, pub bool);
 pub struct LoopStatusChanged(pub LoopStatus);
+
+/// Emitted by the playback thread when a track reaches its end.
+pub struct TrackEnded;
+/// Emitted by the playback thread when playback fails.
+pub struct PlaybackFailed(pub String);
 
 pub struct SearchChanged(pub String);
 
@@ -98,6 +102,8 @@ messages!(
     VolumeChanged,
     PositionChanged,
     LoopStatusChanged,
+    TrackEnded,
+    PlaybackFailed,
     SearchChanged,
     ScanRequested,
     QueueReplaced,

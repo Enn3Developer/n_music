@@ -1,5 +1,5 @@
 use crate::TrackData;
-use n_player::{FileTrack, Theme};
+use n_music_core::{FileTrack, Theme};
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::SharedPixelBuffer;
 

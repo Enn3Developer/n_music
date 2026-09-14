@@ -1,16 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "n_player",
+    "n_music_core",
     "n_music_desktop",
     "n_music_android",
-    "n_audio",
     "n_event_bus",
 ]
 default-members = [
-    "n_player",
+    "n_music_core",
     "n_music_desktop",
-    "n_audio",
     "n_event_bus",
 ]
 

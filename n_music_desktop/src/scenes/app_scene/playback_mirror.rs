@@ -1,6 +1,6 @@
 use super::AppScene;
 use n_event_bus::{Ctx, Handle, Outbox};
-use n_player::messages::{PlaybackChanged, PositionChanged, TrackChanged, VolumeChanged};
+use n_music_core::messages::{PlaybackChanged, PositionChanged, TrackChanged, VolumeChanged};
 
 impl Handle<PlaybackChanged> for AppScene {
     fn handle(&mut self, msg: &PlaybackChanged, _ctx: &Ctx, _out: &mut Outbox) {

@@ -3,8 +3,8 @@ mod playback_mirror;
 
 use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Registrar, RunningJob, Subscriber};
-use n_player::jobs::scan::ScanJob;
-use n_player::messages::{
+use n_music_core::jobs::scan::ScanJob;
+use n_music_core::messages::{
     PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged, VolumeChanged,
 };
 use slint::{ComponentHandle, Model, VecModel, Weak};
@@ -79,8 +79,8 @@ impl Subscriber for AppScene {
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<ScanLibrary>();
-        reg.on::<n_player::messages::Shutdown>();
-        reg.on::<n_player::messages::AppVisibilityChanged>();
+        reg.on::<n_music_core::messages::Shutdown>();
+        reg.on::<n_music_core::messages::AppVisibilityChanged>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);
     }
@@ -206,16 +206,16 @@ impl AppScene {
     }
 }
 
-impl n_event_bus::Handle<n_player::messages::Shutdown> for AppScene {
-    fn handle(&mut self, _: &n_player::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
+impl n_event_bus::Handle<n_music_core::messages::Shutdown> for AppScene {
+    fn handle(&mut self, _: &n_music_core::messages::Shutdown, _: &Ctx, _: &mut n_event_bus::Outbox) {
         self.scan_job = None;
         self.visible = false;
     }
 }
-impl n_event_bus::Handle<n_player::messages::AppVisibilityChanged> for AppScene {
+impl n_event_bus::Handle<n_music_core::messages::AppVisibilityChanged> for AppScene {
     fn handle(
         &mut self,
-        msg: &n_player::messages::AppVisibilityChanged,
+        msg: &n_music_core::messages::AppVisibilityChanged,
         _: &Ctx,
         _: &mut n_event_bus::Outbox,
     ) {
