@@ -17,7 +17,7 @@ Cross-platform music player written in Rust + Slint
     - [x] Kotlin code
     - [x] Notifications
     - [x] Working dev build
-    - [ ] Automatic CI for releases
+    - [x] Automatic CI for releases
 
 - Streaming:
     - [ ] Simple web streaming
@@ -26,7 +26,7 @@ Cross-platform music player written in Rust + Slint
 
 - QoL:
     - [ ] Playlists
-    - [ ] Media control for Windows and Mac
+    - [x] Media control for Windows, Mac and Linux
     - [ ] Auto updater (desktop only; opt-out)
 
 ## Contribute
@@ -47,7 +47,8 @@ cargo build --release --package n_music_desktop
 
 ### Translations
 
-If your language isn't fully supported by N Music, you can add a language by creating a file in `n_music_desktop/assets/lang` (and its copy in `n_music_android/assets/lang`).
+If your language isn't fully supported by N Music, you can add a language by creating a file in
+`n_music_desktop/assets/lang` (and its copy in `n_music_android/assets/lang`).
 The file must be a JSON file and its name should be like this: `it_Italiano.json`; `it` is the denominator of the
 language, `Italiano` is the name of the language in that language (i.e. how it should be displayed in the app).
 
