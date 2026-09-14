@@ -36,13 +36,13 @@ Cross-platform music player written in Rust + Slint
 Run in debug mode:
 
 ```shell
-cargo run --package n_player
+cargo run --package n_music_desktop
 ```
 
 Build in release mode:
 
 ```shell
-cargo build --release --package n_player
+cargo build --release --package n_music_desktop
 ```
 
 ### Translations

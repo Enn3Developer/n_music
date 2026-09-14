@@ -39,13 +39,13 @@ jobs:
           import os
           import tomllib
 
-          with open('n_player/Cargo.toml', 'rb') as manifest:
-              version = tomllib.load(manifest)['package']['version']
+          with open('Cargo.toml', 'rb') as manifest:
+              version = tomllib.load(manifest)['workspace']['package']['version']
           tag = os.environ['RELEASE_TAG']
           if tag:
-              tag_version = tag.removeprefix('releases/').removeprefix('n_player/').removeprefix('v')
+              tag_version = tag.removeprefix('releases/').removeprefix('n_music_desktop/').removeprefix('v')
               if tag_version != version:
-                  raise SystemExit(f'Tag {tag!r} does not match n_player version {version!r}')
+                  raise SystemExit(f'Tag {tag!r} does not match workspace version {version!r}')
           prerelease = '-' in version.split('+', 1)[0]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               print(f'version={version}', file=output)
@@ -104,14 +104,14 @@ jobs:
       - name: Build app
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --locked --release --package n_player --bin n_player --target "$TARGET"
+        run: cargo build --locked --release --package n_music_desktop --bin n_music_desktop --target "$TARGET"
       - name: Check installer hooks without starting the UI
         timeout-minutes: 1
         env:
           TARGET: ${{ matrix.target }}
           RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          executable="target/$TARGET/release/n_player"
+          executable="target/$TARGET/release/n_music_desktop"
           if [[ "$RUNNER_OS" == Windows ]]; then
             executable="$executable.exe"
           fi
@@ -154,7 +154,7 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEY_PASSWORD || '' }}
 
   publish:
-    needs: [plan, package, android]
+    needs: [ plan, package, android ]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
@@ -187,7 +187,7 @@ jobs:
           gh release edit "$RELEASE_TAG" --draft=false
 
   google-play:
-    needs: [plan, publish]
+    needs: [ plan, publish ]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     concurrency:

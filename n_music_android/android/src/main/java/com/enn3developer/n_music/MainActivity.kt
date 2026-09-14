@@ -50,7 +50,7 @@ class MainActivity : NativeActivity() {
             // Load the native library.
             // The name "android-game" depends on your CMake configuration, must be
             // consistent here and inside AndroidManifest.xml
-            System.loadLibrary("n_player")
+            System.loadLibrary("n_music_android")
         }
 
         const val NOTIFICATION_NAME_SERVICE = "NPlayer"

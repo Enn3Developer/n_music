@@ -3,14 +3,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 runtime=${1:?Usage: bash scripts/package-release.sh linux-x64|win-x64|osx-arm64}
-version=$(python3 -c 'import tomllib; print(tomllib.load(open("n_player/Cargo.toml", "rb"))["package"]["version"])')
-executable=n_player
+version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+executable=n_music_desktop
 options=()
 case "$runtime" in
   linux-x64) target=x86_64-unknown-linux-gnu ;;
   win-x64)
     target=x86_64-pc-windows-msvc
-    executable=n_player.exe
+    executable=n_music_desktop.exe
     options+=(--icon n_player/assets/icons/icon.ico --framework vcredist143-x64)
     ;;
   osx-arm64) target=aarch64-apple-darwin ;;
@@ -19,7 +19,7 @@ esac
 
 binary="target/$target/release/$executable"
 if [[ ! -f "$binary" ]]; then
-  echo "Build first: cargo build --locked --release --package n_player --bin n_player --target $target" >&2
+  echo "Build first: cargo build --locked --release --package n_music_desktop --bin n_music_desktop --target $target" >&2
   exit 1
 fi
 
@@ -47,7 +47,7 @@ if [[ "$runtime" == linux-x64 ]]; then
 [Desktop Entry]
 Type=Application
 Name=N Music
-Exec=n_player
+Exec=n_music_desktop
 Icon=NMusic
 Categories=AudioVideo;Audio;Player;
 X-AppImage-Version=$version
@@ -56,7 +56,7 @@ EOF
 #!/bin/sh
 app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 export LD_LIBRARY_PATH="$app_dir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$app_dir/usr/bin/n_player" "$@"
+exec "$app_dir/usr/bin/n_music_desktop" "$@"
 EOF
   chmod +x "$pack_dir/AppRun" "$pack_dir/usr/bin/$executable"
 

@@ -30,7 +30,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.app.lib_name"
-                android:value="n_player"
+                android:value="n_music_android"
                 />
         </activity>
         <receiver

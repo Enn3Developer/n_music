@@ -4,12 +4,7 @@ use slint::SharedPixelBuffer;
 
 slint::include_modules!();
 
-#[cfg(all(not(target_os = "android"), not(target_env = "msvc")))]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 pub mod app;
-pub mod bridges;
 pub mod jobs;
 pub mod localization;
 pub mod messages;
@@ -21,62 +16,6 @@ pub mod settings;
 
 unsafe impl Send for TrackData {}
 unsafe impl Sync for TrackData {}
-
-#[cfg(target_os = "android")]
-pub static ANDROID_BUS: std::sync::LazyLock<(
-    n_event_bus::EventWriter,
-    std::sync::Mutex<Option<n_event_bus::EventReceiver>>,
-)> = std::sync::LazyLock::new(|| {
-    let (writer, receiver) = n_event_bus::EventWriter::channel();
-    (writer, std::sync::Mutex::new(Some(receiver)))
-});
-#[cfg(target_os = "android")]
-pub struct AndroidStarted(
-    pub std::sync::Arc<jni::JavaVM>,
-    pub std::sync::Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
-);
-#[cfg(target_os = "android")]
-impl n_event_bus::Message for AndroidStarted {}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-fn android_main(app: slint::android::AndroidApp) {
-    slint::android::init(app.clone()).unwrap();
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let rx = ANDROID_BUS
-                .1
-                .lock()
-                .unwrap()
-                .take()
-                .expect("Android bus already running");
-            let mut pending = Vec::new();
-            while let Ok(event) = rx.recv_async().await {
-                if let n_event_bus::Event::Bus(envelope) = &event {
-                    if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
-                        let platform = platform::AndroidPlatform::new(
-                            app,
-                            started.0.clone(),
-                            started.1.clone(),
-                        );
-                        app::run_app_with_events(
-                            settings::Settings::read_saved(&platform).await,
-                            platform,
-                            ANDROID_BUS.0.clone(),
-                            rx,
-                            pending,
-                        )
-                        .await;
-                        return;
-                    }
-                }
-                pending.push(event);
-            }
-        });
-}
 
 #[derive(Copy, Clone, Debug, Decode, Encode)]
 pub struct WindowSize {
@@ -194,89 +133,4 @@ impl From<FileTrack> for TrackData {
             visible: true,
         }
     }
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory<'local>(
-    mut env: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-    string: jni::objects::JString<'local>,
-    tag: jni::sys::jlong,
-) {
-    env.with_env(|env| -> jni::errors::Result<()> {
-        let path = string.try_to_string(env)?;
-        ANDROID_BUS.0.emit_tagged(
-            tag as u64,
-            jobs::settings::DirectoryChosen(std::path::PathBuf::from(path)),
-        );
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_start<'local>(
-    mut env: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-    callback: jni::objects::JObject<'local>,
-) {
-    env.with_env(|env| -> jni::errors::Result<()> {
-        ANDROID_BUS.0.emit(AndroidStarted(
-            std::sync::Arc::new(env.get_java_vm()?),
-            std::sync::Arc::new(env.new_global_ref(&callback)?),
-        ));
-        Ok(())
-    })
-    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_visibilityChanged<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-    visible: jni::sys::jboolean,
-) {
-    ANDROID_BUS.0.emit(messages::AppVisibilityChanged(visible));
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Pause<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-) {
-    ANDROID_BUS.0.emit(messages::Pause);
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Play<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-) {
-    ANDROID_BUS.0.emit(messages::Play);
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayNext<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-) {
-    ANDROID_BUS.0.emit(messages::PlayNext);
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_PlayPrevious<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-) {
-    ANDROID_BUS.0.emit(messages::PlayPrevious);
-}
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_enn3developer_n_1music_MediaCallback_Seek<'local>(
-    _: jni::EnvUnowned<'local>,
-    _: jni::objects::JClass<'local>,
-    seek: jni::sys::jdouble,
-) {
-    ANDROID_BUS.0.emit(messages::Seek::Absolute(seek));
 }

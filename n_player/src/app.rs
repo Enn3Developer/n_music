@@ -25,15 +25,16 @@ impl UiThread for SlintUi {
 
 pub async fn run_app<P: Platform + 'static>(settings: crate::settings::Settings, platform: P) {
     let (writer, rx) = EventWriter::channel();
-    run_app_with_events(settings, platform, writer, rx, Vec::new()).await;
+    run_app_with_events(settings, platform, writer, rx, Vec::new(), |_| {}).await;
 }
 
-pub async fn run_app_with_events<P: Platform + 'static>(
+pub async fn run_app_with_events<P: Platform + 'static, F: FnOnce(&mut App)>(
     settings: crate::settings::Settings,
     platform: P,
     writer: EventWriter,
     rx: n_event_bus::EventReceiver,
     pending: Vec<n_event_bus::Event>,
+    setup: F,
 ) {
     let platform: Arc<dyn Platform> = Arc::new(platform);
     let internal_dir = platform.internal_dir().await;
@@ -64,17 +65,7 @@ pub async fn run_app_with_events<P: Platform + 'static>(
         platform.clone(),
         internal_dir,
     ));
-    #[cfg(target_os = "linux")]
-    if let Some(bridge) =
-        crate::bridges::mpris::MprisBridge::new(writer.clone(), settings.volume).await
-    {
-        app.register_subscriber(bridge);
-    }
-    #[cfg(target_os = "android")]
-    {
-        let (jvm, callback) = platform.jni_handles();
-        app.register_subscriber(crate::bridges::android::AndroidBridge::new(jvm, callback));
-    }
+    setup(&mut app);
 
     for event in pending {
         if let n_event_bus::Event::Bus(envelope) = event {

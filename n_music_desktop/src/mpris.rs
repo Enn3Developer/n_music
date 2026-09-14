@@ -1,8 +1,8 @@
-use crate::messages::{
+use n_player::messages::{
     LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
     SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
 };
-use crate::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
+use n_player::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
 };

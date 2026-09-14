@@ -3,9 +3,9 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
-def cargoVersion = (new File(rootDir, 'Cargo.toml').text =~ /(?m)^version\s*=\s*"([^"]+)"/)
+def cargoVersion = (new File(rootDir, '../Cargo.toml').text =~ /(?m)^version\s*=\s*"([^"]+)"/)
 if (!cargoVersion.find()) {
-    throw new GradleException('Cannot read the n_player version from Cargo.toml')
+    throw new GradleException('Cannot read the workspace version from Cargo.toml')
 }
 def appVersionName = cargoVersion.group(1)
 def appVersionCode = providers.gradleProperty('androidVersionCode').get().toInteger()

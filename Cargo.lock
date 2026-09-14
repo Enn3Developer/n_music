@@ -3711,36 +3711,58 @@ dependencies = [
 ]
 
 [[package]]
-name = "n_player"
+name = "n_music_android"
+version = "2.0.0-alpha.9"
+dependencies = [
+ "async-trait",
+ "jni 0.22.4",
+ "n_event_bus",
+ "n_player",
+ "ndk-context",
+ "slint",
+ "tokio",
+]
+
+[[package]]
+name = "n_music_desktop"
 version = "2.0.0-alpha.9"
 dependencies = [
  "arboard",
  "async-trait",
+ "directories",
+ "mpris-server",
+ "n_audio",
+ "n_event_bus",
+ "n_player",
+ "open",
+ "rfd",
+ "tempfile",
+ "tikv-jemallocator",
+ "tokio",
+ "velopack",
+]
+
+[[package]]
+name = "n_player"
+version = "2.0.0-alpha.9"
+dependencies = [
+ "async-trait",
  "bitcode",
  "directories",
  "infer",
- "jni 0.22.4",
- "mpris-server",
  "multitag",
  "n_audio",
  "n_event_bus",
- "ndk-context",
- "open",
  "paste",
- "pollster 1.0.1",
  "rand 0.10.2",
- "rfd",
  "rimage",
  "serde",
  "serde_json",
  "slint",
  "slint-build",
- "symphonia",
  "sys-locale",
  "tempfile",
- "tikv-jemallocator",
  "tokio",
- "velopack",
  "zstd",
  "zune-core",
  "zune-image",
@@ -4721,12 +4743,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
-name = "pollster"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc6355899e1c9462875b6757c79f3caa011a1fdae12bbb1a2e72dd1f234f8336"
-
-[[package]]
 name = "polycool"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5255,7 +5271,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "percent-encoding",
- "pollster 0.4.0",
+ "pollster",
  "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",

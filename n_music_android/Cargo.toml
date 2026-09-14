@@ -1,0 +1,19 @@
+[package]
+name = "n_music_android"
+version.workspace = true
+edition = "2021"
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+repository = "https://github.com/Enn3Developer/n_music"
+description = "Android entry point for N Music"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+n_player = { path = "../n_player" }
+n_event_bus = { path = "../n_event_bus" }
+slint = { version = "1.17", default-features = false, features = ["backend-android-activity-06"] }
+ndk-context = "0.1"
+jni = "0.22"
+tokio = { version = "1.45", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+async-trait = "0.1"

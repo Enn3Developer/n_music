@@ -1,5 +1,5 @@
-use crate::messages::{PlaybackChanged, PositionChanged, TrackChanged};
-use crate::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
+use n_player::messages::{PlaybackChanged, PositionChanged, TrackChanged};
+use n_player::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
 };
