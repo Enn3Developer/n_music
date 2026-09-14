@@ -1,16 +1,17 @@
 //! Platform-dependant Audio Outputs
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::SampleRate;
-use dasp::Sample;
-use rb::*;
 /// This is a modified version of [symphonia-play's `output.rs`](https://github.com/pdeljanov/Symphonia/blob/master/symphonia-play/src/output.rs)
 /// It was originally made by [Philip Deljanov](https://github.com/pdeljanov)
 /// Modifications: support for volume (for all platforms)
 /// Modifications: support for custom name app (only for PulseAudio)
 /// Modifications: completely removed pulseaudio in 1.3.0
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::SampleRate;
+use dasp::Sample;
+use rtrb::{Consumer, Producer, RingBuffer};
 use std::result;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration as WallDuration, Instant};
 use symphonia::core::audio::{conv::ConvertibleSample, AudioSpec, GenericAudioBufferRef};
 
@@ -24,6 +25,8 @@ pub trait AudioOutput {
     fn pending_frames(&self) -> usize;
     fn discard_queued(&mut self);
     fn set_paused(&mut self, paused: bool) -> Result<()>;
+    fn set_draining(&mut self);
+    fn check_health(&self) -> Result<()>;
 }
 
 #[allow(dead_code)]
@@ -46,6 +49,162 @@ impl std::fmt::Display for AudioOutputError {
 impl std::error::Error for AudioOutputError {}
 
 pub struct CpalAudioOutput;
+
+const STARTUP_GRACE: WallDuration = WallDuration::from_millis(250);
+const STALL_TIMEOUT: WallDuration = WallDuration::from_secs(2);
+
+struct BufferPolicy {
+    target: usize,
+    minimum: usize,
+    maximum: usize,
+    step: usize,
+    strikes: usize,
+    window: Instant,
+    clean_since: Instant,
+}
+
+impl BufferPolicy {
+    fn new(rate: u32, now: Instant) -> Self {
+        let minimum = (rate as usize / 20).max(1);
+        Self {
+            target: minimum,
+            minimum,
+            maximum: (rate as usize / 2).max(1),
+            step: (rate as usize / 40).max(1),
+            strikes: 0,
+            window: now,
+            clean_since: now,
+        }
+    }
+
+    fn reset(&mut self, now: Instant) {
+        self.strikes = 0;
+        self.window = now;
+        self.clean_since = now;
+    }
+
+    fn update(&mut self, now: Instant, starvations: usize, request: usize) {
+        // Two callback periods leave room for scheduling jitter. Never resize the ring.
+        let floor = self
+            .minimum
+            .max(request.saturating_mul(2))
+            .min(self.maximum);
+
+        self.target = self.target.max(floor);
+        if now.duration_since(self.window) >= WallDuration::from_secs(2) {
+            self.strikes = 0;
+            self.window = now;
+        }
+
+        if starvations > 0 {
+            self.clean_since = now;
+            self.strikes = self.strikes.saturating_add(starvations);
+
+            if self.strikes >= 3 {
+                self.target = (self.target + self.step).min(self.maximum);
+                self.strikes = 0;
+                self.window = now;
+            }
+        } else if now.duration_since(self.clean_since) >= WallDuration::from_secs(10) {
+            self.target = self
+                .target
+                .saturating_sub((self.step / 5).max(1))
+                .max(floor);
+            self.clean_since = now;
+        }
+    }
+}
+
+struct QueueState {
+    origin: Instant,
+    consumed: AtomicU64,
+    discard_until: AtomicU64,
+    device_until_ns: AtomicU64,
+    heartbeat_ns: AtomicU64,
+    request_frames: AtomicUsize,
+    starvations: AtomicUsize,
+    monitoring: AtomicBool,
+    failed: AtomicBool,
+}
+
+impl QueueState {
+    fn new() -> Self {
+        Self {
+            origin: Instant::now(),
+            consumed: AtomicU64::new(0),
+            discard_until: AtomicU64::new(0),
+            device_until_ns: AtomicU64::new(0),
+            heartbeat_ns: AtomicU64::new(0),
+            request_frames: AtomicUsize::new(0),
+            starvations: AtomicUsize::new(0),
+            monitoring: AtomicBool::new(false),
+            failed: AtomicBool::new(false),
+        }
+    }
+
+    fn now_ns(&self) -> u64 {
+        self.origin.elapsed().as_nanos() as u64
+    }
+
+    fn pending_frames(&self, produced: u64, channels: usize, rate: u32) -> usize {
+        // A concurrent callback can cause a brief overestimate, never an early EOF.
+        let consumed = self.consumed.load(Ordering::Acquire);
+        let discarded = self.discard_until.load(Ordering::Relaxed);
+        let queued = produced.saturating_sub(consumed.max(discarded)) as usize;
+        let device_ns = self
+            .device_until_ns
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.now_ns());
+        queued / channels + (device_ns as f64 * rate as f64 / 1_000_000_000.0).ceil() as usize
+    }
+}
+
+struct CallbackQueue<T> {
+    consumer: Consumer<T>,
+    consumed: u64,
+    state: Arc<QueueState>,
+    channels: usize,
+    rate: u32,
+}
+
+impl<T: AudioOutputSample> CallbackQueue<T> {
+    fn render(&mut self, data: &mut [T], playback_delay: WallDuration) {
+        let now = self.state.now_ns();
+        self.state.heartbeat_ns.store(now, Ordering::Relaxed);
+        self.state
+            .request_frames
+            .fetch_max(data.len().div_ceil(self.channels), Ordering::Relaxed);
+        // Only the consumer advances the read index, including on seek while paused.
+        let discard = self.state.discard_until.load(Ordering::Acquire);
+        let skip = discard.saturating_sub(self.consumed) as usize;
+        if skip > 0 {
+            if let Ok(chunk) = self.consumer.read_chunk(skip) {
+                chunk.commit_all();
+                self.consumed += skip as u64;
+            }
+        }
+        let requested = data.len() / self.channels * self.channels;
+        let (written, _) = self.consumer.pop_partial_slice(&mut data[..requested]);
+        let written = written.len();
+        self.consumed += written as u64;
+        if written > 0 {
+            let duration = WallDuration::from_secs_f64(
+                written as f64 / self.channels as f64 / self.rate as f64,
+            );
+            self.state.device_until_ns.store(
+                now.saturating_add(playback_delay.as_nanos() as u64)
+                    .saturating_add(duration.as_nanos() as u64),
+                Ordering::Relaxed,
+            );
+        }
+        // Publish the device deadline before removing these samples from pending_frames.
+        self.state.consumed.store(self.consumed, Ordering::Release);
+        if written < requested && self.state.monitoring.load(Ordering::Relaxed) {
+            self.state.starvations.fetch_add(1, Ordering::Relaxed);
+        }
+        data[written..].fill(T::MID);
+    }
+}
 
 trait AudioOutputSample: Sample + ConvertibleSample + Send + 'static {}
 
@@ -110,13 +269,16 @@ struct CpalAudioOutputImpl<T: AudioOutputSample>
 where
     T: AudioOutputSample,
 {
-    ring_buf: SpscRb<T>,
     channels: usize,
     sample_rate: u32,
     ring_buf_producer: Producer<T>,
     sample_buf: Vec<T>,
     stream: cpal::Stream,
-    queue_access: Arc<Mutex<Instant>>,
+    state: Arc<QueueState>,
+    produced: u64,
+    policy: BufferPolicy,
+    monitor_after: Option<Instant>,
+    paused: bool,
 }
 
 impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
@@ -152,36 +314,24 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             sample_rate: SampleRate::from(spec.rate()),
             buffer_size,
         };
-        let ring_len = (spec.rate() as usize / 20).max(1) * num_channels;
-
-        let ring_buf = SpscRb::new(ring_len);
-        let (ring_buf_producer, ring_buf_consumer) = (ring_buf.producer(), ring_buf.consumer());
-
-        let queue_access = Arc::new(Mutex::new(Instant::now()));
-        let callback_queue_access = queue_access.clone();
-        let sample_rate = spec.rate();
+        let policy = BufferPolicy::new(spec.rate(), Instant::now());
+        let (ring_buf_producer, consumer) = RingBuffer::new(policy.maximum * num_channels);
+        let state = Arc::new(QueueState::new());
+        let mut callback = CallbackQueue {
+            consumer,
+            consumed: 0,
+            state: state.clone(),
+            channels: num_channels,
+            rate: spec.rate(),
+        };
+        let error_state = state.clone();
         let stream_result = device.build_output_stream(
             config,
             move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
-                // Write out as many samples as possible from the ring buffer to the audio
-                // output.
-                let written = {
-                    let mut device_buffered_until = callback_queue_access.lock().unwrap();
-                    let written = ring_buf_consumer.read(data).unwrap_or(0);
-                    let timestamp = info.timestamp();
-                    if written > 0 {
-                        *device_buffered_until = Instant::now()
-                            + timestamp.playback.duration_since(timestamp.callback)
-                            + WallDuration::from_secs_f64(
-                                written as f64 / num_channels as f64 / sample_rate as f64,
-                            );
-                    }
-                    written
-                };
-                // Mute any remaining samples.
-                data[written..].iter_mut().for_each(|s| *s = T::MID);
+                let timestamp = info.timestamp();
+                callback.render(data, timestamp.playback.duration_since(timestamp.callback));
             },
-            move |err| eprintln!("audio output error: {:?}", err),
+            move |_err| error_state.failed.store(true, Ordering::Relaxed),
             None,
         );
 
@@ -203,13 +353,16 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
         let sample_buf = Vec::with_capacity(capacity * num_channels);
 
         Ok(Box::new(CpalAudioOutputImpl {
-            ring_buf,
             channels: num_channels,
             sample_rate: spec.rate(),
             ring_buf_producer,
             sample_buf,
             stream,
-            queue_access,
+            state,
+            produced: 0,
+            policy,
+            monitor_after: None,
+            paused: false,
         }))
     }
 }
@@ -222,8 +375,11 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
         skip_frames: usize,
     ) -> Result<()> {
         // Do nothing if there are no audio frames.
-        if decoded.frames() == 0 {
+        if skip_frames >= decoded.frames() {
             return Ok(());
+        }
+        if self.paused {
+            return Err(AudioOutputError::PlayStreamError);
         }
 
         // Audio samples must be interleaved for cpal. Interleave the samples in the audio
@@ -236,35 +392,99 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
             *sample = sample.mul_amp(volume.to_sample());
         }
 
-        let mut remaining = &samples[..];
-        while let Some(written) = self.ring_buf_producer.write_blocking(remaining) {
-            remaining = &remaining[written..];
+        let mut offset = skip_frames * self.channels;
+        let monitor_after = *self
+            .monitor_after
+            .get_or_insert(Instant::now() + STARTUP_GRACE);
+        let mut last_progress = Instant::now();
+        while offset < self.sample_buf.len() {
+            self.check_health()?;
+            let now = Instant::now();
+            let monitoring = now >= monitor_after;
+            self.state.monitoring.store(monitoring, Ordering::Relaxed);
+            let starvations = self.state.starvations.swap(0, Ordering::Relaxed);
+            if !monitoring {
+                self.policy.reset(now);
+            }
+            self.policy.update(
+                now,
+                if monitoring { starvations } else { 0 },
+                self.state.request_frames.load(Ordering::Relaxed),
+            );
+            let queued = self.policy.maximum * self.channels - self.ring_buf_producer.slots();
+            // Backpressure only above the target: successive decoded packets fill toward it.
+            // A lower target drains naturally; it never discards playable samples.
+            let available = (self.policy.target * self.channels).saturating_sub(queued);
+            let count = available.min(self.sample_buf.len() - offset);
+            if count == 0 {
+                if now.duration_since(last_progress) >= STALL_TIMEOUT {
+                    return Err(AudioOutputError::StreamClosedError);
+                }
+                std::thread::sleep(WallDuration::from_millis(1));
+                continue;
+            }
+            let (written, _) = self
+                .ring_buf_producer
+                .push_partial_slice(&self.sample_buf[offset..offset + count]);
+            offset += written.len();
+            self.produced += written.len() as u64;
+            last_progress = now;
         }
 
         Ok(())
     }
 
     fn pending_frames(&self) -> usize {
-        let device_buffered_until = self.queue_access.lock().unwrap();
-        let device_frames = device_buffered_until
-            .saturating_duration_since(Instant::now())
-            .as_secs_f64()
-            * self.sample_rate as f64;
-        self.ring_buf.count() / self.channels + device_frames.ceil() as usize
+        self.state
+            .pending_frames(self.produced, self.channels, self.sample_rate)
+    }
+
+    fn discard_queued(&mut self) {
+        self.state.monitoring.store(false, Ordering::Relaxed);
+        self.state
+            .discard_until
+            .store(self.produced, Ordering::Release);
+        self.state.starvations.store(0, Ordering::Relaxed);
+        self.monitor_after = None;
+        self.policy.reset(Instant::now());
     }
 
     fn set_paused(&mut self, paused: bool) -> Result<()> {
+        self.state.monitoring.store(false, Ordering::Relaxed);
+        self.state.starvations.store(0, Ordering::Relaxed);
+        self.monitor_after = None;
+        self.policy.reset(Instant::now());
+        self.state
+            .heartbeat_ns
+            .store(self.state.now_ns(), Ordering::Relaxed);
         if paused {
             self.stream.pause()
         } else {
             self.stream.play()
         }
-        .map_err(|_| AudioOutputError::PlayStreamError)
+        .map_err(|_| AudioOutputError::PlayStreamError)?;
+        self.paused = paused;
+        Ok(())
     }
 
-    fn discard_queued(&mut self) {
-        let _guard = self.queue_access.lock().unwrap();
-        self.ring_buf.clear();
+    fn set_draining(&mut self) {
+        self.state.monitoring.store(false, Ordering::Relaxed);
+    }
+
+    fn check_health(&self) -> Result<()> {
+        if self.state.failed.load(Ordering::Relaxed)
+            || self.ring_buf_producer.is_abandoned()
+            || (!self.paused
+                && self
+                    .state
+                    .now_ns()
+                    .saturating_sub(self.state.heartbeat_ns.load(Ordering::Relaxed))
+                    > STALL_TIMEOUT.as_nanos() as u64)
+        {
+            Err(AudioOutputError::StreamClosedError)
+        } else {
+            Ok(())
+        }
     }
 }
 

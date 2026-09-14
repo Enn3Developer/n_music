@@ -437,6 +437,9 @@ fn run(
         if controls.stopped {
             return Ok(());
         }
+        if let Some(output) = &output {
+            output.check_health().map_err(io::Error::other)?;
+        }
         if controls.progress_interval != progress_interval {
             progress_interval = controls.progress_interval;
             force_report = progress_interval.is_some();
@@ -499,7 +502,8 @@ fn run(
                 if pending > 0 {
                     control.wait(
                         version,
-                        Duration::from_secs_f64(pending as f64 / spec.rate() as f64),
+                        Duration::from_secs_f64(pending as f64 / spec.rate() as f64)
+                            .min(Duration::from_millis(50)),
                     );
                     continue;
                 }
@@ -509,6 +513,9 @@ fn run(
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => {
+                if let Some(output) = &mut output {
+                    output.set_draining();
+                }
                 draining = true;
                 continue;
             }
