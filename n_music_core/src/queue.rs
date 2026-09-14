@@ -1,12 +1,14 @@
 use crate::messages::{
     AppVisibilityChanged, LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlayTrack,
-    PlaybackChanged, PlaybackFailed, PositionChanged, QueueReplaced, Seek, SetLoopStatus,
-    SetVolume, Shutdown, TrackChanged, TrackEnded, TogglePause, VolumeChanged,
+    PlaybackChanged, PositionChanged, QueueReplaced, Seek, SetLoopStatus, SetVolume, Shutdown,
+    TrackChanged, TogglePause, VolumeChanged,
 };
-use crate::player::{PlaybackTask, Player};
+use crate::player::{PlaybackEvent, PlaybackTask, Player};
 use crate::TrackTime;
 use crate::{remove_ext, strip_absolute_path};
-use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
+use n_event_bus::{
+    Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
+};
 use rand::prelude::SliceRandom;
 use rand::rng;
 use std::any::Any;
@@ -15,8 +17,27 @@ use std::io;
 use std::io::ErrorKind;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+
+pub struct PlaybackJob(pub PlaybackTask);
+
+n_event_bus::job_emits!(PlaybackJob => Tagged<PlaybackEvent>);
+
+impl Job for PlaybackJob {
+    async fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
+        let events = writer.clone();
+        let result =
+            tokio::task::spawn_blocking(move || self.0.run(|event| events.emit_tagged(tag, event)))
+                .await;
+        let error = match result {
+            Ok(Ok(())) => return,
+            Ok(Err(error)) => error.to_string(),
+            Err(error) => error.to_string(),
+        };
+        writer.emit_tagged(tag, PlaybackEvent::Failed(error));
+    }
+}
 
 #[derive(Default, Eq, PartialEq, Debug, Clone)]
 pub enum LoopStatus {
@@ -31,8 +52,12 @@ pub struct QueuePlayer {
     player: Player,
     index: usize,
     loop_status: LoopStatus,
+    job: Option<RunningJob>,
+    loaded: bool,
+    playing: bool,
+    time: TrackTime,
     seek_revision: i32,
-    pending_seek_revision: Arc<Mutex<Option<i32>>>,
+    pending_seek_revision: Option<i32>,
 }
 
 impl Default for QueuePlayer {
@@ -52,8 +77,12 @@ impl QueuePlayer {
             index: usize::MAX - 1,
             path,
             loop_status: LoopStatus::Playlist,
+            job: None,
+            loaded: false,
+            playing: false,
+            time: TrackTime::default(),
             seek_revision: 0,
-            pending_seek_revision: Arc::new(Mutex::new(None)),
+            pending_seek_revision: None,
         }
     }
 
@@ -176,31 +205,41 @@ impl QueuePlayer {
 }
 
 impl QueuePlayer {
+    fn set_playing(&mut self, playing: bool, out: &mut Outbox) {
+        if self.playing != playing {
+            self.playing = playing;
+            out.emit(PlaybackChanged(playing));
+        }
+    }
+
     fn position(&mut self, time: TrackTime, discontinuity: bool, out: &mut Outbox) {
+        if let Some(revision) = self.pending_seek_revision.take() {
+            self.seek_revision = revision;
+        }
+        self.time = time;
         out.emit(PositionChanged(time, self.seek_revision, discontinuity));
     }
 
     fn stop(&mut self, out: &mut Outbox) {
         self.end_current();
-        out.emit(PlaybackChanged(false));
+        self.job = None;
+        self.loaded = false;
+        self.set_playing(false, out);
     }
 
     fn start(&mut self, task: io::Result<PlaybackTask>, ctx: &Ctx, out: &mut Outbox) {
         let Ok(task) = task else {
             return;
         };
-        out.emit(PlaybackChanged(false));
-        out.emit(PositionChanged(
-            TrackTime::default(),
-            self.seek_revision,
-            true,
-        ));
+        self.loaded = false;
+        self.set_playing(false, out);
+        self.position(TrackTime::default(), true, out);
         let index = self.index();
         if let (Some(path), Some(name)) = (self.get_path_for_file(index), self.current_track_name())
         {
             out.emit(TrackChanged { index, path, name });
         }
-        task.spawn(ctx.jobs.writer().clone(), self.pending_seek_revision.clone());
+        self.job = Some(ctx.jobs.spawn_stream(PlaybackJob(task)));
     }
 
     fn advance(&mut self, force: bool, ctx: &Ctx, out: &mut Outbox) {
@@ -209,7 +248,39 @@ impl QueuePlayer {
     }
 
     fn current_time(&self) -> TrackTime {
-        self.get_time().unwrap_or_default()
+        self.get_time().unwrap_or(self.time)
+    }
+
+    fn seek_clamped(&mut self, position: f64, length: f64) {
+        let position = if length > 0.0 {
+            position.clamp(0.0, length)
+        } else {
+            position.max(0.0)
+        };
+        self.seek_to(position.trunc() as u64, position.fract());
+    }
+
+    fn seek_to_track(&mut self, index: usize, position: f64, ctx: &Ctx, out: &mut Outbox) {
+        if self.queue.is_empty() || !position.is_finite() {
+            return;
+        }
+        let index = index % self.len();
+        if index == self.index && self.is_playing() {
+            let length = self.time.length;
+            self.seek_clamped(position, length);
+            return;
+        }
+        // Capture the play/pause intent from the existing control before it is replaced; the
+        // playback-notification mirror can lag immediate Play/Pause control mutations.
+        let paused = !self.is_playing() || self.is_paused();
+        let task = self.prepare_index(index);
+        if paused {
+            self.pause();
+        }
+        // Queue the seek before starting the worker so it cannot output frames at zero first.
+        // The new track's length is unknown yet, so only reject negative positions.
+        self.seek_clamped(position, 0.0);
+        self.start(task, ctx, out);
     }
 }
 
@@ -231,8 +302,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<QueueReplaced>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<Shutdown>();
-        reg.on::<TrackEnded>();
-        reg.on::<PlaybackFailed>();
+        PlaybackJob::subscribe(reg);
     }
 }
 
@@ -251,7 +321,7 @@ impl Handle<PlayNext> for QueuePlayer {
 
 impl Handle<PlayPrevious> for QueuePlayer {
     fn handle(&mut self, _msg: &PlayPrevious, ctx: &Ctx, out: &mut Outbox) {
-        if self.get_time().is_some_and(|time| time.position > 3.0) {
+        if self.loaded && self.current_time().position > 3.0 {
             self.seek_to(0, 0.0);
         } else {
             let task = self.prepare_previous();
@@ -291,24 +361,22 @@ impl Handle<Play> for QueuePlayer {
 }
 
 impl Handle<Seek> for QueuePlayer {
-    fn handle(&mut self, msg: &Seek, _ctx: &Ctx, out: &mut Outbox) {
+    fn handle(&mut self, msg: &Seek, ctx: &Ctx, out: &mut Outbox) {
         let position = match msg {
             Seek::FromUi { position, revision } => {
-                *self.pending_seek_revision.lock().unwrap() = Some(*revision);
-                self.seek_revision = *revision;
+                self.pending_seek_revision = Some(*revision);
                 *position
             }
             Seek::Absolute(position) => *position,
             Seek::Relative(offset) => self.current_time().position + offset,
+            Seek::ToTrack { index, position } => {
+                self.seek_to_track(*index, *position, ctx, out);
+                return;
+            }
         };
         if self.is_playing() && position.is_finite() {
-            let length = self.get_time().map_or(0.0, |time| time.length);
-            let position = if length > 0.0 {
-                position.clamp(0.0, length)
-            } else {
-                position.max(0.0)
-            };
-            self.seek_to(position.trunc() as u64, position.fract());
+            let length = self.time.length;
+            self.seek_clamped(position, length);
             return;
         }
         let time = self.current_time();
@@ -361,18 +429,36 @@ impl Handle<Shutdown> for QueuePlayer {
     }
 }
 
-impl Handle<TrackEnded> for QueuePlayer {
-    fn handle(&mut self, _msg: &TrackEnded, ctx: &Ctx, out: &mut Outbox) {
-        self.advance(false, ctx, out);
-    }
-}
-
-impl Handle<PlaybackFailed> for QueuePlayer {
-    fn handle(&mut self, msg: &PlaybackFailed, _ctx: &Ctx, out: &mut Outbox) {
-        eprintln!("error playing track: {}", msg.0);
-        self.stop(out);
-        let time = self.current_time();
-        self.position(time, true, out);
+impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
+    fn handle(&mut self, msg: &Tagged<PlaybackEvent>, ctx: &Ctx, out: &mut Outbox) {
+        let Some(event) = self.job.as_ref().and_then(|job| job.open(msg)) else {
+            return;
+        };
+        match event {
+            PlaybackEvent::Started { length, paused } => {
+                self.loaded = true;
+                self.time.length = *length;
+                out.emit(PositionChanged(self.time, self.seek_revision, true));
+                self.set_playing(!paused, out);
+            }
+            PlaybackEvent::Position {
+                time,
+                revision,
+                discontinuity,
+            } => {
+                if self.player.seek_revision() == *revision {
+                    self.position(*time, *discontinuity, out);
+                }
+            }
+            PlaybackEvent::Paused(paused) => self.set_playing(!paused, out),
+            PlaybackEvent::Ended => self.advance(false, ctx, out),
+            PlaybackEvent::Failed(error) => {
+                eprintln!("error playing track: {error}");
+                self.stop(out);
+                let time = self.current_time();
+                self.position(time, true, out);
+            }
+        }
     }
 }
 

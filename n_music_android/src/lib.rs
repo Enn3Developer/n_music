@@ -139,6 +139,18 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaPlayPre
     ANDROID_BUS.0.emit(n_music_core::messages::PlayPrevious);
 }
 #[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeekTo<'local>(
+    _env: jni::EnvUnowned<'local>,
+    _: jni::objects::JClass<'local>,
+    index: jni::sys::jint,
+    position: jni::sys::jdouble,
+) {
+    ANDROID_BUS.0.emit(n_music_core::messages::Seek::ToTrack {
+        index: index.max(0) as usize,
+        position,
+    });
+}
+#[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'local>(
     _: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,

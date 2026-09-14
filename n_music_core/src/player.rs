@@ -1,6 +1,4 @@
-use crate::messages::{PlaybackChanged, PlaybackFailed, PositionChanged, TrackEnded};
 use crate::{output, TrackTime, CODEC_REGISTRY};
-use n_event_bus::EventWriter;
 use std::io;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -9,7 +7,6 @@ use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::units::Time;
 
 use crate::music_track::MusicTrack;
-use std::thread;
 
 pub struct Player {
     volume: f32,
@@ -140,11 +137,7 @@ pub struct PlaybackTask {
     output_access: Arc<Mutex<()>>,
 }
 impl PlaybackTask {
-    pub fn run(
-        mut self,
-        writer: EventWriter,
-        pending_seek_revision: Arc<Mutex<Option<i32>>>,
-    ) -> io::Result<()> {
+    pub fn run(mut self, mut emit: impl FnMut(PlaybackEvent)) -> io::Result<()> {
         let _output = self
             .output_access
             .lock()
@@ -155,20 +148,12 @@ impl PlaybackTask {
         let result = (|| {
             let PlaybackSource::Path(path) = self.source.take().unwrap();
             let format = MusicTrack::new(path.to_string_lossy().into_owned())?.get_format()?;
-            run(format, self.control.clone(), &writer, &pending_seek_revision)
+            run(format, self.control.clone(), &mut emit)
         })();
-        if let Err(error) = &result {
+        if result.is_err() {
             self.control.stop();
-            writer.emit(PlaybackFailed(error.to_string()));
         }
         result
-    }
-    pub fn spawn(self, writer: EventWriter, pending_seek_revision: Arc<Mutex<Option<i32>>>) {
-        thread::spawn(move || {
-            if let Err(error) = self.run(writer, pending_seek_revision) {
-                eprintln!("error playing track: {error}");
-            }
-        });
     }
 }
 
@@ -178,6 +163,23 @@ impl Drop for PlaybackTask {
             self.control.stop();
         }
     }
+}
+
+/// Events published by a running [`PlaybackTask`]. They are always delivered tagged with the
+/// owning job, so the receiver can discard events from a replaced playback task.
+pub enum PlaybackEvent {
+    Started {
+        length: f64,
+        paused: bool,
+    },
+    Position {
+        time: TrackTime,
+        revision: u64,
+        discontinuity: bool,
+    },
+    Paused(bool),
+    Ended,
+    Failed(String),
 }
 
 struct State {
@@ -361,8 +363,7 @@ impl Drop for Completion {
 fn run(
     mut format: Box<dyn FormatReader>,
     control: PlaybackControl,
-    writer: &EventWriter,
-    pending_seek_revision: &Mutex<Option<i32>>,
+    emit: &mut impl FnMut(PlaybackEvent),
 ) -> io::Result<()> {
     if !control.begin() {
         return Ok(());
@@ -406,13 +407,7 @@ fn run(
     let mut output_volume = 0.0;
     let mut draining = false;
     let mut progress_interval = Some(Duration::from_millis(50));
-    let mut emit_revision = 0i32;
-    writer.emit(PositionChanged(
-        TrackTime { position: 0.0, length },
-        emit_revision,
-        true,
-    ));
-    writer.emit(PlaybackChanged(!paused));
+    emit(PlaybackEvent::Started { length, paused });
 
     loop {
         let controls = control.controls(version, paused && !force_report);
@@ -437,9 +432,6 @@ fn run(
         }
         if let Some((target, next_revision)) = controls.seek {
             revision = next_revision;
-            if let Some(ui_revision) = pending_seek_revision.lock().unwrap().take() {
-                emit_revision = ui_revision;
-            }
             match format.seek(
                 SeekMode::Accurate,
                 SeekTo::Time {
@@ -467,16 +459,20 @@ fn run(
         if paused {
             if force_report {
                 control.publish(time, revision);
-                writer.emit(PositionChanged(time, emit_revision, true));
+                emit(PlaybackEvent::Position {
+                    time,
+                    revision,
+                    discontinuity: true,
+                });
                 force_report = false;
             }
             if pause_changed {
-                writer.emit(PlaybackChanged(false));
+                emit(PlaybackEvent::Paused(true));
             }
             continue;
         }
         if pause_changed {
-            writer.emit(PlaybackChanged(true));
+            emit(PlaybackEvent::Paused(false));
         }
         if draining {
             if let (Some(output), Some(spec)) = (&output, &output_spec) {
@@ -559,7 +555,11 @@ fn run(
             if force_report
                 || progress_interval.is_some_and(|interval| last_report.elapsed() >= interval)
             {
-                writer.emit(PositionChanged(time, emit_revision, force_report));
+                emit(PlaybackEvent::Position {
+                    time,
+                    revision,
+                    discontinuity: force_report,
+                });
                 last_report = Instant::now();
                 force_report = false;
             }
@@ -567,10 +567,14 @@ fn run(
     }
     time.position = length;
     control.publish(time, revision);
-    writer.emit(PositionChanged(time, emit_revision, true));
+    emit(PlaybackEvent::Position {
+        time,
+        revision,
+        discontinuity: true,
+    });
     drop(output);
     completion.1 = true;
     drop(completion);
-    writer.emit(TrackEnded);
+    emit(PlaybackEvent::Ended);
     Ok(())
 }

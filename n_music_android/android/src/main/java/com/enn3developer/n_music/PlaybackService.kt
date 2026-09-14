@@ -18,16 +18,21 @@ class PlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        mediaSession = MediaSession.Builder(this, PlaybackController.player())
+        val session = MediaSession.Builder(this, PlaybackController.player())
             .setSessionActivity(sessionActivity)
             .build()
+        addSession(session)
+        mediaSession = session
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
     override fun onDestroy() {
-        mediaSession?.release()
+        mediaSession?.let { session ->
+            removeSession(session)
+            session.release()
+        }
         mediaSession = null
         super.onDestroy()
     }

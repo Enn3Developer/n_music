@@ -24,6 +24,10 @@ object PlaybackController {
         handler.post { player.updateMetadata(title, artist, artwork, durationMs) }
     }
 
+    fun updateTrack(index: Int) {
+        handler.post { player.updateTrack(index) }
+    }
+
     fun setQueue(names: List<String>) {
         handler.post { player.setQueue(names) }
     }

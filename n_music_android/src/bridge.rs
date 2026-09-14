@@ -111,6 +111,20 @@ impl AndroidBridge {
             })
             .unwrap();
     }
+
+    fn change_track(&self, index: usize) {
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("changeTrack"),
+                    jni::jni_sig!("(I)V"),
+                    &[(index as i32).into()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
 }
 impl Handle<PlaybackChanged> for AndroidBridge {
     fn handle(&mut self, msg: &PlaybackChanged, _: &Ctx, _: &mut Outbox) {
@@ -145,6 +159,7 @@ impl Handle<LoopStatusChanged> for AndroidBridge {
 
 impl Handle<TrackChanged> for AndroidBridge {
     fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
+        self.change_track(msg.index);
         self.metadata_loader.load(msg.path.clone(), ctx);
     }
 }

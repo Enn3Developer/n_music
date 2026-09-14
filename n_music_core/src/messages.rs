@@ -20,6 +20,7 @@ pub enum Seek {
     FromUi { position: f64, revision: i32 },
     Absolute(f64),
     Relative(f64),
+    ToTrack { index: usize, position: f64 },
 }
 pub struct SetVolume(pub f64);
 pub struct SetLoopStatus(pub LoopStatus);
@@ -33,11 +34,6 @@ pub struct TrackChanged {
 pub struct VolumeChanged(pub f64);
 pub struct PositionChanged(pub TrackTime, pub i32, pub bool);
 pub struct LoopStatusChanged(pub LoopStatus);
-
-/// Emitted by the playback thread when a track reaches its end.
-pub struct TrackEnded;
-/// Emitted by the playback thread when playback fails.
-pub struct PlaybackFailed(pub String);
 
 pub struct SearchChanged(pub String);
 
@@ -102,8 +98,6 @@ messages!(
     VolumeChanged,
     PositionChanged,
     LoopStatusChanged,
-    TrackEnded,
-    PlaybackFailed,
     SearchChanged,
     ScanRequested,
     QueueReplaced,

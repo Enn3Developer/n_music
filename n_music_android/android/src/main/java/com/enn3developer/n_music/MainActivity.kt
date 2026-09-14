@@ -32,6 +32,7 @@ class MainActivity : NativeActivity() {
         @JvmStatic external fun mediaPlay()
         @JvmStatic external fun mediaPlayNext()
         @JvmStatic external fun mediaPlayPrevious()
+        @JvmStatic external fun mediaSeekTo(index: Int, position: Double)
         @JvmStatic external fun mediaSeek(seek: Double)
         @JvmStatic external fun mediaRepeatMode(mode: Int)
     }
@@ -108,6 +109,11 @@ class MainActivity : NativeActivity() {
     @Suppress("unused")
     private fun changeRepeatMode(mode: Int) {
         PlaybackController.setRepeatMode(mode)
+    }
+
+    @Suppress("unused")
+    private fun changeTrack(index: Int) {
+        PlaybackController.updateTrack(index)
     }
 
     @Suppress("unused")
