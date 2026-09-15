@@ -21,27 +21,20 @@ pub struct MetadataLoaded(pub Mutex<Option<TrackMetadata>>);
 job_emits!(MetadataJob => Tagged<MetadataLoaded>);
 
 impl Job for MetadataJob {
-    async fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
+    fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
         let path = self.path.clone();
-        let Ok(Ok(metadata)) = tokio::task::spawn_blocking(move || {
-            MusicTrack::new(path.to_string_lossy().to_string())?.get_meta()
-        })
-        .await
+        let Ok(metadata) =
+            MusicTrack::new(path.to_string_lossy().to_string()).and_then(|track| track.get_meta())
         else {
             writer.emit_tagged(tag, MetadataLoaded(Mutex::new(None)));
             return;
         };
-        let image = get_image_squared(self.path, 0, 0).await;
-        let cover = tokio::task::spawn_blocking(move || {
-            image.and_then(|image| {
-                let file = NamedTempFile::new().ok()?;
-                image.save_to(file.path(), ImageFormat::PNG).ok()?;
-                Some(file)
-            })
-        })
-        .await
-        .ok()
-        .flatten();
+        let image = get_image_squared(self.path, 0, 0);
+        let cover = image.and_then(|image| {
+            let file = NamedTempFile::new().ok()?;
+            image.save_to(file.path(), ImageFormat::PNG).ok()?;
+            Some(file)
+        });
         writer.emit_tagged(
             tag,
             MetadataLoaded(Mutex::new(Some(TrackMetadata { metadata, cover }))),

@@ -3,8 +3,8 @@
 //! The crate is a bus subscriber, so hosts only have to register it:
 //!
 //! ```no_run
-//! # async fn example(writer: n_event_bus::EventWriter) {
-//! if let Some(media) = n_music_media_notification::MediaNotification::new(writer, 1.0).await {
+//! # fn example(writer: n_event_bus::EventWriter) {
+//! if let Some(media) = n_music_media_notification::MediaNotification::new(writer, 1.0) {
 //!     // app.register_subscriber(media);
 //! }
 //! # }
@@ -36,17 +36,14 @@ pub struct MediaNotification {
 impl MediaNotification {
     /// Attach to the OS media controls. Returns `None` when the platform has no
     /// usable backend (or the backend could not be initialized).
-    ///
-    /// Must be called from within a Tokio runtime; the MPRIS backend uses it to
-    /// dispatch property changes.
-    pub async fn new(writer: EventWriter, volume: f64) -> Option<Self> {
+    pub fn new(writer: EventWriter, volume: f64) -> Option<Self> {
         let state = Arc::new(RwLock::new(State {
             volume,
             ..State::default()
         }));
         let emit_writer = writer.clone();
         let emit: Emit = Arc::new(move |event| dispatch(&emit_writer, event));
-        let backend = platform::new_controls(emit, state.clone()).await?;
+        let backend = platform::new_controls(emit, state.clone())?;
 
         Some(Self {
             state,

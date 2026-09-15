@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use n_music_core::jobs::settings::DirectoryChosen;
 use n_music_core::platform::Platform;
 use std::path::PathBuf;
@@ -7,22 +6,18 @@ fn open_link_desktop(link: String) {
     open::that(link).unwrap();
 }
 
-async fn internal_dir_desktop() -> PathBuf {
+fn internal_dir_desktop() -> PathBuf {
     let base_dirs = directories::BaseDirs::new().unwrap();
     let local_data_dir = base_dirs.data_local_dir();
     let app_dir = local_data_dir.join("n_music");
     if !app_dir.exists() {
-        tokio::fs::create_dir(app_dir.as_path()).await.unwrap();
+        std::fs::create_dir(app_dir.as_path()).unwrap();
     }
     app_dir
 }
 
-async fn ask_music_dir_desktop() -> PathBuf {
-    if let Some(path) = rfd::AsyncFileDialog::new().pick_folder().await {
-        PathBuf::from(path)
-    } else {
-        PathBuf::new()
-    }
+fn ask_music_dir_desktop() -> PathBuf {
+    rfd::FileDialog::new().pick_folder().unwrap_or_default()
 }
 
 fn set_clipboard_text_desktop(text: String) {
@@ -39,21 +34,20 @@ impl DesktopPlatform {
     }
 }
 
-#[async_trait]
 impl Platform for DesktopPlatform {
     fn set_clipboard_text(&self, text: String) {
         set_clipboard_text_desktop(text);
     }
 
-    async fn open_link(&self, link: String) {
+    fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
 
-    async fn internal_dir(&self) -> PathBuf {
-        internal_dir_desktop().await
+    fn internal_dir(&self) -> PathBuf {
+        internal_dir_desktop()
     }
 
-    async fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {
-        writer.emit_tagged(tag, DirectoryChosen(ask_music_dir_desktop().await));
+    fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {
+        writer.emit_tagged(tag, DirectoryChosen(ask_music_dir_desktop()));
     }
 }

@@ -47,11 +47,8 @@ enum Command {
 
 type Startup = Result<(flume::Sender<Command>, u32), String>;
 
-pub(crate) async fn new_controls(
-    emit: Emit,
-    state: Arc<RwLock<State>>,
-) -> Option<Box<dyn Backend>> {
-    Some(Box::new(Smtc::new(emit, state).await?))
+pub(crate) fn new_controls(emit: Emit, state: Arc<RwLock<State>>) -> Option<Box<dyn Backend>> {
+    Some(Box::new(Smtc::new(emit, state)?))
 }
 
 /// Raw Windows System Media Transport Controls backend.
@@ -65,14 +62,14 @@ pub(crate) struct Smtc {
 }
 
 impl Smtc {
-    pub(crate) async fn new(emit: Emit, _state: Arc<RwLock<State>>) -> Option<Self> {
+    pub(crate) fn new(emit: Emit, _state: Arc<RwLock<State>>) -> Option<Self> {
         let (startup_tx, startup_rx) = flume::bounded::<Startup>(1);
         let thread = std::thread::Builder::new()
             .name(String::from("n_music_smtc"))
             .spawn(move || smtc_thread(emit, &startup_tx))
             .ok()?;
 
-        match startup_rx.recv_async().await {
+        match startup_rx.recv() {
             Ok(Ok((commands, thread_id))) => Some(Self {
                 commands,
                 thread_id,

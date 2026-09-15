@@ -13,18 +13,17 @@ mod scenes;
 mod ui;
 
 fn main() {
-    // Installer hooks must finish before starting Tokio, audio, or the UI.
+    // Installer hooks must finish before starting audio or the UI.
     velopack::VelopackApp::build().run();
     run();
 }
 
-#[tokio::main]
-async fn run() {
+fn run() {
     use n_music_core::settings::Settings;
 
     let platform = platform::DesktopPlatform::new();
 
-    let settings = Settings::read_saved(&platform).await;
+    let settings = Settings::read_saved(&platform);
     let (writer, rx) = n_event_bus::EventWriter::channel();
-    app::run(settings, platform, writer, rx, Vec::new()).await
+    app::run(settings, platform, writer, rx, Vec::new())
 }

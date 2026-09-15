@@ -12,62 +12,57 @@ use zune_image::image::Image;
 use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
 
-pub async fn get_image_squared<P: AsRef<Path> + Debug + Send + 'static>(
+pub fn get_image_squared<P: AsRef<Path> + Debug>(
     path: P,
     width: usize,
     height: usize,
 ) -> Option<Image> {
-    tokio::task::spawn_blocking(move || {
-        let image = get_image(path);
-        if !image.is_empty() {
-            let zune_image =
-                if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
+    let image = get_image(path);
+    if !image.is_empty() {
+        let zune_image =
+            if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
+                Some(image)
+            } else if let Ok(mut webp_decoder) = WebPDecoder::try_new(Cursor::new(&image)) {
+                if let Ok(image) = webp_decoder.decode() {
                     Some(image)
-                } else if let Ok(mut webp_decoder) = WebPDecoder::try_new(Cursor::new(&image)) {
-                    if let Ok(image) = webp_decoder.decode() {
-                        Some(image)
-                    } else {
-                        None
-                    }
                 } else {
                     None
-                };
-
-            if let Some(mut zune_image) = zune_image {
-                zune_image.convert_color(ColorSpace::RGBA).unwrap();
-                let (w, h) = zune_image.dimensions();
-                let mut size = w;
-                if w != h {
-                    let difference = w.abs_diff(h);
-                    let min = w.min(h);
-                    size = min;
-                    let is_height = h < w;
-                    let x = if is_height { difference / 2 } else { 0 };
-                    let y = if !is_height { difference / 2 } else { 0 };
-                    {
-                        Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
-                    }
                 }
-                {
-                    rimage::operations::resize::Resize::new(
-                        if width == 0 { size } else { width },
-                        if height == 0 { size } else { height },
-                        ResizeAlg::Convolution(FilterType::Hamming),
-                    )
-                    .execute(&mut zune_image)
-                    .unwrap()
-                }
-                Some(zune_image)
             } else {
                 None
+            };
+
+        if let Some(mut zune_image) = zune_image {
+            zune_image.convert_color(ColorSpace::RGBA).unwrap();
+            let (w, h) = zune_image.dimensions();
+            let mut size = w;
+            if w != h {
+                let difference = w.abs_diff(h);
+                let min = w.min(h);
+                size = min;
+                let is_height = h < w;
+                let x = if is_height { difference / 2 } else { 0 };
+                let y = if !is_height { difference / 2 } else { 0 };
+                {
+                    Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
+                }
             }
+            {
+                rimage::operations::resize::Resize::new(
+                    if width == 0 { size } else { width },
+                    if height == 0 { size } else { height },
+                    ResizeAlg::Convolution(FilterType::Hamming),
+                )
+                .execute(&mut zune_image)
+                .unwrap()
+            }
+            Some(zune_image)
         } else {
             None
         }
-    })
-    .await
-    .ok()
-    .flatten()
+    } else {
+        None
+    }
 }
 
 pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {

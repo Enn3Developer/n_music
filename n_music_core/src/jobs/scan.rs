@@ -9,7 +9,7 @@ use rand::prelude::SliceRandom;
 use rand::rng;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::task::JoinSet;
+use std::sync::Mutex;
 
 fn enumerate_audio_files(path: &str) -> Vec<String> {
     let mut names = vec![];
@@ -45,23 +45,15 @@ pub struct ScanJob {
 job_emits!(ScanJob => Tagged<TracksEnumerated>, Tagged<TrackMetadataLoaded>, Tagged<ScanFinished>);
 
 impl Job for ScanJob {
-    async fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
+    fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let path = self.settings.path.clone();
-        let scan_path = path.clone();
-        let names = tokio::task::spawn_blocking(move || enumerate_audio_files(&scan_path))
-            .await
-            .unwrap_or_default();
+        let names = enumerate_audio_files(&path);
         let len = names.len();
 
         let internal_dir = self.internal_dir;
-        let timestamp = self.settings.timestamp().await.ok();
-        let (check_timestamp, file_tracks) = {
-            let settings = &self.settings;
-            (
-                settings.check_timestamp().await,
-                settings.read_tracks(internal_dir.clone()).await,
-            )
-        };
+        let timestamp = self.settings.timestamp().ok();
+        let check_timestamp = self.settings.check_timestamp();
+        let file_tracks = self.settings.read_tracks(internal_dir);
         let is_cached = check_timestamp
             && !file_tracks.is_empty()
             && self.check_cache
@@ -118,37 +110,39 @@ impl Job for ScanJob {
             .map(usize::from)
             .unwrap_or(1)
             .min(4);
-        let mut file_tracks = Vec::with_capacity(len);
-        let mut tasks = JoinSet::new();
-        for (index, name) in names.into_iter().enumerate() {
-            if token.as_ref().map(JobToken::is_cancelled).unwrap_or(false) {
-                return;
+        let queue = Mutex::new(names.into_iter().enumerate());
+        let (tx, rx) = std::sync::mpsc::channel::<FileTrack>();
+        std::thread::scope(|scope| {
+            for _ in 0..concurrency {
+                let tx = tx.clone();
+                let queue = &queue;
+                let writer = &writer;
+                let path = &path;
+                let token = &token;
+                scope.spawn(move || loop {
+                    if token.as_ref().is_some_and(JobToken::is_cancelled) {
+                        break;
+                    }
+                    let Some((index, name)) = queue.lock().unwrap().next() else {
+                        break;
+                    };
+                    let track_path = Path::new(path).join(&name);
+                    if let Some(file_track) = load_metadata(name, track_path) {
+                        writer.emit_tagged(
+                            tag,
+                            TrackMetadataLoaded {
+                                index,
+                                track: file_track.clone(),
+                            },
+                        );
+                        let _ = tx.send(file_track);
+                    }
+                });
             }
-            if tasks.len() >= concurrency {
-                if let Some(Ok(Some(track))) = tasks.join_next().await {
-                    file_tracks.push(track);
-                }
-            }
-            let writer = writer.clone();
-            let track_path = Path::new(&path).join(&name);
-            tasks.spawn(async move {
-                let file_track = load_metadata(index, name, track_path).await?;
-                writer.emit_tagged(
-                    tag,
-                    TrackMetadataLoaded {
-                        index,
-                        track: file_track.clone(),
-                    },
-                );
-                Some(file_track)
-            });
-        }
-
-        while let Some(result) = tasks.join_next().await {
-            if let Ok(Some(file_track)) = result {
-                file_tracks.push(file_track);
-            }
-        }
+        });
+        drop(tx);
+        let mut file_tracks: Vec<FileTrack> = rx.iter().collect();
+        file_tracks.shrink_to_fit();
         writer.emit_tagged(
             tag,
             ScanFinished {
@@ -160,13 +154,10 @@ impl Job for ScanJob {
     }
 }
 
-async fn load_metadata(_index: usize, name: String, path: PathBuf) -> Option<FileTrack> {
+fn load_metadata(name: String, path: PathBuf) -> Option<FileTrack> {
     let track = MusicTrack::new(path.to_string_lossy().to_string()).ok()?;
-    let meta = tokio::task::spawn_blocking(move || track.get_meta())
-        .await
-        .ok()?
-        .ok()?;
-    let image = get_image_squared(path, 128, 128).await;
+    let meta = track.get_meta().ok()?;
+    let image = get_image_squared(path, 128, 128);
 
     Some(FileTrack {
         path: remove_ext(name),

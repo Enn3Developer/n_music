@@ -219,8 +219,8 @@ struct NotificationJob {
 struct NotificationFinished;
 n_event_bus::job_emits!(NotificationJob => Tagged<NotificationFinished>);
 impl Job for NotificationJob {
-    async fn run(self, tag: u64, writer: EventWriter, _: Option<JobToken>) {
-        let result = tokio::task::spawn_blocking(move || -> jni::errors::Result<()> {
+    fn run(self, tag: u64, writer: EventWriter, _: Option<JobToken>) {
+        let result = (|| -> jni::errors::Result<()> {
             let meta = self.metadata.metadata;
             let cover_path = self
                 .metadata
@@ -247,10 +247,9 @@ impl Job for NotificationJob {
                     Ok(())
                 })?;
             Ok(())
-        })
-        .await;
-        if !matches!(result, Ok(Ok(()))) {
-            eprintln!("Could not update Android notification: {result:?}");
+        })();
+        if let Err(error) = result {
+            eprintln!("Could not update Android notification: {error:?}");
         }
         writer.emit_tagged(tag, NotificationFinished);
     }

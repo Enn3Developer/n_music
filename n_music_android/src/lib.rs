@@ -62,40 +62,30 @@ fn android_main(app: slint::android::AndroidApp) {
         }
     }
 
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
+    let rx = ANDROID_BUS
+        .1
+        .lock()
         .unwrap()
-        .block_on(async {
-            let rx = ANDROID_BUS
-                .1
-                .lock()
-                .unwrap()
-                .take()
-                .expect("Android bus already running");
-            let mut pending = Vec::new();
-            while let Ok(event) = rx.recv_async().await {
-                if let n_event_bus::Event::Bus(envelope) = &event {
-                    if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
-                        let platform = platform::AndroidPlatform::new(
-                            app,
-                            started.0.clone(),
-                            started.1.clone(),
-                        );
-                        crate::app::run(
-                            n_music_core::settings::Settings::read_saved(&platform).await,
-                            platform,
-                            ANDROID_BUS.0.clone(),
-                            rx,
-                            pending,
-                        )
-                        .await;
-                        return;
-                    }
-                }
-                pending.push(event);
+        .take()
+        .expect("Android bus already running");
+    let mut pending = Vec::new();
+    while let Ok(event) = rx.recv() {
+        if let n_event_bus::Event::Bus(envelope) = &event {
+            if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
+                let platform =
+                    platform::AndroidPlatform::new(app, started.0.clone(), started.1.clone());
+                crate::app::run(
+                    n_music_core::settings::Settings::read_saved(&platform),
+                    platform,
+                    ANDROID_BUS.0.clone(),
+                    rx,
+                    pending,
+                );
+                return;
             }
-        });
+        }
+        pending.push(event);
+    }
 }
 
 #[no_mangle]

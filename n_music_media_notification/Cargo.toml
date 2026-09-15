@@ -14,8 +14,8 @@ n_event_bus = { path = "../n_event_bus" }
 tempfile = "3.20"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+flume = "0.12"
 mpris-server = "0.10"
-tokio = { version = "1.45", features = ["rt"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 flume = "0.12"

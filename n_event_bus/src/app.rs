@@ -68,10 +68,10 @@ impl App {
         false
     }
 
-    pub async fn run_loop(&mut self, rx: flume::Receiver<Event>) {
+    pub fn run_loop(&mut self, rx: flume::Receiver<Event>) {
         self.dispatch_all();
 
-        while let Ok(event) = rx.recv_async().await {
+        while let Ok(event) = rx.recv() {
             let mut shutdown = self.enqueue_event(event);
             while let Ok(event) = rx.try_recv() {
                 shutdown |= self.enqueue_event(event);

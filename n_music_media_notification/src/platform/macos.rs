@@ -17,11 +17,8 @@ use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, RwLock};
 
-pub(crate) async fn new_controls(
-    emit: Emit,
-    state: Arc<RwLock<State>>,
-) -> Option<Box<dyn Backend>> {
-    Some(Box::new(NowPlaying::new(emit, state).await?))
+pub(crate) fn new_controls(emit: Emit, state: Arc<RwLock<State>>) -> Option<Box<dyn Backend>> {
+    Some(Box::new(NowPlaying::new(emit, state)?))
 }
 
 /// Raw macOS Now Playing backend (`MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`).
@@ -33,7 +30,7 @@ pub(crate) struct NowPlaying {
 }
 
 impl NowPlaying {
-    pub(crate) async fn new(emit: Emit, _state: Arc<RwLock<State>>) -> Option<Self> {
+    pub(crate) fn new(emit: Emit, _state: Arc<RwLock<State>>) -> Option<Self> {
         let targets = if MainThreadMarker::new().is_some() {
             // Synchronously dispatching to the main queue from the main thread
             // deadlocks (or traps) whenever the queue is not idle.

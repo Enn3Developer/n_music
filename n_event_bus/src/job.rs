@@ -1,16 +1,10 @@
 use crate::event::EventWriter;
 use crate::message::Tagged;
-use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 pub trait Job: Send + 'static {
-    fn run(
-        self,
-        tag: u64,
-        writer: EventWriter,
-        token: Option<JobToken>,
-    ) -> impl Future<Output = ()> + Send;
+    fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>);
 }
 
 #[derive(Clone, Default)]
@@ -33,16 +27,17 @@ impl JobToken {
 }
 
 pub struct JobHandle {
-    join: tokio::task::JoinHandle<()>,
+    _join: std::thread::JoinHandle<()>,
     token: Option<JobToken>,
 }
 
 impl Drop for JobHandle {
     fn drop(&mut self) {
+        // Threads cannot be aborted: cancellation is cooperative through the
+        // token, and the detached thread exits when it observes the flag.
         if let Some(token) = &self.token {
             token.cancel();
         }
-        self.join.abort();
     }
 }
 
@@ -83,31 +78,34 @@ impl JobControl {
         self.next.fetch_add(1, Ordering::Relaxed)
     }
 
+    fn spawn_thread<J: Job>(&self, job: J, tag: u64, token: Option<JobToken>) -> JobHandle {
+        let writer = self.writer.clone();
+        let thread_token = token.clone();
+        let join = std::thread::Builder::new()
+            .name(String::from("n_event_bus job"))
+            .spawn(move || job.run(tag, writer, thread_token))
+            .expect("failed to spawn job thread");
+        JobHandle { _join: join, token }
+    }
+
     pub fn spawn_stream<J: Job>(&self, job: J) -> RunningJob {
         let tag = self.next_tag();
         let token = JobToken::new();
-        let join = tokio::spawn(job.run(tag, self.writer.clone(), Some(token.clone())));
-        RunningJob {
-            tag,
-            _handle: JobHandle {
-                join,
-                token: Some(token),
-            },
-        }
+        let _handle = self.spawn_thread(job, tag, Some(token.clone()));
+        RunningJob { tag, _handle }
     }
 
     pub fn spawn_oneshot<J: Job>(&self, job: J) -> RunningJob {
         let tag = self.next_tag();
-        let join = tokio::spawn(job.run(tag, self.writer.clone(), None));
         RunningJob {
             tag,
-            _handle: JobHandle { join, token: None },
+            _handle: self.spawn_thread(job, tag, None),
         }
     }
 
     pub fn spawn_detached<J: Job>(&self, job: J) {
         let tag = self.next_tag();
-        tokio::spawn(job.run(tag, self.writer.clone(), None));
+        drop(self.spawn_thread(job, tag, None));
     }
 }
 

@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use n_music_core::platform::Platform;
 use std::path::PathBuf;
 
@@ -27,7 +26,6 @@ impl AndroidPlatform {
     }
 }
 
-#[async_trait]
 impl Platform for AndroidPlatform {
     fn set_clipboard_text(&self, text: String) {
         self.jvm
@@ -44,7 +42,7 @@ impl Platform for AndroidPlatform {
             .unwrap();
     }
 
-    async fn open_link(&self, link: String) {
+    fn open_link(&self, link: String) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 let java_string = env.new_string(link)?;
@@ -59,7 +57,7 @@ impl Platform for AndroidPlatform {
             .unwrap();
     }
 
-    async fn internal_dir(&self) -> PathBuf {
+    fn internal_dir(&self) -> PathBuf {
         let path = self
             .app
             .external_data_path()
@@ -71,7 +69,7 @@ impl Platform for AndroidPlatform {
         path
     }
 
-    async fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
+    fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 env.call_method(

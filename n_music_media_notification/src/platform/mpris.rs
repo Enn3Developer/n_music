@@ -4,13 +4,10 @@ use mpris_server::{
     zbus, LoopStatus as MprisLoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface,
     Property, RootInterface, Server, Time, TrackId, Volume,
 };
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
-pub(crate) async fn new_controls(
-    emit: Emit,
-    state: Arc<RwLock<State>>,
-) -> Option<Box<dyn Backend>> {
-    Some(Box::new(Mpris::new(emit, state).await?))
+pub(crate) fn new_controls(emit: Emit, state: Arc<RwLock<State>>) -> Option<Box<dyn Backend>> {
+    Some(Box::new(Mpris::new(emit, state)?))
 }
 
 pub(crate) struct Mpris {
@@ -18,30 +15,47 @@ pub(crate) struct Mpris {
 }
 
 impl Mpris {
-    pub(crate) async fn new(emit: Emit, state: Arc<RwLock<State>>) -> Option<Self> {
-        let server = match Server::new(
+    pub(crate) fn new(emit: Emit, state: Arc<RwLock<State>>) -> Option<Self> {
+        let server = match zbus::block_on(Server::new(
             "n_music",
             Adapter {
                 emit: emit.clone(),
                 state: state.clone(),
             },
-        )
-        .await
-        {
+        )) {
             Ok(server) => server,
             Err(_) => {
                 let name = format!("n_music_{}", std::process::id());
-                Server::new(&name, Adapter { emit, state }).await.ok()?
+                zbus::block_on(Server::new(&name, Adapter { emit, state })).ok()?
             }
         };
         let server = Arc::new(server);
+        let (property_tx, property_rx) = flume::unbounded::<Property>();
+
+        // zbus drives the connection on its own internal executor thread; this
+        // worker only has to serialize `properties_changed` calls off the event
+        // bus thread, coalescing bursts of property updates.
+        std::thread::Builder::new()
+            .name(String::from("n_music_mpris"))
+            .spawn(move || {
+                while let Ok(first) = property_rx.recv() {
+                    let mut properties = vec![first];
+                    while let Ok(property) = property_rx.try_recv() {
+                        let kind = std::mem::discriminant(&property);
+                        properties.retain(|old| std::mem::discriminant(old) != kind);
+                        properties.push(property);
+                    }
+                    if let Err(error) = zbus::block_on(server.properties_changed(properties)) {
+                        eprintln!("error notifying mpris: {error}");
+                    }
+                }
+            })
+            .ok()?;
 
         Some(Self {
-            notifier: Notifier(Arc::new(NotifyInner {
-                server,
-                runtime: tokio::runtime::Handle::current(),
-                pending: Mutex::new(Pending::default()),
-            })),
+            notifier: Notifier {
+                properties: property_tx,
+            },
         })
     }
 }
@@ -66,55 +80,15 @@ impl Backend for Mpris {
     }
 }
 
-/// Coalesces property changes and emits them one batch at a time, so `zbus`
-/// never sees out-of-order updates.
-struct Notifier(Arc<NotifyInner>);
-
-struct NotifyInner {
-    server: Arc<Server<Adapter>>,
-    runtime: tokio::runtime::Handle,
-    pending: Mutex<Pending>,
-}
-
-#[derive(Default)]
-struct Pending {
-    inflight: bool,
-    properties: Vec<Property>,
+/// Forwards property changes to the backend thread, so `zbus` never sees
+/// out-of-order updates.
+struct Notifier {
+    properties: flume::Sender<Property>,
 }
 
 impl Notifier {
     fn notify(&self, property: Property) {
-        {
-            let mut pending = self.0.pending.lock().unwrap();
-            let kind = std::mem::discriminant(&property);
-            pending
-                .properties
-                .retain(|old| std::mem::discriminant(old) != kind);
-            pending.properties.push(property);
-            if pending.inflight {
-                return;
-            }
-            pending.inflight = true;
-        }
-
-        let inner = self.0.clone();
-        let runtime = inner.runtime.clone();
-        runtime.spawn(async move {
-            loop {
-                let properties = {
-                    let mut pending = inner.pending.lock().unwrap();
-                    let properties = std::mem::take(&mut pending.properties);
-                    if properties.is_empty() {
-                        pending.inflight = false;
-                        break;
-                    }
-                    properties
-                };
-                if let Err(error) = inner.server.properties_changed(properties).await {
-                    eprintln!("error notifying mpris: {error}");
-                }
-            }
-        });
+        let _ = self.properties.send(property);
     }
 }
 

@@ -15,7 +15,7 @@ use n_music_core::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
 
-pub async fn run<P: Platform + 'static>(
+pub fn run<P: Platform + 'static>(
     settings: Settings,
     platform: P,
     writer: EventWriter,
@@ -23,7 +23,7 @@ pub async fn run<P: Platform + 'static>(
     pending: Vec<n_event_bus::Event>,
 ) {
     let platform: Arc<dyn Platform> = Arc::new(platform);
-    let internal_dir = platform.internal_dir().await;
+    let internal_dir = platform.internal_dir();
 
     let p = platform.clone();
     let default_panic = std::panic::take_hook();
@@ -36,7 +36,7 @@ pub async fn run<P: Platform + 'static>(
     let _ = slint::set_xdg_app_id("n_music");
     let main_window = MainWindow::new().unwrap();
 
-    setup_data(&settings, &main_window, writer.clone()).await;
+    setup_data(&settings, &main_window, writer.clone());
 
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone());
@@ -56,7 +56,7 @@ pub async fn run<P: Platform + 'static>(
     ));
 
     if let Some(media) =
-        n_music_media_notification::MediaNotification::new(writer.clone(), settings.volume).await
+        n_music_media_notification::MediaNotification::new(writer.clone(), settings.volume)
     {
         app.register_subscriber(media);
     }
@@ -67,18 +67,21 @@ pub async fn run<P: Platform + 'static>(
         }
     }
     writer.emit(ScanRequested { check_cache: true });
-    let bus_task = tokio::spawn(async move { app.run_loop(rx).await });
+    let bus_thread = std::thread::Builder::new()
+        .name(String::from("n_event_bus loop"))
+        .spawn(move || app.run_loop(rx))
+        .expect("failed to spawn event bus thread");
 
-    tokio::task::block_in_place(|| main_window.run().unwrap());
+    main_window.run().unwrap();
 
     writer.emit(n_music_core::messages::Shutdown(WindowSize {
         width: main_window.get_last_width() as usize,
         height: main_window.get_last_height() as usize,
     }));
-    let _ = bus_task.await;
+    let _ = bus_thread.join();
 }
 
-async fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {
+fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {
     localize(
         settings.locale.clone(),
         main_window.global::<Localization>(),

@@ -41,11 +41,9 @@ impl Settings {
         }
     }
 
-    pub async fn read_saved(platform: &(impl Platform + ?Sized)) -> Self {
-        let storage_file = platform.internal_dir().await.join("config");
-        tokio::task::spawn_blocking(|| Self::read_from_file(storage_file))
-            .await
-            .unwrap()
+    pub fn read_saved(platform: &(impl Platform + ?Sized)) -> Self {
+        let storage_file = platform.internal_dir().join("config");
+        Self::read_from_file(storage_file)
     }
 
     #[cfg(target_os = "android")]
@@ -69,57 +67,50 @@ impl Settings {
         PathBuf::new()
     }
 
-    pub async fn check_timestamp(&self) -> bool {
+    pub fn check_timestamp(&self) -> bool {
         if let Some(saved_timestamp) = &self.timestamp {
-            if let Ok(timestamp) = self.timestamp().await {
+            if let Ok(timestamp) = self.timestamp() {
                 return &timestamp == saved_timestamp;
             }
         }
         false
     }
 
-    pub async fn timestamp(&self) -> std::io::Result<u64> {
+    pub fn timestamp(&self) -> std::io::Result<u64> {
         let mut hasher = DefaultHasher::default();
-        tokio::fs::metadata(&self.path)
-            .await?
-            .modified()?
-            .hash(&mut hasher);
+        std::fs::metadata(&self.path)?.modified()?.hash(&mut hasher);
         Ok(hasher.finish())
     }
 
-    pub async fn read_tracks(&self, internal_dir: PathBuf) -> Vec<FileTrack> {
+    pub fn read_tracks(&self, internal_dir: PathBuf) -> Vec<FileTrack> {
         let tracks_file = internal_dir.join("tracks");
 
         let path = self.path.clone();
         let timestamp = self.timestamp;
-        tokio::task::spawn_blocking(move || {
-            if tracks_file.exists() && tracks_file.is_file() {
-                let mut data = vec![];
-                if let Ok(_) = zstd::stream::copy_decode(
-                    File::open(tracks_file).unwrap(),
-                    BufWriter::new(Cursor::new(&mut data)),
-                ) {
-                    if let Ok(cache) = bitcode::decode::<TrackCache>(&data) {
-                        if cache.path == path && cache.timestamp == timestamp {
-                            cache.tracks
-                        } else {
-                            vec![]
-                        }
+        if tracks_file.exists() && tracks_file.is_file() {
+            let mut data = vec![];
+            if let Ok(_) = zstd::stream::copy_decode(
+                File::open(tracks_file).unwrap(),
+                BufWriter::new(Cursor::new(&mut data)),
+            ) {
+                if let Ok(cache) = bitcode::decode::<TrackCache>(&data) {
+                    if cache.path == path && cache.timestamp == timestamp {
+                        cache.tracks
                     } else {
-                        eprintln!("not encoded");
                         vec![]
                     }
                 } else {
-                    eprintln!("bad file");
+                    eprintln!("not encoded");
                     vec![]
                 }
             } else {
-                eprintln!("file not found");
+                eprintln!("bad file");
                 vec![]
             }
-        })
-        .await
-        .unwrap()
+        } else {
+            eprintln!("file not found");
+            vec![]
+        }
     }
 }
 
