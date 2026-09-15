@@ -23,7 +23,9 @@ opt-level = 1
 [profile.release]
 lto = true
 codegen-units = 1
-opt-level = 3
+opt-level = "s"
+panic = "abort"
+strip = true
 
 [profile.dev.build-override]
 opt-level = 3
