@@ -7,17 +7,11 @@ Cross-platform music player written in Rust + Slint
 ## Features
 
 - Cover art
-- Support media control (Only Linux and Android)
+- Supports media control on all platforms (Windows, Mac, Linux and Android)
 - Extremely fast and resource efficient
 - Locale support
 
 ## Coming
-
-- Android builds:
-    - [x] Kotlin code
-    - [x] Notifications
-    - [x] Working dev build
-    - [x] Automatic CI for releases
 
 - Streaming:
     - [ ] Simple web streaming
@@ -26,7 +20,6 @@ Cross-platform music player written in Rust + Slint
 
 - QoL:
     - [ ] Playlists
-    - [x] Media control for Windows, Mac and Linux
     - [ ] Auto updater (desktop only; opt-out)
 
 ## Contribute
