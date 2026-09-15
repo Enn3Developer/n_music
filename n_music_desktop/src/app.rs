@@ -33,7 +33,6 @@ pub async fn run<P: Platform + 'static>(
         std::process::exit(1);
     }));
 
-    #[cfg(target_os = "linux")]
     let _ = slint::set_xdg_app_id("n_music");
     let main_window = MainWindow::new().unwrap();
 

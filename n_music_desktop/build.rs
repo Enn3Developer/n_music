@@ -5,11 +5,7 @@ use std::path::Path;
 fn main() {
     println!("cargo::rerun-if-changed=ui/");
     println!("cargo:rerun-if-changed=assets/lang/");
-    let mut config = slint_build::CompilerConfiguration::new();
-    // Build scripts run on the host, so select the style from Cargo's target OS.
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
-        config = config.with_style("material".into());
-    }
+    let config = slint_build::CompilerConfiguration::new();
     slint_build::compile_with_config("ui/window.slint", config).expect("Slint build failed");
     let lang_dir = Path::new("assets").join("lang").read_dir().unwrap();
     let mut localizations = String::from("const LOCALIZATIONS: [(&str, &str); {LEN}] = [");
