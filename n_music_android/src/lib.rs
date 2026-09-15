@@ -12,13 +12,11 @@ mod ui;
 use n_event_bus::{EventWriter, Message};
 use std::sync::{Arc, LazyLock, Mutex};
 
-static ANDROID_BUS: LazyLock<(
-    EventWriter,
-    Mutex<Option<n_event_bus::EventReceiver>>,
-)> = LazyLock::new(|| {
-    let (writer, receiver) = EventWriter::channel();
-    (writer, Mutex::new(Some(receiver)))
-});
+static ANDROID_BUS: LazyLock<(EventWriter, Mutex<Option<n_event_bus::EventReceiver>>)> =
+    LazyLock::new(|| {
+        let (writer, receiver) = EventWriter::channel();
+        (writer, Mutex::new(Some(receiver)))
+    });
 
 pub struct AndroidStarted(
     pub Arc<jni::JavaVM>,
@@ -188,7 +186,9 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'l
     _: jni::objects::JClass<'local>,
     seek: jni::sys::jdouble,
 ) {
-    ANDROID_BUS.0.emit(n_music_core::messages::Seek::Absolute(seek));
+    ANDROID_BUS
+        .0
+        .emit(n_music_core::messages::Seek::Absolute(seek));
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatMode<'local>(
@@ -204,4 +204,13 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatM
     ANDROID_BUS
         .0
         .emit(n_music_core::messages::SetLoopStatus(loop_status));
+}
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_outputDeviceChanged<'local>(
+    _: jni::EnvUnowned<'local>,
+    _: jni::objects::JClass<'local>,
+) {
+    ANDROID_BUS
+        .0
+        .emit(n_music_core::messages::OutputDeviceChanged);
 }

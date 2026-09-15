@@ -1,7 +1,8 @@
 use crate::{output, TrackTime, CODEC_REGISTRY};
-use std::io;
+use std::io::{self, Seek as _, SeekFrom};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+use symphonia::core::audio::AudioSpec;
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::units::Time;
@@ -36,6 +37,11 @@ impl Player {
     pub fn unpause(&mut self) {
         if let Some(control) = &self.control {
             control.set_paused(false);
+        }
+    }
+    pub fn reload_output(&self) {
+        if let Some(control) = &self.control {
+            control.reload_output();
         }
     }
     pub fn is_paused(&self) -> bool {
@@ -186,6 +192,7 @@ struct State {
     volume: f32,
     speed: f32,
     paused: bool,
+    reload_output: bool,
     seek: Option<(Time, u64)>,
     revision: u64,
     version: u64,
@@ -209,6 +216,7 @@ struct Controls {
     volume: f32,
     speed: f32,
     paused: bool,
+    reload_output: bool,
     seek: Option<(Time, u64)>,
     version: u64,
     stopped: bool,
@@ -222,6 +230,7 @@ impl PlaybackControl {
                 volume,
                 speed,
                 paused: false,
+                reload_output: false,
                 seek: None,
                 revision: 0,
                 version: 0,
@@ -245,6 +254,10 @@ impl PlaybackControl {
 
     pub fn set_paused(&self, paused: bool) {
         self.update(|state| state.paused = paused);
+    }
+
+    fn reload_output(&self) {
+        self.update(|state| state.reload_output = true);
     }
 
     pub fn set_volume(&self, volume: f32) {
@@ -327,12 +340,22 @@ impl PlaybackControl {
     fn controls(&self, version: u64, wait: bool) -> Controls {
         let mut state = self.0.state.lock().unwrap();
         while wait && state.version == version && !state.stopped {
-            state = self.0.changed.wait(state).unwrap();
+            // Stream callbacks only set atomics; inspect them even while playback is paused.
+            let (next, timeout) = self
+                .0
+                .changed
+                .wait_timeout(state, output::DEVICE_CHECK_INTERVAL)
+                .unwrap();
+            state = next;
+            if timeout.timed_out() {
+                break;
+            }
         }
         Controls {
             volume: state.volume,
             speed: state.speed,
             paused: state.paused,
+            reload_output: std::mem::take(&mut state.reload_output),
             seek: state.seek.take(),
             version: state.version,
             stopped: state.stopped,
@@ -358,6 +381,19 @@ impl Drop for Completion {
     fn drop(&mut self) {
         self.0.finish(self.1);
     }
+}
+
+fn rewind_format(format: Box<dyn FormatReader>) -> io::Result<Box<dyn FormatReader>> {
+    let mut source = format.into_inner();
+    source.seek(SeekFrom::Start(0))?;
+    crate::PROBE
+        .probe(
+            &symphonia::core::formats::probe::Hint::new(),
+            source,
+            Default::default(),
+            Default::default(),
+        )
+        .map_err(io::Error::other)
 }
 
 fn run(
@@ -392,6 +428,12 @@ fn run(
     let mut output: Option<Box<dyn output::AudioOutput>> = None;
     let mut output_spec: Option<symphonia::core::audio::AudioSpec> = None;
     let mut output_capacity = 0;
+    let mut output_source_rate = 0;
+    let mut packet_needs_rewind = false;
+    let mut output_error = None;
+    let mut recovering = false;
+    let mut recovery_anchor = None;
+    let mut retry_after = Instant::now();
     let mut paused = control.is_paused();
     let mut version = u64::MAX;
     let mut revision = 0;
@@ -415,8 +457,10 @@ fn run(
         if controls.stopped {
             return Ok(());
         }
-        if let Some(output) = &output {
-            output.check_health().map_err(io::Error::other)?;
+        if output_error.is_none() {
+            output_error = output
+                .as_ref()
+                .and_then(|output| output.check_health().err());
         }
         if controls.progress_interval != progress_interval {
             progress_interval = controls.progress_interval;
@@ -425,21 +469,103 @@ fn run(
         let pause_changed = controls.paused != paused;
         paused = controls.paused;
         if pause_changed {
-            if let Some(output) = &mut output {
-                output.set_paused(paused).map_err(io::Error::other)?;
+            if output_error.is_none() && !controls.reload_output {
+                if let Some(output) = &mut output {
+                    output_error = output.set_paused(paused).err();
+                }
             }
             force_report = true;
         }
-        if let Some((target, next_revision)) = controls.seek {
+        let mut reload_output = controls.reload_output;
+        if let Some(error) = output_error.take() {
+            if !error.is_recoverable() {
+                return Err(io::Error::other(error));
+            }
+            if !recovering {
+                eprintln!("Audio output unavailable, retrying the system default: {error}");
+            }
+            recovering = true;
+            reload_output = true;
+            retry_after = Instant::now() + Duration::from_millis(250);
+        }
+        let rewind = reload_output && (output.is_some() || packet_needs_rewind);
+        if reload_output {
+            // Close before reopening (some backends require exclusive access). Rewind below
+            // rather than skipping the old queue or the remainder of a partially written packet.
+            drop(output.take());
+            force_report = true;
+        }
+        let recovery_seek = rewind.then(|| {
+            (
+                // Keep the original time until audio advances: seconds/timestamp round-trips
+                // can lose a tick on each failed replacement stream at rates such as 44.1 kHz.
+                *recovery_anchor.get_or_insert_with(|| {
+                    Time::try_from_secs_f64(time.position).unwrap_or_default()
+                }),
+                controls
+                    .seek
+                    .as_ref()
+                    .map_or(revision, |(_, revision)| *revision),
+            )
+        });
+        // A user seek issued during recovery takes precedence over the recovery position.
+        for (request, automatic) in [(controls.seek, false), (recovery_seek, true)] {
+            let Some((target, next_revision)) = request else {
+                continue;
+            };
             revision = next_revision;
-            match format.seek(
+            force_report = true;
+            if length > 0.0 && target.as_secs_f64() >= length {
+                if let Some(output) = &mut output {
+                    output.discard_queued();
+                    output.set_draining();
+                }
+                time.position = length;
+                seek_target = None;
+                packet_needs_rewind = false;
+                draining = true;
+                break;
+            }
+            if rewind {
+                // Some demuxers cannot seek backward without an index, or after EOF.
+                // Rebuild once from the source, not on every failed device-open attempt.
+                format = rewind_format(format)?;
+                decoder.reset();
+            }
+            let seeked = format.seek(
                 SeekMode::Accurate,
                 SeekTo::Time {
                     time: target,
                     track_id: Some(track_id),
                 },
-            ) {
+            );
+            if (automatic && seeked.is_err())
+                || (rewind
+                    && seeked
+                        .as_ref()
+                        .is_ok_and(|seeked| seeked.actual_ts > seeked.required_ts))
+            {
+                // An unindexed reader may only seek forward past the target packet.
+                // Decode/discard from the start in that case, rather than skipping audio.
+                format = rewind_format(format)?;
+                decoder.reset();
+                seek_target = Some(
+                    time_base
+                        .calc_timestamp(target)
+                        .ok_or_else(|| io::Error::other("Seek time out of range"))?,
+                );
+                position_floor = target.as_secs_f64();
+                time.position = position_floor;
+                recovery_anchor = Some(target);
+                packet_needs_rewind = false;
+                draining = false;
+                break;
+            }
+            match seeked {
                 Ok(seeked) => {
+                    if !automatic {
+                        recovery_anchor = Some(target);
+                    }
                     decoder.reset();
                     if let Some(output) = &mut output {
                         output.discard_queued();
@@ -451,10 +577,11 @@ fn run(
                     position_floor = position.as_secs_f64();
                     time.position = position_floor;
                     draining = false;
+                    packet_needs_rewind = false;
+                    break;
                 }
                 Err(err) => eprintln!("error seeking: {err}"),
             }
-            force_report = true;
         }
         if paused {
             if force_report {
@@ -474,6 +601,22 @@ fn run(
         if pause_changed {
             emit(PlaybackEvent::Paused(false));
         }
+        if output.is_none() && Instant::now() < retry_after {
+            if force_report {
+                control.publish(time, revision);
+                emit(PlaybackEvent::Position {
+                    time,
+                    revision,
+                    discontinuity: true,
+                });
+                force_report = false;
+            }
+            control.wait(
+                version,
+                retry_after.saturating_duration_since(Instant::now()),
+            );
+            continue;
+        }
         if draining {
             if let (Some(output), Some(spec)) = (&output, &output_spec) {
                 let pending = output.pending_frames();
@@ -487,6 +630,27 @@ fn run(
                 }
             }
             break;
+        }
+        if output.is_none() {
+            if let Some(spec) = &output_spec {
+                let spec = AudioSpec::new(
+                    (output_source_rate as f32 * controls.speed).round() as u32,
+                    spec.channels().clone(),
+                );
+                output_spec = Some(spec.clone());
+                match output::try_open(spec, output_capacity) {
+                    Ok(opened) => {
+                        output = Some(opened);
+                        force_report = true;
+                        // Opening can take time; re-read transport controls before decoding.
+                        continue;
+                    }
+                    Err(error) => {
+                        output_error = Some(error);
+                        continue;
+                    }
+                }
+            }
         }
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
@@ -531,10 +695,22 @@ fn run(
             decoded.spec().channels().clone(),
         );
         let capacity = decoded.capacity();
-        if output_spec.as_ref() != Some(&spec) || output_capacity < capacity {
-            output = Some(output::try_open(spec.clone(), capacity).map_err(io::Error::other)?);
-            output_spec = Some(spec);
+        packet_needs_rewind = true;
+        if output.is_none() || output_spec.as_ref() != Some(&spec) || output_capacity < capacity {
+            drop(output.take());
+            output_spec = Some(spec.clone());
+            output_source_rate = source_rate;
             output_capacity = capacity;
+            match output::try_open(spec.clone(), capacity) {
+                Ok(opened) => {
+                    output = Some(opened);
+                    force_report = true;
+                }
+                Err(error) => {
+                    output_error = Some(error);
+                    continue;
+                }
+            }
         }
         if let Some(output) = &mut output {
             if last_volume != controls.volume {
@@ -542,15 +718,21 @@ fn run(
                 let volume = controls.volume.clamp(0.0, 1.0);
                 output_volume = 1.0 - (1.0 - volume * volume).sqrt();
             }
-            output
-                .write(decoded, output_volume, skip_frames)
-                .map_err(io::Error::other)?;
+            if let Err(error) = output.write(decoded, output_volume, skip_frames) {
+                output_error = Some(error);
+                continue;
+            }
+            recovering = false;
+            packet_needs_rewind = false;
             let start = time_base
                 .calc_time(packet_start)
                 .ok_or_else(|| io::Error::other("Packet time out of range"))?;
             time.position = (start.as_secs_f64() + frames as f64 / source_rate as f64
                 - output.pending_frames() as f64 / source_rate as f64)
                 .max(position_floor);
+            if recovery_anchor.is_some_and(|anchor| time.position > anchor.as_secs_f64()) {
+                recovery_anchor = None;
+            }
             control.publish(time, revision);
             if force_report
                 || progress_interval.is_some_and(|interval| last_report.elapsed() >= interval)

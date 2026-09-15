@@ -29,29 +29,117 @@ pub trait AudioOutput {
     fn check_health(&self) -> Result<()>;
 }
 
-#[allow(dead_code)]
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum AudioOutputError {
-    OpenStreamError,
-    PlayStreamError,
     StreamClosedError,
+    Backend(cpal::Error),
 }
 
 pub type Result<T> = result::Result<T, AudioOutputError>;
 
 impl std::fmt::Display for AudioOutputError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::StreamClosedError => f.write_str("Audio output stream closed or stalled"),
+            Self::Backend(error) => error.fmt(f),
+        }
     }
 }
 
 impl std::error::Error for AudioOutputError {}
 
+impl From<cpal::Error> for AudioOutputError {
+    fn from(error: cpal::Error) -> Self {
+        Self::Backend(error)
+    }
+}
+
+impl AudioOutputError {
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            Self::StreamClosedError => true,
+            Self::Backend(error) => matches!(
+                error.kind(),
+                cpal::ErrorKind::DeviceBusy
+                    | cpal::ErrorKind::DeviceNotAvailable
+                    | cpal::ErrorKind::HostUnavailable
+                    | cpal::ErrorKind::StreamInvalidated
+                    | cpal::ErrorKind::BackendError
+            ),
+        }
+    }
+}
+
 pub struct CpalAudioOutput;
 
 const STARTUP_GRACE: WallDuration = WallDuration::from_millis(250);
 const STALL_TIMEOUT: WallDuration = WallDuration::from_secs(2);
+pub const DEVICE_CHECK_INTERVAL: WallDuration = WallDuration::from_millis(500);
+
+struct DefaultDeviceMonitor {
+    changed: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
+    thread: std::thread::Thread,
+}
+
+impl DefaultDeviceMonitor {
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    ))]
+    fn new(device_id: cpal::DeviceId) -> Result<Self> {
+        let changed = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let changed_thread = changed.clone();
+        let stopped_thread = stopped.clone();
+        let worker = std::thread::Builder::new()
+            .name("audio-device-monitor".into())
+            .spawn(move || {
+                let Ok(host) = cpal::host_from_id(device_id.host()) else {
+                    changed_thread.store(true, Ordering::Relaxed);
+                    return;
+                };
+                loop {
+                    std::thread::park_timeout(DEVICE_CHECK_INTERVAL);
+                    if stopped_thread.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    // PulseAudio enumeration waits for the server. Never do it on the
+                    // playback worker, which must remain able to handle pause/seek/stop.
+                    let changed = match host.default_output_device() {
+                        Some(device) => device.id().is_ok_and(|id| id != device_id),
+                        None => true,
+                    };
+                    if changed {
+                        changed_thread.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                }
+            })
+            .map_err(|error| {
+                cpal::Error::with_message(cpal::ErrorKind::ResourceExhausted, error.to_string())
+            })?;
+        Ok(Self {
+            changed,
+            stopped,
+            thread: worker.thread().clone(),
+        })
+    }
+
+    fn changed(&self) -> bool {
+        self.changed.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for DefaultDeviceMonitor {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Relaxed);
+        self.thread.unpark();
+        // Don't join a monitor that may still be waiting for an unresponsive server.
+    }
+}
 
 struct BufferPolicy {
     target: usize,
@@ -146,6 +234,17 @@ impl QueueState {
         self.origin.elapsed().as_nanos() as u64
     }
 
+    fn stream_error(&self, kind: cpal::ErrorKind) {
+        match kind {
+            // CPAL already rerouted the stream, or only failed to boost its priority.
+            cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied => {}
+            cpal::ErrorKind::Xrun => {
+                self.starvations.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => self.failed.store(true, Ordering::Relaxed),
+        }
+    }
+
     fn pending_frames(&self, produced: u64, channels: usize, rate: u32) -> usize {
         // A concurrent callback can cause a brief overestimate, never an early EOF.
         let consumed = self.consumed.load(Ordering::Acquire);
@@ -218,49 +317,43 @@ impl AudioOutputSample for u16 {}
 
 impl CpalAudioOutput {
     pub fn try_open(spec: AudioSpec, capacity: usize) -> Result<Box<dyn AudioOutput>> {
-        // Get default host.
         let host = cpal::default_host();
-
-        // Get the default audio output device.
-        let device = match host.default_output_device() {
-            Some(device) => device,
-            _ => {
-                eprintln!("Failed to get default audio output device");
-                return Err(AudioOutputError::OpenStreamError);
-            }
-        };
-
-        let config = match device.default_output_config() {
-            Ok(config) => config,
-            Err(err) => {
-                eprintln!(
-                    "Failed to get default audio output device config: {:?}",
-                    err
-                );
-                return Err(AudioOutputError::OpenStreamError);
-            }
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable))?;
+        let config = device.default_output_config()?;
+        let default_device = match host.id() {
+            // CPAL's PulseAudio backend targets a concrete sink and doesn't watch defaults.
+            // WASAPI/CoreAudio supply native notifications; AAudio also has the Android bridge.
+            #[cfg(any(
+                target_os = "linux",
+                target_os = "dragonfly",
+                target_os = "freebsd",
+                target_os = "netbsd"
+            ))]
+            cpal::HostId::PulseAudio => Some(DefaultDeviceMonitor::new(device.id()?)?),
+            _ => None,
         };
 
         // Select proper playback routine based on sample format.
         match config.sample_format() {
             cpal::SampleFormat::F32 => {
-                CpalAudioOutputImpl::<f32>::try_open(spec, capacity, &device)
+                CpalAudioOutputImpl::<f32>::try_open(spec, capacity, &device, default_device)
             }
             cpal::SampleFormat::I32 => {
-                CpalAudioOutputImpl::<i32>::try_open(spec, capacity, &device)
+                CpalAudioOutputImpl::<i32>::try_open(spec, capacity, &device, default_device)
             }
             cpal::SampleFormat::I16 => {
-                CpalAudioOutputImpl::<i16>::try_open(spec, capacity, &device)
+                CpalAudioOutputImpl::<i16>::try_open(spec, capacity, &device, default_device)
             }
             cpal::SampleFormat::U16 => {
-                CpalAudioOutputImpl::<u16>::try_open(spec, capacity, &device)
+                CpalAudioOutputImpl::<u16>::try_open(spec, capacity, &device, default_device)
             }
-            _ => {
-                unimplemented!(
-                    "sample format not yet implemented: {}",
-                    config.sample_format()
-                )
-            }
+            format => Err(cpal::Error::with_message(
+                cpal::ErrorKind::UnsupportedConfig,
+                format!("Unsupported output sample format: {format}"),
+            )
+            .into()),
         }
     }
 }
@@ -279,6 +372,7 @@ where
     policy: BufferPolicy,
     monitor_after: Option<Instant>,
     paused: bool,
+    default_device: Option<DefaultDeviceMonitor>,
 }
 
 impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
@@ -286,6 +380,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
         spec: AudioSpec,
         capacity: usize,
         device: &cpal::Device,
+        default_device: Option<DefaultDeviceMonitor>,
     ) -> Result<Box<dyn AudioOutput>> {
         let num_channels = spec.channels().count();
 
@@ -325,30 +420,18 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             rate: spec.rate(),
         };
         let error_state = state.clone();
-        let stream_result = device.build_output_stream(
+        let stream = device.build_output_stream(
             config,
             move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
                 let timestamp = info.timestamp();
                 callback.render(data, timestamp.playback.duration_since(timestamp.callback));
             },
-            move |_err| error_state.failed.store(true, Ordering::Relaxed),
-            None,
-        );
-
-        if let Err(err) = stream_result {
-            eprintln!("audio output stream open error: {:?}", err);
-
-            return Err(AudioOutputError::OpenStreamError);
-        }
-
-        let stream = stream_result.unwrap();
+            move |err| error_state.stream_error(err.kind()),
+            Some(STALL_TIMEOUT),
+        )?;
 
         // Start the output stream.
-        if let Err(err) = stream.play() {
-            eprintln!("audio output stream play error: {:?}", err);
-
-            return Err(AudioOutputError::PlayStreamError);
-        }
+        stream.play()?;
 
         let sample_buf = Vec::with_capacity(capacity * num_channels);
 
@@ -363,6 +446,7 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
             policy,
             monitor_after: None,
             paused: false,
+            default_device,
         }))
     }
 }
@@ -379,7 +463,7 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
             return Ok(());
         }
         if self.paused {
-            return Err(AudioOutputError::PlayStreamError);
+            return Err(cpal::Error::new(cpal::ErrorKind::InvalidInput).into());
         }
 
         // Audio samples must be interleaved for cpal. Interleave the samples in the audio
@@ -461,8 +545,7 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
             self.stream.pause()
         } else {
             self.stream.play()
-        }
-        .map_err(|_| AudioOutputError::PlayStreamError)?;
+        }?;
         self.paused = paused;
         Ok(())
     }
@@ -474,6 +557,10 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
     fn check_health(&self) -> Result<()> {
         if self.state.failed.load(Ordering::Relaxed)
             || self.ring_buf_producer.is_abandoned()
+            || self
+                .default_device
+                .as_ref()
+                .is_some_and(DefaultDeviceMonitor::changed)
             || (!self.paused
                 && self
                     .state

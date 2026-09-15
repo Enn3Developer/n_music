@@ -38,6 +38,7 @@ class MainActivity : NativeActivity() {
         @JvmStatic external fun mediaSeekTo(index: Int, position: Double)
         @JvmStatic external fun mediaSeek(seek: Double)
         @JvmStatic external fun mediaRepeatMode(mode: Int)
+        @JvmStatic external fun outputDeviceChanged()
     }
 
     // Called when app is open first time

@@ -16,6 +16,7 @@ pub struct PlayNext;
 pub struct TogglePause;
 pub struct Pause;
 pub struct Play;
+pub struct OutputDeviceChanged;
 pub enum Seek {
     FromUi { position: f64, revision: i32 },
     Absolute(f64),
@@ -91,6 +92,7 @@ messages!(
     TogglePause,
     Pause,
     Play,
+    OutputDeviceChanged,
     Seek,
     SetVolume,
     SetLoopStatus,

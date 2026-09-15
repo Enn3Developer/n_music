@@ -1,7 +1,7 @@
 use crate::messages::{
-    AppVisibilityChanged, LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlayTrack,
-    PlaybackChanged, PositionChanged, QueueReplaced, Seek, SetLoopStatus, SetVolume, Shutdown,
-    TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
+    AppVisibilityChanged, LoopStatusChanged, OutputDeviceChanged, Pause, Play, PlayNext,
+    PlayPrevious, PlayTrack, PlaybackChanged, PositionChanged, QueueReplaced, Seek, SetLoopStatus,
+    SetVolume, Shutdown, TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
 };
 use crate::player::{PlaybackEvent, PlaybackTask, Player};
 use crate::TrackTime;
@@ -296,6 +296,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<TogglePause>();
         reg.on::<Pause>();
         reg.on::<Play>();
+        reg.on::<OutputDeviceChanged>();
         reg.on::<Seek>();
         reg.on::<SetVolume>();
         reg.on::<SetLoopStatus>();
@@ -382,6 +383,12 @@ impl Handle<Seek> for QueuePlayer {
         }
         let time = self.current_time();
         self.position(time, true, out);
+    }
+}
+
+impl Handle<OutputDeviceChanged> for QueuePlayer {
+    fn handle(&mut self, _: &OutputDeviceChanged, _: &Ctx, _: &mut Outbox) {
+        self.reload_output();
     }
 }
 
