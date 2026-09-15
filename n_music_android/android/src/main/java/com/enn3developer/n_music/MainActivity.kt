@@ -15,12 +15,15 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.media3.common.util.UnstableApi
 import java.io.File
 
+@OptIn(UnstableApi::class)
 class MainActivity : NativeActivity() {
     companion object {
         init {

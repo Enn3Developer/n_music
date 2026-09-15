@@ -69,7 +69,7 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
         return State.Builder()
             .setAvailableCommands(COMMANDS)
             .setPlaybackState(playbackState)
-            .setPlayWhenReady(playWhenReady, Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+            .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setRepeatMode(repeatMode)
             .setShuffleModeEnabled(false)
             .setIsLoading(false)
