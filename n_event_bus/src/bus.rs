@@ -29,6 +29,10 @@ impl Bus {
         self.queue.pop_front()
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
     pub fn subscribers_for(&self, tid: TypeId) -> Vec<(SubscriberId, Thunk)> {
         self.index.get(&tid).cloned().unwrap_or_default()
     }

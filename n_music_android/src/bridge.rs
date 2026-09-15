@@ -1,11 +1,14 @@
-use n_music_core::queue::LoopStatus;
+use n_event_bus::{
+    Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
+    Subscriber, Tagged,
+};
 use n_music_core::messages::{
     LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, ThemeChangeRequested,
     TrackChanged,
 };
-use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata};
-use n_event_bus::{
-    Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
+use n_music_core::queue::LoopStatus;
+use n_music_core::services::metadata::{
+    MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -68,6 +71,7 @@ impl Subscriber for AndroidBridge {
         MetadataJob::subscribe(reg);
         NotificationJob::subscribe(reg);
         reg.on::<PositionChanged>();
+        reg.on::<ShutdownRequested>();
     }
 }
 
@@ -177,13 +181,18 @@ impl Handle<LoopStatusChanged> for AndroidBridge {
 }
 
 impl Handle<ThemeChangeRequested> for AndroidBridge {
-    fn handle(&mut self, msg: &ThemeChangeRequested, _: &Ctx, _: &mut Outbox) {
-        self.change_theme(msg.0);
+    fn handle(&mut self, msg: &ThemeChangeRequested, ctx: &Ctx, _: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.change_theme(msg.0);
+        }
     }
 }
 
 impl Handle<TrackChanged> for AndroidBridge {
     fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         self.change_track(msg.index);
         self.metadata_loader.load(msg.path.clone(), ctx);
     }
@@ -205,6 +214,9 @@ impl AndroidBridge {
 }
 impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
     fn handle(&mut self, msg: &Tagged<MetadataLoaded>, ctx: &Ctx, _: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         if let Some(metadata) = self.metadata_loader.take(msg) {
             self.pending = Some(metadata);
             self.flush_notification(ctx);
@@ -255,7 +267,7 @@ impl Job for NotificationJob {
     }
 }
 impl Handle<Tagged<NotificationFinished>> for AndroidBridge {
-    fn handle(&mut self, msg: &Tagged<NotificationFinished>, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &Tagged<NotificationFinished>, ctx: &Ctx, out: &mut Outbox) {
         if self
             .notification
             .as_ref()
@@ -265,6 +277,22 @@ impl Handle<Tagged<NotificationFinished>> for AndroidBridge {
             return;
         }
         self.notification = None;
-        self.flush_notification(ctx);
+        if ctx.shutting_down {
+            out.shutdown_ready();
+        } else {
+            self.flush_notification(ctx);
+        }
+    }
+}
+
+impl Handle<ShutdownRequested> for AndroidBridge {
+    fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
+        self.pending = None;
+        self.metadata_loader = MetadataLoader::default();
+        self.playing = false;
+        self.update_playback();
+        if self.notification.is_none() {
+            out.shutdown_ready();
+        }
     }
 }

@@ -14,7 +14,9 @@ mod platform;
 mod state;
 
 use crate::state::{Backend, Change, Emit, LoopStatus, MediaEvent, State};
-use n_event_bus::{Ctx, EventWriter, Handle, Outbox, Registrar, Subscriber, Tagged};
+use n_event_bus::{
+    Ctx, EventWriter, Handle, Outbox, Registrar, ShutdownRequested, Subscriber, Tagged,
+};
 use n_music_core::messages::{
     LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
     SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
@@ -88,6 +90,7 @@ impl Subscriber for MediaNotification {
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<LoopStatusChanged>();
+        reg.on::<ShutdownRequested>();
     }
 }
 
@@ -130,12 +133,17 @@ impl Handle<PositionChanged> for MediaNotification {
 
 impl Handle<TrackChanged> for MediaNotification {
     fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
-        self.metadata_loader.load(msg.path.clone(), ctx);
+        if !ctx.shutting_down {
+            self.metadata_loader.load(msg.path.clone(), ctx);
+        }
     }
 }
 
 impl Handle<Tagged<MetadataLoaded>> for MediaNotification {
-    fn handle(&mut self, msg: &Tagged<MetadataLoaded>, _ctx: &Ctx, _out: &mut Outbox) {
+    fn handle(&mut self, msg: &Tagged<MetadataLoaded>, ctx: &Ctx, _out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         let Some(loaded) = self.metadata_loader.take(msg) else {
             return;
         };
@@ -156,5 +164,14 @@ impl Handle<Tagged<MetadataLoaded>> for MediaNotification {
             }
         }
         self.update(Change::Metadata);
+    }
+}
+
+impl Handle<ShutdownRequested> for MediaNotification {
+    fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
+        self.metadata_loader = MetadataLoader::default();
+        self.state.write().unwrap().playing = false;
+        self.update(Change::Playback);
+        out.shutdown_ready();
     }
 }

@@ -8,6 +8,9 @@ use n_music_core::messages::{
 
 impl Handle<ScanLibrary> for AppScene {
     fn handle(&mut self, msg: &ScanLibrary, ctx: &Ctx, _out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         self.scan_job = Some(ctx.jobs.spawn_stream(ScanJob {
             settings: msg.settings.clone(),
             internal_dir: msg.internal_dir.clone(),
@@ -74,7 +77,10 @@ impl Handle<Tagged<ScanFinished>> for AppScene {
 }
 
 impl Handle<SearchChanged> for AppScene {
-    fn handle(&mut self, msg: &SearchChanged, _ctx: &Ctx, _out: &mut Outbox) {
+    fn handle(&mut self, msg: &SearchChanged, ctx: &Ctx, _out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         if self.search.is_empty() && !msg.0.is_empty() {
             self.save_y = true;
         }

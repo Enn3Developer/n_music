@@ -1,13 +1,14 @@
 use crate::messages::{
     AppVisibilityChanged, LoopStatusChanged, OutputDeviceChanged, Pause, Play, PlayNext,
     PlayPrevious, PlayTrack, PlaybackChanged, PositionChanged, QueueReplaced, Seek, SetLoopStatus,
-    SetVolume, Shutdown, TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
+    SetVolume, TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
 };
 use crate::player::{PlaybackEvent, PlaybackTask, Player};
 use crate::TrackTime;
 use crate::{remove_ext, strip_absolute_path};
 use n_event_bus::{
-    Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, Subscriber, Tagged,
+    Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
+    Subscriber, Tagged,
 };
 use rand::prelude::SliceRandom;
 use rand::rng;
@@ -297,13 +298,16 @@ impl Subscriber for QueuePlayer {
         reg.on::<ToggleRepeat>();
         reg.on::<QueueReplaced>();
         reg.on::<AppVisibilityChanged>();
-        reg.on::<Shutdown>();
+        reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);
     }
 }
 
 impl Handle<PlayTrack> for QueuePlayer {
     fn handle(&mut self, msg: &PlayTrack, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         let task = self.prepare_index(msg.0);
         self.start(task, ctx, out);
     }
@@ -311,12 +315,18 @@ impl Handle<PlayTrack> for QueuePlayer {
 
 impl Handle<PlayNext> for QueuePlayer {
     fn handle(&mut self, _msg: &PlayNext, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         self.advance(true, ctx, out);
     }
 }
 
 impl Handle<PlayPrevious> for QueuePlayer {
     fn handle(&mut self, _msg: &PlayPrevious, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         if self.loaded && self.current_time().position > 3.0 {
             self.seek_to(0, 0.0);
         } else {
@@ -328,6 +338,9 @@ impl Handle<PlayPrevious> for QueuePlayer {
 
 impl Handle<TogglePause> for QueuePlayer {
     fn handle(&mut self, _msg: &TogglePause, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         if self.is_playing() {
             if self.is_paused() {
                 self.unpause();
@@ -348,6 +361,9 @@ impl Handle<Pause> for QueuePlayer {
 
 impl Handle<Play> for QueuePlayer {
     fn handle(&mut self, _msg: &Play, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         if self.is_playing() {
             self.unpause();
         } else {
@@ -358,6 +374,9 @@ impl Handle<Play> for QueuePlayer {
 
 impl Handle<Seek> for QueuePlayer {
     fn handle(&mut self, msg: &Seek, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         let position = match msg {
             Seek::FromUi { position, revision } => {
                 self.pending_seek_revision = Some(*revision);
@@ -381,14 +400,16 @@ impl Handle<Seek> for QueuePlayer {
 }
 
 impl Handle<OutputDeviceChanged> for QueuePlayer {
-    fn handle(&mut self, _: &OutputDeviceChanged, _: &Ctx, _: &mut Outbox) {
-        self.reload_output();
+    fn handle(&mut self, _: &OutputDeviceChanged, ctx: &Ctx, _: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.reload_output();
+        }
     }
 }
 
 impl Handle<SetVolume> for QueuePlayer {
-    fn handle(&mut self, msg: &SetVolume, _ctx: &Ctx, out: &mut Outbox) {
-        if !msg.0.is_finite() {
+    fn handle(&mut self, msg: &SetVolume, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down || !msg.0.is_finite() {
             return;
         }
         let volume = msg.0.clamp(0.0, 1.0);
@@ -401,8 +422,8 @@ impl Handle<SetVolume> for QueuePlayer {
 }
 
 impl Handle<SetLoopStatus> for QueuePlayer {
-    fn handle(&mut self, msg: &SetLoopStatus, _ctx: &Ctx, out: &mut Outbox) {
-        if self.loop_status() != msg.0 {
+    fn handle(&mut self, msg: &SetLoopStatus, ctx: &Ctx, out: &mut Outbox) {
+        if !ctx.shutting_down && self.loop_status() != msg.0 {
             self.set_loop_status(msg.0.clone());
             out.emit(LoopStatusChanged(self.loop_status()));
         }
@@ -420,7 +441,10 @@ impl Handle<ToggleRepeat> for QueuePlayer {
 }
 
 impl Handle<QueueReplaced> for QueuePlayer {
-    fn handle(&mut self, msg: &QueueReplaced, _ctx: &Ctx, out: &mut Outbox) {
+    fn handle(&mut self, msg: &QueueReplaced, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
         self.stop(out);
         self.clear();
         self.set_path(msg.path.clone());
@@ -435,9 +459,10 @@ impl Handle<AppVisibilityChanged> for QueuePlayer {
     }
 }
 
-impl Handle<Shutdown> for QueuePlayer {
-    fn handle(&mut self, _msg: &Shutdown, _ctx: &Ctx, out: &mut Outbox) {
+impl Handle<ShutdownRequested> for QueuePlayer {
+    fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
         self.stop(out);
+        out.shutdown_ready();
     }
 }
 

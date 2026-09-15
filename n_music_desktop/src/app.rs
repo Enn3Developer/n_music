@@ -2,7 +2,7 @@ use crate::localization::localize;
 use crate::scenes::{AppScene, SettingsScene};
 use crate::ui::color_scheme;
 use crate::{AppData, Localization, MainWindow, SettingsData};
-use n_event_bus::{App, EventWriter, JobControl};
+use n_event_bus::{App, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::messages::{
     LocaleChangeRequested, OpenLink, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack,
     ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleRepeat,
@@ -14,6 +14,7 @@ use n_music_core::settings::Settings;
 use n_music_core::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub fn run<P: Platform + 'static>(
     settings: Settings,
@@ -62,23 +63,42 @@ pub fn run<P: Platform + 'static>(
     }
 
     for event in pending {
-        if let n_event_bus::Event::Bus(envelope) = event {
-            app.enqueue(envelope);
-        }
+        app.enqueue_event(event);
     }
+    let close_window = main_window.as_weak();
+    let close_writer = writer.clone();
+    main_window.window().on_close_requested(move || {
+        if let Some(window) = close_window.upgrade() {
+            request_shutdown(&window, &close_writer);
+        }
+        slint::CloseRequestResponse::KeepWindowShown
+    });
     writer.emit(ScanRequested { check_cache: true });
     let bus_thread = std::thread::Builder::new()
         .name(String::from("n_event_bus loop"))
-        .spawn(move || app.run_loop(rx))
+        .spawn(move || {
+            let outcome = app.run_loop(rx, Duration::from_secs(10));
+            if outcome != ShutdownOutcome::Complete {
+                eprintln!("Event bus shutdown incomplete: {outcome:?}");
+            }
+            drop(app);
+            let _ = slint::quit_event_loop();
+        })
         .expect("failed to spawn event bus thread");
 
     main_window.run().unwrap();
 
-    writer.emit(n_music_core::messages::Shutdown(WindowSize {
-        width: main_window.get_last_width() as usize,
-        height: main_window.get_last_height() as usize,
-    }));
+    // Also handle event-loop exits that did not originate from a window close request.
+    request_shutdown(&main_window, &writer);
     let _ = bus_thread.join();
+}
+
+fn request_shutdown(window: &MainWindow, writer: &EventWriter) {
+    writer.emit(n_music_core::messages::WindowSizeCaptured(WindowSize {
+        width: window.get_last_width() as usize,
+        height: window.get_last_height() as usize,
+    }));
+    writer.shutdown();
 }
 
 fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {

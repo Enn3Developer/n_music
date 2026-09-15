@@ -73,7 +73,7 @@ pub struct QueueReplaced {
 }
 
 pub struct AppVisibilityChanged(pub bool);
-pub struct Shutdown(pub WindowSize);
+pub struct WindowSizeCaptured(pub WindowSize);
 
 pub struct ThemeChangeRequested(pub i32);
 pub struct ToggleSaveWindowSize(pub bool);
@@ -85,7 +85,7 @@ messages!(
     CacheReady,
     OpenLink,
     AppVisibilityChanged,
-    Shutdown,
+    WindowSizeCaptured,
     PlayTrack,
     PlayPrevious,
     PlayNext,

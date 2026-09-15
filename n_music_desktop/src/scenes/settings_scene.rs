@@ -1,8 +1,12 @@
 use crate::localization::{get_locale_denominator, localize};
 use crate::ui::color_scheme;
 use crate::{Localization, MainWindow, SettingsData};
-use n_event_bus::{Ctx, Handle, Outbox, Registrar, RunningJob, Subscriber, Tagged};
-use n_music_core::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted};
+use n_event_bus::{
+    Ctx, Handle, Outbox, Registrar, RunningJob, ShutdownRequested, Subscriber, Tagged,
+};
+use n_music_core::jobs::settings::{
+    DirectoryChosen, DirectoryJob, OpenLinkJob, PersistJob, Persisted,
+};
 use n_music_core::messages::*;
 use n_music_core::platform::Platform;
 use n_music_core::settings::Settings;
@@ -49,11 +53,11 @@ impl SettingsScene {
             tracks: None,
         }
     }
-    fn persist(&mut self, ctx: &Ctx) {
+    fn persist(&mut self, ctx: &Ctx, out: &mut Outbox) {
         self.dirty = true;
-        self.flush(ctx);
+        self.flush(ctx, out);
     }
-    fn flush(&mut self, ctx: &Ctx) {
+    fn flush(&mut self, ctx: &Ctx, out: &mut Outbox) {
         if self.persistence.is_some() {
             return;
         }
@@ -65,7 +69,7 @@ impl SettingsScene {
                 tracks: self.tracks.take(),
             }));
         } else if self.closing {
-            ctx.jobs.writer().shutdown();
+            out.shutdown_ready();
         }
     }
 }
@@ -82,7 +86,8 @@ impl Subscriber for SettingsScene {
         reg.on::<VolumeChanged>();
         reg.on::<ScanRequested>();
         reg.on::<CacheReady>();
-        reg.on::<Shutdown>();
+        reg.on::<WindowSizeCaptured>();
+        reg.on::<ShutdownRequested>();
         reg.on::<OpenLink>();
         PersistJob::subscribe(reg);
         DirectoryJob::subscribe(reg);
@@ -116,34 +121,50 @@ impl SettingsScene {
     }
 }
 impl Handle<ThemeChangeRequested> for SettingsScene {
-    fn handle(&mut self, msg: &ThemeChangeRequested, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &ThemeChangeRequested, ctx: &Ctx, out: &mut Outbox) {
+        if self.closing {
+            return;
+        }
         let Ok(theme) = Theme::try_from(msg.0) else {
             return;
         };
         self.settings.theme = theme;
         self.ui_changes.push(UiChange::Theme(theme));
-        self.persist(ctx);
+        self.persist(ctx, out);
         self.apply_ui();
     }
 }
 impl Handle<LocaleChangeRequested> for SettingsScene {
-    fn handle(&mut self, msg: &LocaleChangeRequested, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &LocaleChangeRequested, ctx: &Ctx, out: &mut Outbox) {
+        if self.closing {
+            return;
+        }
         let locale = get_locale_denominator(Some(msg.0.clone()));
         self.settings.locale = Some(locale.clone());
         self.ui_changes.push(UiChange::Locale(locale));
-        self.persist(ctx);
+        self.persist(ctx, out);
         self.apply_ui();
     }
 }
 impl Handle<ToggleSaveWindowSize> for SettingsScene {
-    fn handle(&mut self, msg: &ToggleSaveWindowSize, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &ToggleSaveWindowSize, ctx: &Ctx, out: &mut Outbox) {
+        if self.closing {
+            return;
+        }
         self.settings.save_window_size = msg.0;
-        self.persist(ctx);
+        self.persist(ctx, out);
     }
 }
 impl Handle<VolumeChanged> for SettingsScene {
-    fn handle(&mut self, msg: &VolumeChanged, _: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &VolumeChanged, ctx: &Ctx, out: &mut Outbox) {
+        if self.closing && self.persistence.is_none() {
+            return;
+        }
         self.settings.volume = msg.0;
+        // A pre-shutdown SetVolume can have its follow-up delivered during closing.
+        if self.closing {
+            self.persist(ctx, out);
+        }
     }
 }
 impl Handle<PathChangeRequested> for SettingsScene {
@@ -167,7 +188,7 @@ impl Handle<Tagged<DirectoryChosen>> for SettingsScene {
         self.settings.timestamp = None;
         self.tracks = None;
         self.ui_changes.push(UiChange::Path(path));
-        self.persist(ctx);
+        self.persist(ctx, out);
         self.apply_ui();
         out.emit(ScanRequested { check_cache: false });
     }
@@ -184,17 +205,17 @@ impl Handle<ScanRequested> for SettingsScene {
     }
 }
 impl Handle<CacheReady> for SettingsScene {
-    fn handle(&mut self, msg: &CacheReady, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &CacheReady, ctx: &Ctx, out: &mut Outbox) {
         if self.closing || msg.path != self.settings.path {
             return;
         }
         self.settings.timestamp = msg.timestamp;
         self.tracks = Some(msg.tracks.clone());
-        self.persist(ctx);
+        self.persist(ctx, out);
     }
 }
 impl Handle<Tagged<Persisted>> for SettingsScene {
-    fn handle(&mut self, msg: &Tagged<Persisted>, ctx: &Ctx, _: &mut Outbox) {
+    fn handle(&mut self, msg: &Tagged<Persisted>, ctx: &Ctx, out: &mut Outbox) {
         let Some(result) = self.persistence.as_ref().and_then(|job| job.open(msg)) else {
             return;
         };
@@ -202,13 +223,14 @@ impl Handle<Tagged<Persisted>> for SettingsScene {
             eprintln!("Could not save settings: {error}");
         }
         self.persistence = None;
-        self.flush(ctx);
+        self.flush(ctx, out);
     }
 }
-impl Handle<Shutdown> for SettingsScene {
-    fn handle(&mut self, msg: &Shutdown, ctx: &Ctx, _: &mut Outbox) {
-        self.closing = true;
-        self.directory = None;
+impl Handle<WindowSizeCaptured> for SettingsScene {
+    fn handle(&mut self, msg: &WindowSizeCaptured, _: &Ctx, _: &mut Outbox) {
+        if self.closing {
+            return;
+        }
         self.settings.window_size = if self.settings.save_window_size {
             WindowSize {
                 width: msg.0.width,
@@ -217,11 +239,20 @@ impl Handle<Shutdown> for SettingsScene {
         } else {
             WindowSize::default()
         };
-        self.persist(ctx);
+    }
+}
+impl Handle<ShutdownRequested> for SettingsScene {
+    fn handle(&mut self, _: &ShutdownRequested, ctx: &Ctx, out: &mut Outbox) {
+        self.closing = true;
+        self.directory = None;
+        self.persist(ctx, out);
     }
 }
 impl Handle<OpenLink> for SettingsScene {
     fn handle(&mut self, msg: &OpenLink, ctx: &Ctx, _: &mut Outbox) {
+        if self.closing {
+            return;
+        }
         ctx.jobs
             .spawn_detached(OpenLinkJob(self.platform.clone(), msg.0.clone()));
     }
