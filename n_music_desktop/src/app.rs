@@ -16,6 +16,14 @@ use slint::ComponentHandle;
 use std::sync::Arc;
 use std::time::Duration;
 
+struct QuitEventLoop;
+
+impl Drop for QuitEventLoop {
+    fn drop(&mut self) {
+        let _ = slint::quit_event_loop();
+    }
+}
+
 pub fn run<P: Platform + 'static>(
     settings: Settings,
     platform: P,
@@ -26,16 +34,8 @@ pub fn run<P: Platform + 'static>(
     let platform: Arc<dyn Platform> = Arc::new(platform);
     let internal_dir = platform.internal_dir();
 
-    let p = platform.clone();
-    let default_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        default_panic(info);
-        p.set_clipboard_text(info.to_string());
-        std::process::exit(1);
-    }));
-
     let _ = slint::set_xdg_app_id("n_music");
-    let main_window = MainWindow::new().unwrap();
+    let main_window = MainWindow::new().expect("Failed to create the desktop Slint window");
 
     setup_data(&settings, &main_window, writer.clone());
 
@@ -77,23 +77,29 @@ pub fn run<P: Platform + 'static>(
     let bus_thread = std::thread::Builder::new()
         .name(String::from("n_event_bus loop"))
         .spawn(move || {
+            // Debug builds unwind: a failed bus must not leave an unresponsive window.
+            let _quit = QuitEventLoop;
             let outcome = app.run_loop(rx, Duration::from_secs(10));
-            if outcome != ShutdownOutcome::Complete {
-                eprintln!("Event bus shutdown incomplete: {outcome:?}");
+            if outcome == ShutdownOutcome::Complete {
+                log::info!("Event bus shutdown complete");
+            } else {
+                log::error!("Event bus shutdown incomplete: {outcome:?}");
             }
             drop(app);
-            let _ = slint::quit_event_loop();
         })
         .expect("failed to spawn event bus thread");
 
-    main_window.run().unwrap();
+    main_window.run().expect("Desktop Slint event loop failed");
 
     // Also handle event-loop exits that did not originate from a window close request.
     request_shutdown(&main_window, &writer);
-    let _ = bus_thread.join();
+    if bus_thread.join().is_err() {
+        log::error!("Event bus thread panicked");
+    }
 }
 
 fn request_shutdown(window: &MainWindow, writer: &EventWriter) {
+    log::debug!("Shutdown requested");
     writer.emit(n_music_core::messages::WindowSizeCaptured(WindowSize {
         width: window.get_last_width() as usize,
         height: window.get_last_height() as usize,

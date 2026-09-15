@@ -36,10 +36,13 @@ impl Platform for AndroidPlatform {
                     jni::jni_str!("set_clipboard_text"),
                     jni::jni_sig!("(Ljava/lang/String;)V"),
                     &[(&java_string).into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    log_jni_error(env, "MainActivity.set_clipboard_text", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.set_clipboard_text failed");
     }
 
     fn open_link(&self, link: String) {
@@ -51,20 +54,25 @@ impl Platform for AndroidPlatform {
                     jni::jni_str!("openLink"),
                     jni::jni_sig!("(Ljava/lang/String;)V"),
                     &[(&java_string).into()],
-                )?;
+                )
+                .inspect_err(|error| log_jni_error(env, "MainActivity.openLink", error))?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.openLink failed");
     }
 
     fn internal_dir(&self) -> PathBuf {
         let path = self
             .app
             .external_data_path()
-            .expect("can't get external data path")
+            .or_else(|| self.app.internal_data_path())
+            .expect("Android provided neither an external nor an internal data directory")
             .join("config/");
-        if !path.exists() {
-            std::fs::create_dir(&path).unwrap();
+        if let Err(error) = std::fs::create_dir_all(&path) {
+            log::error!(
+                "Could not create Android configuration directory {}: {error}",
+                path.display()
+            );
         }
         path
     }
@@ -77,9 +85,38 @@ impl Platform for AndroidPlatform {
                     jni::jni_str!("askDirectory"),
                     jni::jni_sig!("(J)V"),
                     &[jni::objects::JValue::Long(tag as i64)],
-                )?;
+                )
+                .inspect_err(|error| log_jni_error(env, "MainActivity.askDirectory", error))?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.askDirectory failed");
     }
+}
+
+pub(crate) fn log_jni_error(env: &mut jni::Env<'_>, operation: &str, error: &jni::errors::Error) {
+    let Some(exception) = env.exception_occurred() else {
+        log::error!("{operation} failed: {error:?}");
+        return;
+    };
+    env.exception_clear();
+    let details = (|| -> jni::errors::Result<String> {
+        let stack = env
+            .call_static_method(
+                jni::jni_str!("android/util/Log"),
+                jni::jni_str!("getStackTraceString"),
+                jni::jni_sig!("(Ljava/lang/Throwable;)Ljava/lang/String;"),
+                &[(&exception).into()],
+            )?
+            .l()?;
+        jni::objects::JString::cast_local(env, stack)?.try_to_string(env)
+    })();
+    env.exception_clear();
+    match details {
+        Ok(stack) => log::error!("{operation} failed: {error:?}\n{stack}"),
+        Err(details_error) => log::error!(
+            "{operation} failed: {error:?}; cannot read Java exception: {details_error:?}"
+        ),
+    }
+    // Keep the original exception pending for the existing JNI error handling.
+    let _ = env.throw(&exception);
 }

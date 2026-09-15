@@ -17,7 +17,7 @@ pub fn get_image_squared<P: AsRef<Path> + Debug>(
     width: usize,
     height: usize,
 ) -> Option<Image> {
-    let image = get_image(path);
+    let image = get_image(&path);
     if !image.is_empty() {
         let zune_image =
             if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
@@ -33,7 +33,12 @@ pub fn get_image_squared<P: AsRef<Path> + Debug>(
             };
 
         if let Some(mut zune_image) = zune_image {
-            zune_image.convert_color(ColorSpace::RGBA).unwrap();
+            zune_image
+                .convert_color(ColorSpace::RGBA)
+                .inspect_err(|error| {
+                    log::warn!("Could not convert cover art for {path:?} to RGBA: {error:?}")
+                })
+                .ok()?;
             let (w, h) = zune_image.dimensions();
             let mut size = w;
             if w != h {
@@ -44,7 +49,12 @@ pub fn get_image_squared<P: AsRef<Path> + Debug>(
                 let x = if is_height { difference / 2 } else { 0 };
                 let y = if !is_height { difference / 2 } else { 0 };
                 {
-                    Crop::new(min, min, x, y).execute(&mut zune_image).unwrap()
+                    Crop::new(min, min, x, y)
+                        .execute(&mut zune_image)
+                        .inspect_err(|error| {
+                            log::warn!("Could not crop cover art for {path:?}: {error:?}")
+                        })
+                        .ok()?;
                 }
             }
             {
@@ -54,7 +64,10 @@ pub fn get_image_squared<P: AsRef<Path> + Debug>(
                     ResizeAlg::Convolution(FilterType::Hamming),
                 )
                 .execute(&mut zune_image)
-                .unwrap()
+                .inspect_err(|error| {
+                    log::warn!("Could not resize cover art for {path:?}: {error:?}")
+                })
+                .ok()?;
             }
             Some(zune_image)
         } else {
@@ -82,11 +95,11 @@ pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
                         return cover.data;
                     }
                 } else {
-                    eprintln!("not an opus or mp3 tag {path:?}");
+                    log::debug!("No supported cover-art tag in {path:?}");
                 }
             }
         } else {
-            eprintln!("no album for {path:?}");
+            log::debug!("No album metadata in {path:?}");
         }
     }
 

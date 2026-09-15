@@ -232,6 +232,7 @@ impl QueuePlayer {
         let index = self.index();
         if let (Some(path), Some(name)) = (self.get_path_for_file(index), self.current_track_name())
         {
+            log::info!("Starting playback: {}", path.display());
             out.emit(TrackChanged { index, path, name });
         }
         self.job = Some(ctx.jobs.spawn_stream(PlaybackJob(task)));
@@ -490,7 +491,7 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
             PlaybackEvent::Paused(paused) => self.set_playing(!paused, out),
             PlaybackEvent::Ended => self.advance(false, ctx, out),
             PlaybackEvent::Failed(error) => {
-                eprintln!("error playing track: {error}");
+                log::error!("Playback failed: {error}");
                 self.stop(out);
                 let time = self.current_time();
                 self.position(time, true, out);

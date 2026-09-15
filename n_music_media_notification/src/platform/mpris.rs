@@ -46,7 +46,7 @@ impl Mpris {
                         properties.push(property);
                     }
                     if let Err(error) = zbus::block_on(server.properties_changed(properties)) {
-                        eprintln!("error notifying mpris: {error}");
+                        log::warn!("Could not update MPRIS properties: {error}");
                     }
                 }
             })

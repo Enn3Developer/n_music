@@ -13,6 +13,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
@@ -136,7 +137,9 @@ class MainActivity : NativeActivity() {
         songLength: Double,
     ) {
         val artwork = if (coverPath.isNotEmpty()) {
-            runCatching { File(coverPath).readBytes() }.getOrNull()
+            runCatching { File(coverPath).readBytes() }
+                .onFailure { Log.w("n_music", "Could not read notification cover $coverPath", it) }
+                .getOrNull()
         } else {
             null
         }
@@ -182,7 +185,8 @@ class MainActivity : NativeActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != ASK_DIRECTORY) return
         val uri = data?.data
-        if (resultCode != RESULT_OK || uri?.path == null) {
+        val path = uri?.path
+        if (resultCode != RESULT_OK || uri == null || path == null) {
             finishDirectory("")
             return
         }
@@ -190,7 +194,7 @@ class MainActivity : NativeActivity() {
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION,
         )
-        finishDirectory(uri.path!!.replace("/tree/primary:", "/storage/emulated/0/"))
+        finishDirectory(path.replace("/tree/primary:", "/storage/emulated/0/"))
     }
 
     override fun onRequestPermissionsResult(

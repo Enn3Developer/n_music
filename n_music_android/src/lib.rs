@@ -29,7 +29,19 @@ const REPEAT_MODE_ONE: i32 = 1;
 
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
-    slint::android::init(app.clone()).unwrap();
+    let log_dir = app
+        .external_data_path()
+        .or_else(|| app.internal_data_path())
+        .expect("Android provided neither an external nor an internal data directory")
+        .join("config");
+    let _logging = match n_music_core::logging::init(&log_dir) {
+        Ok(logging) => Some(logging),
+        Err(error) => {
+            eprintln!("Could not initialize logging: {error}");
+            None
+        }
+    };
+    slint::android::init(app.clone()).expect("Failed to initialize the Android Slint backend");
 
     {
         use slint::fontique_010::fontique;
@@ -81,6 +93,7 @@ fn android_main(app: slint::android::AndroidApp) {
                     rx,
                     pending,
                 );
+                log::info!("Application stopped");
                 return;
             }
         }

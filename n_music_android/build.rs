@@ -32,7 +32,7 @@ fn main() {
     }
     localizations.push_str("];");
     localizations = localizations.replace("{LEN}", &len.to_string());
-    get_locale.push_str("_ => include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/assets/lang/en_English.json\"))}).unwrap()}");
+    get_locale.push_str("_ => include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/assets/lang/en_English.json\"))}).unwrap_or_else(|error| panic!(\"Invalid bundled locale {denominator:?}: {error}\"))}");
     let mut content = localizations;
     content.push('\n');
     content.push_str(&get_locale);

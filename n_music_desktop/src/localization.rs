@@ -12,7 +12,8 @@ macro_rules! localize {
                 $locale
                     .$name
                     .as_ref()
-                    .unwrap_or($default_locale.$name.as_ref().unwrap())
+                    .or($default_locale.$name.as_ref())
+                    .unwrap_or_else(|| panic!("Missing localization key: {}", stringify!($name)))
                     .into(),
             );
         }
@@ -43,14 +44,18 @@ pub struct Locale {
 }
 
 pub fn localize(denominator: Option<String>, localization: Localization) {
-    let denominator = denominator.unwrap_or(
-        sys_locale::get_locale()
-            .unwrap()
-            .split('-')
+    let denominator = denominator.unwrap_or_else(|| {
+        let locale = sys_locale::get_locale().unwrap_or_else(|| {
+            log::warn!("Could not detect the system locale; using English");
+            "en".into()
+        });
+        locale
+            .split(['-', '_'])
             .next()
-            .unwrap()
-            .to_string(),
-    );
+            .filter(|name| !name.is_empty())
+            .unwrap_or("en")
+            .to_string()
+    });
     let locale = get_locale(&denominator);
     let english = get_locale("en");
 

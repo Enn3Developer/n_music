@@ -39,10 +39,13 @@ impl AndroidBridge {
                 jni::jni_str!("createNotification"),
                 jni::jni_sig!("()V"),
                 &[],
-            )?;
+            )
+            .inspect_err(|error| {
+                crate::platform::log_jni_error(env, "MainActivity.createNotification", error)
+            })?;
             Ok(())
         })
-        .unwrap();
+        .expect("JNI call MainActivity.createNotification failed");
         let bridge = Self {
             jvm,
             callback,
@@ -84,10 +87,13 @@ impl AndroidBridge {
                     jni::jni_str!("changePlaybackState"),
                     jni::jni_sig!("(ZD)V"),
                     &[self.playing.into(), self.position.into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.changePlaybackState", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.changePlaybackState failed");
     }
 
     fn change_repeat_mode(&self, mode: i32) {
@@ -98,10 +104,13 @@ impl AndroidBridge {
                     jni::jni_str!("changeRepeatMode"),
                     jni::jni_sig!("(I)V"),
                     &[mode.into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.changeRepeatMode", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.changeRepeatMode failed");
     }
 
     fn change_theme(&self, theme: i32) {
@@ -112,10 +121,13 @@ impl AndroidBridge {
                     jni::jni_str!("set_theme"),
                     jni::jni_sig!("(I)V"),
                     &[theme.into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.set_theme", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.set_theme failed");
     }
 
     fn change_queue(&self, names: &[String]) {
@@ -129,10 +141,13 @@ impl AndroidBridge {
                     jni::jni_str!("changeQueue"),
                     jni::jni_sig!("(Ljava/lang/String;)V"),
                     &[(&string).into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.changeQueue", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.changeQueue failed");
     }
 
     fn change_track(&self, index: usize) {
@@ -143,10 +158,13 @@ impl AndroidBridge {
                     jni::jni_str!("changeTrack"),
                     jni::jni_sig!("(I)V"),
                     &[(index as i32).into()],
-                )?;
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.changeTrack", error)
+                })?;
                 Ok(())
             })
-            .unwrap();
+            .expect("JNI call MainActivity.changeTrack failed");
     }
 }
 impl Handle<PlaybackChanged> for AndroidBridge {
@@ -255,13 +273,20 @@ impl Job for NotificationJob {
                             (&cover_path).into(),
                             meta.time.length.into(),
                         ],
-                    )?;
+                    )
+                    .inspect_err(|error| {
+                        crate::platform::log_jni_error(
+                            env,
+                            "MainActivity.changeNotification",
+                            error,
+                        )
+                    })?;
                     Ok(())
                 })?;
             Ok(())
         })();
         if let Err(error) = result {
-            eprintln!("Could not update Android notification: {error:?}");
+            log::warn!("Could not update Android notification: {error:?}");
         }
         writer.emit_tagged(tag, NotificationFinished);
     }

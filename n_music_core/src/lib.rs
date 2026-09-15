@@ -11,6 +11,7 @@ use symphonia_core::formats::probe::Probe;
 
 mod dca;
 pub mod jobs;
+pub mod logging;
 pub mod messages;
 pub mod music_track;
 mod opus;
@@ -53,12 +54,11 @@ pub enum NError {
 /// assert_eq!(remove_ext(filename), "file.1");
 /// ```
 pub fn remove_ext<P: AsRef<Path>>(path: P) -> String {
+    let path = path.as_ref();
     let split: Vec<String> = path
-        .as_ref()
         .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| panic!("Cannot extract a UTF-8 file name from {path:?}"))
         .split('.')
         .map(String::from)
         .collect();

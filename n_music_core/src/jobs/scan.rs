@@ -1,8 +1,8 @@
 use crate::messages::{ScanFinished, TrackMetadataLoaded, TracksEnumerated};
+use crate::music_track::MusicTrack;
 use crate::services::image::get_image_squared;
 use crate::settings::Settings;
 use crate::FileTrack;
-use crate::music_track::MusicTrack;
 use crate::{remove_ext, strip_absolute_path};
 use n_event_bus::{job_emits, EventWriter, Job, JobToken, Tagged};
 use rand::prelude::SliceRandom;
@@ -14,7 +14,9 @@ use std::sync::Mutex;
 fn enumerate_audio_files(path: &str) -> Vec<String> {
     let mut names = vec![];
 
-    if let Ok(dir) = std::fs::read_dir(path) {
+    let directory = std::fs::read_dir(path)
+        .inspect_err(|error| log::warn!("Could not enumerate music directory {path:?}: {error}"));
+    if let Ok(dir) = directory {
         for file in dir.flatten() {
             if !file.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 continue;
@@ -47,6 +49,7 @@ job_emits!(ScanJob => Tagged<TracksEnumerated>, Tagged<TrackMetadataLoaded>, Tag
 impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let path = self.settings.path.clone();
+        log::info!("Scanning library {tag}: {path}");
         let names = enumerate_audio_files(&path);
         let len = names.len();
 
@@ -62,7 +65,9 @@ impl Job for ScanJob {
                     .iter()
                     .any(|track| track.path == remove_ext(name))
             });
-        println!("check timestamp: {check_timestamp}; is cached: {is_cached}");
+        log::debug!(
+            "Scan {tag}: timestamp matches={check_timestamp}, cache hit={is_cached}, files={len}"
+        );
 
         let mut tracks = Vec::with_capacity(len);
         for name in names.iter() {
@@ -95,6 +100,7 @@ impl Job for ScanJob {
         );
 
         if is_cached {
+            log::info!("Library scan {tag} completed from cache: {len} tracks");
             writer.emit_tagged(
                 tag,
                 ScanFinished {
@@ -113,36 +119,47 @@ impl Job for ScanJob {
         let queue = Mutex::new(names.into_iter().enumerate());
         let (tx, rx) = std::sync::mpsc::channel::<FileTrack>();
         std::thread::scope(|scope| {
-            for _ in 0..concurrency {
+            for worker in 0..concurrency {
                 let tx = tx.clone();
                 let queue = &queue;
                 let writer = &writer;
                 let path = &path;
                 let token = &token;
-                scope.spawn(move || loop {
-                    if token.as_ref().is_some_and(JobToken::is_cancelled) {
-                        break;
-                    }
-                    let Some((index, name)) = queue.lock().unwrap().next() else {
-                        break;
-                    };
-                    let track_path = Path::new(path).join(&name);
-                    if let Some(file_track) = load_metadata(name, track_path) {
-                        writer.emit_tagged(
-                            tag,
-                            TrackMetadataLoaded {
-                                index,
-                                track: file_track.clone(),
-                            },
-                        );
-                        let _ = tx.send(file_track);
-                    }
-                });
+                std::thread::Builder::new()
+                    .name(format!("scan {tag} metadata worker {worker}"))
+                    .spawn_scoped(scope, move || loop {
+                        if token.as_ref().is_some_and(JobToken::is_cancelled) {
+                            break;
+                        }
+                        let Some((index, name)) = queue.lock().unwrap().next() else {
+                            break;
+                        };
+                        let track_path = Path::new(path).join(&name);
+                        if let Some(file_track) = load_metadata(name, track_path) {
+                            writer.emit_tagged(
+                                tag,
+                                TrackMetadataLoaded {
+                                    index,
+                                    track: file_track.clone(),
+                                },
+                            );
+                            let _ = tx.send(file_track);
+                        }
+                    })
+                    .expect("Failed to spawn a scan metadata worker");
             }
         });
         drop(tx);
         let mut file_tracks: Vec<FileTrack> = rx.iter().collect();
         file_tracks.shrink_to_fit();
+        if token.as_ref().is_some_and(JobToken::is_cancelled) {
+            log::debug!("Library scan {tag} cancelled");
+        } else {
+            log::info!(
+                "Library scan {tag} completed: {} of {len} tracks loaded",
+                file_tracks.len()
+            );
+        }
         writer.emit_tagged(
             tag,
             ScanFinished {
@@ -155,8 +172,15 @@ impl Job for ScanJob {
 }
 
 fn load_metadata(name: String, path: PathBuf) -> Option<FileTrack> {
-    let track = MusicTrack::new(path.to_string_lossy().to_string()).ok()?;
-    let meta = track.get_meta().ok()?;
+    let track = MusicTrack::new(path.to_string_lossy().to_string())
+        .inspect_err(|error| {
+            log::debug!("Could not prepare metadata for {}: {error}", path.display())
+        })
+        .ok()?;
+    let meta = track
+        .get_meta()
+        .inspect_err(|error| log::debug!("Could not read metadata for {}: {error}", path.display()))
+        .ok()?;
     let image = get_image_squared(path, 128, 128);
 
     Some(FileTrack {
@@ -165,7 +189,7 @@ fn load_metadata(name: String, path: PathBuf) -> Option<FileTrack> {
         artist: meta.artist,
         length: meta.time.length,
         image: image
-            .map(|i| i.flatten_to_u8()[0].clone())
-            .unwrap_or(vec![]),
+            .and_then(|i| i.flatten_to_u8().into_iter().next())
+            .unwrap_or_default(),
     })
 }

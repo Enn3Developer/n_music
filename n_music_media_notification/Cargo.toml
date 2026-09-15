@@ -11,6 +11,7 @@ repository = "https://github.com/Enn3Developer/n_music"
 [dependencies]
 n_music_core = { path = "../n_music_core" }
 n_event_bus = { path = "../n_event_bus" }
+log = "0.4"
 tempfile = "3.20"
 
 [target.'cfg(target_os = "linux")'.dependencies]

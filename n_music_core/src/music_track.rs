@@ -23,16 +23,31 @@ impl MusicTrack {
             path: path.into(),
             ext: p
                 .extension()
-                .ok_or_else(|| io::Error::from(io::ErrorKind::Unsupported))?
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        format!("No file extension in {p:?}"),
+                    )
+                })?
                 .to_str()
-                .unwrap()
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Non-UTF-8 file extension in {p:?}"),
+                    )
+                })?
                 .to_string(),
         })
     }
 
     /// Returns the `FormatReader` provided by Symphonia
     pub fn get_format(&self) -> Result<Box<dyn FormatReader>, io::Error> {
-        let file = fs::File::open(&self.path)?;
+        let file = fs::File::open(&self.path).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("Could not open {:?}: {error}", self.path),
+            )
+        })?;
         let media_stream = MediaSourceStream::new(Box::new(file), std::default::Default::default());
         let mut hint = Hint::new();
         hint.with_extension(self.ext.as_ref());
@@ -40,7 +55,9 @@ impl MusicTrack {
         let fmt_ops = FormatOptions::default();
         let probed = PROBE
             .probe(&hint, media_stream, fmt_ops, meta_ops)
-            .map_err(io::Error::other)?;
+            .map_err(|error| {
+                io::Error::other(format!("Could not probe {:?}: {error}", self.path))
+            })?;
         Ok(probed)
     }
 

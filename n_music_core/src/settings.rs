@@ -3,8 +3,7 @@ use crate::{FileTrack, Theme, WindowSize};
 use bitcode::{Decode, Encode};
 use std::fs::File;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::{BufWriter, Cursor};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Decode, Encode)]
 pub struct Settings {
@@ -19,25 +18,18 @@ pub struct Settings {
 
 impl Settings {
     fn read_from_file(storage_file: PathBuf) -> Self {
-        if storage_file.exists() && storage_file.is_file() {
-            let mut data = vec![];
-            if let Ok(_) = zstd::stream::copy_decode(
-                File::open(storage_file).unwrap(),
-                BufWriter::new(Cursor::new(&mut data)),
-            ) {
-                if let Ok(storage) = bitcode::decode(&data) {
-                    storage
-                } else {
-                    eprintln!("not encoded");
-                    Self::default()
-                }
-            } else {
-                eprintln!("bad file");
+        let Some(data) = read_compressed_file(&storage_file) else {
+            return Self::default();
+        };
+        match bitcode::decode(&data) {
+            Ok(settings) => settings,
+            Err(error) => {
+                log::warn!(
+                    "Invalid settings in {}: {error}; using defaults",
+                    storage_file.display()
+                );
                 Self::default()
             }
-        } else {
-            eprintln!("file not found");
-            Self::default()
         }
     }
 
@@ -58,8 +50,11 @@ impl Settings {
                 music_dir.into()
             } else {
                 let path = user_dirs.home_dir().join("Music");
-                if !path.exists() {
-                    std::fs::create_dir(&path).unwrap();
+                if let Err(error) = std::fs::create_dir_all(&path) {
+                    log::warn!(
+                        "Could not create default music directory {}: {error}",
+                        path.display()
+                    );
                 }
                 path
             };
@@ -84,32 +79,21 @@ impl Settings {
 
     pub fn read_tracks(&self, internal_dir: PathBuf) -> Vec<FileTrack> {
         let tracks_file = internal_dir.join("tracks");
-
-        let path = self.path.clone();
-        let timestamp = self.timestamp;
-        if tracks_file.exists() && tracks_file.is_file() {
-            let mut data = vec![];
-            if let Ok(_) = zstd::stream::copy_decode(
-                File::open(tracks_file).unwrap(),
-                BufWriter::new(Cursor::new(&mut data)),
-            ) {
-                if let Ok(cache) = bitcode::decode::<TrackCache>(&data) {
-                    if cache.path == path && cache.timestamp == timestamp {
-                        cache.tracks
-                    } else {
-                        vec![]
-                    }
-                } else {
-                    eprintln!("not encoded");
-                    vec![]
-                }
-            } else {
-                eprintln!("bad file");
+        let Some(data) = read_compressed_file(&tracks_file) else {
+            return vec![];
+        };
+        match bitcode::decode::<TrackCache>(&data) {
+            Ok(cache) if cache.path == self.path && cache.timestamp == self.timestamp => {
+                cache.tracks
+            }
+            Ok(_) => {
+                log::debug!("Ignoring stale track cache in {}", tracks_file.display());
                 vec![]
             }
-        } else {
-            eprintln!("file not found");
-            vec![]
+            Err(error) => {
+                log::warn!("Invalid track cache in {}: {error}", tracks_file.display());
+                vec![]
+            }
         }
     }
 }
@@ -117,13 +101,34 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            path: Self::music_dir().to_str().unwrap().to_string(),
+            path: Self::music_dir().to_string_lossy().into_owned(),
             volume: 1.0,
             theme: Theme::default(),
             window_size: WindowSize::default(),
             save_window_size: false,
             locale: None,
             timestamp: None,
+        }
+    }
+}
+
+fn read_compressed_file(path: &Path) -> Option<Vec<u8>> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) => {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                log::debug!("No saved file at {}", path.display());
+            } else {
+                log::warn!("Cannot open {}: {error}", path.display());
+            }
+            return None;
+        }
+    };
+    match zstd::stream::decode_all(file) {
+        Ok(data) => Some(data),
+        Err(error) => {
+            log::warn!("Cannot decompress {}: {error}", path.display());
+            None
         }
     }
 }

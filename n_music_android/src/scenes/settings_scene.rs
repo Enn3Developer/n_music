@@ -220,7 +220,7 @@ impl Handle<Tagged<Persisted>> for SettingsScene {
             return;
         };
         if let Err(error) = &result.0 {
-            eprintln!("Could not save settings: {error}");
+            log::error!("Could not save settings: {error}");
         }
         self.persistence = None;
         self.flush(ctx, out);

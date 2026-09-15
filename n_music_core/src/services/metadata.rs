@@ -1,5 +1,5 @@
-use crate::services::image::get_image_squared;
 use crate::music_track::MusicTrack;
+use crate::services::image::get_image_squared;
 use crate::Metadata;
 use n_event_bus::{job_emits, Ctx, EventWriter, Job, JobToken, RunningJob, Tagged};
 use std::path::PathBuf;
@@ -22,17 +22,33 @@ job_emits!(MetadataJob => Tagged<MetadataLoaded>);
 
 impl Job for MetadataJob {
     fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
-        let path = self.path.clone();
-        let Ok(metadata) =
-            MusicTrack::new(path.to_string_lossy().to_string()).and_then(|track| track.get_meta())
-        else {
-            writer.emit_tagged(tag, MetadataLoaded(Mutex::new(None)));
-            return;
+        let path = self.path;
+        let metadata = match MusicTrack::new(path.to_string_lossy().to_string())
+            .and_then(|track| track.get_meta())
+        {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                log::warn!("Metadata job {tag} failed for {}: {error}", path.display());
+                writer.emit_tagged(tag, MetadataLoaded(Mutex::new(None)));
+                return;
+            }
         };
-        let image = get_image_squared(self.path, 0, 0);
+        let image = get_image_squared(&path, 0, 0);
         let cover = image.and_then(|image| {
-            let file = NamedTempFile::new().ok()?;
-            image.save_to(file.path(), ImageFormat::PNG).ok()?;
+            let file = NamedTempFile::new()
+                .inspect_err(|error| {
+                    log::warn!(
+                        "Could not create a temporary cover file for {}: {error}",
+                        path.display()
+                    )
+                })
+                .ok()?;
+            image
+                .save_to(file.path(), ImageFormat::PNG)
+                .inspect_err(|error| {
+                    log::warn!("Could not save cover art for {}: {error:?}", path.display())
+                })
+                .ok()?;
             Some(file)
         });
         writer.emit_tagged(

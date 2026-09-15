@@ -81,10 +81,11 @@ impl JobControl {
     fn spawn_thread<J: Job>(&self, job: J, tag: u64, token: Option<JobToken>) -> JobHandle {
         let writer = self.writer.clone();
         let thread_token = token.clone();
+        let job_type = std::any::type_name::<J>();
         let join = std::thread::Builder::new()
-            .name(String::from("n_event_bus job"))
+            .name(format!("{job_type} ({tag})"))
             .spawn(move || job.run(tag, writer, thread_token))
-            .expect("failed to spawn job thread");
+            .unwrap_or_else(|error| panic!("Failed to spawn {job_type} job {tag}: {error}"));
         JobHandle { _join: join, token }
     }
 

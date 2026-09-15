@@ -482,7 +482,7 @@ fn run(
                 return Err(io::Error::other(error));
             }
             if !recovering {
-                eprintln!("Audio output unavailable, retrying the system default: {error}");
+                log::warn!("Audio output unavailable, retrying the system default: {error}");
             }
             recovering = true;
             reload_output = true;
@@ -580,7 +580,7 @@ fn run(
                     packet_needs_rewind = false;
                     break;
                 }
-                Err(err) => eprintln!("error seeking: {err}"),
+                Err(err) => log::warn!("Could not seek to {target:?}: {err}"),
             }
         }
         if paused {

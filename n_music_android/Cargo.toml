@@ -15,6 +15,7 @@ slint-build = "1.17"
 [target.'cfg(target_os = "android")'.dependencies]
 n_music_core = { path = "../n_music_core" }
 n_event_bus = { path = "../n_event_bus" }
+log = "0.4"
 slint = { version = "1.17", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "unstable-fontique-010"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

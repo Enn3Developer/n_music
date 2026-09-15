@@ -12,6 +12,7 @@
         android:maxSdkVersion="32" />
 
     <application
+        android:name=".NMusicApplication"
         android:allowBackup="true"
         android:label="N Music"
         android:supportsRtl="true"

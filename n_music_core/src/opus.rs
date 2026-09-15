@@ -14,7 +14,7 @@ use symphonia_core::{
         registry::{RegisterableAudioDecoder, SupportedAudioCodec},
         CodecInfo,
     },
-    errors::{decode_error, Result as SymphResult},
+    errors::{decode_error, Error as SymphError, Result as SymphResult},
     packet::PacketRef,
 };
 
@@ -74,8 +74,9 @@ impl OpusDecoder {
                         self.rawbuf.len() / 2,
                     );
                 }
-                Err(_) => {
-                    return decode_error("Opus decode error: see 'tracing' logs.");
+                Err(error) => {
+                    log::debug!("Opus packet decode failed: {error:?}");
+                    return decode_error("Opus packet decode failed");
                 }
             }
         };
@@ -103,7 +104,11 @@ impl OpusDecoder {
 
 impl OpusDecoder {
     fn try_new(params: &AudioCodecParameters, options: &AudioDecoderOptions) -> SymphResult<Self> {
-        let inner = AudiopusDecoder::new(SampleRate::Hz48000, Channels::Stereo).unwrap();
+        let inner =
+            AudiopusDecoder::new(SampleRate::Hz48000, Channels::Stereo).map_err(|error| {
+                log::error!("Could not initialize the native Opus decoder: {error:?}");
+                SymphError::DecodeError("Could not initialize the native Opus decoder")
+            })?;
 
         let mut params = params.clone();
         params.with_sample_rate(48000);
@@ -143,7 +148,9 @@ impl AudioDecoder for OpusDecoder {
     }
 
     fn reset(&mut self) {
-        _ = self.inner.reset_state();
+        if let Err(error) = self.inner.reset_state() {
+            log::warn!("Could not reset the Opus decoder: {error:?}");
+        }
     }
 
     fn codec_params(&self) -> &AudioCodecParameters {
