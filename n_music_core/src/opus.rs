@@ -32,7 +32,6 @@ pub struct OpusDecoder {
     params: AudioCodecParameters,
     buf: AudioBuffer<f32>,
     rawbuf: Vec<f32>,
-    gapless: bool,
 }
 
 /// # SAFETY
@@ -92,18 +91,12 @@ impl OpusDecoder {
             }
         }
 
-        if self.gapless {
-            self.buf.trim(
-                packet.trim_start.get() as usize,
-                packet.trim_end.get() as usize,
-            );
-        }
         Ok(())
     }
 }
 
 impl OpusDecoder {
-    fn try_new(params: &AudioCodecParameters, options: &AudioDecoderOptions) -> SymphResult<Self> {
+    fn try_new(params: &AudioCodecParameters) -> SymphResult<Self> {
         let inner =
             AudiopusDecoder::new(SampleRate::Hz48000, Channels::Stereo).map_err(|error| {
                 log::error!("Could not initialize the native Opus decoder: {error:?}");
@@ -120,7 +113,6 @@ impl OpusDecoder {
                 AudioSpec::new(48000, layouts::CHANNEL_LAYOUT_STEREO),
                 48000 / 50,
             ),
-            gapless: options.gapless,
             rawbuf: vec![0.0f32; 2 * (48000 / 50)],
         })
     }
@@ -129,9 +121,9 @@ impl OpusDecoder {
 impl RegisterableAudioDecoder for OpusDecoder {
     fn try_registry_new(
         params: &AudioCodecParameters,
-        options: &AudioDecoderOptions,
+        _options: &AudioDecoderOptions,
     ) -> SymphResult<Box<dyn AudioDecoder>> {
-        Ok(Box::new(Self::try_new(params, options)?))
+        Ok(Box::new(Self::try_new(params)?))
     }
 
     fn supported_codecs() -> &'static [SupportedAudioCodec] {
