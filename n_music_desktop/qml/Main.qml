@@ -9,6 +9,8 @@ ApplicationWindow {
 
     /// The page the content area shows.
     property string page: "tracks"
+    /// The page shown before the queue, to go back to.
+    property string beforeQueue: "tracks"
     /// Pages shown so far; they stay loaded, keeping their search and scroll position.
     property var visited: ({
             tracks: true
@@ -28,6 +30,21 @@ ApplicationWindow {
     onPageChanged: visited = Object.assign({}, visited, {
         [page]: true
     })
+
+    function toggleQueue() {
+        if (page === "queue") {
+            page = beforeQueue;
+        } else {
+            beforeQueue = page;
+            page = "queue";
+        }
+    }
+
+    // Space plays and pauses, unless a text field takes it.
+    Shortcut {
+        sequence: "Space"
+        onActivated: Player.toggle()
+    }
     onClosing: AppState.windowClosing(width, height)
     onVisibilityChanged: AppState.setVisible(visibility !== Window.Minimized && visibility !== Window.Hidden)
 
@@ -55,36 +72,48 @@ ApplicationWindow {
         PlaceholderPage {}
     }
 
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        Sidebar {
-            Layout.fillHeight: true
-            page: window.page
-            onNavigate: to => window.page = to
-        }
-
-        Item {
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: 0
 
-            Repeater {
-                model: ["tracks", "albums", "artists", "genres", "sources", "queue", "settings"]
+            Sidebar {
+                Layout.fillHeight: true
+                page: window.page
+                onNavigate: to => window.page = to
+            }
 
-                Loader {
-                    required property string modelData
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
 
-                    anchors.fill: parent
-                    active: window.visited[modelData] === true
-                    visible: window.page === modelData
-                    sourceComponent: modelData === "tracks" ? tracksPage : placeholderPage
-                    onLoaded: {
-                        if (item instanceof PlaceholderPage)
-                            item.title = Qt.binding(() => Tr.t[modelData]);
+                Repeater {
+                    model: ["tracks", "albums", "artists", "genres", "sources", "queue", "settings"]
+
+                    Loader {
+                        required property string modelData
+
+                        anchors.fill: parent
+                        active: window.visited[modelData] === true
+                        visible: window.page === modelData
+                        sourceComponent: modelData === "tracks" ? tracksPage : placeholderPage
+                        onLoaded: {
+                            if (item instanceof PlaceholderPage)
+                                item.title = Qt.binding(() => Tr.t[modelData]);
+                        }
                     }
                 }
             }
+        }
+
+        PlayerBar {
+            Layout.fillWidth: true
+            queueOpen: window.page === "queue"
+            onToggleQueue: window.toggleQueue()
         }
     }
 }

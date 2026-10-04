@@ -3,8 +3,9 @@
 use crate::hub::{hub, Changed};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
-    PlaybackChanged, ScanFinished, ScanRequested, SetLibraryRoots, TrackChanged,
-    TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanFinished, ScanRequested,
+    SetLibraryRoots, ShuffleChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed,
+    TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
 
@@ -25,6 +26,10 @@ impl Subscriber for Listener {
         reg.on::<TrackPlayed>();
         reg.on::<TrackChanged>();
         reg.on::<PlaybackChanged>();
+        reg.on::<PositionChanged>();
+        reg.on::<VolumeChanged>();
+        reg.on::<ShuffleChanged>();
+        reg.on::<LoopStatusChanged>();
     }
 }
 
@@ -82,5 +87,32 @@ impl Handle<TrackChanged> for Listener {
 impl Handle<PlaybackChanged> for Listener {
     fn handle(&mut self, msg: &PlaybackChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::PLAYBACK, |state| state.playing = msg.0);
+    }
+}
+
+impl Handle<PositionChanged> for Listener {
+    fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::POSITION, |state| {
+            state.time = msg.time;
+            state.seek = msg.seek;
+        });
+    }
+}
+
+impl Handle<VolumeChanged> for Listener {
+    fn handle(&mut self, msg: &VolumeChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::VOLUME, |state| state.volume = msg.0);
+    }
+}
+
+impl Handle<ShuffleChanged> for Listener {
+    fn handle(&mut self, msg: &ShuffleChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::MODES, |state| state.shuffle = msg.0);
+    }
+}
+
+impl Handle<LoopStatusChanged> for Listener {
+    fn handle(&mut self, msg: &LoopStatusChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::MODES, |state| state.loop_status = msg.0.clone());
     }
 }

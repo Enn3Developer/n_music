@@ -8,7 +8,8 @@ use bitflags::bitflags;
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, Threading};
 use n_music_core::library::catalog::Library;
-use n_music_core::Track;
+use n_music_core::queue::LoopStatus;
+use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -27,6 +28,11 @@ bitflags! {
         const PLAYBACK = 1 << 4;
         /// A scan started or finished.
         const SCAN = 1 << 5;
+        /// Where playback is in the current track.
+        const POSITION = 1 << 6;
+        const VOLUME = 1 << 7;
+        /// Shuffle or repeat.
+        const MODES = 1 << 8;
     }
 }
 
@@ -36,6 +42,12 @@ pub struct State {
     pub current: Option<Track>,
     pub playing: bool,
     pub scanning: bool,
+    pub time: TrackTime,
+    /// The last tracked seek that applied.
+    pub seek: u64,
+    pub volume: f64,
+    pub shuffle: bool,
+    pub loop_status: LoopStatus,
 }
 
 pub struct Hub {

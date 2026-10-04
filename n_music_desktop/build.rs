@@ -5,13 +5,16 @@ use std::path::Path;
 /// The interface, one QML type per file.
 const QML: &[&str] = &[
     "qml/Main.qml",
+    "qml/BarSlider.qml",
     "qml/Cover.qml",
     "qml/EmptyState.qml",
     "qml/Icon.qml",
+    "qml/IconButton.qml",
     "qml/MenuEntry.qml",
     "qml/NavItem.qml",
     "qml/PillButton.qml",
     "qml/PlaceholderPage.qml",
+    "qml/PlayerBar.qml",
     "qml/PopupMenu.qml",
     "qml/SearchField.qml",
     "qml/Sidebar.qml",
@@ -36,6 +39,7 @@ const QML_SINGLETONS: &[&str] = &[
 const BRIDGES: &[&str] = &[
     "src/bridge/app.rs",
     "src/bridge/covers.rs",
+    "src/bridge/player.rs",
     "src/bridge/scan.rs",
     "src/bridge/tracks.rs",
     "src/bridge/translations.rs",

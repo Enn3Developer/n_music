@@ -6,6 +6,7 @@ use n_event_bus::{App, EventWriter, JobControl, Message, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::settings::SettingsStorage;
 use n_music_core::source::{LocalProvider, Providers};
+use n_music_media_notification::MediaNotification;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::thread::JoinHandle;
@@ -38,6 +39,9 @@ impl Bus {
         hub::init(engine.library());
         // After the core services, so the library is up to date when the interface hears.
         app.register_subscriber(Listener);
+        if let Some(media) = MediaNotification::new(writer.clone()) {
+            app.register_subscriber(media);
+        }
         let thread = std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
             .spawn(move || {
