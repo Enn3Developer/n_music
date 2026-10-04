@@ -1,10 +1,11 @@
 use audiopus::{
     coder::{Decoder as AudiopusDecoder, GenericCtl},
-    Channels, Error as OpusError, ErrorCode, SampleRate,
+    Channels as OpusChannels, SampleRate,
 };
 use symphonia_core::{
     audio::{
-        layouts, AsGenericAudioBufferRef, AudioBuffer, AudioMut, AudioSpec, GenericAudioBufferRef,
+        layouts, AsGenericAudioBufferRef, AudioBuffer, AudioMut, AudioSpec, Channels,
+        GenericAudioBufferRef,
     },
     codecs::{
         audio::{
@@ -14,7 +15,7 @@ use symphonia_core::{
         registry::{RegisterableAudioDecoder, SupportedAudioCodec},
         CodecInfo,
     },
-    errors::{decode_error, Error as SymphError, Result as SymphResult},
+    errors::{decode_error, unsupported_error, Error as SymphError, Result as SymphResult},
     packet::PacketRef,
 };
 
@@ -24,6 +25,43 @@ const CODEC_INFO: CodecInfo = CodecInfo {
     profiles: &[],
 };
 
+const SAMPLE_RATE: u32 = 48_000;
+
+const MAX_FRAMES_PER_PACKET: usize = SAMPLE_RATE as usize * 120 / 1000;
+
+const MIN_FRAME: usize = SAMPLE_RATE as usize * 5 / 2000;
+
+const DEFAULT_PLC_FRAMES: usize = SAMPLE_RATE as usize / 50;
+
+struct OpusHead {
+    channels: u8,
+    output_gain: i16,
+    mapping_family: u8,
+    stream_count: u8,
+}
+
+impl OpusHead {
+    fn parse(data: &[u8]) -> Option<Self> {
+        if data.len() < 19 || &data[..8] != b"OpusHead" {
+            return None;
+        }
+
+        let mapping_family = data[18];
+        let stream_count = if mapping_family == 0 {
+            1
+        } else {
+            *data.get(19)?
+        };
+
+        Some(Self {
+            channels: data[9],
+            output_gain: i16::from_le_bytes([data[16], data[17]]),
+            mapping_family,
+            stream_count,
+        })
+    }
+}
+
 // Original code from the Songbird project
 
 /// Opus decoder for symphonia, based on libopus v1.3 (via [`audiopus`]).
@@ -31,7 +69,8 @@ pub struct OpusDecoder {
     inner: AudiopusDecoder,
     params: AudioCodecParameters,
     buf: AudioBuffer<f32>,
-    rawbuf: Vec<f32>,
+    rawbuf: Box<[f32]>,
+    channels: usize,
 }
 
 /// # SAFETY
@@ -44,77 +83,108 @@ pub struct OpusDecoder {
 unsafe impl Sync for OpusDecoder {}
 
 impl OpusDecoder {
-    fn decode_inner(&mut self, packet: &PacketRef<'_>) -> SymphResult<()> {
-        let s_ct = loop {
-            let pkt = if packet.data.is_empty() {
-                None
-            } else if let Ok(checked_pkt) = packet.data.try_into() {
-                Some(checked_pkt)
-            } else {
-                return decode_error("Opus packet was too large (greater than i32::MAX bytes).");
-            };
-            let out_space = (&mut self.rawbuf[..]).try_into().expect("The following logic expands this buffer safely below i32::MAX, and we throw our own error.");
+    fn try_new(params: &AudioCodecParameters) -> SymphResult<Self> {
+        let head = params.extra_data.as_deref().and_then(OpusHead::parse);
 
-            match self.inner.decode_float(pkt, out_space, false) {
-                Ok(v) => break v,
-                Err(OpusError::Opus(ErrorCode::BufferTooSmall)) => {
-                    // double the buffer size
-                    // correct behav would be to mirror the decoder logic in the udp_rx set.
-                    let new_size = (self.rawbuf.len() * 2).min(i32::MAX as usize);
-                    if new_size == self.rawbuf.len() {
-                        return decode_error(
-                            "Opus frame too big: cannot expand opus frame decode buffer any further.",
-                        );
-                    }
-
-                    self.rawbuf.resize(new_size, 0.0);
-                    self.buf = AudioBuffer::new(
-                        AudioSpec::new(48000, layouts::CHANNEL_LAYOUT_STEREO),
-                        self.rawbuf.len() / 2,
-                    );
-                }
-                Err(error) => {
-                    log::debug!("Opus packet decode failed: {error:?}");
-                    return decode_error("Opus packet decode failed");
-                }
-            }
-        };
-
-        self.buf.clear();
-        self.buf.resize_uninit(s_ct);
-
-        // Forcibly assuming stereo, for now.
-        for ch in 0..2 {
-            let iter = self.rawbuf.chunks_exact(2).map(|chunk| chunk[ch]);
-            for (tgt, src) in self.buf.plane_mut(ch).unwrap().iter_mut().zip(iter) {
-                *tgt = src;
+        if let Some(head) = &head {
+            if head.stream_count != 1 || head.channels > 2 {
+                log::warn!(
+                    "Multistream Opus is not supported (mapping family {}, {} channels, {} streams)",
+                    head.mapping_family,
+                    head.channels,
+                    head.stream_count
+                );
+                return unsupported_error("Multistream (surround) Opus is not supported");
             }
         }
 
-        Ok(())
-    }
-}
+        let channel_count = head
+            .as_ref()
+            .map(|head| usize::from(head.channels))
+            .or_else(|| params.channels.as_ref().map(Channels::count))
+            .unwrap_or(2);
 
-impl OpusDecoder {
-    fn try_new(params: &AudioCodecParameters) -> SymphResult<Self> {
-        let inner =
-            AudiopusDecoder::new(SampleRate::Hz48000, Channels::Stereo).map_err(|error| {
-                log::error!("Could not initialize the native Opus decoder: {error:?}");
-                SymphError::DecodeError("Could not initialize the native Opus decoder")
-            })?;
+        let (opus_channels, layout) = match channel_count {
+            1 => (OpusChannels::Mono, layouts::CHANNEL_LAYOUT_MONO),
+            2 => (OpusChannels::Stereo, layouts::CHANNEL_LAYOUT_STEREO),
+            n => {
+                return unsupported_error(if n == 0 {
+                    "Opus stream declares zero channels"
+                } else {
+                    "Opus streams with more than 2 channels are not supported"
+                })
+            }
+        };
+
+        let inner = AudiopusDecoder::new(SampleRate::Hz48000, opus_channels).map_err(|error| {
+            log::error!("Could not initialize the native Opus decoder: {error:?}");
+            SymphError::DecodeError("Could not initialize the native Opus decoder")
+        })?;
+
+        if let Some(gain) = head
+            .as_ref()
+            .map(|head| head.output_gain)
+            .filter(|&g| g != 0)
+        {
+            if let Err(error) = inner.set_gain(i32::from(gain)) {
+                log::warn!("Could not apply Opus output gain of {gain} Q7.8 dB: {error:?}");
+            }
+        }
 
         let mut params = params.clone();
-        params.with_sample_rate(48000);
+        params
+            .with_sample_rate(SAMPLE_RATE)
+            .with_channels(layout.clone());
 
         Ok(Self {
             inner,
             params,
-            buf: AudioBuffer::new(
-                AudioSpec::new(48000, layouts::CHANNEL_LAYOUT_STEREO),
-                48000 / 50,
-            ),
-            rawbuf: vec![0.0f32; 2 * (48000 / 50)],
+            buf: AudioBuffer::new(AudioSpec::new(SAMPLE_RATE, layout), MAX_FRAMES_PER_PACKET),
+            rawbuf: vec![0.0; MAX_FRAMES_PER_PACKET * channel_count].into_boxed_slice(),
+            channels: channel_count,
         })
+    }
+
+    fn plc_frames(&self, packet: &PacketRef<'_>) -> usize {
+        let frames = match packet.dur.get() as usize {
+            0 => self
+                .inner
+                .last_packet_duration()
+                .map(|dur| dur as usize)
+                .unwrap_or(DEFAULT_PLC_FRAMES),
+            dur => dur,
+        };
+
+        (frames / MIN_FRAME * MIN_FRAME).clamp(MIN_FRAME, MAX_FRAMES_PER_PACKET)
+    }
+
+    fn decode_inner(&mut self, packet: &PacketRef<'_>) -> SymphResult<()> {
+        let (input, out_len) = if packet.data.is_empty() {
+            (None, self.plc_frames(packet) * self.channels)
+        } else {
+            let Ok(pkt) = packet.data.try_into() else {
+                return decode_error("Opus packet was too large (greater than i32::MAX bytes).");
+            };
+            (Some(pkt), self.rawbuf.len())
+        };
+
+        let out = (&mut self.rawbuf[..out_len])
+            .try_into()
+            .expect("Opus scratch buffer is bounded far below i32::MAX");
+
+        let frames = self
+            .inner
+            .decode_float(input, out, false)
+            .map_err(|error| {
+                log::debug!("Opus packet decode failed: {error:?}");
+                SymphError::DecodeError("Opus packet decode failed")
+            })?;
+
+        self.buf.clear();
+        self.buf.resize_uninit(frames);
+        self.buf
+            .copy_from_slice_interleaved(&&self.rawbuf[..frames * self.channels]);
+        Ok(())
     }
 }
 

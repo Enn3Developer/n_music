@@ -13,7 +13,10 @@ use std::result;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration as WallDuration, Instant};
-use symphonia::core::audio::{conv::ConvertibleSample, AudioSpec, GenericAudioBufferRef};
+use symphonia::core::audio::{
+    conv::{ConvertibleSample, FromSample},
+    AudioSpec, GenericAudioBufferRef,
+};
 
 pub trait AudioOutput {
     fn write(
@@ -365,7 +368,9 @@ where
     channels: usize,
     sample_rate: u32,
     ring_buf_producer: Producer<T>,
+    float_buf: Vec<f32>,
     sample_buf: Vec<T>,
+    clip_mem: Vec<f32>,
     stream: cpal::Stream,
     state: Arc<QueueState>,
     produced: u64,
@@ -433,13 +438,16 @@ impl<T: AudioOutputSample + cpal::SizedSample> CpalAudioOutputImpl<T> {
         // Start the output stream.
         stream.play()?;
 
+        let float_buf = Vec::with_capacity(capacity * num_channels);
         let sample_buf = Vec::with_capacity(capacity * num_channels);
 
         Ok(Box::new(CpalAudioOutputImpl {
             channels: num_channels,
             sample_rate: spec.rate(),
             ring_buf_producer,
+            float_buf,
             sample_buf,
+            clip_mem: vec![0.0; num_channels],
             stream,
             state,
             produced: 0,
@@ -468,15 +476,23 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
 
         // Audio samples must be interleaved for cpal. Interleave the samples in the audio
         // buffer into the sample buffer.
-        decoded.copy_to_vec_interleaved(&mut self.sample_buf);
+        decoded.copy_to_vec_interleaved(&mut self.float_buf);
+
+        let samples = &mut self.float_buf[skip_frames * self.channels..];
+        for sample in samples.iter_mut() {
+            *sample *= volume;
+        }
+        soft_clip(samples, self.channels, &mut self.clip_mem);
+
+        self.sample_buf.clear();
+        self.sample_buf.extend(
+            samples
+                .iter()
+                .map(|&sample| <T as FromSample<f32>>::from_sample(sample)),
+        );
 
         // Write all the interleaved samples to the ring buffer.
-        let samples = &mut self.sample_buf[skip_frames * self.channels..];
-        for sample in samples.iter_mut() {
-            *sample = sample.mul_amp(volume.to_sample());
-        }
-
-        let mut offset = skip_frames * self.channels;
+        let mut offset = 0;
         let monitor_after = *self
             .monitor_after
             .get_or_insert(Instant::now() + STARTUP_GRACE);
@@ -531,6 +547,7 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
         self.state.starvations.store(0, Ordering::Relaxed);
         self.monitor_after = None;
         self.policy.reset(Instant::now());
+        self.clip_mem.fill(0.0);
     }
 
     fn set_paused(&mut self, paused: bool) -> Result<()> {
@@ -572,6 +589,82 @@ impl<T: AudioOutputSample> AudioOutput for CpalAudioOutputImpl<T> {
         } else {
             Ok(())
         }
+    }
+}
+
+/// Port of `opus_pcm_soft_clip` from libopus, Copyright (c) 2011 Xiph.Org Foundation, Skype Limited (BSD-3-Clause).
+fn soft_clip(samples: &mut [f32], channels: usize, mem: &mut [f32]) {
+    if channels == 0 || samples.len() < channels {
+        return;
+    }
+    let frames = samples.len() / channels;
+
+    for sample in samples.iter_mut() {
+        *sample = sample.clamp(-2.0, 2.0);
+    }
+
+    for (channel, declip) in mem.iter_mut().enumerate().take(channels) {
+        let x = |i: usize| i * channels + channel;
+        let mut a = *declip;
+
+        for i in 0..frames {
+            let v = samples[x(i)];
+            if v * a >= 0.0 {
+                break;
+            }
+            samples[x(i)] = v + a * v * v;
+        }
+
+        let mut curr = 0;
+        let x0 = samples[x(0)];
+        loop {
+            let Some(i) = (curr..frames).find(|&i| samples[x(i)].abs() > 1.0) else {
+                a = 0.0;
+                break;
+            };
+
+            let pivot = samples[x(i)];
+            let mut peak_pos = i;
+            let mut start = i;
+            let mut end = i;
+            let mut maxval = pivot.abs();
+            while start > 0 && pivot * samples[x(start - 1)] >= 0.0 {
+                start -= 1;
+            }
+            while end < frames && pivot * samples[x(end)] >= 0.0 {
+                if samples[x(end)].abs() > maxval {
+                    maxval = samples[x(end)].abs();
+                    peak_pos = end;
+                }
+                end += 1;
+            }
+            let special = start == 0 && pivot * samples[x(0)] >= 0.0;
+
+            a = (maxval - 1.0) / (maxval * maxval);
+            a += a * 2.4e-7;
+            if pivot > 0.0 {
+                a = -a;
+            }
+            for j in start..end {
+                let v = samples[x(j)];
+                samples[x(j)] = v + a * v * v;
+            }
+
+            if special && peak_pos >= 2 {
+                let mut offset = x0 - samples[x(0)];
+                let delta = offset / peak_pos as f32;
+                for j in curr..peak_pos {
+                    offset -= delta;
+                    samples[x(j)] = (samples[x(j)] + offset).clamp(-1.0, 1.0);
+                }
+            }
+
+            curr = end;
+            if curr == frames {
+                break;
+            }
+        }
+        *declip = a;
     }
 }
 
