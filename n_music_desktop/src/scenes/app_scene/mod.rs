@@ -1,26 +1,34 @@
+mod covers;
 mod library;
 mod playback;
 
+use crate::ui::{CoverBuffer, CoverCache};
 use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Registrar, RunningJob, ShutdownRequested, Subscriber};
 use n_music_core::jobs::scan::ScanJob;
+use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanLibrary, SearchChanged, TrackChanged,
-    VolumeChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanRequested, SearchChanged,
+    TrackChanged, VolumeChanged,
 };
 use n_music_core::queue::LoopStatus;
+use n_music_core::settings::{LibrarySettings, Options};
+use n_music_core::source::Providers;
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::any::Any;
 use std::mem;
+use std::sync::Arc;
 
 pub enum Changes {
     Tracks(Vec<TrackData>),
     Metadata(usize, TrackData),
+    Cover(usize, CoverBuffer),
 }
 
 pub struct AppScene {
     window: Weak<MainWindow>,
     scan_job: Option<RunningJob>,
+    cover_job: Option<RunningJob>,
     playing_index: i32,
     position: f64,
     seek_revision: i32,
@@ -41,13 +49,25 @@ pub struct AppScene {
     position_text_dirty: bool,
     length_dirty: bool,
     visible: bool,
+    providers: Arc<Providers>,
+    library: Options<LibrarySettings>,
+    paths: LibraryPaths,
+    covers: CoverCache,
 }
 
 impl AppScene {
-    pub fn new(window: Weak<MainWindow>, volume: f64, loop_status: LoopStatus) -> Self {
+    pub fn new(
+        window: Weak<MainWindow>,
+        volume: f64,
+        loop_status: LoopStatus,
+        providers: Arc<Providers>,
+        library: Options<LibrarySettings>,
+        paths: LibraryPaths,
+    ) -> Self {
         Self {
             window,
             scan_job: None,
+            cover_job: None,
             playing_index: 0,
             position: 0.0,
             seek_revision: 0,
@@ -68,6 +88,10 @@ impl AppScene {
             position_text_dirty: true,
             length_dirty: true,
             visible: true,
+            providers,
+            library,
+            paths,
+            covers: CoverCache::default(),
         }
     }
 }
@@ -83,11 +107,12 @@ impl Subscriber for AppScene {
         reg.on::<TrackChanged>();
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
-        reg.on::<ScanLibrary>();
+        reg.on::<ScanRequested>();
         reg.on::<ShutdownRequested>();
         reg.on::<n_music_core::messages::AppVisibilityChanged>();
         reg.on::<SearchChanged>();
         ScanJob::subscribe(reg);
+        covers::CoverJob::subscribe(reg);
     }
 }
 
@@ -169,6 +194,13 @@ impl AppScene {
                     Changes::Metadata(index, track) => {
                         app_data.get_tracks().set_row_data(index, track);
                     }
+                    Changes::Cover(index, buffer) => {
+                        let tracks = app_data.get_tracks();
+                        if let Some(mut track) = tracks.row_data(index) {
+                            track.cover = slint::Image::from_rgba8(buffer);
+                            tracks.set_row_data(index, track);
+                        }
+                    }
                 }
             }
 
@@ -216,6 +248,7 @@ impl AppScene {
 impl n_event_bus::Handle<ShutdownRequested> for AppScene {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut n_event_bus::Outbox) {
         self.scan_job = None;
+        self.cover_job = None;
         self.visible = false;
         out.shutdown_ready();
     }

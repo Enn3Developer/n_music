@@ -2,9 +2,8 @@ use multitag::data::Picture;
 use multitag::Tag;
 use rimage::codecs::webp::WebPDecoder;
 use rimage::operations::resize::{FilterType, ResizeAlg};
-use std::fmt::Debug;
+use std::fmt::Display;
 use std::io::Cursor;
-use std::path::Path;
 use zune_core::bytestream::ZCursor;
 use zune_core::colorspace::ColorSpace;
 use zune_core::options::DecoderOptions;
@@ -12,96 +11,58 @@ use zune_image::image::Image;
 use zune_image::traits::{DecoderTrait, OperationsTrait};
 use zune_imageprocs::crop::Crop;
 
-pub fn get_image_squared<P: AsRef<Path> + Debug>(
-    path: P,
-    width: usize,
-    height: usize,
-) -> Option<Image> {
-    let image = get_image(&path);
-    if !image.is_empty() {
-        let zune_image =
-            if let Ok(image) = Image::read(ZCursor::new(&image), DecoderOptions::new_fast()) {
-                Some(image)
-            } else if let Ok(mut webp_decoder) = WebPDecoder::try_new(Cursor::new(&image)) {
-                if let Ok(image) = webp_decoder.decode() {
-                    Some(image)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-        if let Some(mut zune_image) = zune_image {
-            zune_image
-                .convert_color(ColorSpace::RGBA)
-                .inspect_err(|error| {
-                    log::warn!("Could not convert cover art for {path:?} to RGBA: {error:?}")
-                })
-                .ok()?;
-            let (w, h) = zune_image.dimensions();
-            let mut size = w;
-            if w != h {
-                let difference = w.abs_diff(h);
-                let min = w.min(h);
-                size = min;
-                let is_height = h < w;
-                let x = if is_height { difference / 2 } else { 0 };
-                let y = if !is_height { difference / 2 } else { 0 };
-                {
-                    Crop::new(min, min, x, y)
-                        .execute(&mut zune_image)
-                        .inspect_err(|error| {
-                            log::warn!("Could not crop cover art for {path:?}: {error:?}")
-                        })
-                        .ok()?;
-                }
-            }
-            {
-                rimage::operations::resize::Resize::new(
-                    if width == 0 { size } else { width },
-                    if height == 0 { size } else { height },
-                    ResizeAlg::Convolution(FilterType::Hamming),
-                )
-                .execute(&mut zune_image)
-                .inspect_err(|error| {
-                    log::warn!("Could not resize cover art for {path:?}: {error:?}")
-                })
-                .ok()?;
-            }
-            Some(zune_image)
+/// Decodes `data`, crops it to a centered square and resizes it to `width`x`height` RGBA
+/// (0 keeps the cropped size).
+pub fn squared(data: &[u8], width: usize, height: usize, path: impl Display) -> Option<Image> {
+    let mut zune_image =
+        if let Ok(image) = Image::read(ZCursor::new(data), DecoderOptions::new_fast()) {
+            image
         } else {
-            None
-        }
-    } else {
-        None
+            WebPDecoder::try_new(Cursor::new(data))
+                .ok()?
+                .decode()
+                .ok()?
+        };
+    zune_image
+        .convert_color(ColorSpace::RGBA)
+        .inspect_err(|error| {
+            log::warn!("Could not convert cover art for {path} to RGBA: {error:?}")
+        })
+        .ok()?;
+    let (w, h) = zune_image.dimensions();
+    let mut size = w;
+    if w != h {
+        let difference = w.abs_diff(h);
+        let min = w.min(h);
+        size = min;
+        let is_height = h < w;
+        let x = if is_height { difference / 2 } else { 0 };
+        let y = if !is_height { difference / 2 } else { 0 };
+        Crop::new(min, min, x, y)
+            .execute(&mut zune_image)
+            .inspect_err(|error| log::warn!("Could not crop cover art for {path}: {error:?}"))
+            .ok()?;
     }
+    rimage::operations::resize::Resize::new(
+        if width == 0 { size } else { width },
+        if height == 0 { size } else { height },
+        ResizeAlg::Convolution(FilterType::Hamming),
+    )
+    .execute(&mut zune_image)
+    .inspect_err(|error| log::warn!("Could not resize cover art for {path}: {error:?}"))
+    .ok()?;
+    Some(zune_image)
 }
 
-pub fn get_image<P: AsRef<Path> + Debug>(path: P) -> Vec<u8> {
-    if let Ok(tag) = Tag::read_from_path(path.as_ref()) {
-        if let Some(album) = tag.get_album_info() {
-            if let Some(cover) = album.cover {
-                return cover.data;
-            } else {
-                if let Tag::OpusTag { inner } = tag {
-                    let cover = inner.pictures().first().cloned().map(Picture::from);
-                    if let Some(cover) = cover {
-                        return cover.data;
-                    }
-                } else if let Tag::Id3Tag { inner } = tag {
-                    let cover = inner.pictures().next().cloned().map(Picture::from);
-                    if let Some(cover) = cover {
-                        return cover.data;
-                    }
-                } else {
-                    log::debug!("No supported cover-art tag in {path:?}");
-                }
-            }
-        } else {
-            log::debug!("No album metadata in {path:?}");
-        }
+/// The embedded cover of a tag read by multitag, for files Symphonia finds no picture in.
+pub fn tag_cover(tag: Tag) -> Option<Vec<u8>> {
+    if let Some(cover) = tag.get_album_info().and_then(|album| album.cover) {
+        return Some(cover.data);
     }
-
-    vec![]
+    let cover = match tag {
+        Tag::OpusTag { inner } => inner.pictures().first().cloned().map(Picture::from),
+        Tag::Id3Tag { inner } => inner.pictures().next().cloned().map(Picture::from),
+        _ => None,
+    };
+    cover.map(|cover| cover.data)
 }

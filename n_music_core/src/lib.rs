@@ -1,16 +1,16 @@
-use std::path::Path;
 use symphonia::core::codecs::registry::CodecRegistry;
 
 use crate::dca::DcaReader;
 use crate::opus::OpusDecoder;
 use crate::raw::RawReader;
-use bitcode::{Decode, Encode};
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use symphonia::default::{register_enabled_codecs, register_enabled_formats};
 use symphonia_core::formats::probe::Probe;
 
 mod dca;
 pub mod jobs;
+pub mod library;
 pub mod logging;
 pub mod messages;
 pub mod music_track;
@@ -22,6 +22,9 @@ pub mod queue;
 mod raw;
 pub mod services;
 pub mod settings;
+pub mod source;
+
+pub use library::track::{Track, TrackInfo};
 
 /// Default Symphonia [`CodecRegistry`], including the (audiopus-backed) Opus codec.
 pub static CODEC_REGISTRY: Lazy<CodecRegistry> = Lazy::new(|| {
@@ -42,38 +45,6 @@ pub static PROBE: Lazy<Probe> = Lazy::new(|| {
 #[derive(Debug)]
 pub enum NError {
     NoTrack,
-}
-
-/// Returns the file name without its extension
-///
-/// # Example
-/// ```
-/// use std::path::Path;
-/// use n_music_core::remove_ext;
-/// let filename = "file.1.txt";
-/// assert_eq!(remove_ext(filename), "file.1");
-/// ```
-pub fn remove_ext<P: AsRef<Path>>(path: P) -> String {
-    let path = path.as_ref();
-    let split: Vec<String> = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_else(|| panic!("Cannot extract a UTF-8 file name from {path:?}"))
-        .split('.')
-        .map(String::from)
-        .collect();
-    split[..split.len() - 1].to_vec().join(".")
-}
-
-pub fn strip_absolute_path(path: String) -> String {
-    let mut s = path
-        .split(std::path::MAIN_SEPARATOR)
-        .last()
-        .unwrap()
-        .to_string();
-    s.shrink_to_fit();
-
-    s
 }
 
 /// Used to represent the timestamp
@@ -104,14 +75,7 @@ impl TrackTime {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Metadata {
-    pub time: TrackTime,
-    pub artist: String,
-    pub title: String,
-}
-
-#[derive(Copy, Clone, Debug, Decode, Encode)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct WindowSize {
     pub width: usize,
     pub height: usize,
@@ -126,7 +90,7 @@ impl Default for WindowSize {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Decode, Encode)]
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 pub enum Theme {
     #[default]
     System,
@@ -183,13 +147,4 @@ impl TryFrom<i32> for Theme {
             Err(format!("{value} is not a valid theme"))
         }
     }
-}
-
-#[derive(Clone, Debug, Decode, Encode)]
-pub struct FileTrack {
-    pub path: String,
-    pub title: String,
-    pub artist: String,
-    pub length: f64,
-    pub image: Vec<u8>,
 }

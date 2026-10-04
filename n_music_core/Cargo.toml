@@ -23,7 +23,6 @@ rtrb = "0.4"
 cpal = { version = "0.18", features = ["pulseaudio"] }
 dasp = "0.11"
 multitag = "0.4"
-bitcode = { version = "0.6", features = ["derive"] }
 n_event_bus = { path = "../n_event_bus" }
 log = "0.4"
 flexi_logger = { version = "0.31", default-features = false }
@@ -33,7 +32,8 @@ zune-core = { version = "=0.5.1", default-features = false, features = ["std"] }
 rimage = { version = "0.12.0", default-features = false, features = ["mozjpeg", "resize", "threads", "webp"] }
 tempfile = "3.20"
 infer = { version = "0.22", default-features = false, features = ["std"] }
-zstd = "0.14"
+xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"

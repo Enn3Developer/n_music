@@ -4,20 +4,21 @@ use crate::messages::{
     SetVolume, TogglePause, ToggleRepeat, TrackChanged, VolumeChanged,
 };
 use crate::player::{PlaybackEvent, PlaybackTask, Player};
+use crate::settings::{Options, PlaybackSettings};
+use crate::source::{LocalProvider, Locator, Providers};
 use crate::TrackTime;
-use crate::{remove_ext, strip_absolute_path};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
     Subscriber, Tagged,
 };
 use rand::prelude::SliceRandom;
 use rand::rng;
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::cmp::PartialEq;
 use std::io;
 use std::io::ErrorKind;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ impl Job for PlaybackJob {
     }
 }
 
-#[derive(Default, Eq, PartialEq, Debug, Clone)]
+#[derive(Default, Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub enum LoopStatus {
     #[default]
     Playlist,
@@ -42,8 +43,9 @@ pub enum LoopStatus {
 }
 
 pub struct QueuePlayer {
-    queue: Vec<Arc<str>>,
-    path: String,
+    queue: Vec<Locator>,
+    providers: Arc<Providers>,
+    settings: Options<PlaybackSettings>,
     player: Player,
     index: usize,
     loop_status: LoopStatus,
@@ -57,21 +59,30 @@ pub struct QueuePlayer {
 
 impl Default for QueuePlayer {
     fn default() -> Self {
-        Self::new(String::new())
+        Self::new(
+            Arc::new(Providers::default().with_local(LocalProvider)),
+            Options::in_memory(),
+        )
     }
 }
 
 impl QueuePlayer {
-    pub fn new(path: String) -> Self {
-        let mut player = Player::new(1.0, 1.0);
+    /// Starts with the saved volume and loop status, and saves their changes.
+    pub fn new(providers: Arc<Providers>, settings: Options<PlaybackSettings>) -> Self {
+        let (volume, loop_status) = {
+            let saved = settings.get();
+            (saved.volume.clamp(0.0, 1.0), saved.loop_status.clone())
+        };
+        let mut player = Player::new(volume as f32, 1.0);
         player.set_progress_interval(Some(Duration::from_millis(250)));
 
         QueuePlayer {
             queue: vec![],
             player,
             index: usize::MAX - 1,
-            path,
-            loop_status: LoopStatus::Playlist,
+            providers,
+            settings,
+            loop_status,
             job: None,
             loaded: false,
             playing: false,
@@ -93,14 +104,6 @@ impl QueuePlayer {
         self.queue.is_empty()
     }
 
-    pub fn path(&self) -> String {
-        self.path.clone()
-    }
-
-    pub fn set_path(&mut self, path: String) {
-        self.path = path;
-    }
-
     pub fn set_loop_status(&mut self, loop_status: LoopStatus) {
         self.loop_status = loop_status;
     }
@@ -109,32 +112,26 @@ impl QueuePlayer {
         self.loop_status.clone()
     }
 
-    pub fn get_path_for_file(&self, i: usize) -> Option<PathBuf> {
-        Some(PathBuf::from(&self.path).join(self.queue.get(i)?.as_ref()))
+    pub fn locator(&self, i: usize) -> Option<&Locator> {
+        self.queue.get(i)
     }
 
-    pub fn queue(&self) -> &[Arc<str>] {
+    pub fn queue(&self) -> &[Locator] {
         &self.queue
     }
 
     #[inline]
     pub fn shrink_to_fit(&mut self) {
-        self.path.shrink_to_fit();
         self.queue.shrink_to_fit();
     }
 
     #[inline]
-    pub fn add<P: Into<Arc<str>>>(&mut self, path: P) {
-        self.queue.push(path.into());
+    pub fn add(&mut self, locator: Locator) {
+        self.queue.push(locator);
     }
 
-    pub fn add_all<P: Into<String>>(&mut self, paths: impl IntoIterator<Item = P>) {
-        self.queue.append(
-            &mut paths
-                .into_iter()
-                .map(|p| strip_absolute_path(p.into()).into())
-                .collect::<Vec<Arc<str>>>(),
-        );
+    pub fn add_all(&mut self, locators: impl IntoIterator<Item = Locator>) {
+        self.queue.extend(locators);
     }
 
     #[inline]
@@ -154,8 +151,8 @@ impl QueuePlayer {
         self.queue.shuffle(&mut rng());
     }
 
-    pub fn current_track_name(&self) -> Option<Arc<str>> {
-        self.queue.get(self.index).map(|t| t.clone())
+    pub fn current_locator(&self) -> Option<&Locator> {
+        self.queue.get(self.index)
     }
 
     pub fn prepare_index(&mut self, index: usize) -> io::Result<PlaybackTask> {
@@ -163,10 +160,8 @@ impl QueuePlayer {
             return Err(ErrorKind::NotFound.into());
         }
         self.index = index % self.len();
-        let path = self
-            .get_path_for_file(self.index)
-            .ok_or(ErrorKind::NotFound)?;
-        Ok(self.player.prepare_path(path))
+        let locator = self.locator(self.index).ok_or(ErrorKind::NotFound)?.clone();
+        Ok(self.player.prepare_track(self.providers.clone(), locator))
     }
 
     pub fn prepare_next(&mut self, ignore_loop: bool) -> io::Result<PlaybackTask> {
@@ -189,13 +184,8 @@ impl QueuePlayer {
         self.prepare_index(index)
     }
 
-    pub fn get_index_from_track_name(&self, name: &str) -> Option<usize> {
-        self.queue
-            .iter()
-            .map(|t| remove_ext(t.as_ref()))
-            .enumerate()
-            .find(|(_i, t)| t == name)
-            .map(|(i, _t)| i)
+    pub fn index_of(&self, locator: &Locator) -> Option<usize> {
+        self.queue.iter().position(|t| t == locator)
     }
 }
 
@@ -230,10 +220,12 @@ impl QueuePlayer {
         self.set_playing(false, out);
         self.position(TrackTime::default(), true, out);
         let index = self.index();
-        if let (Some(path), Some(name)) = (self.get_path_for_file(index), self.current_track_name())
-        {
-            log::info!("Starting playback: {}", path.display());
-            out.emit(TrackChanged { index, path, name });
+        if let Some(locator) = self.current_locator() {
+            log::info!("Starting playback: {locator}");
+            out.emit(TrackChanged {
+                index,
+                locator: locator.clone(),
+            });
         }
         self.job = Some(ctx.jobs.spawn_stream(PlaybackJob(task)));
     }
@@ -418,6 +410,7 @@ impl Handle<SetVolume> for QueuePlayer {
             return;
         }
         self.set_volume(volume as f32);
+        self.settings.update(|settings| settings.volume = volume);
         out.emit(VolumeChanged(volume));
     }
 }
@@ -426,6 +419,8 @@ impl Handle<SetLoopStatus> for QueuePlayer {
     fn handle(&mut self, msg: &SetLoopStatus, ctx: &Ctx, out: &mut Outbox) {
         if !ctx.shutting_down && self.loop_status() != msg.0 {
             self.set_loop_status(msg.0.clone());
+            self.settings
+                .update(|settings| settings.loop_status = msg.0.clone());
             out.emit(LoopStatusChanged(self.loop_status()));
         }
     }
@@ -448,8 +443,7 @@ impl Handle<QueueReplaced> for QueuePlayer {
         }
         self.stop(out);
         self.clear();
-        self.set_path(msg.path.clone());
-        self.add_all(msg.names.clone());
+        self.add_all(msg.tracks.iter().cloned());
         self.position(TrackTime::default(), true, out);
     }
 }

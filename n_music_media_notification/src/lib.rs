@@ -3,8 +3,14 @@
 //! The crate is a bus subscriber, so hosts only have to register it:
 //!
 //! ```no_run
-//! # fn example(writer: n_event_bus::EventWriter) {
-//! if let Some(media) = n_music_media_notification::MediaNotification::new(writer, 1.0) {
+//! # use std::sync::Arc;
+//! # use n_music_core::library::LibraryPaths;
+//! # use n_music_core::source::{LocalProvider, Providers};
+//! # fn example(writer: n_event_bus::EventWriter, paths: LibraryPaths) {
+//! let providers = Arc::new(Providers::default().with_local(LocalProvider));
+//! if let Some(media) =
+//!     n_music_media_notification::MediaNotification::new(writer, 1.0, providers, paths)
+//! {
 //!     // app.register_subscriber(media);
 //! }
 //! # }
@@ -17,28 +23,33 @@ use crate::state::{Backend, Change, Emit, LoopStatus, MediaEvent, State};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Outbox, Registrar, ShutdownRequested, Subscriber, Tagged,
 };
+use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
     LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
     SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
 };
 use n_music_core::queue::LoopStatus as QueueLoopStatus;
 use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
+use n_music_core::source::Providers;
 use std::any::Any;
 use std::sync::{Arc, RwLock};
-use tempfile::NamedTempFile;
 
 /// Bridges the event bus to the platform media controls and back.
 pub struct MediaNotification {
     state: Arc<RwLock<State>>,
     backend: Arc<dyn Backend>,
     metadata_loader: MetadataLoader,
-    covers: Vec<NamedTempFile>,
 }
 
 impl MediaNotification {
     /// Attach to the OS media controls. Returns `None` when the platform has no
     /// usable backend (or the backend could not be initialized).
-    pub fn new(writer: EventWriter, volume: f64) -> Option<Self> {
+    pub fn new(
+        writer: EventWriter,
+        volume: f64,
+        providers: Arc<Providers>,
+        paths: LibraryPaths,
+    ) -> Option<Self> {
         let state = Arc::new(RwLock::new(State {
             volume,
             ..State::default()
@@ -50,8 +61,7 @@ impl MediaNotification {
         Some(Self {
             state,
             backend: Arc::from(backend),
-            metadata_loader: MetadataLoader::default(),
-            covers: Vec::new(),
+            metadata_loader: MetadataLoader::new(providers, paths),
         })
     }
 
@@ -134,7 +144,7 @@ impl Handle<PositionChanged> for MediaNotification {
 impl Handle<TrackChanged> for MediaNotification {
     fn handle(&mut self, msg: &TrackChanged, ctx: &Ctx, _out: &mut Outbox) {
         if !ctx.shutting_down {
-            self.metadata_loader.load(msg.path.clone(), ctx);
+            self.metadata_loader.load(msg.locator.clone(), ctx);
         }
     }
 }
@@ -144,24 +154,15 @@ impl Handle<Tagged<MetadataLoaded>> for MediaNotification {
         if ctx.shutting_down {
             return;
         }
-        let Some(loaded) = self.metadata_loader.take(msg) else {
+        let Some(track) = self.metadata_loader.take(msg) else {
             return;
         };
-        let cover = loaded.cover;
         {
             let mut state = self.state.write().unwrap();
-            state.title = loaded.metadata.title;
-            state.artist = loaded.metadata.artist;
-            state.length = loaded.metadata.time.length;
-            state.cover = cover.as_ref().map(|file| file.path().to_path_buf());
-        }
-        if let Some(cover) = cover {
-            self.covers.push(cover);
-            // Keep one generation of covers alive: an already queued backend
-            // update may still need to read the previous file.
-            if self.covers.len() > 2 {
-                self.covers.remove(0);
-            }
+            state.title = track.title.clone();
+            state.artist = track.artist();
+            state.length = track.length;
+            state.cover = track.cover.clone();
         }
         self.update(Change::Metadata);
     }
@@ -169,7 +170,7 @@ impl Handle<Tagged<MetadataLoaded>> for MediaNotification {
 
 impl Handle<ShutdownRequested> for MediaNotification {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
-        self.metadata_loader = MetadataLoader::default();
+        self.metadata_loader.cancel();
         self.state.write().unwrap().playing = false;
         self.update(Change::Playback);
         out.shutdown_ready();

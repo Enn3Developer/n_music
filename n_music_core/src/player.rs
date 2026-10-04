@@ -1,5 +1,5 @@
 use crate::{output, TrackTime, CODEC_REGISTRY};
-use std::io::{self, Seek as _, SeekFrom};
+use std::io;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use symphonia::core::audio::AudioSpec;
@@ -8,6 +8,7 @@ use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::units::Time;
 
 use crate::music_track::MusicTrack;
+use crate::source::{Locator, Providers};
 
 pub struct Player {
     volume: f32,
@@ -119,8 +120,8 @@ impl Player {
             output_access: self.output_access.clone(),
         }
     }
-    pub fn prepare_path(&mut self, path: std::path::PathBuf) -> PlaybackTask {
-        self.prepare(PlaybackSource::Path(path))
+    pub fn prepare_track(&mut self, providers: Arc<Providers>, locator: Locator) -> PlaybackTask {
+        self.prepare(PlaybackSource { providers, locator })
     }
 }
 impl Drop for Player {
@@ -134,8 +135,16 @@ impl Default for Player {
     }
 }
 
-enum PlaybackSource {
-    Path(std::path::PathBuf),
+struct PlaybackSource {
+    providers: Arc<Providers>,
+    locator: Locator,
+}
+
+impl PlaybackSource {
+    /// Opens the track from its first byte.
+    fn open(&self) -> io::Result<Box<dyn FormatReader>> {
+        MusicTrack::new(self.providers.as_ref(), &self.locator).get_format()
+    }
 }
 pub struct PlaybackTask {
     source: Option<PlaybackSource>,
@@ -152,9 +161,8 @@ impl PlaybackTask {
             return Ok(());
         }
         let result = (|| {
-            let PlaybackSource::Path(path) = self.source.take().unwrap();
-            let format = MusicTrack::new(path.to_string_lossy().into_owned())?.get_format()?;
-            run(format, self.control.clone(), &mut emit)
+            let source = self.source.take().unwrap();
+            run(&source, self.control.clone(), &mut emit)
         })();
         if result.is_err() {
             self.control.stop();
@@ -383,24 +391,12 @@ impl Drop for Completion {
     }
 }
 
-fn rewind_format(format: Box<dyn FormatReader>) -> io::Result<Box<dyn FormatReader>> {
-    let mut source = format.into_inner();
-    source.seek(SeekFrom::Start(0))?;
-    crate::PROBE
-        .probe(
-            &symphonia::core::formats::probe::Hint::new(),
-            source,
-            Default::default(),
-            Default::default(),
-        )
-        .map_err(io::Error::other)
-}
-
 fn run(
-    mut format: Box<dyn FormatReader>,
+    source: &PlaybackSource,
     control: PlaybackControl,
     emit: &mut impl FnMut(PlaybackEvent),
 ) -> io::Result<()> {
+    let mut format = source.open()?;
     if !control.begin() {
         return Ok(());
     }
@@ -529,7 +525,7 @@ fn run(
             if rewind {
                 // Some demuxers cannot seek backward without an index, or after EOF.
                 // Rebuild once from the source, not on every failed device-open attempt.
-                format = rewind_format(format)?;
+                format = source.open()?;
                 decoder.reset();
             }
             let seeked = format.seek(
@@ -547,7 +543,7 @@ fn run(
             {
                 // An unindexed reader may only seek forward past the target packet.
                 // Decode/discard from the start in that case, rather than skipping audio.
-                format = rewind_format(format)?;
+                format = source.open()?;
                 decoder.reset();
                 seek_target = Some(
                     time_base

@@ -1,8 +1,11 @@
+use crate::documents::{display_path, AndroidDocumentProvider};
 use crate::localization::localize;
 use crate::scenes::{AppScene, SettingsScene};
+use crate::settings::UiSettings;
 use crate::ui::color_scheme;
 use crate::{AppData, Localization, MainWindow, SettingsData};
 use n_event_bus::{App, EventWriter, JobControl, ShutdownOutcome};
+use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
     LocaleChangeRequested, OpenLink, PathChangeRequested, PlayNext, PlayPrevious, PlayTrack,
     ScanRequested, SearchChanged, Seek, SetVolume, ThemeChangeRequested, TogglePause, ToggleRepeat,
@@ -10,7 +13,8 @@ use n_music_core::messages::{
 };
 use n_music_core::platform::Platform;
 use n_music_core::queue::QueuePlayer;
-use n_music_core::settings::Settings;
+use n_music_core::settings::{LibrarySettings, Options, PlaybackSettings, SettingsStorage};
+use n_music_core::source::Providers;
 use n_music_core::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
@@ -25,7 +29,7 @@ impl Drop for QuitEventLoop {
 }
 
 pub fn run(
-    settings: Settings,
+    storage: Arc<dyn SettingsStorage>,
     platform: crate::platform::AndroidPlatform,
     writer: EventWriter,
     rx: n_event_bus::EventReceiver,
@@ -33,33 +37,53 @@ pub fn run(
 ) {
     let (jvm, callback) = platform.jni_handles();
     let platform: Arc<dyn Platform> = Arc::new(platform);
-    let internal_dir = platform.internal_dir();
+    let paths = LibraryPaths::new(&platform.internal_dir(), &platform.cache_dir());
+    let library = Options::<LibrarySettings>::load(storage.clone());
+    let playback = Options::<PlaybackSettings>::load(storage.clone());
+    let ui = Options::<UiSettings>::load(storage);
 
     let main_window = MainWindow::new().expect("Failed to create the Android Slint window");
 
-    setup_data(&settings, &main_window, writer.clone());
+    setup_data(&ui.get(), &library.get(), &main_window, writer.clone());
 
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone());
 
-    let mut player = QueuePlayer::new(settings.path.clone());
-    player.set_volume(settings.volume as f32);
+    let providers = Arc::new(
+        Providers::default().with_documents(
+            AndroidDocumentProvider::new(jvm.clone(), &callback)
+                .expect("Could not access the Android content resolver"),
+        ),
+    );
+
+    let player = QueuePlayer::new(providers.clone(), playback);
+    let volume = f64::from(player.get_volume());
     let loop_status = player.loop_status();
     app.register_subscriber(player);
-    let mut app_scene = AppScene::new(main_window.as_weak(), settings.volume, loop_status);
+    let mut app_scene = AppScene::new(
+        main_window.as_weak(),
+        volume,
+        loop_status,
+        providers.clone(),
+        library.clone(),
+        paths.clone(),
+    );
     app_scene.apply_ui();
     app.register_subscriber(app_scene);
+    let theme = i32::from(ui.get().theme);
     app.register_subscriber(SettingsScene::new(
         main_window.as_weak(),
-        settings.clone(),
+        ui,
+        library,
         platform.clone(),
-        internal_dir,
     ));
 
     app.register_subscriber(crate::bridge::AndroidBridge::new(
         jvm,
         callback,
-        i32::from(settings.theme),
+        theme,
+        providers.clone(),
+        paths,
     ));
 
     for event in pending {
@@ -107,7 +131,12 @@ fn request_shutdown(window: &MainWindow, writer: &EventWriter) {
     writer.shutdown();
 }
 
-fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter) {
+fn setup_data(
+    settings: &UiSettings,
+    library: &LibrarySettings,
+    main_window: &MainWindow,
+    writer: EventWriter,
+) {
     localize(
         settings.locale.clone(),
         main_window.global::<Localization>(),
@@ -125,7 +154,7 @@ fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter
         settings_data.set_width(settings.window_size.width as f32);
         settings_data.set_height(settings.window_size.height as f32);
         settings_data.set_save_window_size(settings.save_window_size);
-        settings_data.set_current_path(settings.path.clone().into());
+        settings_data.set_current_path(library_label(&library.libraries).into());
     }
 
     let w = writer.clone();
@@ -165,4 +194,13 @@ fn setup_data(settings: &Settings, main_window: &MainWindow, writer: EventWriter
     app_data.on_set_volume(move |volume| w.emit(SetVolume(volume as f64)));
     let w = writer.clone();
     app_data.on_searching(move |searching| w.emit(SearchChanged(searching.to_string())));
+}
+
+/// Library roots as shown in the settings screen.
+pub fn library_label(libraries: &[n_music_core::source::Locator]) -> String {
+    libraries
+        .iter()
+        .map(|root| display_path(&root.to_string()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }

@@ -2,14 +2,15 @@ use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
     Subscriber, Tagged,
 };
+use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
     LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, ThemeChangeRequested,
     TrackChanged,
 };
 use n_music_core::queue::LoopStatus;
-use n_music_core::services::metadata::{
-    MetadataJob, MetadataLoaded, MetadataLoader, TrackMetadata,
-};
+use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
+use n_music_core::source::{Locator, Providers};
+use n_music_core::Track;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ pub struct AndroidBridge {
     jvm: Arc<jni::JavaVM>,
     callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     notification: Option<RunningJob>,
-    pending: Option<TrackMetadata>,
+    pending: Option<Track>,
     metadata_loader: MetadataLoader,
     position: f64,
     playing: bool,
@@ -32,6 +33,8 @@ impl AndroidBridge {
         jvm: Arc<jni::JavaVM>,
         callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
         theme: i32,
+        providers: Arc<Providers>,
+        paths: LibraryPaths,
     ) -> Self {
         jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_method(
@@ -51,7 +54,7 @@ impl AndroidBridge {
             callback,
             notification: None,
             pending: None,
-            metadata_loader: MetadataLoader::default(),
+            metadata_loader: MetadataLoader::new(providers, paths),
             position: 0.0,
             playing: false,
         };
@@ -130,9 +133,14 @@ impl AndroidBridge {
             .expect("JNI call MainActivity.set_theme failed");
     }
 
-    fn change_queue(&self, names: &[String]) {
-        // U+001F (unit separator) cannot appear in a path, so it is a safe delimiter.
-        let joined = names.join("\u{1f}");
+    fn change_queue(&self, tracks: &[Locator]) {
+        // Locators only serve as unique media IDs. U+001F (unit separator) cannot appear in a
+        // path, so it is a safe delimiter.
+        let joined = tracks
+            .iter()
+            .map(Locator::to_string)
+            .collect::<Vec<_>>()
+            .join("\u{1f}");
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 let string = env.new_string(joined)?;
@@ -184,7 +192,7 @@ impl Handle<PositionChanged> for AndroidBridge {
 
 impl Handle<QueueReplaced> for AndroidBridge {
     fn handle(&mut self, msg: &QueueReplaced, _: &Ctx, _: &mut Outbox) {
-        self.change_queue(&msg.names);
+        self.change_queue(&msg.tracks);
     }
 }
 
@@ -212,7 +220,7 @@ impl Handle<TrackChanged> for AndroidBridge {
             return;
         }
         self.change_track(msg.index);
-        self.metadata_loader.load(msg.path.clone(), ctx);
+        self.metadata_loader.load(msg.locator.clone(), ctx);
     }
 }
 
@@ -221,11 +229,11 @@ impl AndroidBridge {
         if self.notification.is_some() {
             return;
         }
-        if let Some(metadata) = self.pending.take() {
+        if let Some(track) = self.pending.take() {
             self.notification = Some(ctx.jobs.spawn_oneshot(NotificationJob {
                 jvm: self.jvm.clone(),
                 callback: self.callback.clone(),
-                metadata,
+                track,
             }));
         }
     }
@@ -235,8 +243,8 @@ impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
         if ctx.shutting_down {
             return;
         }
-        if let Some(metadata) = self.metadata_loader.take(msg) {
-            self.pending = Some(metadata);
+        if let Some(track) = self.metadata_loader.take(msg) {
+            self.pending = Some(track);
             self.flush_notification(ctx);
         }
     }
@@ -244,24 +252,23 @@ impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
 struct NotificationJob {
     jvm: Arc<jni::JavaVM>,
     callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
-    metadata: TrackMetadata,
+    track: Track,
 }
 struct NotificationFinished;
 n_event_bus::job_emits!(NotificationJob => Tagged<NotificationFinished>);
 impl Job for NotificationJob {
     fn run(self, tag: u64, writer: EventWriter, _: Option<JobToken>) {
         let result = (|| -> jni::errors::Result<()> {
-            let meta = self.metadata.metadata;
-            let cover_path = self
-                .metadata
+            let track = &self.track;
+            let cover_path = track
                 .cover
                 .as_ref()
-                .map(|file| file.path().to_string_lossy().into_owned())
+                .map(|path| path.to_string_lossy().into_owned())
                 .unwrap_or_default();
             self.jvm
                 .attach_current_thread(|env| -> jni::errors::Result<()> {
-                    let title = env.new_string(meta.title)?;
-                    let artist = env.new_string(meta.artist)?;
+                    let title = env.new_string(&track.title)?;
+                    let artist = env.new_string(track.artist())?;
                     let cover_path = env.new_string(cover_path)?;
                     env.call_method(
                         self.callback.as_ref(),
@@ -271,7 +278,7 @@ impl Job for NotificationJob {
                             (&title).into(),
                             (&artist).into(),
                             (&cover_path).into(),
-                            meta.time.length.into(),
+                            track.length.into(),
                         ],
                     )
                     .inspect_err(|error| {
@@ -313,7 +320,7 @@ impl Handle<Tagged<NotificationFinished>> for AndroidBridge {
 impl Handle<ShutdownRequested> for AndroidBridge {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
         self.pending = None;
-        self.metadata_loader = MetadataLoader::default();
+        self.metadata_loader.cancel();
         self.playing = false;
         self.update_playback();
         if self.notification.is_none() {

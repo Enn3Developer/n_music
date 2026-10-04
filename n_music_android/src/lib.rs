@@ -4,9 +4,11 @@ slint::include_modules!();
 
 mod app;
 mod bridge;
+mod documents;
 mod localization;
 mod platform;
 mod scenes;
+mod settings;
 mod ui;
 
 use n_event_bus::{EventWriter, Message};
@@ -86,13 +88,19 @@ fn android_main(app: slint::android::AndroidApp) {
             if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
                 let platform =
                     platform::AndroidPlatform::new(app, started.0.clone(), started.1.clone());
+                use n_music_core::platform::Platform;
+                // Interim: a JSON file until the Compose frontend brings its own storage.
+                let storage = Arc::new(n_music_core::settings::JsonFileStorage::open(
+                    platform.internal_dir().join("settings.json"),
+                ));
                 crate::app::run(
-                    n_music_core::settings::Settings::read_saved(&platform),
+                    storage.clone(),
                     platform,
                     ANDROID_BUS.0.clone(),
                     rx,
                     pending,
                 );
+                storage.flush();
                 log::info!("Application stopped");
                 return;
             }

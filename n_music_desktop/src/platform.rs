@@ -22,6 +22,19 @@ fn internal_dir_desktop() -> PathBuf {
     app_dir
 }
 
+fn cache_dir_desktop() -> PathBuf {
+    let base_dirs =
+        directories::BaseDirs::new().expect("No desktop application data directory is available");
+    let cache_dir = base_dirs.cache_dir().join("n_music");
+    if let Err(error) = std::fs::create_dir_all(&cache_dir) {
+        log::error!(
+            "Could not create cache directory {}: {error}",
+            cache_dir.display()
+        );
+    }
+    cache_dir
+}
+
 fn ask_music_dir_desktop() -> PathBuf {
     rfd::FileDialog::new().pick_folder().unwrap_or_default()
 }
@@ -53,6 +66,10 @@ impl Platform for DesktopPlatform {
 
     fn internal_dir(&self) -> PathBuf {
         internal_dir_desktop()
+    }
+
+    fn cache_dir(&self) -> PathBuf {
+        cache_dir_desktop()
     }
 
     fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {

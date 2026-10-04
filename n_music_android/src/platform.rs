@@ -77,6 +77,43 @@ impl Platform for AndroidPlatform {
         path
     }
 
+    fn cache_dir(&self) -> PathBuf {
+        let cache_dir = self
+            .jvm
+            .attach_current_thread(|env| -> jni::errors::Result<String> {
+                let dir = env
+                    .call_method(
+                        self.callback.as_ref(),
+                        jni::jni_str!("getCacheDir"),
+                        jni::jni_sig!("()Ljava/io/File;"),
+                        &[],
+                    )
+                    .inspect_err(|error| log_jni_error(env, "Context.getCacheDir", error))?
+                    .l()?;
+                let path = env
+                    .call_method(
+                        &dir,
+                        jni::jni_str!("getAbsolutePath"),
+                        jni::jni_sig!("()Ljava/lang/String;"),
+                        &[],
+                    )?
+                    .l()?;
+                jni::objects::JString::cast_local(env, path)?.try_to_string(env)
+            })
+            .map(PathBuf::from)
+            .unwrap_or_else(|error| {
+                log::error!("Could not get the Android cache directory: {error:?}");
+                self.internal_dir().join("cache")
+            });
+        if let Err(error) = std::fs::create_dir_all(&cache_dir) {
+            log::error!(
+                "Could not create Android cache directory {}: {error}",
+                cache_dir.display()
+            );
+        }
+        cache_dir
+    }
+
     fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {

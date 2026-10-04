@@ -1,20 +1,23 @@
+use super::covers::CoverJob;
 use super::{AppScene, Changes};
 use crate::ui::to_track_data;
 use n_event_bus::{Ctx, Handle, Outbox, Tagged};
 use n_music_core::jobs::scan::ScanJob;
 use n_music_core::messages::{
-    QueueReplaced, ScanFinished, ScanLibrary, SearchChanged, TrackMetadataLoaded, TracksEnumerated,
+    QueueReplaced, ScanFinished, ScanRequested, SearchChanged, TrackMetadataLoaded,
+    TracksEnumerated,
 };
 
-impl Handle<ScanLibrary> for AppScene {
-    fn handle(&mut self, msg: &ScanLibrary, ctx: &Ctx, _out: &mut Outbox) {
+impl Handle<ScanRequested> for AppScene {
+    fn handle(&mut self, msg: &ScanRequested, ctx: &Ctx, _out: &mut Outbox) {
         if ctx.shutting_down {
             return;
         }
         self.scan_job = Some(ctx.jobs.spawn_stream(ScanJob {
-            settings: msg.settings.clone(),
-            internal_dir: msg.internal_dir.clone(),
+            roots: self.library.get().libraries.clone(),
+            paths: self.paths.clone(),
             check_cache: msg.check_cache,
+            providers: self.providers.clone(),
         }));
         self.loaded = 0;
         self.apply_ui();
@@ -22,11 +25,13 @@ impl Handle<ScanLibrary> for AppScene {
 }
 
 impl Handle<Tagged<TracksEnumerated>> for AppScene {
-    fn handle(&mut self, msg: &Tagged<TracksEnumerated>, _ctx: &Ctx, out: &mut Outbox) {
+    fn handle(&mut self, msg: &Tagged<TracksEnumerated>, ctx: &Ctx, out: &mut Outbox) {
         let Some(enumerated) = self.scan_job.as_ref().and_then(|job| job.open(msg)) else {
             return;
         };
-        self.track_count = enumerated.names.len();
+        self.track_count = enumerated.tracks.len();
+        self.covers.retain(&enumerated.tracks);
+        let mut pending = vec![];
         self.loaded = 0;
         self.progress_dirty = true;
         self.changes.push(Changes::Tracks(
@@ -34,12 +39,25 @@ impl Handle<Tagged<TracksEnumerated>> for AppScene {
                 .tracks
                 .iter()
                 .enumerate()
-                .map(|(index, track)| to_track_data(track.clone(), index as i32))
+                .map(|(index, track)| {
+                    let cover = track.cover.as_ref().and_then(|path| {
+                        let cover = self.covers.get(path);
+                        if cover.is_none() {
+                            pending.push((index, path.clone()));
+                        }
+                        cover
+                    });
+                    to_track_data(track, index as i32, cover)
+                })
                 .collect(),
         ));
+        self.cover_job = (!pending.is_empty()).then(|| ctx.jobs.spawn_stream(CoverJob(pending)));
         out.emit(QueueReplaced {
-            path: enumerated.path.clone(),
-            names: enumerated.names.clone(),
+            tracks: enumerated
+                .tracks
+                .iter()
+                .map(|track| track.locator.clone())
+                .collect(),
         });
         self.apply_ui();
     }
@@ -50,7 +68,13 @@ impl Handle<Tagged<TrackMetadataLoaded>> for AppScene {
         let Some(loaded) = self.scan_job.as_ref().and_then(|job| job.open(msg)) else {
             return;
         };
-        let track = to_track_data(loaded.track.clone(), loaded.index as i32);
+        // Freshly scanned tracks arrive at scan speed, so decoding one cover here is cheap.
+        let cover = loaded
+            .track
+            .cover
+            .clone()
+            .and_then(|path| self.covers.load(path));
+        let track = to_track_data(&loaded.track, loaded.index as i32, cover);
         self.changes.push(Changes::Metadata(loaded.index, track));
         self.loaded += 1;
         self.progress_dirty = true;
@@ -60,18 +84,16 @@ impl Handle<Tagged<TrackMetadataLoaded>> for AppScene {
 
 impl Handle<Tagged<ScanFinished>> for AppScene {
     fn handle(&mut self, msg: &Tagged<ScanFinished>, _ctx: &Ctx, _out: &mut Outbox) {
-        let Some(finished) = self.scan_job.as_ref().and_then(|job| job.open(msg)) else {
+        if self
+            .scan_job
+            .as_ref()
+            .and_then(|job| job.open(msg))
+            .is_none()
+        {
             return;
-        };
+        }
         self.loaded = self.track_count;
         self.progress_dirty = true;
-        if let Some(tracks) = finished.tracks.clone() {
-            _out.emit(n_music_core::messages::CacheReady {
-                path: finished.path.clone(),
-                timestamp: finished.timestamp,
-                tracks,
-            });
-        }
         self.apply_ui();
     }
 }

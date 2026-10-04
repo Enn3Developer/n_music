@@ -1,129 +1,153 @@
+use crate::library::covers::CoverStore;
+use crate::library::db::{LibraryDb, ScannedTrack, StoredTrack};
+use crate::library::LibraryPaths;
 use crate::messages::{ScanFinished, TrackMetadataLoaded, TracksEnumerated};
 use crate::music_track::MusicTrack;
-use crate::services::image::get_image_squared;
-use crate::settings::Settings;
-use crate::FileTrack;
-use crate::{remove_ext, strip_absolute_path};
+use crate::source::{Locator, Providers, StreamProvider, TrackEntry};
+use crate::{Track, TrackInfo};
 use n_event_bus::{job_emits, EventWriter, Job, JobToken, Tagged};
-use rand::prelude::SliceRandom;
-use rand::rng;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-fn enumerate_audio_files(path: &str) -> Vec<String> {
-    let mut names = vec![];
+/// Latest scan started; only that one may delete stale tracks and covers. A replaced scan is
+/// cancelled but its thread can still be running.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// Serializes deleting stale tracks and collecting unused covers.
+static CLEANUP_LOCK: Mutex<()> = Mutex::new(());
 
-    let directory = std::fs::read_dir(path)
-        .inspect_err(|error| log::warn!("Could not enumerate music directory {path:?}: {error}"));
-    if let Ok(dir) = directory {
-        for file in dir.flatten() {
-            if !file.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                continue;
+/// Loaded tracks are written at least this often, so a killed app (Android does not ask) keeps
+/// most of a long first scan.
+const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
+const CHECKPOINT_TRACKS: usize = 256;
+
+/// The tracks of every root, in a stable order, and whether every root could be listed.
+fn enumerate_audio_files(
+    provider: &dyn StreamProvider,
+    roots: &[Locator],
+) -> (Vec<TrackEntry>, bool) {
+    let mut seen = HashSet::new();
+    let mut entries = vec![];
+    let mut complete = true;
+    for root in roots {
+        match provider.list_tracks(root) {
+            Ok(listed) => entries.extend(
+                listed
+                    .into_iter()
+                    .filter(|entry| seen.insert(entry.locator.clone())),
+            ),
+            Err(error) => {
+                complete = false;
+                log::warn!("Could not enumerate library {root}: {error}");
             }
-            let Ok(Some(mime)) = infer::get_from_path(file.path()) else {
-                continue;
-            };
-            if !mime.mime_type().contains("audio") {
-                continue;
-            }
-
-            names.push(strip_absolute_path(
-                file.path().to_string_lossy().to_string(),
-            ));
         }
     }
-    names.shuffle(&mut rng());
-    names.shrink_to_fit();
-    names
+    entries.sort_by_cached_key(|entry| entry.locator.to_string());
+    (entries, complete)
 }
 
 pub struct ScanJob {
-    pub settings: Settings,
-    pub internal_dir: PathBuf,
+    pub roots: Vec<Locator>,
+    pub paths: LibraryPaths,
+    /// `false` reloads every track instead of trusting the database.
     pub check_cache: bool,
+    pub providers: Arc<Providers>,
 }
 
 job_emits!(ScanJob => Tagged<TracksEnumerated>, Tagged<TrackMetadataLoaded>, Tagged<ScanFinished>);
 
+/// A loaded track on its way to the database; `None` when it could not be read.
+type Loaded = (Locator, Option<u64>, Option<Track>);
+
 impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
-        let path = self.settings.path.clone();
-        log::info!("Scanning library {tag}: {path}");
-        let names = enumerate_audio_files(&path);
-        let len = names.len();
+        let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+        log::info!("Scanning libraries {tag}: {:?}", self.roots);
+        let providers = self.providers;
+        let (entries, complete) = enumerate_audio_files(providers.as_ref(), &self.roots);
+        let len = entries.len();
+        let covers = CoverStore::open(&self.paths.covers);
+        let mut db = self
+            .paths
+            .open_db()
+            .inspect_err(|error| {
+                log::error!(
+                    "Could not open the library database {}: {error}",
+                    self.paths.database.display()
+                )
+            })
+            .ok();
+        let mut stored = match db.as_ref().filter(|_| self.check_cache) {
+            Some(db) => db.tracks().unwrap_or_else(|error| {
+                log::error!("Could not read the library database: {error}");
+                HashMap::new()
+            }),
+            None => HashMap::new(),
+        };
 
-        let internal_dir = self.internal_dir;
-        let timestamp = self.settings.timestamp().ok();
-        let check_timestamp = self.settings.check_timestamp();
-        let file_tracks = self.settings.read_tracks(internal_dir);
-        let is_cached = check_timestamp
-            && !file_tracks.is_empty()
-            && self.check_cache
-            && names.iter().all(|name| {
-                file_tracks
-                    .iter()
-                    .any(|track| track.path == remove_ext(name))
-            });
-        log::debug!(
-            "Scan {tag}: timestamp matches={check_timestamp}, cache hit={is_cached}, files={len}"
-        );
-
+        let seen: HashSet<Locator> = entries.iter().map(|entry| entry.locator.clone()).collect();
+        let mut covers_exist = HashMap::new();
         let mut tracks = Vec::with_capacity(len);
-        for name in names.iter() {
-            if is_cached {
-                let track_without_ext = remove_ext(name);
-                if let Some(file_track) = file_tracks
-                    .iter()
-                    .find(|file_track| file_track.path == track_without_ext)
-                {
-                    tracks.push(file_track.clone());
-                }
-            } else {
-                tracks.push(FileTrack {
-                    path: remove_ext(name),
-                    title: remove_ext(name),
-                    artist: String::new(),
-                    length: 0.0,
-                    image: vec![],
+        let mut pending = vec![];
+        let mut unreadable = 0;
+        for (index, entry) in entries.into_iter().enumerate() {
+            let hit = entry
+                .version
+                .and_then(|version| {
+                    stored
+                        .remove(&entry.locator)
+                        .filter(|track| track.version == version)
+                })
+                // The OS may have cleaned the cache directory.
+                .filter(|track| {
+                    track
+                        .info
+                        .as_ref()
+                        .and_then(|info| info.cover.clone())
+                        .is_none_or(|cover| {
+                            *covers_exist
+                                .entry(cover)
+                                .or_insert_with_key(|cover: &PathBuf| cover.is_file())
+                        })
                 });
+            match hit {
+                Some(StoredTrack {
+                    info: Some(info), ..
+                }) => tracks.push(Arc::new(info)),
+                Some(StoredTrack { info: None, .. }) => {
+                    unreadable += 1;
+                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
+                }
+                None => {
+                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
+                    pending.push((index, entry));
+                }
             }
         }
-        tracks.shrink_to_fit();
-        writer.emit_tagged(
-            tag,
-            TracksEnumerated {
-                path: path.clone(),
-                names: names.clone(),
-                tracks,
-            },
+        drop(stored);
+        log::debug!(
+            "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
+            pending.len()
         );
-
-        if is_cached {
-            log::info!("Library scan {tag} completed from cache: {len} tracks");
-            writer.emit_tagged(
-                tag,
-                ScanFinished {
-                    tracks: None,
-                    path,
-                    timestamp,
-                },
-            );
-            return;
-        }
+        writer.emit_tagged(tag, TracksEnumerated { tracks });
 
         let concurrency = std::thread::available_parallelism()
             .map(usize::from)
             .unwrap_or(1)
-            .min(4);
-        let queue = Mutex::new(names.into_iter().enumerate());
-        let (tx, rx) = std::sync::mpsc::channel::<FileTrack>();
+            .min(4)
+            .min(pending.len());
+        let queue = Mutex::new(pending.into_iter());
+        let (tx, rx) = std::sync::mpsc::channel::<Loaded>();
         std::thread::scope(|scope| {
             for worker in 0..concurrency {
                 let tx = tx.clone();
                 let queue = &queue;
                 let writer = &writer;
-                let path = &path;
+                let provider = providers.as_ref();
+                let covers = &covers;
                 let token = &token;
                 std::thread::Builder::new()
                     .name(format!("scan {tag} metadata worker {worker}"))
@@ -131,65 +155,111 @@ impl Job for ScanJob {
                         if token.as_ref().is_some_and(JobToken::is_cancelled) {
                             break;
                         }
-                        let Some((index, name)) = queue.lock().unwrap().next() else {
+                        let Some((index, entry)) = queue.lock().unwrap().next() else {
                             break;
                         };
-                        let track_path = Path::new(path).join(&name);
-                        if let Some(file_track) = load_metadata(name, track_path) {
+                        let track = read_track(provider, covers, &entry.locator).map(Arc::new);
+                        if let Some(track) = &track {
                             writer.emit_tagged(
                                 tag,
                                 TrackMetadataLoaded {
                                     index,
-                                    track: file_track.clone(),
+                                    track: track.clone(),
                                 },
                             );
-                            let _ = tx.send(file_track);
+                        }
+                        if tx.send((entry.locator, entry.version, track)).is_err() {
+                            break;
                         }
                     })
                     .expect("Failed to spawn a scan metadata worker");
             }
+            drop(tx);
+            store_loaded(db.as_mut(), &rx);
         });
-        drop(tx);
-        let mut file_tracks: Vec<FileTrack> = rx.iter().collect();
-        file_tracks.shrink_to_fit();
-        if token.as_ref().is_some_and(JobToken::is_cancelled) {
+
+        let cancelled = token.as_ref().is_some_and(JobToken::is_cancelled);
+        if let Some(db) = db.as_mut().filter(|_| !cancelled && complete) {
+            let _lock = CLEANUP_LOCK.lock().unwrap();
+            if GENERATION.load(Ordering::SeqCst) == generation {
+                clean_up(db, &covers, &seen);
+            }
+        }
+        if cancelled {
             log::debug!("Library scan {tag} cancelled");
         } else {
-            log::info!(
-                "Library scan {tag} completed: {} of {len} tracks loaded",
-                file_tracks.len()
-            );
+            log::info!("Library scan {tag} completed: {len} tracks");
         }
-        writer.emit_tagged(
-            tag,
-            ScanFinished {
-                tracks: Some(Arc::new(file_tracks)),
-                path,
-                timestamp,
-            },
-        );
+        writer.emit_tagged(tag, ScanFinished);
     }
 }
 
-fn load_metadata(name: String, path: PathBuf) -> Option<FileTrack> {
-    let track = MusicTrack::new(path.to_string_lossy().to_string())
-        .inspect_err(|error| {
-            log::debug!("Could not prepare metadata for {}: {error}", path.display())
-        })
-        .ok()?;
-    let meta = track
-        .get_meta()
-        .inspect_err(|error| log::debug!("Could not read metadata for {}: {error}", path.display()))
-        .ok()?;
-    let image = get_image_squared(path, 128, 128);
+/// Writes loaded tracks to the database in batches until every worker is done.
+fn store_loaded(mut db: Option<&mut LibraryDb>, rx: &std::sync::mpsc::Receiver<Loaded>) {
+    let mut batch: Vec<Loaded> = vec![];
+    let mut last_write = Instant::now();
+    loop {
+        let finished = match rx.recv_timeout(CHECKPOINT_INTERVAL) {
+            Ok(loaded) => {
+                batch.push(loaded);
+                false
+            }
+            Err(RecvTimeoutError::Timeout) => false,
+            Err(RecvTimeoutError::Disconnected) => true,
+        };
+        let due = batch.len() >= CHECKPOINT_TRACKS || last_write.elapsed() >= CHECKPOINT_INTERVAL;
+        if !batch.is_empty() && (due || finished) {
+            if let Some(db) = db.as_deref_mut() {
+                // Tracks without a version cannot be validated later, so they are not stored.
+                let scanned: Vec<ScannedTrack> = batch
+                    .iter()
+                    .filter_map(|(locator, version, track)| {
+                        Some(ScannedTrack {
+                            locator,
+                            version: (*version)?,
+                            info: track.as_deref(),
+                        })
+                    })
+                    .collect();
+                if let Err(error) = db.save(&scanned) {
+                    log::error!("Could not save scanned tracks: {error}");
+                }
+            }
+            batch.clear();
+            last_write = Instant::now();
+        }
+        if finished {
+            break;
+        }
+    }
+}
 
-    Some(FileTrack {
-        path: remove_ext(name),
-        title: meta.title,
-        artist: meta.artist,
-        length: meta.time.length,
-        image: image
-            .and_then(|i| i.flatten_to_u8().into_iter().next())
-            .unwrap_or_default(),
-    })
+/// Forgets tracks that are gone and deletes covers no track uses any more.
+fn clean_up(db: &mut LibraryDb, covers: &CoverStore, seen: &HashSet<Locator>) {
+    match db.retain(seen) {
+        Ok(0) => {}
+        Ok(deleted) => log::debug!("Removed {deleted} missing tracks from the library"),
+        Err(error) => {
+            log::error!("Could not remove missing tracks from the library: {error}");
+            return;
+        }
+    }
+    match db.cover_names() {
+        Ok(used) => covers.retain(&used),
+        Err(error) => log::error!("Could not list the covers in use: {error}"),
+    }
+}
+
+/// Reads a track's metadata and stores its cover.
+fn read_track(
+    provider: &dyn StreamProvider,
+    covers: &CoverStore,
+    locator: &Locator,
+) -> Option<TrackInfo> {
+    let (mut info, cover) = MusicTrack::new(provider, locator)
+        .read_info()
+        .inspect_err(|error| log::debug!("Could not read metadata for {locator}: {error}"))
+        .ok()?;
+    info.cover = cover.and_then(|data| covers.store(&data, locator));
+    Some(info)
 }

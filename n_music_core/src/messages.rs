@@ -1,8 +1,7 @@
 use crate::queue::LoopStatus;
-use crate::{FileTrack, TrackTime, WindowSize};
+use crate::source::Locator;
+use crate::{Track, TrackTime, WindowSize};
 use n_event_bus::Message;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 macro_rules! messages {
     ($($msg:ty),+ $(,)?) => {
@@ -30,8 +29,7 @@ pub struct ToggleRepeat;
 pub struct PlaybackChanged(pub bool);
 pub struct TrackChanged {
     pub index: usize,
-    pub path: PathBuf,
-    pub name: Arc<str>,
+    pub locator: Locator,
 }
 pub struct VolumeChanged(pub f64);
 pub struct PositionChanged(pub TrackTime, pub i32, pub bool);
@@ -39,37 +37,21 @@ pub struct LoopStatusChanged(pub LoopStatus);
 
 pub struct SearchChanged(pub String);
 
-pub struct ScanLibrary {
-    pub settings: crate::settings::Settings,
-    pub internal_dir: PathBuf,
-    pub check_cache: bool,
-}
-pub struct CacheReady {
-    pub path: String,
-    pub timestamp: Option<u64>,
-    pub tracks: Arc<Vec<FileTrack>>,
-}
 pub struct OpenLink(pub String);
 pub struct ScanRequested {
+    /// `false` reloads every track's metadata instead of trusting the cache.
     pub check_cache: bool,
 }
 pub struct TracksEnumerated {
-    pub path: String,
-    pub names: Vec<String>,
-    pub tracks: Vec<FileTrack>,
+    pub tracks: Vec<Track>,
 }
 pub struct TrackMetadataLoaded {
     pub index: usize,
-    pub track: FileTrack,
+    pub track: Track,
 }
-pub struct ScanFinished {
-    pub tracks: Option<Arc<Vec<FileTrack>>>,
-    pub path: String,
-    pub timestamp: Option<u64>,
-}
+pub struct ScanFinished;
 pub struct QueueReplaced {
-    pub path: String,
-    pub names: Vec<String>,
+    pub tracks: Vec<Locator>,
 }
 
 pub struct AppVisibilityChanged(pub bool);
@@ -81,8 +63,6 @@ pub struct LocaleChangeRequested(pub String);
 pub struct PathChangeRequested;
 
 messages!(
-    ScanLibrary,
-    CacheReady,
     OpenLink,
     AppVisibilityChanged,
     WindowSizeCaptured,

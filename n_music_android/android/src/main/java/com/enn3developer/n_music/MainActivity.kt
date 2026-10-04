@@ -1,7 +1,6 @@
 package com.enn3developer.n_music
 
 import android.Manifest.permission.POST_NOTIFICATIONS
-import android.Manifest.permission.READ_MEDIA_AUDIO
 import android.app.NativeActivity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -53,20 +52,13 @@ class MainActivity : NativeActivity() {
     private var directoryRequest: Long? = null
     private var theme: Int = 0 // App theme: 0 = System, 1 = Light, 2 = Dark
 
-    private fun askDirectoryWithPermission() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-        startActivityForResult(intent, ASK_DIRECTORY)
-    }
-
+    // The picked folder is read through the Storage Access Framework, which needs no runtime
+    // permission.
     @Suppress("unused")
     private fun askDirectory(requestId: Long) {
         runOnUiThread {
             directoryRequest = requestId
-            if (!checkPermissions()) {
-                requestPermissions()
-            } else {
-                askDirectoryWithPermission()
-            }
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), ASK_DIRECTORY)
         }
     }
 
@@ -188,16 +180,22 @@ class MainActivity : NativeActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != ASK_DIRECTORY) return
         val uri = data?.data
-        val path = uri?.path
-        if (resultCode != RESULT_OK || uri == null || path == null) {
+        if (resultCode != RESULT_OK || uri == null) {
             finishDirectory("")
             return
         }
-        applicationContext.contentResolver.takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-        )
-        finishDirectory(path.replace("/tree/primary:", "/storage/emulated/0/"))
+        val resolver = applicationContext.contentResolver
+        resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Only the current library folder needs access; persisted grants are capped per app.
+        for (permission in resolver.persistedUriPermissions) {
+            if (permission.uri != uri) {
+                resolver.releasePersistableUriPermission(
+                    permission.uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
+        finishDirectory(uri.toString())
     }
 
     override fun onRequestPermissionsResult(
@@ -208,35 +206,27 @@ class MainActivity : NativeActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             REQUEST_PERMISSION_CODE -> if (grantResults.isNotEmpty()) {
-                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(applicationContext, "Permission granted", Toast.LENGTH_SHORT)
-                        .show()
-                    if (directoryRequest != null) askDirectoryWithPermission()
+                val message = if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    "Permission granted"
                 } else {
-                    finishDirectory("")
-                    Toast.makeText(applicationContext, "Permission denied", Toast.LENGTH_SHORT)
-                        .show()
+                    "Permission denied"
                 }
-            } else {
-                finishDirectory("")
+                Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     @Suppress("unused")
     fun checkPermissions(): Boolean {
-        val readMediaAudio =
-            ContextCompat.checkSelfPermission(applicationContext, READ_MEDIA_AUDIO)
         val grantNotification =
             ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
-        return (readMediaAudio == PackageManager.PERMISSION_GRANTED) &&
-            (grantNotification == PackageManager.PERMISSION_GRANTED)
+        return grantNotification == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestPermissions() {
         ActivityCompat.requestPermissions(
             this,
-            arrayOf(READ_MEDIA_AUDIO, POST_NOTIFICATIONS),
+            arrayOf(POST_NOTIFICATIONS),
             REQUEST_PERMISSION_CODE,
         )
     }

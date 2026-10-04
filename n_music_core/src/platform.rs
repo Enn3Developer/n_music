@@ -9,6 +9,8 @@ pub trait Platform: Send + Sync {
     fn open_link(&self, link: String);
     /// Ask underlying platform to get the app directory
     fn internal_dir(&self) -> PathBuf;
+    /// Ask underlying platform for a directory for regenerable data (library cache, covers)
+    fn cache_dir(&self) -> PathBuf;
     /// Ask underlying platform to ask user for the music dir
     fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter);
 }
