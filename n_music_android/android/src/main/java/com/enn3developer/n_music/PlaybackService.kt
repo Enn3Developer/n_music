@@ -28,15 +28,24 @@ class PlaybackService : MediaSessionService() {
         "com.enn3developer.n_music.TOGGLE_REPEAT",
         Bundle.EMPTY,
     )
-    private val updateRepeatLayout = Runnable {
+    private val toggleShuffleCommand = SessionCommand(
+        "com.enn3developer.n_music.TOGGLE_SHUFFLE",
+        Bundle.EMPTY,
+    )
+    private val updateModeLayout = Runnable {
         val session = mediaSession ?: return@Runnable
-        session.setCustomLayout(listOf(repeatButton(session.player.repeatMode)))
+        session.setCustomLayout(modeButtons(session.player))
     }
-    private val repeatListener = object : Player.Listener {
+    private val modeListener = object : Player.Listener {
+        // Let Media3 dispatch the new player state before publishing the matching buttons.
         override fun onRepeatModeChanged(repeatMode: Int) {
-            // Let Media3 dispatch the new player state before publishing the matching button.
-            handler.removeCallbacks(updateRepeatLayout)
-            handler.post(updateRepeatLayout)
+            handler.removeCallbacks(updateModeLayout)
+            handler.post(updateModeLayout)
+        }
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            handler.removeCallbacks(updateModeLayout)
+            handler.post(updateModeLayout)
         }
     }
     private var audioManager: AudioManager? = null
@@ -68,8 +77,9 @@ class PlaybackService : MediaSessionService() {
         val player: Player = PlaybackController.player()
         val session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
-            // Repeat capability alone does not create a button in Android's media controls.
-            .setCustomLayout(listOf(repeatButton(player.repeatMode)))
+            // Repeat and shuffle capabilities alone do not create buttons in Android's media
+            // controls.
+            .setCustomLayout(modeButtons(player))
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
                     session: MediaSession,
@@ -78,6 +88,7 @@ class PlaybackService : MediaSessionService() {
                     .setAvailableSessionCommands(
                         ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                             .add(toggleRepeatCommand)
+                            .add(toggleShuffleCommand)
                             .build()
                     )
                     .build()
@@ -88,21 +99,27 @@ class PlaybackService : MediaSessionService() {
                     customCommand: SessionCommand,
                     args: Bundle,
                 ): ListenableFuture<SessionResult> {
-                    if (customCommand != toggleRepeatCommand) {
-                        return super.onCustomCommand(session, controller, customCommand, args)
-                    }
                     val sessionPlayer = session.player
-                    sessionPlayer.repeatMode = if (sessionPlayer.repeatMode == Player.REPEAT_MODE_ONE) {
-                        Player.REPEAT_MODE_ALL
-                    } else {
-                        Player.REPEAT_MODE_ONE
+                    when (customCommand) {
+                        // Off, all, one, like the native ToggleRepeat.
+                        toggleRepeatCommand -> sessionPlayer.repeatMode =
+                            when (sessionPlayer.repeatMode) {
+                                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                else -> Player.REPEAT_MODE_OFF
+                            }
+
+                        toggleShuffleCommand ->
+                            sessionPlayer.shuffleModeEnabled = !sessionPlayer.shuffleModeEnabled
+
+                        else -> return super.onCustomCommand(session, controller, customCommand, args)
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             })
             .build()
         mediaSession = session
-        player.addListener(repeatListener)
+        player.addListener(modeListener)
         addSession(session)
 
         val manager = getSystemService(AUDIO_SERVICE) as AudioManager
@@ -115,13 +132,26 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
-    private fun repeatButton(repeatMode: Int): CommandButton {
-        val repeatOne = repeatMode == Player.REPEAT_MODE_ONE
-        return CommandButton.Builder(
-            if (repeatOne) CommandButton.ICON_REPEAT_ONE else CommandButton.ICON_REPEAT_ALL
+    private fun modeButtons(player: Player): List<CommandButton> =
+        listOf(repeatButton(player.repeatMode), shuffleButton(player.shuffleModeEnabled))
+
+    private fun shuffleButton(enabled: Boolean): CommandButton =
+        CommandButton.Builder(
+            if (enabled) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF
         )
+            .setSessionCommand(toggleShuffleCommand)
+            .setDisplayName(getString(if (enabled) R.string.shuffle_on else R.string.shuffle_off))
+            .build()
+
+    private fun repeatButton(repeatMode: Int): CommandButton {
+        val (icon, name) = when (repeatMode) {
+            Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE to R.string.repeat_one
+            Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL to R.string.repeat_all
+            else -> CommandButton.ICON_REPEAT_OFF to R.string.repeat_off
+        }
+        return CommandButton.Builder(icon)
             .setSessionCommand(toggleRepeatCommand)
-            .setDisplayName(getString(if (repeatOne) R.string.repeat_one else R.string.repeat_all))
+            .setDisplayName(getString(name))
             .build()
     }
 
@@ -138,9 +168,9 @@ class PlaybackService : MediaSessionService() {
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         audioManager = null
         handler.removeCallbacks(notifyOutputDeviceChanged)
-        handler.removeCallbacks(updateRepeatLayout)
+        handler.removeCallbacks(updateModeLayout)
         mediaSession?.let { session ->
-            session.player.removeListener(repeatListener)
+            session.player.removeListener(modeListener)
             removeSession(session)
             session.release()
         }

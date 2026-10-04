@@ -19,10 +19,10 @@ export component App {
             viewport-width: parent.width - 20px;
             viewport-y <=> AppData.viewport-y;
             VerticalLayout {
-                for track[i] in AppData.tracks: Track {
+                for track[row] in AppData.tracks: Track {
                     height: track.visible ? 84px : 0px;
                     track: track;
-                    playing: AppData.playing == track.index;
+                    playing: AppData.playing == row;
                     clicked => {
                         AppData.clicked(track.index);
                     }

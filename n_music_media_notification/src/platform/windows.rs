@@ -6,9 +6,9 @@ use windows::core::{factory, w, HSTRING};
 use windows::Foundation::{TimeSpan, TypedEventHandler};
 use windows::Media::{
     MediaPlaybackStatus, MediaPlaybackType, PlaybackPositionChangeRequestedEventArgs,
-    SystemMediaTransportControls, SystemMediaTransportControlsButton,
-    SystemMediaTransportControlsButtonPressedEventArgs, SystemMediaTransportControlsDisplayUpdater,
-    SystemMediaTransportControlsTimelineProperties,
+    ShuffleEnabledChangeRequestedEventArgs, SystemMediaTransportControls,
+    SystemMediaTransportControlsButton, SystemMediaTransportControlsButtonPressedEventArgs,
+    SystemMediaTransportControlsDisplayUpdater, SystemMediaTransportControlsTimelineProperties,
 };
 use windows::Storage::StorageFile;
 use windows::Storage::Streams::RandomAccessStreamReference;
@@ -43,6 +43,7 @@ enum Command {
         artist: String,
         cover: Option<PathBuf>,
     },
+    Shuffle(bool),
 }
 
 type Startup = Result<(flume::Sender<Command>, u32), String>;
@@ -102,6 +103,7 @@ impl Backend for Smtc {
                 artist: state.artist.clone(),
                 cover: state.cover.clone(),
             },
+            Change::Shuffle => Command::Shuffle(state.shuffle),
             Change::Volume | Change::Loop => return,
         };
 
@@ -264,6 +266,19 @@ unsafe fn initialize_controls(window: HWND, emit: &Emit) -> Result<Controls, Str
             .PlaybackPositionChangeRequested(&position_handler)
             .map_err(|error| error.to_string())?;
 
+        let shuffle_emit = emit.clone();
+        let shuffle_handler = TypedEventHandler::new(
+            move |_sender, args: windows::core::Ref<'_, ShuffleEnabledChangeRequestedEventArgs>| {
+                shuffle_emit(MediaEvent::SetShuffle(
+                    args.ok()?.RequestedShuffleEnabled()?,
+                ));
+                Ok(())
+            },
+        );
+        controls
+            .ShuffleEnabledChangeRequested(&shuffle_handler)
+            .map_err(|error| error.to_string())?;
+
         let timeline = SystemMediaTransportControlsTimelineProperties::new()
             .map_err(|error| error.to_string())?;
 
@@ -329,6 +344,9 @@ fn apply(context: &Context, command: Command) {
                 }
             }
             let _ = context.updater.Update();
+        }
+        Command::Shuffle(shuffle) => {
+            let _ = context.controls.SetShuffleEnabled(shuffle);
         }
     }
 }

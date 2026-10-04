@@ -63,7 +63,8 @@ impl Backend for NowPlaying {
                 discontinuity: false,
             }
             | Change::Volume
-            | Change::Loop => return,
+            | Change::Loop
+            | Change::Shuffle => return,
         };
 
         let state = Snapshot::from(state);

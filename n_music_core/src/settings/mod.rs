@@ -8,6 +8,7 @@ mod storage;
 
 pub use storage::{JsonFileStorage, MemoryStorage};
 
+use crate::library::track::ReplayGainMode;
 use crate::queue::LoopStatus;
 use crate::source::Locator;
 use serde::de::DeserializeOwned;
@@ -112,6 +113,8 @@ impl Section for LibrarySettings {
 pub struct PlaybackSettings {
     pub volume: f64,
     pub loop_status: LoopStatus,
+    pub shuffle: bool,
+    pub replay_gain: ReplayGainMode,
 }
 
 impl Default for PlaybackSettings {
@@ -119,6 +122,8 @@ impl Default for PlaybackSettings {
         Self {
             volume: 1.0,
             loop_status: LoopStatus::default(),
+            shuffle: false,
+            replay_gain: ReplayGainMode::default(),
         }
     }
 }

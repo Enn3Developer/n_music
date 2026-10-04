@@ -1,8 +1,10 @@
 //! What the library knows about a track, as read from the file itself.
 
 use crate::source::Locator;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
+use symphonia_core::meta::StandardTag;
 
 /// Shared, immutable track information: the bus, the UI and the queue all hold the same copy.
 pub type Track = Arc<TrackInfo>;
@@ -15,6 +17,60 @@ pub struct ReplayGain {
     pub track_peak: Option<f32>,
     pub album_gain: Option<f32>,
     pub album_peak: Option<f32>,
+}
+
+impl ReplayGain {
+    /// Takes the first value of a ReplayGain tag; returns whether `tag` is one.
+    pub(crate) fn read(&mut self, tag: &StandardTag) -> bool {
+        let (field, value) = match tag {
+            StandardTag::ReplayGainTrackGain(value) => (&mut self.track_gain, value),
+            StandardTag::ReplayGainTrackPeak(value) => (&mut self.track_peak, value),
+            StandardTag::ReplayGainAlbumGain(value) => (&mut self.album_gain, value),
+            StandardTag::ReplayGainAlbumPeak(value) => (&mut self.album_peak, value),
+            _ => return false,
+        };
+        // Gains are written like `-6.5 dB`.
+        let value = value
+            .trim()
+            .trim_end_matches(|c: char| c.is_alphabetic() || c.is_whitespace())
+            .parse::<f32>()
+            .ok()
+            .filter(|value| value.is_finite());
+        if let Some(value) = value {
+            field.get_or_insert(value);
+        }
+        true
+    }
+
+    /// The linear gain to apply in `mode`, lowered when the peak would clip; 1 when untagged.
+    pub fn factor(&self, mode: ReplayGainMode) -> f32 {
+        let (gain, peak) = match mode {
+            ReplayGainMode::Off => return 1.0,
+            ReplayGainMode::Track => (self.track_gain, self.track_peak),
+            ReplayGainMode::Album => match self.album_gain {
+                Some(gain) => (Some(gain), self.album_peak),
+                None => (self.track_gain, self.track_peak),
+            },
+        };
+        let Some(gain) = gain else {
+            return 1.0;
+        };
+        let factor = 10f32.powf(gain / 20.0);
+        match peak.filter(|peak| *peak > 0.0) {
+            Some(peak) => factor.min(1.0 / peak),
+            None => factor,
+        }
+    }
+}
+
+/// Which ReplayGain value playback applies.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReplayGainMode {
+    #[default]
+    Off,
+    Track,
+    /// Album gain, or the track gain when the album has none.
+    Album,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,6 +97,8 @@ pub struct TrackInfo {
     pub replay_gain: ReplayGain,
     /// Thumbnail of the embedded cover, see [`super::covers`].
     pub cover: Option<PathBuf>,
+    /// See [`super::fingerprint`]; `None` when there was no audio to hash.
+    pub fingerprint: Option<u64>,
 }
 
 impl TrackInfo {
@@ -65,6 +123,7 @@ impl TrackInfo {
             bits_per_sample: None,
             replay_gain: ReplayGain::default(),
             cover: None,
+            fingerprint: None,
         }
     }
 

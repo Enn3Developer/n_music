@@ -4,32 +4,43 @@ mod playback;
 
 use crate::ui::{CoverBuffer, CoverCache};
 use crate::{AppData, MainWindow, TrackData};
-use n_event_bus::{Ctx, Registrar, RunningJob, ShutdownRequested, Subscriber};
-use n_music_core::jobs::scan::ScanJob;
-use n_music_core::library::LibraryPaths;
+use n_event_bus::{Ctx, Message, Registrar, RunningJob, ShutdownRequested, Subscriber};
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanRequested, SearchChanged,
-    TrackChanged, VolumeChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ScanFinished, ScanRequested,
+    SearchChanged, TrackChanged, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use n_music_core::queue::LoopStatus;
-use n_music_core::settings::{LibrarySettings, Options};
-use n_music_core::source::Providers;
+use n_music_core::source::Locator;
 use slint::{ComponentHandle, Model, VecModel, Weak};
 use std::any::Any;
+use std::collections::HashMap;
 use std::mem;
-use std::sync::Arc;
+
+/// A row of the track list was clicked; the library index of its track.
+pub struct TrackClicked(pub usize);
+
+impl Message for TrackClicked {}
 
 pub enum Changes {
     Tracks(Vec<TrackData>),
+    /// Rows rearranged into this order of library indexes.
+    Order(Vec<usize>),
     Metadata(usize, TrackData),
     Cover(usize, CoverBuffer),
 }
 
 pub struct AppScene {
     window: Weak<MainWindow>,
-    scan_job: Option<RunningJob>,
     cover_job: Option<RunningJob>,
+    /// Row of the current track.
     playing_index: i32,
+    /// The current track.
+    playing: Option<Locator>,
+    /// The library's tracks, by library index.
+    locators: Vec<Locator>,
+    index_of: HashMap<Locator, usize>,
+    /// Row of each library index; rows follow the play order.
+    row_of: Vec<usize>,
     position: f64,
     seek_revision: i32,
     position_str: String,
@@ -49,26 +60,19 @@ pub struct AppScene {
     position_text_dirty: bool,
     length_dirty: bool,
     visible: bool,
-    providers: Arc<Providers>,
-    library: Options<LibrarySettings>,
-    paths: LibraryPaths,
     covers: CoverCache,
 }
 
 impl AppScene {
-    pub fn new(
-        window: Weak<MainWindow>,
-        volume: f64,
-        loop_status: LoopStatus,
-        providers: Arc<Providers>,
-        library: Options<LibrarySettings>,
-        paths: LibraryPaths,
-    ) -> Self {
+    pub fn new(window: Weak<MainWindow>, volume: f64, loop_status: LoopStatus) -> Self {
         Self {
             window,
-            scan_job: None,
             cover_job: None,
             playing_index: 0,
+            playing: None,
+            locators: vec![],
+            index_of: HashMap::new(),
+            row_of: vec![],
             position: 0.0,
             seek_revision: 0,
             position_str: String::from("00:00"),
@@ -88,9 +92,6 @@ impl AppScene {
             position_text_dirty: true,
             length_dirty: true,
             visible: true,
-            providers,
-            library,
-            paths,
             covers: CoverCache::default(),
         }
     }
@@ -111,12 +112,29 @@ impl Subscriber for AppScene {
         reg.on::<ShutdownRequested>();
         reg.on::<n_music_core::messages::AppVisibilityChanged>();
         reg.on::<SearchChanged>();
-        ScanJob::subscribe(reg);
+        reg.on::<QueueChanged>();
+        reg.on::<TracksEnumerated>();
+        reg.on::<TrackMetadataLoaded>();
+        reg.on::<ScanFinished>();
+        reg.on::<TrackClicked>();
         covers::CoverJob::subscribe(reg);
     }
 }
 
 impl AppScene {
+    /// The row showing the track at library `index`.
+    pub(crate) fn row(&self, index: usize) -> usize {
+        self.row_of.get(index).copied().unwrap_or(index)
+    }
+
+    /// The row of the current track, or 0.
+    pub(crate) fn playing_row(&self) -> i32 {
+        self.playing
+            .as_ref()
+            .and_then(|locator| self.index_of.get(locator))
+            .map_or(0, |&index| self.row(index) as i32)
+    }
+
     pub(crate) fn apply_ui(&mut self) {
         if !self.visible
             || !(self.dirty
@@ -191,6 +209,20 @@ impl AppScene {
                     Changes::Tracks(tracks) => {
                         app_data.set_tracks(VecModel::from_slice(&tracks));
                     }
+                    Changes::Order(order) => {
+                        let tracks = app_data.get_tracks();
+                        let mut by_index: Vec<Option<TrackData>> = vec![None; tracks.row_count()];
+                        for track in tracks.iter() {
+                            if let Some(slot) = by_index.get_mut(track.index as usize) {
+                                *slot = Some(track);
+                            }
+                        }
+                        for (row, index) in order.into_iter().enumerate() {
+                            if let Some(track) = by_index.get_mut(index).and_then(Option::take) {
+                                tracks.set_row_data(row, track);
+                            }
+                        }
+                    }
                     Changes::Metadata(index, track) => {
                         app_data.get_tracks().set_row_data(index, track);
                     }
@@ -247,7 +279,6 @@ impl AppScene {
 
 impl n_event_bus::Handle<ShutdownRequested> for AppScene {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut n_event_bus::Outbox) {
-        self.scan_job = None;
         self.cover_job = None;
         self.visible = false;
         out.shutdown_ready();

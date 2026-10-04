@@ -26,7 +26,7 @@ use n_event_bus::{
 use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
     LoopStatusChanged, Pause, Play, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, Seek,
-    SetLoopStatus, SetVolume, TogglePause, TrackChanged, VolumeChanged,
+    SetLoopStatus, SetShuffle, SetVolume, ShuffleChanged, TogglePause, TrackChanged, VolumeChanged,
 };
 use n_music_core::queue::LoopStatus as QueueLoopStatus;
 use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
@@ -82,9 +82,11 @@ fn dispatch(writer: &EventWriter, event: MediaEvent) {
         MediaEvent::SeekAbsolute(seconds) => writer.emit(Seek::Absolute(seconds)),
         MediaEvent::SetVolume(volume) => writer.emit(SetVolume(volume)),
         MediaEvent::SetLoopStatus(loop_status) => writer.emit(SetLoopStatus(match loop_status {
+            LoopStatus::Off => QueueLoopStatus::Off,
             LoopStatus::Playlist => QueueLoopStatus::Playlist,
             LoopStatus::File => QueueLoopStatus::File,
         })),
+        MediaEvent::SetShuffle(shuffle) => writer.emit(SetShuffle(shuffle)),
     }
 }
 
@@ -100,6 +102,7 @@ impl Subscriber for MediaNotification {
         reg.on::<VolumeChanged>();
         reg.on::<PositionChanged>();
         reg.on::<LoopStatusChanged>();
+        reg.on::<ShuffleChanged>();
         reg.on::<ShutdownRequested>();
     }
 }
@@ -121,6 +124,7 @@ impl Handle<VolumeChanged> for MediaNotification {
 impl Handle<LoopStatusChanged> for MediaNotification {
     fn handle(&mut self, msg: &LoopStatusChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.state.write().unwrap().loop_status = match msg.0 {
+            QueueLoopStatus::Off => LoopStatus::Off,
             QueueLoopStatus::Playlist => LoopStatus::Playlist,
             QueueLoopStatus::File => LoopStatus::File,
         };
@@ -165,6 +169,13 @@ impl Handle<Tagged<MetadataLoaded>> for MediaNotification {
             state.cover = track.cover.clone();
         }
         self.update(Change::Metadata);
+    }
+}
+
+impl Handle<ShuffleChanged> for MediaNotification {
+    fn handle(&mut self, msg: &ShuffleChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        self.state.write().unwrap().shuffle = msg.0;
+        self.update(Change::Shuffle);
     }
 }
 

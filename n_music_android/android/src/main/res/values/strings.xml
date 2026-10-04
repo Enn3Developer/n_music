@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="repeat_off">Repeat off</string>
     <string name="repeat_all">Repeat all</string>
     <string name="repeat_one">Repeat one</string>
+    <string name="shuffle_on">Shuffle on</string>
+    <string name="shuffle_off">Shuffle off</string>
 </resources>

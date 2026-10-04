@@ -1,7 +1,6 @@
 use crate::library::covers::CoverStore;
 use crate::library::db::{LibraryDb, ScannedTrack, StoredTrack};
 use crate::library::LibraryPaths;
-use crate::messages::{ScanFinished, TrackMetadataLoaded, TracksEnumerated};
 use crate::music_track::MusicTrack;
 use crate::source::{Locator, Providers, StreamProvider, TrackEntry};
 use crate::{Track, TrackInfo};
@@ -57,7 +56,18 @@ pub struct ScanJob {
     pub providers: Arc<Providers>,
 }
 
-job_emits!(ScanJob => Tagged<TracksEnumerated>, Tagged<TrackMetadataLoaded>, Tagged<ScanFinished>);
+/// What a scan reports, in this order.
+pub enum ScanEvent {
+    /// Every track found; those not loaded yet are placeholders.
+    Enumerated(Vec<Track>),
+    /// A track's metadata, read from the file; `index` is its place in `Enumerated`.
+    Loaded { index: usize, track: Track },
+    /// The scan is over. `complete` when it ran to the end over every root: tracks that are
+    /// gone are then forgotten, and references to moved files point to their new location.
+    Finished { complete: bool },
+}
+
+job_emits!(ScanJob => Tagged<ScanEvent>);
 
 /// A loaded track on its way to the database; `None` when it could not be read.
 type Loaded = (Locator, Option<u64>, Option<Track>);
@@ -132,7 +142,7 @@ impl Job for ScanJob {
             "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
             pending.len()
         );
-        writer.emit_tagged(tag, TracksEnumerated { tracks });
+        writer.emit_tagged(tag, ScanEvent::Enumerated(tracks));
 
         let concurrency = std::thread::available_parallelism()
             .map(usize::from)
@@ -162,7 +172,7 @@ impl Job for ScanJob {
                         if let Some(track) = &track {
                             writer.emit_tagged(
                                 tag,
-                                TrackMetadataLoaded {
+                                ScanEvent::Loaded {
                                     index,
                                     track: track.clone(),
                                 },
@@ -179,7 +189,8 @@ impl Job for ScanJob {
         });
 
         let cancelled = token.as_ref().is_some_and(JobToken::is_cancelled);
-        if let Some(db) = db.as_mut().filter(|_| !cancelled && complete) {
+        let complete = complete && !cancelled;
+        if let Some(db) = db.as_mut().filter(|_| complete) {
             let _lock = CLEANUP_LOCK.lock().unwrap();
             if GENERATION.load(Ordering::SeqCst) == generation {
                 clean_up(db, &covers, &seen);
@@ -190,7 +201,7 @@ impl Job for ScanJob {
         } else {
             log::info!("Library scan {tag} completed: {len} tracks");
         }
-        writer.emit_tagged(tag, ScanFinished);
+        writer.emit_tagged(tag, ScanEvent::Finished { complete });
     }
 }
 
@@ -234,7 +245,7 @@ fn store_loaded(mut db: Option<&mut LibraryDb>, rx: &std::sync::mpsc::Receiver<L
     }
 }
 
-/// Forgets tracks that are gone and deletes covers no track uses any more.
+/// Forgets tracks that are gone, follows moved files and deletes covers no track uses any more.
 fn clean_up(db: &mut LibraryDb, covers: &CoverStore, seen: &HashSet<Locator>) {
     match db.retain(seen) {
         Ok(0) => {}
@@ -243,6 +254,9 @@ fn clean_up(db: &mut LibraryDb, covers: &CoverStore, seen: &HashSet<Locator>) {
             log::error!("Could not remove missing tracks from the library: {error}");
             return;
         }
+    }
+    if let Err(error) = db.repoint() {
+        log::error!("Could not follow moved tracks: {error}");
     }
     match db.cover_names() {
         Ok(used) => covers.retain(&used),

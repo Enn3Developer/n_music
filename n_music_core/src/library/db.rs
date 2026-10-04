@@ -12,11 +12,14 @@ pub use rusqlite::Error;
 pub type Result<T> = rusqlite::Result<T>;
 
 /// Schema migrations, applied in order; `PRAGMA user_version` counts the applied ones.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/001_tracks.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/001_tracks.sql"),
+    include_str!("migrations/002_user_data.sql"),
+];
 
 /// Bump whenever [`crate::music_track::MusicTrack::read_info`] reads more or differently: rows
 /// written by an older reader are then read again on the next scan.
-pub const FORMAT: i64 = 1;
+pub const FORMAT: i64 = 2;
 
 const KIND_LOCAL: i64 = 0;
 const KIND_DOCUMENT: i64 = 1;
@@ -36,7 +39,7 @@ pub struct ScannedTrack<'a> {
 }
 
 pub struct LibraryDb {
-    conn: Connection,
+    pub(super) conn: Connection,
     covers: PathBuf,
 }
 
@@ -206,6 +209,7 @@ impl LibraryDb {
             cover: row
                 .get::<_, Option<String>>(23)?
                 .map(|name| self.covers.join(name)),
+            fingerprint: row.get::<_, Option<i64>>(24)?.map(|value| value as u64),
         };
         Ok(Some(StoredRow {
             id,
@@ -241,7 +245,7 @@ impl LibraryDb {
 /// Columns read by [`LibraryDb::read_row`], in order.
 const COLUMNS: &str = "id, kind, location, name, version, readable, title, album, album_artist, \
     track_number, track_total, disc_number, disc_total, year, length, codec, sample_rate, \
-    channels, bits_per_sample, track_gain, track_peak, album_gain, album_peak, cover";
+    channels, bits_per_sample, track_gain, track_peak, album_gain, album_peak, cover, fingerprint";
 
 struct StoredRow {
     id: i64,
@@ -265,9 +269,9 @@ fn save_track(transaction: &Transaction, track: &ScannedTrack) -> Result<()> {
             "INSERT INTO tracks (kind, location, name, version, format, readable, title, album, \
                  album_artist, track_number, track_total, disc_number, disc_total, year, length, \
                  codec, sample_rate, channels, bits_per_sample, track_gain, track_peak, \
-                 album_gain, album_peak, cover) \
+                 album_gain, album_peak, cover, fingerprint) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                 ?18, ?19, ?20, ?21, ?22, ?23, ?24) \
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25) \
              ON CONFLICT (location) DO UPDATE SET kind = excluded.kind, name = excluded.name, \
                  version = excluded.version, format = excluded.format, \
                  readable = excluded.readable, title = excluded.title, album = excluded.album, \
@@ -278,7 +282,8 @@ fn save_track(transaction: &Transaction, track: &ScannedTrack) -> Result<()> {
                  sample_rate = excluded.sample_rate, channels = excluded.channels, \
                  bits_per_sample = excluded.bits_per_sample, track_gain = excluded.track_gain, \
                  track_peak = excluded.track_peak, album_gain = excluded.album_gain, \
-                 album_peak = excluded.album_peak, cover = excluded.cover \
+                 album_peak = excluded.album_peak, cover = excluded.cover, \
+                 fingerprint = excluded.fingerprint \
              RETURNING id",
         )?
         .query_row(
@@ -307,6 +312,8 @@ fn save_track(transaction: &Transaction, track: &ScannedTrack) -> Result<()> {
                 gain.and_then(|gain| gain.album_gain),
                 gain.and_then(|gain| gain.album_peak),
                 cover,
+                info.and_then(|info| info.fingerprint)
+                    .map(|value| value as i64),
             ],
             |row| row.get(0),
         )?;
@@ -338,7 +345,7 @@ fn save_values(transaction: &Transaction, table: &str, id: i64, values: &[String
     Ok(())
 }
 
-fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&str>)> {
+pub(super) fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&str>)> {
     match locator {
         Locator::Local(path) => Some((KIND_LOCAL, path, None)),
         Locator::Document { uri, name } => Some((KIND_DOCUMENT, uri, Some(name))),
@@ -346,7 +353,7 @@ fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&str>)> {
     }
 }
 
-fn decode_locator(kind: i64, location: String, name: Option<String>) -> Option<Locator> {
+pub(super) fn decode_locator(kind: i64, location: String, name: Option<String>) -> Option<Locator> {
     match kind {
         KIND_LOCAL => Some(Locator::Local(location)),
         KIND_DOCUMENT => Some(Locator::Document {

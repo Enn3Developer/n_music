@@ -1,8 +1,13 @@
 //! Scan results kept between launches: the library database and a shared cover store.
 
+pub mod catalog;
 pub mod covers;
 pub mod db;
+pub mod fingerprint;
+pub mod query;
+pub mod service;
 pub mod track;
+pub mod user_data;
 
 use std::io;
 use std::path::{Path, PathBuf};

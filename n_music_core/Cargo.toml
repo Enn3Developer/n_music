@@ -34,6 +34,7 @@ tempfile = "3.20"
 infer = { version = "0.22", default-features = false, features = ["std"] }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
+rubato = "5"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"

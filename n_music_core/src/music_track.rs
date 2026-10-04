@@ -1,4 +1,5 @@
-use crate::library::track::TrackInfo;
+use crate::library::fingerprint::fingerprint;
+use crate::library::track::{ReplayGain, TrackInfo};
 use crate::services::image::tag_cover;
 use crate::source::{Locator, OpenedStream, StreamProvider};
 use crate::{TrackTime, CODEC_REGISTRY, PROBE};
@@ -7,7 +8,7 @@ use std::io;
 use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia_core::meta::{StandardTag, StandardVisualKey};
+use symphonia_core::meta::{MetadataContainer, StandardTag, StandardVisualKey};
 
 /// A track read through a [`StreamProvider`]
 pub struct MusicTrack<'a> {
@@ -72,35 +73,23 @@ impl<'a> MusicTrack<'a> {
 
         let mut tags = TagReader::default();
         let mut cover: Option<(bool, Vec<u8>)> = None;
-        let mut metadata_log = format.metadata();
-        while let Some(metadata) = metadata_log.current() {
-            let containers = std::iter::once(&metadata.media).chain(
-                metadata
-                    .per_track
-                    .iter()
-                    .filter(|metadata| metadata.track_id == u64::from(track_id))
-                    .map(|metadata| &metadata.metadata),
-            );
-            for container in containers {
-                for tag in &container.tags {
-                    if let Some(tag) = &tag.std {
-                        tags.read(&mut info, tag);
-                    }
-                }
-                for visual in &container.visuals {
-                    let front = visual.usage == Some(StandardVisualKey::FrontCover);
-                    if cover
-                        .as_ref()
-                        .is_none_or(|(was_front, _)| front && !was_front)
-                    {
-                        cover = Some((front, visual.data.to_vec()));
-                    }
+        for_each_container(format.as_mut(), track_id, |container| {
+            for tag in &container.tags {
+                if let Some(tag) = &tag.std {
+                    tags.read(&mut info, tag);
                 }
             }
-            if metadata_log.pop().is_none() {
-                break;
+            for visual in &container.visuals {
+                let front = visual.usage == Some(StandardVisualKey::FrontCover);
+                if cover
+                    .as_ref()
+                    .is_none_or(|(was_front, _)| front && !was_front)
+                {
+                    cover = Some((front, visual.data.to_vec()));
+                }
             }
-        }
+        });
+        info.fingerprint = fingerprint(format.as_mut(), track_id);
         // Close the file before multitag may open it again.
         drop(format);
         info.year = tags.year;
@@ -149,6 +138,39 @@ impl<'a> MusicTrack<'a> {
     }
 }
 
+/// The ReplayGain tags of an opened track. Consumes the reader's pending metadata revisions.
+pub fn replay_gain(format: &mut dyn FormatReader, track_id: u32) -> ReplayGain {
+    let mut replay_gain = ReplayGain::default();
+    for_each_container(format, track_id, |container| {
+        for tag in &container.tags {
+            if let Some(tag) = &tag.std {
+                replay_gain.read(tag);
+            }
+        }
+    });
+    replay_gain
+}
+
+/// Visits the media-level and the track's own metadata of every revision, oldest first.
+fn for_each_container(
+    format: &mut dyn FormatReader,
+    track_id: u32,
+    mut visit: impl FnMut(&MetadataContainer),
+) {
+    let mut metadata_log = format.metadata();
+    while let Some(metadata) = metadata_log.current() {
+        visit(&metadata.media);
+        metadata
+            .per_track
+            .iter()
+            .filter(|metadata| metadata.track_id == u64::from(track_id))
+            .for_each(|metadata| visit(&metadata.metadata));
+        if metadata_log.pop().is_none() {
+            break;
+        }
+    }
+}
+
 /// Probes an opened stream into a Symphonia `FormatReader`
 pub fn probe(stream: OpenedStream, locator: &Locator) -> io::Result<Box<dyn FormatReader>> {
     let hint = stream.hint();
@@ -188,14 +210,6 @@ impl TagReader {
             (!value.is_empty()).then(|| value.to_string())
         }
         let number = |value: u64| u32::try_from(value).ok().filter(|value| *value > 0);
-        let gain = |value: &str| {
-            value
-                .trim()
-                .trim_end_matches(|c: char| c.is_alphabetic() || c.is_whitespace())
-                .parse::<f32>()
-                .ok()
-        };
-        let replay_gain = &mut info.replay_gain;
         match tag {
             StandardTag::TrackTitle(value) if info.title.is_empty() => {
                 info.title = value.trim().to_string()
@@ -237,26 +251,7 @@ impl TagReader {
             StandardTag::RecordingYear(year) => self.year(2, Some(i32::from(*year))),
             StandardTag::RecordingDate(date) => self.year(2, parse_year(date)),
             StandardTag::OriginalReleaseDate(date) => self.year(3, parse_year(date)),
-            StandardTag::ReplayGainTrackGain(value) => {
-                if let Some(value) = gain(value) {
-                    set(&mut replay_gain.track_gain, value)
-                }
-            }
-            StandardTag::ReplayGainTrackPeak(value) => {
-                if let Some(value) = gain(value) {
-                    set(&mut replay_gain.track_peak, value)
-                }
-            }
-            StandardTag::ReplayGainAlbumGain(value) => {
-                if let Some(value) = gain(value) {
-                    set(&mut replay_gain.album_gain, value)
-                }
-            }
-            StandardTag::ReplayGainAlbumPeak(value) => {
-                if let Some(value) = gain(value) {
-                    set(&mut replay_gain.album_peak, value)
-                }
-            }
+            tag if info.replay_gain.read(tag) => {}
             _ => {}
         }
     }

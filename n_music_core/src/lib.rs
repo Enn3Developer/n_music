@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use symphonia::default::{register_enabled_codecs, register_enabled_formats};
 use symphonia_core::formats::probe::Probe;
 
+mod convert;
 mod dca;
 pub mod jobs;
 pub mod library;

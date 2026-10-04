@@ -43,7 +43,8 @@ impl Handle<Tagged<CoversDecoded>> for AppScene {
         };
         for (index, path, buffer) in &decoded.0 {
             self.covers.insert(path.clone(), buffer.clone());
-            self.changes.push(Changes::Cover(*index, buffer.clone()));
+            self.changes
+                .push(Changes::Cover(self.row(*index), buffer.clone()));
         }
         self.apply_ui();
     }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 /// Repeat mode as understood by the media backends.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum LoopStatus {
+    Off,
     #[default]
     Playlist,
     File,
@@ -15,6 +16,7 @@ pub(crate) struct State {
     pub playing: bool,
     pub volume: f64,
     pub loop_status: LoopStatus,
+    pub shuffle: bool,
     pub position: f64,
     pub length: f64,
     pub title: String,
@@ -28,6 +30,7 @@ pub(crate) enum Change {
     Playback,
     Volume,
     Loop,
+    Shuffle,
     Position { discontinuity: bool },
     Metadata,
 }
@@ -44,6 +47,7 @@ pub(crate) enum MediaEvent {
     SeekAbsolute(f64),
     SetVolume(f64),
     SetLoopStatus(LoopStatus),
+    SetShuffle(bool),
 }
 
 pub(crate) type Emit = Arc<dyn Fn(MediaEvent) + Send + Sync + 'static>;

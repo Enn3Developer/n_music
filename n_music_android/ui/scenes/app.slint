@@ -28,9 +28,9 @@ export component App {
                 VerticalLayout {
                     spacing: 0px;
 
-                    for track in AppData.tracks: Track {
+                    for track[row] in AppData.tracks: Track {
                         track: track;
-                        playing: AppData.playing == track.index;
+                        playing: AppData.playing == row;
                         clicked => {
                             AppData.clicked(track.index);
                         }

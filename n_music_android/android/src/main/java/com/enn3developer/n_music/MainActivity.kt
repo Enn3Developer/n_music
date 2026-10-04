@@ -41,6 +41,7 @@ class MainActivity : NativeActivity() {
         @JvmStatic external fun mediaSeekTo(index: Int, position: Double)
         @JvmStatic external fun mediaSeek(seek: Double)
         @JvmStatic external fun mediaRepeatMode(mode: Int)
+        @JvmStatic external fun mediaShuffleMode(enabled: Boolean)
         @JvmStatic external fun outputDeviceChanged()
     }
 
@@ -147,13 +148,21 @@ class MainActivity : NativeActivity() {
     }
 
     @Suppress("unused")
+    private fun changeShuffleMode(enabled: Boolean) {
+        PlaybackController.setShuffleMode(enabled)
+    }
+
+    @Suppress("unused")
     private fun changeTrack(index: Int) {
         PlaybackController.updateTrack(index)
     }
 
     @Suppress("unused")
-    private fun changeQueue(names: String) {
-        PlaybackController.setQueue(if (names.isEmpty()) emptyList() else names.split('\u001f'))
+    private fun changeQueue(names: String, current: Int) {
+        PlaybackController.setQueue(
+            if (names.isEmpty()) emptyList() else names.split('\u001f'),
+            current,
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

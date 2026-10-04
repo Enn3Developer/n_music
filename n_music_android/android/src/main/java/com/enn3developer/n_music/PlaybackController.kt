@@ -28,11 +28,15 @@ object PlaybackController {
         handler.post { player.updateTrack(index) }
     }
 
-    fun setQueue(names: List<String>) {
-        handler.post { player.setQueue(names) }
+    fun setQueue(names: List<String>, current: Int) {
+        handler.post { player.setQueue(names, current) }
     }
 
     fun setRepeatMode(mode: Int) {
         handler.post { player.updateRepeatMode(mode) }
+    }
+
+    fun setShuffleMode(enabled: Boolean) {
+        handler.post { player.updateShuffleMode(enabled) }
     }
 }

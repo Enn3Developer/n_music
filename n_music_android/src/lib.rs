@@ -28,6 +28,7 @@ impl Message for AndroidStarted {}
 
 // androidx.media3.common.Player REPEAT_MODE_OFF / ONE / ALL
 const REPEAT_MODE_ONE: i32 = 1;
+const REPEAT_MODE_ALL: i32 = 2;
 
 #[no_mangle]
 fn android_main(app: slint::android::AndroidApp) {
@@ -186,10 +187,11 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeekTo<
     index: jni::sys::jint,
     position: jni::sys::jdouble,
 ) {
-    ANDROID_BUS.0.emit(n_music_core::messages::Seek::ToTrack {
-        index: index.max(0) as usize,
-        position,
-    });
+    if let Some(item) = bridge::queue_item(index.max(0) as usize) {
+        ANDROID_BUS
+            .0
+            .emit(n_music_core::messages::Seek::ToItem { item, position });
+    }
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaSeek<'local>(
@@ -207,14 +209,24 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaRepeatM
     _: jni::objects::JClass<'local>,
     mode: jni::sys::jint,
 ) {
-    let loop_status = if mode == REPEAT_MODE_ONE {
-        n_music_core::queue::LoopStatus::File
-    } else {
-        n_music_core::queue::LoopStatus::Playlist
+    let loop_status = match mode {
+        REPEAT_MODE_ONE => n_music_core::queue::LoopStatus::File,
+        REPEAT_MODE_ALL => n_music_core::queue::LoopStatus::Playlist,
+        _ => n_music_core::queue::LoopStatus::Off,
     };
     ANDROID_BUS
         .0
         .emit(n_music_core::messages::SetLoopStatus(loop_status));
+}
+#[no_mangle]
+pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_mediaShuffleMode<'local>(
+    _: jni::EnvUnowned<'local>,
+    _: jni::objects::JClass<'local>,
+    enabled: jni::sys::jboolean,
+) {
+    ANDROID_BUS
+        .0
+        .emit(n_music_core::messages::SetShuffle(enabled));
 }
 #[no_mangle]
 pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_outputDeviceChanged<'local>(

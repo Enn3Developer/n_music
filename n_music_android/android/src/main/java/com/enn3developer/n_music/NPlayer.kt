@@ -33,6 +33,7 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
                 Player.COMMAND_SEEK_TO_PREVIOUS,
                 Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
                 Player.COMMAND_SET_REPEAT_MODE,
+                Player.COMMAND_SET_SHUFFLE_MODE,
                 Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
                 Player.COMMAND_GET_METADATA,
                 Player.COMMAND_GET_TIMELINE,
@@ -43,6 +44,7 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
     private var queue: List<String> = listOf("")
     private var currentIndex = 0
     private var repeatMode = Player.REPEAT_MODE_ALL
+    private var shuffleModeEnabled = false
     private var playbackState = Player.STATE_IDLE
     private var playWhenReady = false
     private var positionMs = 0L
@@ -71,7 +73,7 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
             .setPlaybackState(playbackState)
             .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setRepeatMode(repeatMode)
-            .setShuffleModeEnabled(false)
+            .setShuffleModeEnabled(shuffleModeEnabled)
             .setIsLoading(false)
             .setCurrentMediaItemIndex(currentIndex)
             .setContentPositionMs(currentPositionMs())
@@ -99,16 +101,11 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
             .build()
     }
 
-    fun setQueue(names: List<String>) {
+    /// The session in play order; `current` is where the current track is in it. Playback and
+    /// the current track's metadata stay: the queue changes while playing.
+    fun setQueue(names: List<String>, current: Int) {
         queue = names.ifEmpty { listOf("") }
-        currentIndex = 0
-        setPosition(0)
-        playbackState = Player.STATE_IDLE
-        playWhenReady = false
-        title = ""
-        artist = ""
-        artwork = null
-        durationMs = 0
+        currentIndex = current.coerceIn(0, queue.lastIndex)
         invalidateState()
     }
 
@@ -147,6 +144,11 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
         invalidateState()
     }
 
+    fun updateShuffleMode(enabled: Boolean) {
+        shuffleModeEnabled = enabled
+        invalidateState()
+    }
+
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
         if (playWhenReady) MainActivity.mediaPlay() else MainActivity.mediaPause()
         setPosition(currentPositionMs())
@@ -178,17 +180,13 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
         val index = mediaItemIndex.coerceIn(0, queue.lastIndex)
         val position = if (positionMs == C.TIME_UNSET) 0L else positionMs
         when (seekCommand) {
+            // Media3 guesses the neighbour in the list; repeat, up next and the end of the
+            // queue decide otherwise, so the native player reports it through changeTrack.
             Player.COMMAND_SEEK_TO_NEXT,
-            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
-                MainActivity.mediaPlayNext()
-                selectTrack(index)
-            }
+            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> MainActivity.mediaPlayNext()
 
             Player.COMMAND_SEEK_TO_PREVIOUS,
-            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
-                MainActivity.mediaPlayPrevious()
-                selectTrack(index)
-            }
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> MainActivity.mediaPlayPrevious()
 
             Player.COMMAND_SEEK_TO_MEDIA_ITEM -> {
                 // The index is forwarded unconditionally: the native player is the authority on
@@ -205,12 +203,15 @@ class NPlayer(looper: Looper) : SimpleBasePlayer(looper) {
     }
 
     override fun handleSetRepeatMode(repeatMode: Int): ListenableFuture<*> {
-        // The native player only supports playlist and single-track looping, so requests for
-        // REPEAT_MODE_OFF are normalized to REPEAT_MODE_ALL instead of being echoed back.
-        val nativeMode =
-            if (repeatMode == Player.REPEAT_MODE_ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
-        MainActivity.mediaRepeatMode(nativeMode)
-        this.repeatMode = nativeMode
+        MainActivity.mediaRepeatMode(repeatMode)
+        this.repeatMode = repeatMode
+        invalidateState()
+        return Futures.immediateVoidFuture()
+    }
+
+    override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> {
+        MainActivity.mediaShuffleMode(shuffleModeEnabled)
+        this.shuffleModeEnabled = shuffleModeEnabled
         invalidateState()
         return Futures.immediateVoidFuture()
     }

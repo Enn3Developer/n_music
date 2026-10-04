@@ -4,17 +4,35 @@ use n_event_bus::{
 };
 use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueReplaced, ThemeChangeRequested,
-    TrackChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ShuffleChanged,
+    ThemeChangeRequested, TrackChanged,
 };
-use n_music_core::queue::LoopStatus;
+use n_music_core::queue::{ItemId, LoopStatus};
 use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
 use n_music_core::source::{Locator, Providers};
 use n_music_core::Track;
 use std::any::Any;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+/// The items of the Media3 playlist, in its order, so a seek to one of its indexes finds the
+/// item even while the bus is busy.
+static QUEUE: Mutex<Vec<ItemId>> = Mutex::new(Vec::new());
+
+/// The item at `index` of the Media3 playlist.
+pub fn queue_item(index: usize) -> Option<ItemId> {
+    QUEUE.lock().unwrap().get(index).copied()
+}
+
+fn queue_index(item: ItemId) -> Option<usize> {
+    QUEUE
+        .lock()
+        .unwrap()
+        .iter()
+        .position(|&queued| queued == item)
+}
 
 // androidx.media3.common.Player REPEAT_MODE_OFF / ONE / ALL
+const REPEAT_MODE_OFF: i32 = 0;
 const REPEAT_MODE_ONE: i32 = 1;
 const REPEAT_MODE_ALL: i32 = 2;
 
@@ -26,6 +44,7 @@ pub struct AndroidBridge {
     metadata_loader: MetadataLoader,
     position: f64,
     playing: bool,
+    current: Option<ItemId>,
 }
 
 impl AndroidBridge {
@@ -57,6 +76,7 @@ impl AndroidBridge {
             metadata_loader: MetadataLoader::new(providers, paths),
             position: 0.0,
             playing: false,
+            current: None,
         };
         bridge.change_theme(theme);
         bridge
@@ -71,8 +91,9 @@ impl Subscriber for AndroidBridge {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<PlaybackChanged>();
         reg.on::<TrackChanged>();
-        reg.on::<QueueReplaced>();
+        reg.on::<QueueChanged>();
         reg.on::<LoopStatusChanged>();
+        reg.on::<ShuffleChanged>();
         reg.on::<ThemeChangeRequested>();
         MetadataJob::subscribe(reg);
         NotificationJob::subscribe(reg);
@@ -116,6 +137,23 @@ impl AndroidBridge {
             .expect("JNI call MainActivity.changeRepeatMode failed");
     }
 
+    fn change_shuffle_mode(&self, shuffle: bool) {
+        self.jvm
+            .attach_current_thread(|env| -> jni::errors::Result<()> {
+                env.call_method(
+                    self.callback.as_ref(),
+                    jni::jni_str!("changeShuffleMode"),
+                    jni::jni_sig!("(Z)V"),
+                    &[shuffle.into()],
+                )
+                .inspect_err(|error| {
+                    crate::platform::log_jni_error(env, "MainActivity.changeShuffleMode", error)
+                })?;
+                Ok(())
+            })
+            .expect("JNI call MainActivity.changeShuffleMode failed");
+    }
+
     fn change_theme(&self, theme: i32) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -133,12 +171,12 @@ impl AndroidBridge {
             .expect("JNI call MainActivity.set_theme failed");
     }
 
-    fn change_queue(&self, tracks: &[Locator]) {
-        // Locators only serve as unique media IDs. U+001F (unit separator) cannot appear in a
-        // path, so it is a safe delimiter.
+    fn change_queue(&self, tracks: &[&Locator], current: usize) {
+        // Locators only serve as media IDs. U+001F (unit separator) cannot appear in a path,
+        // so it is a safe delimiter.
         let joined = tracks
             .iter()
-            .map(Locator::to_string)
+            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\u{1f}");
         self.jvm
@@ -147,8 +185,8 @@ impl AndroidBridge {
                 env.call_method(
                     self.callback.as_ref(),
                     jni::jni_str!("changeQueue"),
-                    jni::jni_sig!("(Ljava/lang/String;)V"),
-                    &[(&string).into()],
+                    jni::jni_sig!("(Ljava/lang/String;I)V"),
+                    &[(&string).into(), (current as i32).into()],
                 )
                 .inspect_err(|error| {
                     crate::platform::log_jni_error(env, "MainActivity.changeQueue", error)
@@ -190,19 +228,29 @@ impl Handle<PositionChanged> for AndroidBridge {
     }
 }
 
-impl Handle<QueueReplaced> for AndroidBridge {
-    fn handle(&mut self, msg: &QueueReplaced, _: &Ctx, _: &mut Outbox) {
-        self.change_queue(&msg.tracks);
+impl Handle<QueueChanged> for AndroidBridge {
+    fn handle(&mut self, msg: &QueueChanged, _: &Ctx, _: &mut Outbox) {
+        *QUEUE.lock().unwrap() = msg.entries.iter().map(|entry| entry.item).collect();
+        let current = self.current.and_then(queue_index).unwrap_or(0);
+        let locators: Vec<&Locator> = msg.entries.iter().map(|entry| &entry.locator).collect();
+        self.change_queue(&locators, current);
     }
 }
 
 impl Handle<LoopStatusChanged> for AndroidBridge {
     fn handle(&mut self, msg: &LoopStatusChanged, _: &Ctx, _: &mut Outbox) {
         let mode = match msg.0 {
+            LoopStatus::Off => REPEAT_MODE_OFF,
             LoopStatus::Playlist => REPEAT_MODE_ALL,
             LoopStatus::File => REPEAT_MODE_ONE,
         };
         self.change_repeat_mode(mode);
+    }
+}
+
+impl Handle<ShuffleChanged> for AndroidBridge {
+    fn handle(&mut self, msg: &ShuffleChanged, _: &Ctx, _: &mut Outbox) {
+        self.change_shuffle_mode(msg.0);
     }
 }
 
@@ -219,7 +267,8 @@ impl Handle<TrackChanged> for AndroidBridge {
         if ctx.shutting_down {
             return;
         }
-        self.change_track(msg.index);
+        self.current = Some(msg.item);
+        self.change_track(queue_index(msg.item).unwrap_or(0));
         self.metadata_loader.load(msg.locator.clone(), ctx);
     }
 }

@@ -70,9 +70,11 @@ impl Backend for Mpris {
             }),
             Change::Volume => Property::Volume(state.volume),
             Change::Loop => Property::LoopStatus(match state.loop_status {
+                LoopStatus::Off => MprisLoopStatus::None,
                 LoopStatus::Playlist => MprisLoopStatus::Playlist,
                 LoopStatus::File => MprisLoopStatus::Track,
             }),
+            Change::Shuffle => Property::Shuffle(state.shuffle),
             Change::Metadata => Property::Metadata(metadata(state)),
             Change::Position { .. } => return,
         };
@@ -224,6 +226,7 @@ impl PlayerInterface for Adapter {
 
     async fn loop_status(&self) -> fdo::Result<MprisLoopStatus> {
         match self.state.read().unwrap().loop_status {
+            LoopStatus::Off => Ok(MprisLoopStatus::None),
             LoopStatus::Playlist => Ok(MprisLoopStatus::Playlist),
             LoopStatus::File => Ok(MprisLoopStatus::Track),
         }
@@ -231,7 +234,7 @@ impl PlayerInterface for Adapter {
 
     async fn set_loop_status(&self, loop_status: MprisLoopStatus) -> zbus::Result<()> {
         (self.emit)(MediaEvent::SetLoopStatus(match loop_status {
-            MprisLoopStatus::None => LoopStatus::Playlist,
+            MprisLoopStatus::None => LoopStatus::Off,
             MprisLoopStatus::Track => LoopStatus::File,
             MprisLoopStatus::Playlist => LoopStatus::Playlist,
         }));
@@ -247,10 +250,11 @@ impl PlayerInterface for Adapter {
     }
 
     async fn shuffle(&self) -> fdo::Result<bool> {
-        Ok(true)
+        Ok(self.state.read().unwrap().shuffle)
     }
 
-    async fn set_shuffle(&self, _shuffle: bool) -> zbus::Result<()> {
+    async fn set_shuffle(&self, shuffle: bool) -> zbus::Result<()> {
+        (self.emit)(MediaEvent::SetShuffle(shuffle));
         Ok(())
     }
 
