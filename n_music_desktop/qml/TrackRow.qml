@@ -20,20 +20,34 @@ Rectangle {
     required property real added
     required property TrackColumns columns
     property bool selected: false
+    /// Its menu is open.
+    property bool menuOpen: false
 
     signal clicked
     signal activated
+    /// Its menu was asked for, to open from `x`, `y` of `item`: rightwards, or leftwards
+    /// under a button at the right edge.
+    signal menuRequested(Item item, real x, real y, bool leftwards)
 
     implicitHeight: 52
     radius: 8
-    color: selected ? Theme.raised : current ? Theme.selected : mouse.containsMouse ? Theme.hover : "transparent"
+    color: selected ? Theme.raised : current || menuOpen ? Theme.selected : mouse.containsMouse ? Theme.hover : "transparent"
 
     MouseArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: row.clicked()
-        onDoubleClicked: row.activated()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: event => {
+            if (event.button === Qt.RightButton)
+                row.menuRequested(row, event.x, event.y, false);
+            else
+                row.clicked();
+        }
+        onDoubleClicked: event => {
+            if (event.button === Qt.LeftButton)
+                row.activated();
+        }
     }
 
     Row {
@@ -132,6 +146,32 @@ Rectangle {
         Value {
             width: row.columns.time
             text: row.length
+        }
+        Item {
+            width: row.columns.more
+            height: parent.height
+
+            IconButton {
+                id: more
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                size: 32
+                radius: 6
+                iconSize: 16
+                iconName: "more"
+                color: row.menuOpen ? Theme.text : Theme.text3
+                focusPolicy: Qt.NoFocus
+                text: Tr.t.track_actions.arg(row.title)
+                onClicked: row.menuRequested(more, more.width, more.height + 4, true)
+
+                Rectangle {
+                    z: -1
+                    anchors.fill: parent
+                    radius: 6
+                    visible: row.menuOpen
+                    color: Theme.menuHover
+                }
+            }
         }
     }
 

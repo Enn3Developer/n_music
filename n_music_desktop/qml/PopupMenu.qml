@@ -9,6 +9,8 @@ Menu {
     padding: 6
     margins: 8
     overlap: 0
+    // Submenus open beside their menu everywhere, even where Qt guesses a phone.
+    cascade: true
 
     background: Rectangle {
         implicitWidth: 220

@@ -39,6 +39,7 @@ const QML: &[&str] = &[
     "qml/ToggleSwitch.qml",
     "qml/TrackColumns.qml",
     "qml/TrackHeader.qml",
+    "qml/TrackMenu.qml",
     "qml/TrackRow.qml",
     "qml/TrackTable.qml",
     "qml/TracksPage.qml",

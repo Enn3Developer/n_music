@@ -27,16 +27,11 @@ pub mod qobject {
 
         /// Creates a playlist of tracks added to it.
         #[qinvokable]
-        fn create(self: Pin<&mut Playlists>, name: &QString);
+        fn create(self: &Playlists, name: &QString);
         /// Creates a smart playlist of the tracks matching `filter` (see `query::parse_filter`;
         /// every track without rules), in the order of `sort`.
         #[qinvokable]
-        fn create_smart(
-            self: Pin<&mut Playlists>,
-            name: &QString,
-            filter: &QString,
-            sort: &QString,
-        );
+        fn create_smart(self: &Playlists, name: &QString, filter: &QString, sort: &QString);
         #[qinvokable]
         fn rename(self: &Playlists, id: i64, name: &QString);
         #[qinvokable]
@@ -90,8 +85,6 @@ pub struct PlaylistsRust {
     items: QVariant,
     /// The playlists listed so far, to tell the new ones.
     known: HashSet<PlaylistId>,
-    /// Creations asked for and not reported yet.
-    creating: usize,
 }
 
 impl Default for PlaylistsRust {
@@ -100,9 +93,14 @@ impl Default for PlaylistsRust {
             // A list from the start, so QML can go through it before the playlists arrive.
             items: QVariant::from(&QList::<QVariant>::default()),
             known: HashSet::new(),
-            creating: 0,
         }
     }
+}
+
+/// Asks the library for a playlist, so its arrival is reported as `created`.
+pub fn create(playlist: CreatePlaylist) {
+    hub().state().creating += 1;
+    bus::emit(playlist);
 }
 
 impl cxx_qt::Initialize for qobject::Playlists {
@@ -122,8 +120,6 @@ impl qobject::Playlists {
     fn changed(mut self: Pin<&mut Self>, changed: Changed) {
         if changed.contains(Changed::REJECTED) {
             let message = hub().state().rejected.clone();
-            let mut this = self.as_mut().rust_mut();
-            this.creating = this.creating.saturating_sub(1);
             self.as_mut().rejected(&QString::from(&message));
         }
         if !changed.contains(Changed::PLAYLISTS) {
@@ -151,17 +147,21 @@ impl qobject::Playlists {
             .collect();
         self.as_mut().rust_mut().known = ids;
         for id in new {
-            if self.creating == 0 {
+            let asked = {
+                let mut state = hub().state();
+                let asked = state.creating > 0;
+                state.creating = state.creating.saturating_sub(1);
+                asked
+            };
+            if !asked {
                 break;
             }
-            self.as_mut().rust_mut().creating -= 1;
             self.as_mut().created(id.0);
         }
     }
 
-    fn create(mut self: Pin<&mut Self>, name: &QString) {
-        self.as_mut().rust_mut().creating += 1;
-        bus::emit(CreatePlaylist {
+    fn create(&self, name: &QString) {
+        create(CreatePlaylist {
             name: name.to_string(),
             rule: None,
             sort: vec![],
@@ -169,9 +169,8 @@ impl qobject::Playlists {
         });
     }
 
-    fn create_smart(mut self: Pin<&mut Self>, name: &QString, filter: &QString, sort: &QString) {
-        self.as_mut().rust_mut().creating += 1;
-        bus::emit(CreatePlaylist {
+    fn create_smart(&self, name: &QString, filter: &QString, sort: &QString) {
+        create(CreatePlaylist {
             name: name.to_string(),
             rule: Some(rule(filter)),
             sort: query::parse_sort(&sort.to_string(), None),

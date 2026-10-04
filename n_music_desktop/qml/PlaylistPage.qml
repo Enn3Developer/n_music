@@ -248,8 +248,7 @@ Item {
                             }
                             MenuEntry {
                                 iconName: "filter"
-                                visible: playlist.smart
-                                height: visible ? implicitHeight : 0
+                                shown: playlist.smart
                                 enabled: playlist.rule !== ""
                                 text: Tr.t.edit_rules
                                 onTriggered: drawer.open()
@@ -288,6 +287,7 @@ Item {
             Layout.fillHeight: true
             list: tracks
             layout: playlist.smart ? "smart" : "playlist"
+            playlistName: playlist.smart ? "" : playlist.name
             visible: tracks.count > 0
         }
 

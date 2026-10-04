@@ -66,6 +66,8 @@ pub struct State {
     pub playlists: Arc<Vec<PlaylistSummary>>,
     /// Why the library refused the last playlist change.
     pub rejected: String,
+    /// Playlists the interface asked for that were not created yet.
+    pub creating: usize,
 }
 
 #[derive(Clone)]

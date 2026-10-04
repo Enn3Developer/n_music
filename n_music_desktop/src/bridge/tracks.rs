@@ -84,6 +84,21 @@ pub mod qobject {
         /// Plays the listed tracks from the first, in order or shuffled.
         #[qinvokable]
         fn play_all(self: &TrackList, shuffle: bool);
+        /// Queues the track of `row` after the current one; `next` before what is queued.
+        #[qinvokable]
+        fn enqueue(self: &TrackList, row: i32, next: bool);
+        /// Adds the track of `row` to playlist `id`.
+        #[qinvokable]
+        fn add_to_playlist(self: &TrackList, row: i32, id: i64);
+        /// Creates a playlist named `name` holding the track of `row`.
+        #[qinvokable]
+        fn add_to_new_playlist(self: &TrackList, row: i32, name: &QString);
+        /// Removes the track of `row` from the playlist listed.
+        #[qinvokable]
+        fn remove_from_playlist(self: &TrackList, row: i32);
+        /// The ids of the playlists holding the track of `row` as an added track.
+        #[qinvokable]
+        fn playlists_with(self: &TrackList, row: i32) -> QVariant;
     }
 
     impl cxx_qt::Threading for TrackList {}
@@ -98,7 +113,9 @@ use cxx_qt_lib::{
     QByteArray, QHash, QHashPair_i32_QByteArray, QList, QModelIndex, QString, QStringList, QVariant,
 };
 use n_music_core::library::query::{PlaylistId, Query};
-use n_music_core::messages::{PlayFrom, SetShuffle};
+use n_music_core::messages::{
+    AddToPlaylist, CreatePlaylist, Enqueue, PlayFrom, RemoveFromPlaylist, SetShuffle,
+};
 use n_music_core::source::Locator;
 use n_music_core::Track;
 use std::sync::Arc;
@@ -436,6 +453,61 @@ impl qobject::TrackList {
     fn play_all(&self, shuffle: bool) {
         bus::emit(SetShuffle(shuffle));
         self.play_from(None);
+    }
+
+    fn locator(&self, row: i32) -> Option<Locator> {
+        self.row(row).map(|row| row.track.locator.clone())
+    }
+
+    fn enqueue(&self, row: i32, next: bool) {
+        if let Some(locator) = self.locator(row) {
+            bus::emit(Enqueue {
+                tracks: vec![locator],
+                next,
+            });
+        }
+    }
+
+    fn add_to_playlist(&self, row: i32, id: i64) {
+        if let Some(locator) = self.locator(row) {
+            bus::emit(AddToPlaylist {
+                id: PlaylistId(id),
+                tracks: vec![locator],
+            });
+        }
+    }
+
+    fn add_to_new_playlist(&self, row: i32, name: &QString) {
+        if let Some(locator) = self.locator(row) {
+            crate::bridge::playlists::create(CreatePlaylist {
+                name: name.to_string(),
+                rule: None,
+                sort: vec![],
+                tracks: vec![locator],
+            });
+        }
+    }
+
+    fn remove_from_playlist(&self, row: i32) {
+        if let (Some(id), Some(locator)) = (self.playlist_id(), self.locator(row)) {
+            bus::emit(RemoveFromPlaylist {
+                id,
+                tracks: vec![locator],
+            });
+        }
+    }
+
+    fn playlists_with(&self, row: i32) -> QVariant {
+        let mut ids = QList::<QVariant>::default();
+        if let Some(locator) = self.locator(row) {
+            let catalog = hub().library().read();
+            for playlist in catalog.playlists() {
+                if playlist.items.contains_key(&locator) {
+                    ids.append(QVariant::from(&playlist.id.0));
+                }
+            }
+        }
+        QVariant::from(&ids)
     }
 
     /// Plays this list from `start`, telling the queue where the session comes from.
