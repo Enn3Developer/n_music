@@ -3635,7 +3635,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_android"
-version = "2.0.0-alpha.13"
+version = "2.0.0-alpha.14"
 dependencies = [
  "jni 0.22.4",
  "log",
@@ -3652,7 +3652,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_core"
-version = "2.0.0-alpha.13"
+version = "2.0.0-alpha.14"
 dependencies = [
  "audiopus",
  "cpal",
@@ -3682,7 +3682,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_desktop"
-version = "2.0.0-alpha.13"
+version = "2.0.0-alpha.14"
 dependencies = [
  "directories",
  "log",
@@ -3702,7 +3702,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_media_notification"
-version = "2.0.0-alpha.13"
+version = "2.0.0-alpha.14"
 dependencies = [
  "block2 0.6.2",
  "dispatch2",
