@@ -3365,6 +3365,7 @@ dependencies = [
 name = "n_music_desktop"
 version = "2.0.0-alpha.14"
 dependencies = [
+ "bitflags",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",

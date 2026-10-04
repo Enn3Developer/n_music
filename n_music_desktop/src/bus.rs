@@ -1,5 +1,7 @@
 //! The event bus with the core services, running beside the Qt event loop.
 
+use crate::hub;
+use crate::listener::Listener;
 use n_event_bus::{App, EventWriter, JobControl, Message, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::settings::SettingsStorage;
@@ -32,7 +34,10 @@ impl Bus {
         let _ = WRITER.set(writer.clone());
         let mut app = App::new(JobControl::new(writer.clone()));
         let providers = Arc::new(Providers::default().with_local(LocalProvider));
-        Engine::start(&mut app, &writer, storage, providers, data_dir, cache_dir);
+        let engine = Engine::start(&mut app, &writer, storage, providers, data_dir, cache_dir);
+        hub::init(engine.library());
+        // After the core services, so the library is up to date when the interface hears.
+        app.register_subscriber(Listener);
         let thread = std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
             .spawn(move || {

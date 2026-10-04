@@ -2,10 +2,16 @@
 
 mod bridge;
 mod bus;
+mod format;
+mod hub;
 mod i18n;
+mod listener;
 mod platform;
+mod query;
 mod settings;
+mod worker;
 
+use cxx_qt::casting::Upcast;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 use n_music_core::logging;
 use n_music_core::settings::JsonFileStorage;
@@ -35,7 +41,8 @@ fn main() {
     }
     QGuiApplication::set_desktop_file_name(&QString::from("n_music"));
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(engine) = engine.as_mut() {
+    if let Some(mut engine) = engine.as_mut() {
+        bridge::covers::install(engine.as_mut().upcast_pin());
         engine.load(&QUrl::from("qrc:/qt/qml/NMusic/qml/Main.qml"));
     }
     if let Some(app) = app.as_mut() {

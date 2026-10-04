@@ -5,16 +5,44 @@ use std::path::Path;
 /// The interface, one QML type per file.
 const QML: &[&str] = &[
     "qml/Main.qml",
+    "qml/Cover.qml",
+    "qml/EmptyState.qml",
     "qml/Icon.qml",
+    "qml/MenuEntry.qml",
     "qml/NavItem.qml",
+    "qml/PillButton.qml",
+    "qml/PlaceholderPage.qml",
+    "qml/PopupMenu.qml",
+    "qml/SearchField.qml",
     "qml/Sidebar.qml",
+    "qml/SortButton.qml",
+    "qml/ThinScrollBar.qml",
+    "qml/TrackColumns.qml",
+    "qml/TrackHeader.qml",
+    "qml/TrackRow.qml",
+    "qml/TrackTable.qml",
+    "qml/TracksPage.qml",
 ];
 
-/// Shared values: colours, icon shapes and strings.
-const QML_SINGLETONS: &[&str] = &["qml/Theme.qml", "qml/Icons.qml", "qml/Tr.qml"];
+/// Shared values: colours, icon shapes, strings and their formatting.
+const QML_SINGLETONS: &[&str] = &[
+    "qml/Theme.qml",
+    "qml/Icons.qml",
+    "qml/Tr.qml",
+    "qml/Format.qml",
+];
 
 /// The Rust side of the interface.
-const BRIDGES: &[&str] = &["src/bridge/app.rs", "src/bridge/translations.rs"];
+const BRIDGES: &[&str] = &[
+    "src/bridge/app.rs",
+    "src/bridge/covers.rs",
+    "src/bridge/scan.rs",
+    "src/bridge/tracks.rs",
+    "src/bridge/translations.rs",
+];
+
+/// C++ the bridges call.
+const CPP: &[&str] = &["cpp/covers.cpp"];
 
 const RESOURCES: &[&str] = &[
     "assets/fonts/Figtree-Regular.ttf",
@@ -30,11 +58,16 @@ fn main() {
             .iter()
             .map(|&file| QmlFile::from(file).singleton(true)),
     );
-    CxxQtBuilder::new_qml_module(QmlModule::new("NMusic").qml_files(qml))
-        .qt_module("Quick")
-        .qrc_resources(RESOURCES)
-        .files(BRIDGES)
-        .build();
+    CxxQtBuilder::new_qml_module(
+        QmlModule::new("NMusic")
+            .depend("QtQml.Models")
+            .qml_files(qml),
+    )
+    .qt_module("Quick")
+    .qrc_resources(RESOURCES)
+    .files(BRIDGES)
+    .cpp_files(CPP)
+    .build();
 }
 
 /// Bundles every `assets/lang/<code>_<name>.json` as `LOCALES`.

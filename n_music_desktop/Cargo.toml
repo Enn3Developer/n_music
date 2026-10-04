@@ -16,6 +16,7 @@ cxx-qt-build = "0.10"
 [dependencies]
 n_music_core = { path = "../n_music_core" }
 n_event_bus = { path = "../n_event_bus" }
+bitflags = "2"
 log = "0.4"
 n_music_media_notification = { path = "../n_music_media_notification" }
 serde = { version = "1.0", features = ["derive"] }

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -6,8 +7,12 @@ import NMusic
 ApplicationWindow {
     id: window
 
-    // The page the content area shows.
+    /// The page the content area shows.
     property string page: "tracks"
+    /// Pages shown so far; they stay loaded, keeping their search and scroll position.
+    property var visited: ({
+            tracks: true
+        })
 
     // The saved size, shrunk to fit smaller screens.
     width: Math.min(AppState.windowWidth, Screen.desktopAvailableWidth)
@@ -20,13 +25,35 @@ ApplicationWindow {
     font.family: Theme.font
     font.pixelSize: 14
 
+    onPageChanged: visited = Object.assign({}, visited, {
+        [page]: true
+    })
     onClosing: AppState.windowClosing(width, height)
     onVisibilityChanged: AppState.setVisible(visibility !== Window.Minimized && visibility !== Window.Hidden)
 
-    FontLoader { source: "../assets/fonts/Figtree-Regular.ttf" }
-    FontLoader { source: "../assets/fonts/Figtree-Medium.ttf" }
-    FontLoader { source: "../assets/fonts/Figtree-SemiBold.ttf" }
-    FontLoader { source: "../assets/fonts/Figtree-Bold.ttf" }
+    FontLoader {
+        source: "../assets/fonts/Figtree-Regular.ttf"
+    }
+    FontLoader {
+        source: "../assets/fonts/Figtree-Medium.ttf"
+    }
+    FontLoader {
+        source: "../assets/fonts/Figtree-SemiBold.ttf"
+    }
+    FontLoader {
+        source: "../assets/fonts/Figtree-Bold.ttf"
+    }
+
+    Component {
+        id: tracksPage
+        TracksPage {
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: placeholderPage
+        PlaceholderPage {}
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -42,14 +69,21 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Label {
-                x: 28
-                y: 22
-                text: Tr.t[window.page === "locations" ? "sources" : window.page] || ""
-                color: Theme.text
-                font.pixelSize: 26
-                font.weight: Font.Bold
-                font.letterSpacing: -0.5
+            Repeater {
+                model: ["tracks", "albums", "artists", "genres", "sources", "queue", "settings"]
+
+                Loader {
+                    required property string modelData
+
+                    anchors.fill: parent
+                    active: window.visited[modelData] === true
+                    visible: window.page === modelData
+                    sourceComponent: modelData === "tracks" ? tracksPage : placeholderPage
+                    onLoaded: {
+                        if (item instanceof PlaceholderPage)
+                            item.title = Qt.binding(() => Tr.t[modelData]);
+                    }
+                }
             }
         }
     }
