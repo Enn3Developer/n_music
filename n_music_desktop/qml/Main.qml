@@ -139,6 +139,13 @@ ApplicationWindow {
         }
     }
     Component {
+        id: settingsPage
+        SettingsPage {
+            section: window.subpages.settings ?? "sources"
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
         id: placeholderPage
         PlaceholderPage {}
     }
@@ -191,7 +198,8 @@ ApplicationWindow {
                                 genres: genresPage,
                                 genre: genrePage,
                                 playlist: playlistPage,
-                                queue: queuePage
+                                queue: queuePage,
+                                settings: settingsPage
                             })[modelData] ?? placeholderPage
                         onLoaded: {
                             if (item instanceof PlaceholderPage)

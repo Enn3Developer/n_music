@@ -5,6 +5,7 @@ use std::path::Path;
 /// The interface, one QML type per file.
 const QML: &[&str] = &[
     "qml/Main.qml",
+    "qml/Badge.qml",
     "qml/BarSlider.qml",
     "qml/Chip.qml",
     "qml/CollectionPage.qml",
@@ -35,8 +36,14 @@ const QML: &[&str] = &[
     "qml/SearchField.qml",
     "qml/SegmentedControl.qml",
     "qml/SelectBox.qml",
+    "qml/SettingRow.qml",
+    "qml/SettingsGroup.qml",
+    "qml/SettingsPage.qml",
     "qml/Sidebar.qml",
     "qml/SortButton.qml",
+    "qml/SourceKindEntry.qml",
+    "qml/SourceRow.qml",
+    "qml/SourcesSettings.qml",
     "qml/TextBox.qml",
     "qml/ThinScrollBar.qml",
     "qml/ToggleSwitch.qml",
@@ -55,6 +62,7 @@ const QML_SINGLETONS: &[&str] = &[
     "qml/Tr.qml",
     "qml/Format.qml",
     "qml/Filters.qml",
+    "qml/SourceKinds.qml",
 ];
 
 /// The Rust side of the interface.
@@ -68,6 +76,7 @@ const BRIDGES: &[&str] = &[
     "src/bridge/playlists.rs",
     "src/bridge/queue.rs",
     "src/bridge/scan.rs",
+    "src/bridge/sources.rs",
     "src/bridge/tracks.rs",
     "src/bridge/translations.rs",
 ];

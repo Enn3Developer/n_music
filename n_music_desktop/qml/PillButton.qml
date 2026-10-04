@@ -2,21 +2,23 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// A rounded action button; `primary` fills it with the accent, `danger` warns.
+// A rounded action button; `primary` fills it with the accent, `danger` warns, and `small`
+// fits it in a row of settings.
 AbstractButton {
     id: button
 
     property string iconName
     property bool primary: false
     property bool danger: false
+    property bool small: false
 
-    implicitHeight: 40
+    implicitHeight: small ? 36 : 40
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-    leftPadding: primary ? 18 : 16
+    leftPadding: small ? 14 : primary ? 18 : 16
     rightPadding: leftPadding
     hoverEnabled: true
     opacity: enabled ? 1 : 0.45
-    font.pixelSize: 14
+    font.pixelSize: small ? 13 : 14
     font.weight: Font.DemiBold
 
     background: Rectangle {

@@ -7,5 +7,6 @@ pub mod player;
 pub mod playlists;
 pub mod queue;
 pub mod scan;
+pub mod sources;
 pub mod tracks;
 pub mod translations;

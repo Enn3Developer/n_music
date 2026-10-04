@@ -3,12 +3,14 @@
 use crate::hub::{hub, Changed, PlaylistSummary};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PlaylistRejected, PlaylistsChanged, PositionChanged,
-    QueueChanged, ScanFinished, ScanRequested, SetLibraryRoots, ShuffleChanged, TrackChanged,
-    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
+    LibraryRootsChanged, LoopStatusChanged, PlaybackChanged, PlaylistRejected, PlaylistsChanged,
+    PositionChanged, QueueChanged, ScanFinished, ScanRequested, SetLibraryRoots, ShuffleChanged,
+    TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
 };
+use n_music_core::TrackInfo;
 use std::any::Any;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 /// Registered after the core services, so the library is up to date when it runs.
 pub struct Listener;
@@ -21,6 +23,7 @@ impl Subscriber for Listener {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<ScanRequested>();
         reg.on::<SetLibraryRoots>();
+        reg.on::<LibraryRootsChanged>();
         reg.on::<TracksEnumerated>();
         reg.on::<TrackMetadataLoaded>();
         reg.on::<ScanFinished>();
@@ -40,7 +43,7 @@ impl Subscriber for Listener {
 impl Handle<ScanRequested> for Listener {
     fn handle(&mut self, _msg: &ScanRequested, ctx: &Ctx, _out: &mut Outbox) {
         if !ctx.shutting_down {
-            hub().update(Changed::SCAN, |state| state.scanning = true);
+            scan_started();
         }
     }
 }
@@ -48,28 +51,62 @@ impl Handle<ScanRequested> for Listener {
 impl Handle<SetLibraryRoots> for Listener {
     fn handle(&mut self, _msg: &SetLibraryRoots, ctx: &Ctx, _out: &mut Outbox) {
         if !ctx.shutting_down {
-            hub().update(Changed::SCAN, |state| state.scanning = true);
+            scan_started();
         }
     }
 }
 
+/// A scan replaces the last one; what it finds is not known yet.
+fn scan_started() {
+    hub().update(Changed::SCAN | Changed::PROGRESS, |state| {
+        state.scanning = true;
+        state.found = 0;
+        state.unread = 0;
+    });
+}
+
+impl Handle<LibraryRootsChanged> for Listener {
+    fn handle(&mut self, msg: &LibraryRootsChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::ROOTS, |state| {
+            state.roots = Arc::new(msg.0.clone())
+        });
+    }
+}
+
 impl Handle<TracksEnumerated> for Listener {
-    fn handle(&mut self, _msg: &TracksEnumerated, _ctx: &Ctx, _out: &mut Outbox) {
-        hub().notify(Changed::TRACKS);
+    fn handle(&mut self, msg: &TracksEnumerated, _ctx: &Ctx, _out: &mut Outbox) {
+        // The core does not say which tracks it still reads: they are the placeholders.
+        let unread = msg
+            .tracks
+            .iter()
+            .filter(|track| ***track == TrackInfo::placeholder(track.locator.clone()))
+            .count();
+        hub().update(Changed::TRACKS | Changed::PROGRESS, |state| {
+            state.found = msg.tracks.len();
+            state.unread = unread;
+        });
     }
 }
 
 impl Handle<TrackMetadataLoaded> for Listener {
     fn handle(&mut self, _msg: &TrackMetadataLoaded, _ctx: &Ctx, _out: &mut Outbox) {
-        hub().notify(Changed::METADATA);
+        hub().update(Changed::METADATA | Changed::PROGRESS, |state| {
+            state.unread = state.unread.saturating_sub(1);
+        });
     }
 }
 
 impl Handle<ScanFinished> for Listener {
-    fn handle(&mut self, _msg: &ScanFinished, _ctx: &Ctx, _out: &mut Outbox) {
+    fn handle(&mut self, msg: &ScanFinished, _ctx: &Ctx, _out: &mut Outbox) {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0.0, |since| since.as_secs_f64());
         // A complete scan also reloads the play statistics.
         hub().update(Changed::TRACKS | Changed::STATS | Changed::SCAN, |state| {
             state.scanning = false;
+            if msg.complete {
+                state.updated = Some(now);
+            }
         });
     }
 }

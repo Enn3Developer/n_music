@@ -10,6 +10,7 @@ use cxx_qt::{CxxQtThread, Threading};
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::PlaylistId;
 use n_music_core::queue::{ItemId, LoopStatus, QueueEntry};
+use n_music_core::source::Locator;
 use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -42,6 +43,10 @@ bitflags! {
         const PLAYLISTS = 1 << 11;
         /// The library refused a playlist change.
         const REJECTED = 1 << 12;
+        /// The library's sources.
+        const ROOTS = 1 << 13;
+        /// How many tracks the running scan found and read.
+        const PROGRESS = 1 << 14;
     }
 }
 
@@ -52,6 +57,14 @@ pub struct State {
     pub current: Option<Track>,
     pub playing: bool,
     pub scanning: bool,
+    /// Tracks the last scan found; 0 until it listed the sources.
+    pub found: usize,
+    /// Tracks found that are still to be read.
+    pub unread: usize,
+    /// When the last complete scan of this launch finished, in Unix seconds.
+    pub updated: Option<f64>,
+    /// The library's sources, as the library last reported them.
+    pub roots: Arc<Vec<Locator>>,
     pub time: TrackTime,
     /// The last tracked seek that applied.
     pub seek: u64,

@@ -181,8 +181,71 @@ Rectangle {
                 Layout.fillWidth: true
                 iconName: "settings"
                 text: Tr.t.settings
-                active: sidebar.page === "settings"
+                active: sidebar.page === "settings" || sidebar.page.startsWith("settings:")
                 onClicked: sidebar.navigate("settings")
+            }
+
+            // How far a scan got; opens the sources.
+            AbstractButton {
+                id: progress
+
+                readonly property string count: Scan.found > 0 ? Tr.t.read_of_found.arg(Format.number(Scan.read)).arg(Format.number(Scan.found)) : ""
+
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                visible: Scan.running
+                topPadding: 10
+                bottomPadding: 10
+                leftPadding: 12
+                rightPadding: 12
+                hoverEnabled: true
+                text: Tr.t.updating_library
+                Accessible.name: text + (count === "" ? "" : ", " + count)
+                onClicked: sidebar.navigate("settings:sources")
+
+                background: Rectangle {
+                    radius: 8
+                    color: progress.down ? Theme.selected : progress.hovered ? Theme.raised : Theme.surface
+                    border.width: progress.visualFocus ? 2 : 0
+                    border.color: Theme.text
+                }
+                contentItem: ColumnLayout {
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: progress.text
+                            elide: Text.ElideRight
+                            color: Theme.text
+                            font.pixelSize: 12
+                        }
+                        Label {
+                            text: progress.count
+                            color: Theme.text2
+                            font.pixelSize: 12
+                            font.features: {
+                                "tnum": 1
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 4
+                        radius: 2
+                        color: Theme.line2
+
+                        Rectangle {
+                            width: Scan.found > 0 ? parent.width * Math.min(1, Scan.read / Scan.found) : 0
+                            height: parent.height
+                            radius: 2
+                            color: Theme.accent
+                        }
+                    }
+                }
             }
         }
     }

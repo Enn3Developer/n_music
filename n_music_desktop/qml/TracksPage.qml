@@ -175,7 +175,7 @@ Item {
                 title: empty ? (Scan.running ? Tr.t.scanning_library : Tr.t.empty_library) : Tr.t.no_results
                 message: empty && !Scan.running ? Tr.t.empty_library_hint : ""
                 action: empty && !Scan.running ? Tr.t.open_sources : ""
-                onTriggered: page.navigate("sources")
+                onTriggered: page.navigate("settings:sources")
             }
         }
     }
