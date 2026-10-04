@@ -79,22 +79,26 @@ pub(crate) fn replay_gain(format: &mut dyn FormatReader, track_id: u32) -> Repla
     replay_gain
 }
 
-/// Visits the media-level and the track's own metadata of every revision, oldest first.
+/// Visits the media-level and the track's own metadata of every revision, newest first.
+/// Tags read later are usually the better ones: an MP3's ID3v1 tag, a truncated Latin-1 relic,
+/// lands in an older revision than its ID3v2 tag.
 pub(crate) fn for_each_container(
     format: &mut dyn FormatReader,
     track_id: u32,
     mut visit: impl FnMut(&MetadataContainer),
 ) {
     let mut metadata_log = format.metadata();
-    while let Some(metadata) = metadata_log.current() {
+    let mut older = Vec::new();
+    while let Some(revision) = metadata_log.pop() {
+        older.push(revision);
+    }
+    let newest = metadata_log.current();
+    for metadata in newest.into_iter().chain(older.iter().rev()) {
         visit(&metadata.media);
         metadata
             .per_track
             .iter()
             .filter(|metadata| metadata.track_id == u64::from(track_id))
             .for_each(|metadata| visit(&metadata.metadata));
-        if metadata_log.pop().is_none() {
-            break;
-        }
     }
 }

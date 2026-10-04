@@ -9,7 +9,7 @@ use multitag::data::Picture;
 use multitag::Tag;
 use std::io;
 use symphonia::core::formats::TrackType;
-use symphonia_core::meta::{StandardTag, StandardVisualKey};
+use symphonia_core::meta::{MetadataContainer, StandardTag, StandardVisualKey};
 
 /// Everything the library keeps about a track, plus the embedded cover's encoded bytes.
 /// Symphonia reads tags and pictures in the same pass; the file is only opened a second time
@@ -46,11 +46,7 @@ pub fn read_info(
     let mut tags = TagReader::default();
     let mut cover: Option<(bool, Vec<u8>)> = None;
     audio::for_each_container(format.as_mut(), track_id, |container| {
-        for tag in &container.tags {
-            if let Some(tag) = &tag.std {
-                tags.read(&mut info, tag);
-            }
-        }
+        tags.read_container(&mut info, container);
         for visual in &container.visuals {
             let front = visual.usage == Some(StandardVisualKey::FrontCover);
             if cover
@@ -113,7 +109,8 @@ pub fn tag_cover(tag: Tag) -> Option<Vec<u8>> {
 }
 
 /// Folds Symphonia's standard tags into a [`TrackInfo`]. The first value of a single-valued
-/// field wins; multi-valued fields keep every distinct value in order.
+/// field wins; multi-valued fields keep every distinct value in order, from the first
+/// container that has any.
 #[derive(Default)]
 struct TagReader {
     year: Option<i32>,
@@ -122,6 +119,23 @@ struct TagReader {
 }
 
 impl TagReader {
+    fn read_container(&mut self, info: &mut TrackInfo, container: &MetadataContainer) {
+        // An earlier container's lists win whole; merging would mix up two tags' artists.
+        let artists = std::mem::take(&mut info.artists);
+        let genres = std::mem::take(&mut info.genres);
+        for tag in &container.tags {
+            if let Some(tag) = &tag.std {
+                self.read(info, tag);
+            }
+        }
+        if !artists.is_empty() {
+            info.artists = artists;
+        }
+        if !genres.is_empty() {
+            info.genres = genres;
+        }
+    }
+
     fn read(&mut self, info: &mut TrackInfo, tag: &StandardTag) {
         fn set<T>(field: &mut Option<T>, value: T) {
             field.get_or_insert(value);
