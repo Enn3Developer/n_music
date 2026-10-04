@@ -293,6 +293,11 @@ impl Session {
         std::mem::take(&mut self.changed)
     }
 
+    /// How many [`Session::entries`] there are.
+    pub fn len(&self) -> usize {
+        self.items.len() + usize::from(self.detour.is_some()) + self.up_next.len()
+    }
+
     /// Everything in play order: the context up to the current item, the up-next item playing,
     /// up next, then the rest of the context.
     pub fn entries(&self) -> Vec<QueueEntry> {

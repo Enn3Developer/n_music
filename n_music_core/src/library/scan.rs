@@ -72,13 +72,16 @@ job_emits!(ScanJob => Tagged<ScanEvent>);
 /// A loaded track on its way to the database; `None` when it could not be read.
 type Loaded = (Locator, Option<u64>, Option<Track>);
 
+/// A track to read from its file; `.0` is its place in [`ScanEvent::Enumerated`].
+type Pending = (usize, TrackEntry);
+
 impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         log::info!("Scanning libraries {tag}: {:?}", self.roots);
-        let providers = self.providers;
-        let (entries, complete) = enumerate_audio_files(providers.as_ref(), &self.roots);
+        let (entries, complete) = enumerate_audio_files(self.providers.as_ref(), &self.roots);
         let len = entries.len();
+        let seen: HashSet<Locator> = entries.iter().map(|entry| entry.locator.clone()).collect();
         let covers = CoverStore::open(&self.paths.covers);
         let mut db = self
             .paths
@@ -90,7 +93,7 @@ impl Job for ScanJob {
                 )
             })
             .ok();
-        let mut stored = match db.as_ref().filter(|_| self.check_cache) {
+        let stored = match db.as_ref().filter(|_| self.check_cache) {
             Some(db) => db.tracks().unwrap_or_else(|error| {
                 log::error!("Could not read the library database: {error}");
                 HashMap::new()
@@ -98,95 +101,20 @@ impl Job for ScanJob {
             None => HashMap::new(),
         };
 
-        let seen: HashSet<Locator> = entries.iter().map(|entry| entry.locator.clone()).collect();
-        let mut covers_exist = HashMap::new();
-        let mut tracks = Vec::with_capacity(len);
-        let mut pending = vec![];
-        let mut unreadable = 0;
-        for (index, entry) in entries.into_iter().enumerate() {
-            let hit = entry
-                .version
-                .and_then(|version| {
-                    stored
-                        .remove(&entry.locator)
-                        .filter(|track| track.version == version)
-                })
-                // The OS may have cleaned the cache directory.
-                .filter(|track| {
-                    track
-                        .info
-                        .as_ref()
-                        .and_then(|info| info.cover.clone())
-                        .is_none_or(|cover| {
-                            *covers_exist
-                                .entry(cover)
-                                .or_insert_with_key(|cover: &PathBuf| cover.is_file())
-                        })
-                });
-            match hit {
-                Some(StoredTrack {
-                    info: Some(info), ..
-                }) => tracks.push(Arc::new(info)),
-                Some(StoredTrack { info: None, .. }) => {
-                    unreadable += 1;
-                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
-                }
-                None => {
-                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
-                    pending.push((index, entry));
-                }
-            }
-        }
-        drop(stored);
+        let (tracks, pending, unreadable) = match_stored(entries, stored);
         log::debug!(
             "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
             pending.len()
         );
         writer.emit_tagged(tag, ScanEvent::Enumerated(tracks));
-
-        let concurrency = std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
-            .min(4)
-            .min(pending.len());
-        let queue = Mutex::new(pending.into_iter());
-        let (tx, rx) = std::sync::mpsc::channel::<Loaded>();
-        std::thread::scope(|scope| {
-            for worker in 0..concurrency {
-                let tx = tx.clone();
-                let queue = &queue;
-                let writer = &writer;
-                let provider = providers.as_ref();
-                let covers = &covers;
-                let token = &token;
-                std::thread::Builder::new()
-                    .name(format!("scan {tag} metadata worker {worker}"))
-                    .spawn_scoped(scope, move || loop {
-                        if token.as_ref().is_some_and(JobToken::is_cancelled) {
-                            break;
-                        }
-                        let Some((index, entry)) = queue.lock().unwrap().next() else {
-                            break;
-                        };
-                        let track = read_track(provider, covers, &entry.locator).map(Arc::new);
-                        if let Some(track) = &track {
-                            writer.emit_tagged(
-                                tag,
-                                ScanEvent::Loaded {
-                                    index,
-                                    track: track.clone(),
-                                },
-                            );
-                        }
-                        if tx.send((entry.locator, entry.version, track)).is_err() {
-                            break;
-                        }
-                    })
-                    .expect("Failed to spawn a scan metadata worker");
-            }
-            drop(tx);
-            store_loaded(db.as_mut(), &rx);
-        });
+        let loading = Loading {
+            tag,
+            writer: &writer,
+            provider: self.providers.as_ref(),
+            covers: &covers,
+            token: token.as_ref(),
+        };
+        loading.run(pending, db.as_mut());
 
         let cancelled = token.as_ref().is_some_and(JobToken::is_cancelled);
         let complete = complete && !cancelled;
@@ -202,6 +130,111 @@ impl Job for ScanJob {
             log::info!("Library scan {tag} completed: {len} tracks");
         }
         writer.emit_tagged(tag, ScanEvent::Finished { complete });
+    }
+}
+
+/// Takes what the database knows of unchanged files. Returns every track, placeholders for
+/// those still to read, the entries to read and how many are known unreadable.
+fn match_stored(
+    entries: Vec<TrackEntry>,
+    mut stored: HashMap<Locator, StoredTrack>,
+) -> (Vec<Track>, Vec<Pending>, usize) {
+    let mut covers_exist = HashMap::new();
+    let mut tracks = Vec::with_capacity(entries.len());
+    let mut pending = vec![];
+    let mut unreadable = 0;
+    for (index, entry) in entries.into_iter().enumerate() {
+        let hit = entry
+            .version
+            .and_then(|version| {
+                stored
+                    .remove(&entry.locator)
+                    .filter(|track| track.version == version)
+            })
+            // The OS may have cleaned the cache directory.
+            .filter(|track| {
+                track
+                    .info
+                    .as_ref()
+                    .and_then(|info| info.cover.clone())
+                    .is_none_or(|cover| {
+                        *covers_exist
+                            .entry(cover)
+                            .or_insert_with_key(|cover: &PathBuf| cover.is_file())
+                    })
+            });
+        match hit {
+            Some(StoredTrack {
+                info: Some(info), ..
+            }) => tracks.push(Arc::new(info)),
+            Some(StoredTrack { info: None, .. }) => {
+                unreadable += 1;
+                tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
+            }
+            None => {
+                tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
+                pending.push((index, entry));
+            }
+        }
+    }
+    (tracks, pending, unreadable)
+}
+
+/// Reads pending tracks on a few workers, reporting each and storing them as they come.
+struct Loading<'a> {
+    tag: u64,
+    writer: &'a EventWriter,
+    provider: &'a Providers,
+    covers: &'a CoverStore,
+    token: Option<&'a JobToken>,
+}
+
+impl Loading<'_> {
+    fn run(&self, pending: Vec<Pending>, db: Option<&mut LibraryDb>) {
+        let concurrency = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .min(4)
+            .min(pending.len());
+        let queue = Mutex::new(pending.into_iter());
+        let (tx, rx) = std::sync::mpsc::channel::<Loaded>();
+        std::thread::scope(|scope| {
+            for worker in 0..concurrency {
+                let tx = tx.clone();
+                let queue = &queue;
+                std::thread::Builder::new()
+                    .name(format!("scan {} metadata worker {worker}", self.tag))
+                    .spawn_scoped(scope, move || self.work(queue, tx))
+                    .expect("Failed to spawn a scan metadata worker");
+            }
+            drop(tx);
+            store_loaded(db, &rx);
+        });
+    }
+
+    fn work(
+        &self,
+        queue: &Mutex<std::vec::IntoIter<Pending>>,
+        tx: std::sync::mpsc::Sender<Loaded>,
+    ) {
+        while !self.token.is_some_and(JobToken::is_cancelled) {
+            let Some((index, entry)) = queue.lock().unwrap().next() else {
+                break;
+            };
+            let track = read_track(self.provider, self.covers, &entry.locator).map(Arc::new);
+            if let Some(track) = &track {
+                self.writer.emit_tagged(
+                    self.tag,
+                    ScanEvent::Loaded {
+                        index,
+                        track: track.clone(),
+                    },
+                );
+            }
+            if tx.send((entry.locator, entry.version, track)).is_err() {
+                break;
+            }
+        }
     }
 }
 
