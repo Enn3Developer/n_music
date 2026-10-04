@@ -2,7 +2,7 @@
 
 mod session;
 
-use crate::audio::player::{Next, PlaybackEvent, PlaybackTask, Player};
+use crate::audio::player::{Failure, Next, PlaybackEvent, PlaybackTask, Player};
 use crate::library::catalog::Library;
 use crate::library::query::Query;
 use crate::messages::{
@@ -33,7 +33,7 @@ impl Job for PlaybackJob {
     fn run(self, tag: u64, writer: EventWriter, _token: Option<JobToken>) {
         let events = writer.clone();
         if let Err(error) = self.0.run(|event| events.emit_tagged(tag, event)) {
-            writer.emit_tagged(tag, PlaybackEvent::Failed(error.to_string()));
+            writer.emit_tagged(tag, PlaybackEvent::Failed(error));
         }
     }
 }
@@ -81,6 +81,8 @@ pub struct QueuePlayer {
     finished: bool,
     /// This play of the current item was counted already.
     counted: bool,
+    /// Tracks that failed in a row; once every entry did, playback stops.
+    failures: usize,
 }
 
 impl QueuePlayer {
@@ -118,6 +120,7 @@ impl QueuePlayer {
             pending_seek_request: None,
             finished: false,
             counted: false,
+            failures: 0,
         }
     }
 
@@ -661,6 +664,7 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
         match event {
             PlaybackEvent::Started { length, paused } => {
                 self.loaded = true;
+                self.failures = 0;
                 self.time.length = *length;
                 self.report(out);
                 self.set_playing(!paused, out);
@@ -694,8 +698,17 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
                 self.set_playing(!paused, out);
             }
             PlaybackEvent::Ended => self.advance(false, ctx, out),
-            PlaybackEvent::Failed(error) => {
-                log::error!("Playback failed: {error}");
+            PlaybackEvent::Failed(failure) => {
+                log::error!("Playback failed: {failure}");
+                self.failures += 1;
+                if let Failure::Track(_) = failure {
+                    if self.failures < self.session.entries().len() {
+                        // Repeating a track that cannot play would only fail again.
+                        let manual = self.loop_status == LoopStatus::File;
+                        self.advance(manual, ctx, out);
+                        return;
+                    }
+                }
                 self.stop(out);
                 let time = self.current_time();
                 self.position(time, true, out);
