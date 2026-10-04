@@ -1,15 +1,13 @@
+use crate::messages::ThemeChangeRequested;
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
     Subscriber, Tagged,
 };
-use n_music_core::library::LibraryPaths;
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ShuffleChanged,
-    ThemeChangeRequested, TrackChanged,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ShuffleChanged, TrackChanged,
 };
 use n_music_core::queue::{ItemId, LoopStatus};
-use n_music_core::services::metadata::{MetadataJob, MetadataLoaded, MetadataLoader};
-use n_music_core::source::{Locator, Providers};
+use n_music_core::source::Locator;
 use n_music_core::Track;
 use std::any::Any;
 use std::sync::{Arc, Mutex};
@@ -41,7 +39,6 @@ pub struct AndroidBridge {
     callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
     notification: Option<RunningJob>,
     pending: Option<Track>,
-    metadata_loader: MetadataLoader,
     position: f64,
     playing: bool,
     current: Option<ItemId>,
@@ -52,8 +49,6 @@ impl AndroidBridge {
         jvm: Arc<jni::JavaVM>,
         callback: Arc<jni::objects::Global<jni::objects::JObject<'static>>>,
         theme: i32,
-        providers: Arc<Providers>,
-        paths: LibraryPaths,
     ) -> Self {
         jvm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_method(
@@ -73,7 +68,6 @@ impl AndroidBridge {
             callback,
             notification: None,
             pending: None,
-            metadata_loader: MetadataLoader::new(providers, paths),
             position: 0.0,
             playing: false,
             current: None,
@@ -95,7 +89,6 @@ impl Subscriber for AndroidBridge {
         reg.on::<LoopStatusChanged>();
         reg.on::<ShuffleChanged>();
         reg.on::<ThemeChangeRequested>();
-        MetadataJob::subscribe(reg);
         NotificationJob::subscribe(reg);
         reg.on::<PositionChanged>();
         reg.on::<ShutdownRequested>();
@@ -221,8 +214,8 @@ impl Handle<PlaybackChanged> for AndroidBridge {
 }
 impl Handle<PositionChanged> for AndroidBridge {
     fn handle(&mut self, msg: &PositionChanged, _: &Ctx, _: &mut Outbox) {
-        self.position = msg.0.position;
-        if msg.2 {
+        self.position = msg.time.position;
+        if msg.discontinuity {
             self.update_playback();
         }
     }
@@ -269,7 +262,8 @@ impl Handle<TrackChanged> for AndroidBridge {
         }
         self.current = Some(msg.item);
         self.change_track(queue_index(msg.item).unwrap_or(0));
-        self.metadata_loader.load(msg.locator.clone(), ctx);
+        self.pending = Some(msg.track.clone());
+        self.flush_notification(ctx);
     }
 }
 
@@ -284,17 +278,6 @@ impl AndroidBridge {
                 callback: self.callback.clone(),
                 track,
             }));
-        }
-    }
-}
-impl Handle<Tagged<MetadataLoaded>> for AndroidBridge {
-    fn handle(&mut self, msg: &Tagged<MetadataLoaded>, ctx: &Ctx, _: &mut Outbox) {
-        if ctx.shutting_down {
-            return;
-        }
-        if let Some(track) = self.metadata_loader.take(msg) {
-            self.pending = Some(track);
-            self.flush_notification(ctx);
         }
     }
 }
@@ -369,7 +352,6 @@ impl Handle<Tagged<NotificationFinished>> for AndroidBridge {
 impl Handle<ShutdownRequested> for AndroidBridge {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
         self.pending = None;
-        self.metadata_loader.cancel();
         self.playing = false;
         self.update_playback();
         if self.notification.is_none() {

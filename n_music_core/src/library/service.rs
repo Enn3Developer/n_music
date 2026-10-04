@@ -3,12 +3,13 @@
 use super::catalog::{Library, Playlist, PlaylistItem};
 use super::db::LibraryDb;
 use super::query::{now, PlaylistId};
+use super::scan::{ScanEvent, ScanJob};
 use super::LibraryPaths;
-use crate::jobs::scan::{ScanEvent, ScanJob};
 use crate::messages::{
-    AddToPlaylist, CreatePlaylist, DeletePlaylist, PlaylistRejected, PlaylistSummary,
-    PlaylistsChanged, RemoveFromPlaylist, RenamePlaylist, ScanFinished, ScanRequested,
-    SetPlaylistRule, SetPlaylistSort, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    AddToPlaylist, CreatePlaylist, DeletePlaylist, LibraryRootsChanged, PlaylistRejected,
+    PlaylistSummary, PlaylistsChanged, RemoveFromPlaylist, RenamePlaylist, ScanFinished,
+    ScanRequested, SetLibraryRoots, SetPlaylistRule, SetPlaylistSort, TrackMetadataLoaded,
+    TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{LibrarySettings, Options};
 use crate::source::{Locator, Providers};
@@ -70,6 +71,16 @@ impl LibraryService {
             Ok(stats) => catalog.set_stats(stats),
             Err(error) => log::error!("Could not read the play statistics: {error}"),
         }
+    }
+
+    /// Starts a scan of the library folders, replacing a running one.
+    fn scan(&mut self, check_cache: bool, ctx: &Ctx) {
+        self.scan = Some(ctx.jobs.spawn_stream(ScanJob {
+            roots: self.settings.get().libraries.clone(),
+            paths: self.paths.clone(),
+            check_cache,
+            providers: self.providers.clone(),
+        }));
     }
 
     fn publish(&self, out: &mut Outbox) {
@@ -147,6 +158,7 @@ impl Subscriber for LibraryService {
 
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<ScanRequested>();
+        reg.on::<SetLibraryRoots>();
         reg.on::<CreatePlaylist>();
         reg.on::<RenamePlaylist>();
         reg.on::<DeletePlaylist>();
@@ -166,15 +178,24 @@ impl Handle<ScanRequested> for LibraryService {
             return;
         }
         if self.scan.is_none() {
-            // The first scan of a launch: the UIs learn about the saved playlists too.
+            // The first scan of a launch: the UIs learn about the folders and the saved
+            // playlists too.
+            out.emit(LibraryRootsChanged(self.settings.get().libraries.clone()));
             self.publish(out);
         }
-        self.scan = Some(ctx.jobs.spawn_stream(ScanJob {
-            roots: self.settings.get().libraries.clone(),
-            paths: self.paths.clone(),
-            check_cache: msg.check_cache,
-            providers: self.providers.clone(),
-        }));
+        self.scan(msg.check_cache, ctx);
+    }
+}
+
+impl Handle<SetLibraryRoots> for LibraryService {
+    fn handle(&mut self, msg: &SetLibraryRoots, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
+        self.settings
+            .update(|settings| settings.libraries = msg.0.clone());
+        out.emit(LibraryRootsChanged(msg.0.clone()));
+        self.scan(true, ctx);
     }
 }
 
@@ -193,7 +214,6 @@ impl Handle<Tagged<ScanEvent>> for LibraryService {
             ScanEvent::Loaded { index, track } => {
                 self.library.write().update_track(*index, track.clone());
                 out.emit(TrackMetadataLoaded {
-                    index: *index,
                     track: track.clone(),
                 });
             }

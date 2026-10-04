@@ -1,10 +1,10 @@
-use crate::convert::Converter;
+use super::convert::Converter;
+use super::output::{self, AudioOutputError, Output, OutputFormat};
+use super::{replay_gain, CODEC_REGISTRY};
 use crate::library::track::ReplayGainMode;
-use crate::music_track::{replay_gain, MusicTrack};
-use crate::output::{self, Output, OutputFormat};
 use crate::queue::ItemId;
 use crate::source::{Locator, Providers};
-use crate::{TrackTime, CODEC_REGISTRY};
+use crate::TrackTime;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread::{JoinHandle, Thread};
@@ -20,7 +20,6 @@ pub struct Player {
     replay_gain: ReplayGainMode,
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
-    reported_end: bool,
     /// The device stream, kept open between tracks. A running task holds the lock.
     output: Arc<Mutex<Option<Output>>>,
 }
@@ -32,7 +31,6 @@ impl Player {
             replay_gain,
             control: None,
             progress_interval: None,
-            reported_end: false,
             output: Arc::new(Mutex::new(None)),
         }
     }
@@ -61,7 +59,11 @@ impl Player {
             .as_ref()
             .is_some_and(PlaybackControl::is_paused)
     }
-    pub fn get_volume(&self) -> f32 {
+    /// Applies from the next track.
+    pub fn set_replay_gain(&mut self, mode: ReplayGainMode) {
+        self.replay_gain = mode;
+    }
+    pub fn volume(&self) -> f32 {
         self.volume
     }
     pub fn set_volume(&mut self, volume: f32) {
@@ -73,25 +75,17 @@ impl Player {
             control.set_volume(self.volume);
         }
     }
-    pub fn seek_to(&mut self, seconds: u64, frac: f64) {
+    pub fn seek_to(&mut self, seconds: f64) {
         if let Some(control) = &self.control {
-            control.seek(seconds as f64 + frac);
+            control.seek(seconds);
         }
     }
     pub fn seek_revision(&self) -> u64 {
         self.control.as_ref().map_or(0, PlaybackControl::revision)
     }
-    pub fn get_time(&self) -> Option<TrackTime> {
+    /// Where the running task is, exactly; position events are throttled.
+    pub fn time(&self) -> Option<TrackTime> {
         self.control.as_ref().and_then(PlaybackControl::time)
-    }
-    pub fn has_ended(&mut self) -> bool {
-        let ended = self
-            .control
-            .as_ref()
-            .is_some_and(PlaybackControl::has_ended);
-        let changed = ended && !self.reported_end;
-        self.reported_end = ended;
-        changed
     }
     pub fn is_playing(&self) -> bool {
         self.control
@@ -102,7 +96,6 @@ impl Player {
         if let Some(control) = &self.control {
             control.stop();
         }
-        self.reported_end = false;
     }
     pub fn set_progress_interval(&mut self, interval: Option<Duration>) {
         self.progress_interval = interval;
@@ -140,11 +133,6 @@ impl Drop for Player {
         self.end_current();
     }
 }
-impl Default for Player {
-    fn default() -> Self {
-        Self::new(1.0, ReplayGainMode::Off)
-    }
-}
 
 /// A gapless successor: `locator`, the queue `item`, follows the track at `after`.
 /// A task only takes it while it plays `after`, so a successor computed for an older
@@ -165,7 +153,7 @@ struct PlaybackSource {
 impl PlaybackSource {
     /// Opens the track from its first byte.
     fn open(&self) -> io::Result<Box<dyn FormatReader>> {
-        MusicTrack::new(self.providers.as_ref(), &self.locator).get_format()
+        super::open(self.providers.as_ref(), &self.locator)
     }
 }
 
@@ -248,7 +236,6 @@ struct State {
     stopped: bool,
     running: bool,
     finished: bool,
-    ended: bool,
     time: Option<(TrackTime, u64)>,
     progress_interval: Option<Duration>,
     next: Option<Next>,
@@ -282,7 +269,6 @@ impl PlaybackControl {
             stopped: false,
             running: false,
             finished: false,
-            ended: false,
             time: None,
             progress_interval: Some(Duration::from_millis(50)),
             next: None,
@@ -354,10 +340,6 @@ impl PlaybackControl {
         !state.stopped && !state.finished
     }
 
-    fn has_ended(&self) -> bool {
-        self.0.lock().unwrap().ended
-    }
-
     fn stop(&self) {
         self.update(|state| {
             state.stopped = true;
@@ -378,12 +360,11 @@ impl PlaybackControl {
         true
     }
 
-    fn finish(&self, ended: bool) {
+    fn finish(&self) {
         let mut state = self.0.lock().unwrap();
         state.finished = true;
         state.running = false;
         state.thread = None;
-        state.ended = ended && !state.stopped;
     }
 
     fn controls(&self) -> Controls {
@@ -405,11 +386,12 @@ impl PlaybackControl {
     }
 }
 
-struct Completion(PlaybackControl, bool);
+/// Marks the task finished however it exits.
+struct Completion(PlaybackControl);
 
 impl Drop for Completion {
     fn drop(&mut self) {
-        self.0.finish(self.1);
+        self.0.finish();
     }
 }
 
@@ -711,361 +693,479 @@ fn run(
     output: &mut Option<Output>,
     emit: &mut impl FnMut(PlaybackEvent),
 ) -> io::Result<()> {
-    let mut current = Decoding::open(source, item, replay_gain_mode)?;
+    let current = Decoding::open(source, item, replay_gain_mode)?;
     if !control.begin() {
         return Ok(());
     }
-    let mut completion = Completion(control.clone(), false);
-    if let Some(stream) = output.as_ref() {
-        if stream.check_health().is_ok() {
-            stream.attach();
-        } else {
-            output.take();
+    let completion = Completion(control.clone());
+    let ended = Playback::start(current, replay_gain_mode, control, output, emit).run()?;
+    drop(completion);
+    if ended {
+        emit(PlaybackEvent::Ended);
+    }
+    Ok(())
+}
+
+/// Whether the loop goes on to the next step or starts over with fresh controls.
+enum Step {
+    Go,
+    Again,
+}
+
+/// A running task's state between rounds of [`Playback::run`]: what is decoded, queued and
+/// heard, and how the output is doing.
+struct Playback<'a, E: FnMut(PlaybackEvent)> {
+    control: PlaybackControl,
+    output: &'a mut Option<Output>,
+    emit: &'a mut E,
+    replay_gain_mode: ReplayGainMode,
+    current: Decoding,
+    handover: Option<Handover>,
+    prefetch: Option<Prefetch>,
+    timeline: Timeline,
+    /// Converted samples, queued up to `pending_offset`.
+    pending: Vec<f32>,
+    pending_offset: usize,
+    /// The current track is decoded to the end: what is queued plays out, or the successor
+    /// takes over.
+    draining: bool,
+    output_error: Option<AudioOutputError>,
+    /// The output failed and is being replaced.
+    recovering: bool,
+    /// Where to resume once a replaced output works, until audio advances past it.
+    recovery_anchor: Option<Time>,
+    retry_after: Instant,
+    paused: bool,
+    /// The controls' version last applied.
+    version: u64,
+    volume: f32,
+    /// The seek revision positions are reported for.
+    revision: u64,
+    time: TrackTime,
+    last_report: Instant,
+    force_report: bool,
+    progress_interval: Option<Duration>,
+}
+
+impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
+    /// Takes over the stream kept from the previous track, if it still works.
+    fn start(
+        current: Decoding,
+        replay_gain_mode: ReplayGainMode,
+        control: PlaybackControl,
+        output: &'a mut Option<Output>,
+        emit: &'a mut E,
+    ) -> Self {
+        if let Some(stream) = output.as_ref() {
+            if stream.check_health().is_ok() {
+                stream.attach();
+            } else {
+                output.take();
+            }
+        }
+        let paused = control.is_paused();
+        let length = current.length;
+        // A stream kept from the previous track has already played frames.
+        let timeline = Timeline {
+            start: output.as_ref().map_or(0, Output::produced_frames),
+            position: 0.0,
+        };
+        emit(PlaybackEvent::Started { length, paused });
+        Self {
+            control,
+            output,
+            emit,
+            replay_gain_mode,
+            current,
+            handover: None,
+            prefetch: None,
+            timeline,
+            pending: vec![],
+            pending_offset: 0,
+            draining: false,
+            output_error: None,
+            recovering: false,
+            recovery_anchor: None,
+            retry_after: Instant::now(),
+            paused,
+            version: u64::MAX,
+            volume: f32::NAN,
+            revision: 0,
+            time: TrackTime {
+                position: 0.0,
+                length,
+            },
+            last_report: Instant::now(),
+            force_report: true,
+            progress_interval: Some(Duration::from_millis(50)),
         }
     }
-    let mut handover: Option<Handover> = None;
-    let mut prefetch: Option<Prefetch> = None;
-    // A stream kept from the previous track has already played frames.
-    let mut timeline = Timeline {
-        start: output.as_ref().map_or(0, Output::produced_frames),
-        position: 0.0,
-    };
-    // Converted samples not queued yet.
-    let mut pending: Vec<f32> = vec![];
-    let mut pending_offset = 0;
-    let mut draining = false;
-    let mut output_error = None;
-    let mut recovering = false;
-    let mut recovery_anchor = None;
-    let mut retry_after = Instant::now();
-    let mut paused = control.is_paused();
-    let mut version = u64::MAX;
-    let mut volume = f32::NAN;
-    let mut revision = 0;
-    let mut time = TrackTime {
-        position: 0.0,
-        length: current.length,
-    };
-    let mut last_report = Instant::now();
-    let mut force_report = true;
-    let mut progress_interval = Some(Duration::from_millis(50));
-    emit(PlaybackEvent::Started {
-        length: current.length,
-        paused,
-    });
 
-    loop {
-        let controls = control.controls();
-        let changed = controls.version != version;
-        version = controls.version;
-        if controls.stopped {
-            return Ok(());
+    /// Plays until the task is stopped (false) or the track ended (true).
+    fn run(mut self) -> io::Result<bool> {
+        loop {
+            let controls = self.control.controls();
+            if controls.stopped {
+                return Ok(false);
+            }
+            let pause_changed = self.apply(&controls);
+            let rewind = self.check_output(controls.reload_output)?;
+            self.seek(controls.seek, rewind)?;
+            self.time.length = self.current.length;
+            self.update_prefetch(controls.next.clone());
+
+            if self.paused {
+                if self.force_report {
+                    self.report_now();
+                }
+                if pause_changed {
+                    (self.emit)(PlaybackEvent::Paused(true));
+                }
+                // Stream callbacks only set atomics; check on the device now and then.
+                std::thread::park_timeout(output::DEVICE_CHECK_INTERVAL);
+                continue;
+            }
+            if pause_changed {
+                (self.emit)(PlaybackEvent::Paused(false));
+            }
+            if self.output.is_none() {
+                self.open_output(controls.volume);
+                continue;
+            }
+
+            let timeout = self.follow_position();
+            if let Step::Again = self.write_pending(timeout) {
+                continue;
+            }
+            if self.draining {
+                if self.drain(controls.next, timeout) {
+                    self.time.position = self.time.length;
+                    self.report_now();
+                    return Ok(true);
+                }
+                continue;
+            }
+            self.decode()?;
         }
-        if output_error.is_none() {
-            output_error = output
+    }
+
+    /// Applies volume, pause and progress changes; returns whether pausing changed.
+    fn apply(&mut self, controls: &Controls) -> bool {
+        let changed = controls.version != self.version;
+        self.version = controls.version;
+        if self.output_error.is_none() {
+            self.output_error = self
+                .output
                 .as_ref()
                 .and_then(|output| output.check_health().err());
         }
-        if controls.progress_interval != progress_interval {
-            progress_interval = controls.progress_interval;
-            force_report = progress_interval.is_some();
+        if controls.progress_interval != self.progress_interval {
+            self.progress_interval = controls.progress_interval;
+            self.force_report = self.progress_interval.is_some();
         }
-        if changed && controls.volume != volume {
-            volume = controls.volume;
-            if let Some(output) = output.as_ref() {
-                output.set_volume(output_volume(volume));
+        if changed && controls.volume != self.volume {
+            self.volume = controls.volume;
+            if let Some(output) = self.output.as_ref() {
+                output.set_volume(output_volume(self.volume));
             }
         }
-        let pause_changed = controls.paused != paused;
-        paused = controls.paused;
-        if output_error.is_none() && !controls.reload_output {
-            if let Some(output) = output.as_mut() {
-                output_error = output.set_paused(paused).err();
+        let pause_changed = controls.paused != self.paused;
+        self.paused = controls.paused;
+        if self.output_error.is_none() && !controls.reload_output {
+            if let Some(output) = self.output.as_mut() {
+                self.output_error = output.set_paused(self.paused).err();
             }
         }
         if pause_changed {
-            force_report = true;
+            self.force_report = true;
         }
-        let mut reload_output = controls.reload_output;
-        if let Some(error) = output_error.take() {
+        pause_changed
+    }
+
+    /// Closes the output when it failed or a reload was asked for. Returns whether the track
+    /// has to be rewound to what is heard, as queued audio was lost with it.
+    fn check_output(&mut self, reload: bool) -> io::Result<bool> {
+        let mut reload = reload;
+        if let Some(error) = self.output_error.take() {
             if !error.is_recoverable() {
                 return Err(io::Error::other(error));
             }
-            if !recovering {
+            if !self.recovering {
                 log::warn!("Audio output unavailable, retrying the system default: {error}");
             }
-            recovering = true;
-            reload_output = true;
-            retry_after = Instant::now() + Duration::from_millis(250);
+            self.recovering = true;
+            reload = true;
+            self.retry_after = Instant::now() + Duration::from_millis(250);
         }
-        let rewind = reload_output
-            && (output.is_some() || current.decoded || handover.is_some() || !pending.is_empty());
-        if reload_output {
-            // Close before reopening: some backends require exclusive access. Rewind below
+        let rewind = reload
+            && (self.output.is_some()
+                || self.current.decoded
+                || self.handover.is_some()
+                || !self.pending.is_empty());
+        if reload {
+            // Close before reopening: some backends require exclusive access. Rewind
             // rather than skipping what was queued.
-            output.take();
-            force_report = true;
+            self.output.take();
+            self.force_report = true;
         }
-        let recovery_seek = rewind.then(|| {
+        Ok(rewind)
+    }
+
+    /// Applies a user seek, or the rewind after the output was replaced.
+    fn seek(&mut self, user: Option<(Time, u64)>, rewind: bool) -> io::Result<()> {
+        let recovery = rewind.then(|| {
+            let position = self.time.position;
             (
                 // Keep the original time until audio advances: seconds/timestamp round-trips
                 // can lose a tick on each failed replacement stream at rates such as 44.1 kHz.
-                *recovery_anchor.get_or_insert_with(|| {
-                    Time::try_from_secs_f64(time.position).unwrap_or_default()
-                }),
-                controls
-                    .seek
-                    .as_ref()
-                    .map_or(revision, |(_, revision)| *revision),
+                *self
+                    .recovery_anchor
+                    .get_or_insert_with(|| Time::try_from_secs_f64(position).unwrap_or_default()),
+                user.as_ref()
+                    .map_or(self.revision, |(_, revision)| *revision),
             )
         });
         // A user seek issued during recovery takes precedence over the recovery position.
-        for (request, automatic) in [(controls.seek, false), (recovery_seek, true)] {
-            let Some((target, next_revision)) = request else {
+        for (request, automatic) in [(user, false), (recovery, true)] {
+            let Some((target, revision)) = request else {
                 continue;
             };
-            revision = next_revision;
-            force_report = true;
+            self.revision = revision;
+            self.force_report = true;
             // Seeking applies to what is heard: forget a successor that is only queued.
-            if let Some(Handover { previous, .. }) = handover.take() {
-                current = previous;
+            if let Some(Handover { previous, .. }) = self.handover.take() {
+                self.current = previous;
             }
-            let start = output.as_ref().map_or(0, Output::produced_frames);
-            if current.length > 0.0 && target.as_secs_f64() >= current.length {
-                pending.clear();
-                pending_offset = 0;
-                if let Some(output) = output.as_mut() {
-                    output.discard_queued();
+            let start = self.output.as_ref().map_or(0, Output::produced_frames);
+            if self.current.length > 0.0 && target.as_secs_f64() >= self.current.length {
+                self.discard_pending();
+                if let Some(output) = self.output.as_mut() {
                     output.set_draining();
                 }
-                time.position = current.length;
-                timeline = Timeline {
+                self.time.position = self.current.length;
+                self.timeline = Timeline {
                     start,
-                    position: current.length,
+                    position: self.current.length,
                 };
-                draining = true;
+                self.draining = true;
                 break;
             }
-            let Some((position, rebuilt)) = current.seek(target, rewind, automatic)? else {
+            let Some((position, rebuilt)) = self.current.seek(target, rewind, automatic)? else {
                 continue;
             };
             if !automatic || rebuilt {
-                recovery_anchor = Some(target);
+                self.recovery_anchor = Some(target);
             }
-            pending.clear();
-            pending_offset = 0;
-            if let Some(output) = output.as_mut() {
-                output.discard_queued();
-            }
-            time.position = position;
-            timeline = Timeline { start, position };
-            draining = false;
+            self.discard_pending();
+            self.time.position = position;
+            self.timeline = Timeline { start, position };
+            self.draining = false;
             break;
         }
-        time.length = current.length;
+        Ok(())
+    }
 
-        // Open the successor in the background as soon as it is known.
-        let wanted = controls
-            .next
-            .clone()
-            .filter(|next| handover.is_none() && next.after == current.item);
-        if prefetch.as_ref().map(|prefetch| &prefetch.next) != wanted.as_ref() {
-            prefetch = wanted.map(|next| Prefetch {
-                track: Decoding::prefetch(
-                    PlaybackSource {
-                        providers: current.source.providers.clone(),
-                        locator: next.locator.clone(),
-                    },
-                    next.item,
-                    replay_gain_mode,
-                ),
+    /// Drops audio that is converted or queued but not heard yet.
+    fn discard_pending(&mut self) {
+        self.pending.clear();
+        self.pending_offset = 0;
+        if let Some(output) = self.output.as_mut() {
+            output.discard_queued();
+        }
+    }
+
+    /// Opens the successor in the background as soon as it is known.
+    fn update_prefetch(&mut self, next: Option<Next>) {
+        let wanted = next.filter(|next| self.handover.is_none() && next.after == self.current.item);
+        if self.prefetch.as_ref().map(|prefetch| &prefetch.next) != wanted.as_ref() {
+            self.prefetch = wanted.map(|next| Prefetch {
+                track: Decoding::prefetch(self.source(&next), next.item, self.replay_gain_mode),
                 next,
             });
         }
+    }
 
-        if paused {
-            if force_report {
-                control.publish(time, revision);
-                emit(PlaybackEvent::Position {
-                    time,
-                    revision,
-                    discontinuity: true,
-                });
-                force_report = false;
-            }
-            if pause_changed {
-                emit(PlaybackEvent::Paused(true));
-            }
-            // Stream callbacks only set atomics; check on the device now and then.
-            std::thread::park_timeout(output::DEVICE_CHECK_INTERVAL);
-            continue;
+    fn source(&self, next: &Next) -> PlaybackSource {
+        PlaybackSource {
+            providers: self.current.source.providers.clone(),
+            locator: next.locator.clone(),
         }
-        if pause_changed {
-            emit(PlaybackEvent::Paused(false));
-        }
-        if output.is_none() {
-            let now = Instant::now();
-            if now < retry_after {
-                if force_report {
-                    control.publish(time, revision);
-                    emit(PlaybackEvent::Position {
-                        time,
-                        revision,
-                        discontinuity: true,
-                    });
-                    force_report = false;
-                }
-                std::thread::park_timeout(retry_after - now);
-                continue;
+    }
+
+    /// Opens the default device, once the retry delay after a failure has passed.
+    fn open_output(&mut self, volume: f32) {
+        let now = Instant::now();
+        if now < self.retry_after {
+            if self.force_report {
+                self.report_now();
             }
-            match Output::open(output_volume(controls.volume)) {
-                Ok(opened) => {
-                    opened.attach();
-                    volume = controls.volume;
-                    *output = Some(opened);
-                    force_report = true;
-                }
-                Err(error) => output_error = Some(error),
-            }
-            // Opening can take time; re-read the controls before playing.
-            continue;
+            std::thread::park_timeout(self.retry_after - now);
+            return;
         }
-        let Some(stream) = output.as_mut() else {
-            continue;
+        match Output::open(output_volume(volume)) {
+            Ok(opened) => {
+                opened.attach();
+                self.volume = volume;
+                *self.output = Some(opened);
+                self.force_report = true;
+            }
+            Err(error) => self.output_error = Some(error),
+        }
+        // Opening can take time; the caller re-reads the controls before playing.
+    }
+
+    /// Publishes the position right away, as a discontinuity.
+    fn report_now(&mut self) {
+        self.control.publish(self.time, self.revision);
+        (self.emit)(PlaybackEvent::Position {
+            time: self.time,
+            revision: self.revision,
+            discontinuity: true,
+        });
+        self.force_report = false;
+    }
+
+    /// Works out what the listener hears, crossing into the successor when its first frame
+    /// plays, and reports it. Returns how long the thread may wait before reporting again.
+    fn follow_position(&mut self) -> Duration {
+        let Some(stream) = self.output.as_ref() else {
+            return Duration::from_millis(1);
         };
-        let format = stream.format();
-
-        // Where the listener is.
+        let rate = stream.format().rate as f64;
         let played = stream.played_frames();
-        if let Some(boundary) = handover.as_ref().map(|handover| handover.boundary) {
+        if let Some(boundary) = self.handover.as_ref().map(|handover| handover.boundary) {
             if played >= boundary {
-                handover = None;
-                timeline = Timeline {
+                self.handover = None;
+                self.timeline = Timeline {
                     start: boundary,
                     position: 0.0,
                 };
-                time.length = current.length;
-                recovery_anchor = None;
-                force_report = true;
-                emit(PlaybackEvent::Advanced {
-                    item: current.item,
-                    length: current.length,
+                self.time.length = self.current.length;
+                self.recovery_anchor = None;
+                self.force_report = true;
+                (self.emit)(PlaybackEvent::Advanced {
+                    item: self.current.item,
+                    length: self.current.length,
                 });
             }
         }
-        let audible_length = handover
+        let audible_length = self
+            .handover
             .as_ref()
-            .map_or(current.length, |handover| handover.previous.length);
-        time.position =
-            timeline.position + played.saturating_sub(timeline.start) as f64 / format.rate as f64;
+            .map_or(self.current.length, |handover| handover.previous.length);
+        self.time.position =
+            self.timeline.position + played.saturating_sub(self.timeline.start) as f64 / rate;
         if audible_length > 0.0 {
-            time.position = time.position.min(audible_length);
+            self.time.position = self.time.position.min(audible_length);
         }
-        if recovery_anchor.is_some_and(|anchor: Time| time.position > anchor.as_secs_f64()) {
-            recovery_anchor = None;
-        }
-        control.publish(time, revision);
-        if force_report
-            || progress_interval.is_some_and(|interval| last_report.elapsed() >= interval)
+        if self
+            .recovery_anchor
+            .is_some_and(|anchor| self.time.position > anchor.as_secs_f64())
         {
-            emit(PlaybackEvent::Position {
-                time,
-                revision,
-                discontinuity: force_report,
+            self.recovery_anchor = None;
+        }
+        self.control.publish(self.time, self.revision);
+        if self.force_report
+            || self
+                .progress_interval
+                .is_some_and(|interval| self.last_report.elapsed() >= interval)
+        {
+            (self.emit)(PlaybackEvent::Position {
+                time: self.time,
+                revision: self.revision,
+                discontinuity: self.force_report,
             });
-            last_report = Instant::now();
-            force_report = false;
+            self.last_report = Instant::now();
+            self.force_report = false;
         }
-        // How long the thread may sleep before it has something to report.
         let mut timeout = output::DEVICE_CHECK_INTERVAL;
-        if let Some(interval) = progress_interval {
-            timeout = timeout.min(interval.saturating_sub(last_report.elapsed()));
+        if let Some(interval) = self.progress_interval {
+            timeout = timeout.min(interval.saturating_sub(self.last_report.elapsed()));
         }
-        if let Some(handover) = &handover {
+        if let Some(handover) = &self.handover {
             let frames = handover.boundary.saturating_sub(played);
-            timeout = timeout.min(Duration::from_secs_f64(frames as f64 / format.rate as f64));
+            timeout = timeout.min(Duration::from_secs_f64(frames as f64 / rate));
         }
-        let timeout = timeout.max(Duration::from_millis(1));
-
-        if pending_offset < pending.len() {
-            match stream.write(&pending[pending_offset..]) {
-                Ok(written) => pending_offset += written,
-                Err(error) => {
-                    output_error = Some(error);
-                    continue;
-                }
-            }
-            if pending_offset < pending.len() {
-                stream.wait_for_room(timeout);
-                continue;
-            }
-            pending.clear();
-            pending_offset = 0;
-            recovering = false;
-        }
-
-        if draining {
-            // Join the successor if it arrived late.
-            if let Some(next) = controls.next.filter(|next| next.after == current.item) {
-                let track = match prefetch.take() {
-                    Some(prefetch) if prefetch.next == next => prefetch.track.join(),
-                    _ => Ok(Decoding::open(
-                        PlaybackSource {
-                            providers: current.source.providers.clone(),
-                            locator: next.locator.clone(),
-                        },
-                        next.item,
-                        replay_gain_mode,
-                    )),
-                };
-                match track {
-                    Ok(Ok(next)) => {
-                        let previous = std::mem::replace(&mut current, next);
-                        handover = Some(Handover {
-                            previous,
-                            boundary: stream.produced_frames(),
-                        });
-                        draining = false;
-                        continue;
-                    }
-                    Ok(Err(error)) => {
-                        log::warn!("Could not open the next track {}: {error}", next.locator)
-                    }
-                    Err(_) => log::error!("Opening the next track panicked"),
-                }
-            }
-            let pending_frames = stream.pending_frames();
-            if pending_frames == 0 {
-                break;
-            }
-            stream.set_draining();
-            let left = Duration::from_secs_f64(pending_frames as f64 / format.rate as f64);
-            stream.wait_drained(timeout.min(left).max(Duration::from_millis(1)));
-            continue;
-        }
-
-        match current.decode(format, &mut pending)? {
-            Decoded::Audio | Decoded::Skipped => {}
-            Decoded::End => {
-                current.finish(format, &mut pending)?;
-                // Queue what is left, then hand over or drain.
-                draining = true;
-                if pending.is_empty() {
-                    continue;
-                }
-                // The successor starts after these samples; join it once they are queued.
-            }
-        }
+        timeout.max(Duration::from_millis(1))
     }
-    time.position = time.length;
-    control.publish(time, revision);
-    emit(PlaybackEvent::Position {
-        time,
-        revision,
-        discontinuity: true,
-    });
-    completion.1 = true;
-    drop(completion);
-    emit(PlaybackEvent::Ended);
-    Ok(())
+
+    /// Queues converted audio; [`Step::Again`] while some is left or the output failed.
+    fn write_pending(&mut self, timeout: Duration) -> Step {
+        if self.pending_offset >= self.pending.len() {
+            return Step::Go;
+        }
+        let Some(stream) = self.output.as_mut() else {
+            return Step::Again;
+        };
+        match stream.write(&self.pending[self.pending_offset..]) {
+            Ok(written) => self.pending_offset += written,
+            Err(error) => {
+                self.output_error = Some(error);
+                return Step::Again;
+            }
+        }
+        if self.pending_offset < self.pending.len() {
+            stream.wait_for_room(timeout);
+            return Step::Again;
+        }
+        self.pending.clear();
+        self.pending_offset = 0;
+        self.recovering = false;
+        Step::Go
+    }
+
+    /// Hands over to the successor, or waits for the queued audio to play out. Returns
+    /// whether the track ended.
+    fn drain(&mut self, next: Option<Next>, timeout: Duration) -> bool {
+        // Join the successor if it arrived late.
+        if let Some(next) = next.filter(|next| next.after == self.current.item) {
+            let track = match self.prefetch.take() {
+                Some(prefetch) if prefetch.next == next => prefetch.track.join(),
+                _ => Ok(Decoding::open(
+                    self.source(&next),
+                    next.item,
+                    self.replay_gain_mode,
+                )),
+            };
+            match track {
+                Ok(Ok(track)) => {
+                    let previous = std::mem::replace(&mut self.current, track);
+                    self.handover = Some(Handover {
+                        previous,
+                        boundary: self.output.as_ref().map_or(0, Output::produced_frames),
+                    });
+                    self.draining = false;
+                    return false;
+                }
+                Ok(Err(error)) => {
+                    log::warn!("Could not open the next track {}: {error}", next.locator)
+                }
+                Err(_) => log::error!("Opening the next track panicked"),
+            }
+        }
+        let Some(stream) = self.output.as_mut() else {
+            return false;
+        };
+        let pending_frames = stream.pending_frames();
+        if pending_frames == 0 {
+            return true;
+        }
+        stream.set_draining();
+        let left = Duration::from_secs_f64(pending_frames as f64 / stream.format().rate as f64);
+        stream.wait_drained(timeout.min(left).max(Duration::from_millis(1)));
+        false
+    }
+
+    /// Decodes the next packet; at the end, flushes what is held back and starts draining.
+    fn decode(&mut self) -> io::Result<()> {
+        let Some(format) = self.output.as_ref().map(Output::format) else {
+            return Ok(());
+        };
+        if let Decoded::End = self.current.decode(format, &mut self.pending)? {
+            self.current.finish(format, &mut self.pending)?;
+            // Queue what is left, then hand over or drain; the successor starts after it.
+            self.draining = true;
+        }
+        Ok(())
+    }
 }

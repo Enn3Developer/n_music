@@ -1,22 +1,20 @@
-//! The play session on the bus: what plays next, playback control, and saving the session so
-//! it can be resumed.
+//! The play session on the bus: what plays next and playback control. It lasts until exit.
 
 mod session;
-mod store;
 
+use crate::audio::player::{Next, PlaybackEvent, PlaybackTask, Player};
 use crate::library::catalog::Library;
-use crate::library::LibraryPaths;
+use crate::library::query::Query;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LoopStatusChanged, OutputDeviceChanged, Pause,
     Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, QueueChanged,
-    RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetShuffle, SetVolume, ShuffleChanged,
-    TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackPlayed, TracksEnumerated,
-    VolumeChanged,
+    RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume,
+    ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded,
+    TrackPlayed, TracksEnumerated, VolumeChanged,
 };
-use crate::player::{Next, PlaybackEvent, PlaybackTask, Player};
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
-use crate::TrackTime;
+use crate::{TrackInfo, TrackTime};
 use n_event_bus::{
     Ctx, EventWriter, Handle, Job, JobToken, Outbox, Registrar, RunningJob, ShutdownRequested,
     Subscriber, Tagged,
@@ -24,10 +22,8 @@ use n_event_bus::{
 use serde::{Deserialize, Serialize};
 use session::Session;
 use std::any::Any;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::time::Duration;
-use store::SessionStore;
 
 pub struct PlaybackJob(pub PlaybackTask);
 
@@ -66,13 +62,9 @@ pub struct QueueEntry {
     pub queued: bool,
 }
 
-/// The position is saved this often during playback, for when the app is killed.
-const SAVE_INTERVAL: f64 = 10.0;
-
 pub struct QueuePlayer {
     session: Session,
     library: Library,
-    store: SessionStore,
     shuffle: bool,
     providers: Arc<Providers>,
     settings: Options<PlaybackSettings>,
@@ -82,26 +74,21 @@ pub struct QueuePlayer {
     loaded: bool,
     playing: bool,
     time: TrackTime,
-    seek_revision: i32,
-    pending_seek_revision: Option<i32>,
+    /// The last [`Seek::Tracked`] request that applied, and one waiting for its position.
+    seek_request: u64,
+    pending_seek_request: Option<u64>,
     /// The context ran out with looping off: playing again starts it over.
     finished: bool,
-    /// Where a restored session left off, until it plays again.
-    resume: Option<f64>,
-    /// The restored session was announced, once the library was listed.
-    announced: bool,
     /// This play of the current item was counted already.
     counted: bool,
-    saved_position: f64,
 }
 
 impl QueuePlayer {
-    /// Starts with the saved volume and modes, and the session saved in the library database.
+    /// Starts with the saved volume and modes, and nothing to play yet.
     pub fn new(
         providers: Arc<Providers>,
         settings: Options<PlaybackSettings>,
         library: Library,
-        paths: &LibraryPaths,
     ) -> Self {
         let (volume, loop_status, shuffle, replay_gain) = {
             let saved = settings.get();
@@ -115,28 +102,9 @@ impl QueuePlayer {
         let mut player = Player::new(volume as f32, replay_gain);
         player.set_progress_interval(Some(Duration::from_millis(250)));
 
-        let saved = paths
-            .open_db()
-            .and_then(|db| db.session())
-            .inspect_err(|error| log::error!("Could not read the saved session: {error}"))
-            .ok()
-            .flatten();
-        let (session, resume, finished) = saved
-            .and_then(|(items, state)| {
-                let session = Session::restore(items, &state);
-                if session.is_none() {
-                    log::warn!("Ignoring an inconsistent saved session");
-                }
-                let session = session?;
-                let resume = session.current().is_some().then_some(state.position);
-                Some((session, resume, state.finished))
-            })
-            .unwrap_or_default();
-
         QueuePlayer {
-            session,
+            session: Session::default(),
             library,
-            store: SessionStore::new(paths.clone()),
             shuffle,
             player,
             providers,
@@ -145,18 +113,16 @@ impl QueuePlayer {
             job: None,
             loaded: false,
             playing: false,
-            time: TrackTime {
-                position: resume.unwrap_or_default(),
-                length: 0.0,
-            },
-            seek_revision: 0,
-            pending_seek_revision: None,
-            finished,
-            resume,
-            announced: false,
+            time: TrackTime::default(),
+            seek_request: 0,
+            pending_seek_request: None,
+            finished: false,
             counted: false,
-            saved_position: 0.0,
         }
+    }
+
+    pub fn volume(&self) -> f64 {
+        f64::from(self.player.volume())
     }
 
     pub fn loop_status(&self) -> LoopStatus {
@@ -167,22 +133,13 @@ impl QueuePlayer {
         self.shuffle
     }
 
-    /// Publishes and saves the entries when they changed, and saves where the session is.
+    /// Publishes the entries when they changed.
     fn sync(&mut self, out: &mut Outbox) {
         if self.session.take_changed() {
             out.emit(QueueChanged {
                 entries: self.session.entries(),
             });
-            self.store.save_items(self.session.stored_items());
         }
-        self.save_state();
-    }
-
-    fn save_state(&mut self) {
-        let position = self.resume.unwrap_or(self.time.position);
-        self.saved_position = position;
-        self.store
-            .save_state(self.session.stored_state(position, self.finished));
     }
 
     /// Tells the running task what follows the current item, for gapless playback.
@@ -207,7 +164,6 @@ impl QueuePlayer {
         let locator = self.session.get(item)?.locator.clone();
         self.session.arrive(item);
         self.finished = false;
-        self.resume = None;
         self.counted = false;
         Some(
             self.player
@@ -221,11 +177,8 @@ impl QueuePlayer {
         self.position(TrackTime::default(), true, out);
         if let Some(current) = self.session.current() {
             log::info!("Starting playback: {}", current.locator);
-            out.emit(TrackChanged {
-                item: current.id,
-                locator: current.locator.clone(),
-            });
         }
+        self.announce(out);
         self.job = Some(ctx.jobs.spawn_stream(PlaybackJob(task)));
         self.update_next();
         self.sync(out);
@@ -244,17 +197,32 @@ impl QueuePlayer {
             None => {
                 self.stop(out);
                 self.finished = true;
-                self.save_state();
             }
         }
     }
 
-    /// Plays from where the session is: a restored position, the start of a finished context,
-    /// or the next item.
+    /// Until something plays, the session holds the whole library in the order Play would
+    /// use, so the UIs show that order and picking a track in it does not reorder it.
+    fn offer_library(&mut self) {
+        let library = Query::library();
+        let untouched = self
+            .session
+            .context()
+            .is_none_or(|context| *context == library);
+        if self.session.current().is_some() || !untouched {
+            return;
+        }
+        let tracks = self.library.read().select(&library);
+        self.session
+            .replace_context(library, &tracks, None, self.shuffle);
+        self.update_next();
+    }
+
+    /// Plays from where the session is: the whole library when nothing was chosen yet, the
+    /// start of a finished context, or the next item.
     fn resume(&mut self, ctx: &Ctx, out: &mut Outbox) {
-        let current = self.session.current().map(|item| item.id);
-        if let (Some(position), Some(item)) = (self.resume, current) {
-            self.jump(item, position, false, ctx, out);
+        if self.session.context().is_none() {
+            self.play_from(&Query::library(), None, ctx, out);
         } else if self.finished {
             if let Some(item) = self.session.restart(self.shuffle) {
                 self.play(item, ctx, out);
@@ -264,8 +232,30 @@ impl QueuePlayer {
         }
     }
 
+    /// See [`PlayFrom`].
+    fn play_from(&mut self, query: &Query, start: Option<&Locator>, ctx: &Ctx, out: &mut Outbox) {
+        if self.session.context() == Some(query) {
+            if let Some(item) = start.and_then(|start| self.session.find(start)) {
+                self.jump(item, 0.0, false, ctx, out);
+                return;
+            }
+        }
+        let tracks = self.library.read().select(query);
+        let first = self
+            .session
+            .replace_context(query.clone(), &tracks, start, self.shuffle);
+        match first {
+            Some(item) => self.play(item, ctx, out),
+            None => {
+                log::info!("Nothing to play for {:?}", query);
+                self.update_next();
+                self.sync(out);
+            }
+        }
+    }
+
     fn current_time(&self) -> TrackTime {
-        self.get_time().unwrap_or(self.time)
+        self.player.time().unwrap_or(self.time)
     }
 
     fn seek_clamped(&mut self, position: f64, length: f64) {
@@ -274,7 +264,7 @@ impl QueuePlayer {
         } else {
             position.max(0.0)
         };
-        self.seek_to(position.trunc() as u64, position.fract());
+        self.player.seek_to(position);
     }
 
     /// Plays `item` from `position`; just seeks when it is playing already.
@@ -283,7 +273,7 @@ impl QueuePlayer {
             return;
         }
         let current = self.session.current().map(|item| item.id);
-        if current == Some(item) && self.is_playing() {
+        if current == Some(item) && self.player.is_playing() {
             let length = self.time.length;
             self.seek_clamped(position, length);
             return;
@@ -293,7 +283,7 @@ impl QueuePlayer {
             return;
         };
         if paused {
-            self.pause();
+            self.player.pause();
         }
         // Queue the seek before starting the worker so it cannot output frames at zero first.
         // The new track's length is unknown yet, so only reject negative positions.
@@ -304,7 +294,7 @@ impl QueuePlayer {
     fn seek_to_item(&mut self, item: ItemId, position: f64, ctx: &Ctx, out: &mut Outbox) {
         // Capture the play/pause intent from the existing control before it is replaced; the
         // playback-notification mirror can lag immediate Play/Pause control mutations.
-        let paused = !self.is_playing() || self.is_paused();
+        let paused = !self.player.is_playing() || self.player.is_paused();
         self.jump(item, position, paused, ctx, out);
     }
 
@@ -316,15 +306,45 @@ impl QueuePlayer {
     }
 
     fn position(&mut self, time: TrackTime, discontinuity: bool, out: &mut Outbox) {
-        if let Some(revision) = self.pending_seek_revision.take() {
-            self.seek_revision = revision;
+        if let Some(request) = self.pending_seek_request.take() {
+            self.seek_request = request;
         }
         self.time = time;
-        out.emit(PositionChanged(time, self.seek_revision, discontinuity));
+        out.emit(PositionChanged {
+            time,
+            seek: self.seek_request,
+            discontinuity,
+        });
+    }
+
+    /// Reports the known position as a discontinuity, leaving a pending seek request pending.
+    fn report(&self, out: &mut Outbox) {
+        out.emit(PositionChanged {
+            time: self.time,
+            seek: self.seek_request,
+            discontinuity: true,
+        });
+    }
+
+    /// Announces the current item with its track as the library knows it.
+    fn announce(&self, out: &mut Outbox) {
+        let Some(current) = self.session.current() else {
+            return;
+        };
+        let track = self
+            .library
+            .read()
+            .track(&current.locator)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(TrackInfo::placeholder(current.locator.clone())));
+        out.emit(TrackChanged {
+            item: current.id,
+            track,
+        });
     }
 
     fn stop(&mut self, out: &mut Outbox) {
-        self.end_current();
+        self.player.end_current();
         self.job = None;
         self.loaded = false;
         self.set_playing(false, out);
@@ -368,7 +388,9 @@ impl Subscriber for QueuePlayer {
         reg.on::<SetShuffle>();
         reg.on::<ToggleShuffle>();
         reg.on::<TracksEnumerated>();
+        reg.on::<TrackMetadataLoaded>();
         reg.on::<ScanFinished>();
+        reg.on::<SetReplayGain>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);
@@ -377,33 +399,8 @@ impl Subscriber for QueuePlayer {
 
 impl Handle<PlayFrom> for QueuePlayer {
     fn handle(&mut self, msg: &PlayFrom, ctx: &Ctx, out: &mut Outbox) {
-        if ctx.shutting_down {
-            return;
-        }
-        if self.session.context() == Some(&msg.query) {
-            if let Some(item) = msg
-                .start
-                .as_ref()
-                .and_then(|start| self.session.find(start))
-            {
-                self.jump(item, 0.0, false, ctx, out);
-                return;
-            }
-        }
-        let tracks = self.library.read().select(&msg.query);
-        let first = self.session.replace_context(
-            msg.query.clone(),
-            &tracks,
-            msg.start.as_ref(),
-            self.shuffle,
-        );
-        match first {
-            Some(item) => self.play(item, ctx, out),
-            None => {
-                log::info!("Nothing to play for {:?}", msg.query);
-                self.update_next();
-                self.sync(out);
-            }
+        if !ctx.shutting_down {
+            self.play_from(&msg.query, msg.start.as_ref(), ctx, out);
         }
     }
 }
@@ -460,7 +457,7 @@ impl Handle<PlayPrevious> for QueuePlayer {
             return;
         }
         if self.loaded && self.current_time().position > 3.0 {
-            self.seek_to(0, 0.0);
+            self.player.seek_to(0.0);
         } else if let Some(item) = self.session.previous(&self.loop_status) {
             self.play(item, ctx, out);
         }
@@ -472,11 +469,11 @@ impl Handle<TogglePause> for QueuePlayer {
         if ctx.shutting_down {
             return;
         }
-        if self.is_playing() {
-            if self.is_paused() {
-                self.unpause();
+        if self.player.is_playing() {
+            if self.player.is_paused() {
+                self.player.unpause();
             } else {
-                self.pause();
+                self.player.pause();
             }
         } else {
             self.resume(ctx, out);
@@ -486,7 +483,7 @@ impl Handle<TogglePause> for QueuePlayer {
 
 impl Handle<Pause> for QueuePlayer {
     fn handle(&mut self, _msg: &Pause, _ctx: &Ctx, _out: &mut Outbox) {
-        self.pause();
+        self.player.pause();
     }
 }
 
@@ -495,8 +492,8 @@ impl Handle<Play> for QueuePlayer {
         if ctx.shutting_down {
             return;
         }
-        if self.is_playing() {
-            self.unpause();
+        if self.player.is_playing() {
+            self.player.unpause();
         } else {
             self.resume(ctx, out);
         }
@@ -509,8 +506,8 @@ impl Handle<Seek> for QueuePlayer {
             return;
         }
         let position = match msg {
-            Seek::FromUi { position, revision } => {
-                self.pending_seek_revision = Some(*revision);
+            Seek::Tracked { position, request } => {
+                self.pending_seek_request = Some(*request);
                 *position
             }
             Seek::Absolute(position) => *position,
@@ -520,7 +517,7 @@ impl Handle<Seek> for QueuePlayer {
                 return;
             }
         };
-        if self.is_playing() && position.is_finite() {
+        if self.player.is_playing() && position.is_finite() {
             let length = self.time.length;
             self.seek_clamped(position, length);
             return;
@@ -533,7 +530,7 @@ impl Handle<Seek> for QueuePlayer {
 impl Handle<OutputDeviceChanged> for QueuePlayer {
     fn handle(&mut self, _: &OutputDeviceChanged, ctx: &Ctx, _: &mut Outbox) {
         if !ctx.shutting_down {
-            self.reload_output();
+            self.player.reload_output();
         }
     }
 }
@@ -544,10 +541,10 @@ impl Handle<SetVolume> for QueuePlayer {
             return;
         }
         let volume = msg.0.clamp(0.0, 1.0);
-        if self.get_volume() == volume as f32 {
+        if self.player.volume() == volume as f32 {
             return;
         }
-        self.set_volume(volume as f32);
+        self.player.set_volume(volume as f32);
         self.settings.update(|settings| settings.volume = volume);
         out.emit(VolumeChanged(volume));
     }
@@ -602,26 +599,31 @@ impl Handle<TracksEnumerated> for QueuePlayer {
         if ctx.shutting_down {
             return;
         }
+        self.offer_library();
+        self.session.take_changed();
         // UIs rebuild their lists from the library: tell them the play order again.
         out.emit(QueueChanged {
             entries: self.session.entries(),
         });
-        if std::mem::replace(&mut self.announced, true) {
-            return;
+    }
+}
+
+impl Handle<TrackMetadataLoaded> for QueuePlayer {
+    fn handle(&mut self, msg: &TrackMetadataLoaded, ctx: &Ctx, out: &mut Outbox) {
+        let current = self.session.current().map(|item| &item.locator);
+        if !ctx.shutting_down && current == Some(&msg.track.locator) {
+            self.announce(out);
         }
-        let Some(current) = self.session.current() else {
-            return;
-        };
-        out.emit(TrackChanged {
-            item: current.id,
-            locator: current.locator.clone(),
-        });
-        self.time.length = self
-            .library
-            .read()
-            .track(&current.locator)
-            .map_or(0.0, |track| track.length);
-        out.emit(PositionChanged(self.time, self.seek_revision, true));
+    }
+}
+
+impl Handle<SetReplayGain> for QueuePlayer {
+    fn handle(&mut self, msg: &SetReplayGain, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.player.set_replay_gain(msg.0);
+            self.settings
+                .update(|settings| settings.replay_gain = msg.0);
+        }
     }
 }
 
@@ -639,18 +641,14 @@ impl Handle<ScanFinished> for QueuePlayer {
 
 impl Handle<AppVisibilityChanged> for QueuePlayer {
     fn handle(&mut self, msg: &AppVisibilityChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        self.set_progress_interval(msg.0.then_some(Duration::from_millis(250)));
+        self.player
+            .set_progress_interval(msg.0.then_some(Duration::from_millis(250)));
     }
 }
 
 impl Handle<ShutdownRequested> for QueuePlayer {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
-        if self.is_playing() {
-            self.time = self.current_time();
-        }
-        self.save_state();
         self.stop(out);
-        self.store.close();
         out.shutdown_ready();
     }
 }
@@ -664,7 +662,7 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
             PlaybackEvent::Started { length, paused } => {
                 self.loaded = true;
                 self.time.length = *length;
-                out.emit(PositionChanged(self.time, self.seek_revision, true));
+                self.report(out);
                 self.set_playing(!paused, out);
             }
             PlaybackEvent::Position {
@@ -675,9 +673,6 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
                 if self.player.seek_revision() == *revision {
                     self.position(*time, *discontinuity, out);
                     self.count_play(out);
-                    if (time.position - self.saved_position).abs() >= SAVE_INTERVAL {
-                        self.save_state();
-                    }
                 }
             }
             PlaybackEvent::Advanced { item, length } => {
@@ -689,21 +684,14 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
                 };
                 if let Some(current) = self.session.current() {
                     log::info!("Continuing playback: {}", current.locator);
-                    out.emit(TrackChanged {
-                        item: current.id,
-                        locator: current.locator.clone(),
-                    });
                 }
-                out.emit(PositionChanged(self.time, self.seek_revision, true));
+                self.announce(out);
+                self.report(out);
                 self.update_next();
                 self.sync(out);
             }
             PlaybackEvent::Paused(paused) => {
                 self.set_playing(!paused, out);
-                if *paused {
-                    self.time = self.current_time();
-                    self.save_state();
-                }
             }
             PlaybackEvent::Ended => self.advance(false, ctx, out),
             PlaybackEvent::Failed(error) => {
@@ -713,19 +701,5 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
                 self.position(time, true, out);
             }
         }
-    }
-}
-
-impl Deref for QueuePlayer {
-    type Target = Player;
-
-    fn deref(&self) -> &Self::Target {
-        &self.player
-    }
-}
-
-impl DerefMut for QueuePlayer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.player
     }
 }

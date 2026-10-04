@@ -5,6 +5,8 @@ pub mod covers;
 pub mod db;
 pub mod fingerprint;
 pub mod query;
+pub mod reader;
+mod scan;
 pub mod service;
 pub mod track;
 pub mod user_data;
@@ -15,8 +17,8 @@ use std::path::{Path, PathBuf};
 /// Where the library keeps its files.
 #[derive(Clone, Debug)]
 pub struct LibraryPaths {
-    /// The SQLite database. Kept with the app data, not the cache: it will also hold data the
-    /// user creates (play counts, playlists), which must survive a cache cleanup.
+    /// The SQLite database. Kept with the app data, not the cache: it also holds what the user
+    /// creates (playlists, play counts, the session), which must survive a cache cleanup.
     pub database: PathBuf,
     /// Covers can always be rebuilt from the files, so they live in the cache directory.
     pub covers: PathBuf,

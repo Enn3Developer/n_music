@@ -1,10 +1,11 @@
 use super::covers::CoverJob;
 use super::{AppScene, Changes, TrackClicked};
+use crate::messages::SearchChanged;
 use crate::ui::to_track_data;
 use n_event_bus::{Ctx, Handle, Outbox};
 use n_music_core::library::query::Query;
 use n_music_core::messages::{
-    PlayFrom, ScanFinished, ScanRequested, SearchChanged, TrackMetadataLoaded, TracksEnumerated,
+    PlayFrom, ScanFinished, ScanRequested, TrackMetadataLoaded, TracksEnumerated,
 };
 
 impl Handle<ScanRequested> for AppScene {
@@ -78,15 +79,17 @@ impl Handle<TracksEnumerated> for AppScene {
 
 impl Handle<TrackMetadataLoaded> for AppScene {
     fn handle(&mut self, loaded: &TrackMetadataLoaded, _ctx: &Ctx, _out: &mut Outbox) {
+        let Some(&index) = self.index_of.get(&loaded.track.locator) else {
+            return;
+        };
         // Freshly scanned tracks arrive at scan speed, so decoding one cover here is cheap.
         let cover = loaded
             .track
             .cover
             .clone()
             .and_then(|path| self.covers.load(path));
-        let track = to_track_data(&loaded.track, loaded.index as i32, cover);
-        self.changes
-            .push(Changes::Metadata(self.row(loaded.index), track));
+        let track = to_track_data(&loaded.track, index as i32, cover);
+        self.changes.push(Changes::Metadata(self.row(index), track));
         self.loaded += 1;
         self.progress_dirty = true;
         self.apply_ui();

@@ -1,7 +1,7 @@
 //! Turns a track's decoded audio into the output device's format: channel remixing, then
 //! resampling when the rates differ.
 
-use crate::output::OutputFormat;
+use super::output::OutputFormat;
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Indexing, Resampler};
 use symphonia::core::audio::Channels;

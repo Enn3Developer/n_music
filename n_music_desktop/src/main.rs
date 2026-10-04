@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] //Hide console window in release builds on Windows, this blocks stdout.
 
 use n_music_core::logging;
-use n_music_core::platform::Platform;
 use n_music_core::settings::JsonFileStorage;
 use std::sync::Arc;
 
@@ -9,6 +8,7 @@ slint::include_modules!();
 
 mod app;
 mod localization;
+mod messages;
 mod platform;
 mod scenes;
 mod settings;

@@ -1,7 +1,7 @@
-use crate::library::covers::CoverStore;
-use crate::library::db::{LibraryDb, ScannedTrack, StoredTrack};
-use crate::library::LibraryPaths;
-use crate::music_track::MusicTrack;
+use super::covers::CoverStore;
+use super::db::{LibraryDb, ScannedTrack, StoredTrack};
+use super::reader::read_info;
+use super::LibraryPaths;
 use crate::source::{Locator, Providers, StreamProvider, TrackEntry};
 use crate::{Track, TrackInfo};
 use n_event_bus::{job_emits, EventWriter, Job, JobToken, Tagged};
@@ -270,8 +270,7 @@ fn read_track(
     covers: &CoverStore,
     locator: &Locator,
 ) -> Option<TrackInfo> {
-    let (mut info, cover) = MusicTrack::new(provider, locator)
-        .read_info()
+    let (mut info, cover) = read_info(provider, locator)
         .inspect_err(|error| log::debug!("Could not read metadata for {locator}: {error}"))
         .ok()?;
     info.cover = cover.and_then(|data| covers.store(&data, locator));

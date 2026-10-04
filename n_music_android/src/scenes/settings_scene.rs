@@ -1,17 +1,16 @@
 use crate::app::library_label;
 use crate::localization::{get_locale_denominator, localize};
-use crate::settings::UiSettings;
+use crate::messages::{
+    LocaleChangeRequested, OpenLink, PathChangeRequested, ThemeChangeRequested,
+    ToggleSaveWindowSize, WindowSizeCaptured,
+};
+use crate::platform::{NativePlatform, OpenLinkJob, PickFolderJob};
+use crate::settings::{Theme, UiSettings, WindowSize};
 use crate::ui::color_scheme;
 use crate::{Localization, MainWindow, SettingsData};
-use n_event_bus::{
-    Ctx, Handle, Outbox, Registrar, RunningJob, ShutdownRequested, Subscriber, Tagged,
-};
-use n_music_core::jobs::settings::{DirectoryChosen, DirectoryJob, OpenLinkJob};
-use n_music_core::messages::*;
-use n_music_core::platform::Platform;
-use n_music_core::settings::{LibrarySettings, Options};
-use n_music_core::source::Locator;
-use n_music_core::{Theme, WindowSize};
+use n_event_bus::{Ctx, Handle, Outbox, Registrar, ShutdownRequested, Subscriber};
+use n_music_core::messages::LibraryRootsChanged;
+use n_music_core::settings::Options;
 use slint::{ComponentHandle, Weak};
 use std::{any::Any, mem, sync::Arc};
 
@@ -24,26 +23,21 @@ enum UiChange {
 pub struct SettingsScene {
     window: Weak<MainWindow>,
     ui: Options<UiSettings>,
-    library: Options<LibrarySettings>,
-    platform: Arc<dyn Platform>,
+    platform: Arc<NativePlatform>,
     ui_changes: Vec<UiChange>,
-    directory: Option<RunningJob>,
 }
 
 impl SettingsScene {
     pub fn new(
         window: Weak<MainWindow>,
         ui: Options<UiSettings>,
-        library: Options<LibrarySettings>,
-        platform: Arc<dyn Platform>,
+        platform: Arc<NativePlatform>,
     ) -> Self {
         Self {
             window,
             ui,
-            library,
             platform,
             ui_changes: vec![],
-            directory: None,
         }
     }
 }
@@ -58,9 +52,9 @@ impl Subscriber for SettingsScene {
         reg.on::<ToggleSaveWindowSize>();
         reg.on::<PathChangeRequested>();
         reg.on::<WindowSizeCaptured>();
+        reg.on::<LibraryRootsChanged>();
         reg.on::<ShutdownRequested>();
         reg.on::<OpenLink>();
-        DirectoryJob::subscribe(reg);
     }
 }
 impl SettingsScene {
@@ -123,28 +117,16 @@ impl Handle<ToggleSaveWindowSize> for SettingsScene {
 }
 impl Handle<PathChangeRequested> for SettingsScene {
     fn handle(&mut self, _: &PathChangeRequested, ctx: &Ctx, _: &mut Outbox) {
-        if !ctx.shutting_down && self.directory.is_none() {
-            self.directory = Some(ctx.jobs.spawn_oneshot(DirectoryJob(self.platform.clone())));
+        if !ctx.shutting_down {
+            ctx.jobs
+                .spawn_detached(PickFolderJob(self.platform.clone()));
         }
     }
 }
-impl Handle<Tagged<DirectoryChosen>> for SettingsScene {
-    fn handle(&mut self, msg: &Tagged<DirectoryChosen>, ctx: &Ctx, out: &mut Outbox) {
-        let Some(chosen) = self.directory.as_ref().and_then(|job| job.open(msg)) else {
-            return;
-        };
-        let path = chosen.0.to_string_lossy().into_owned();
-        self.directory = None;
-        if path.is_empty() || ctx.shutting_down {
-            return;
-        }
-        // Picking a folder replaces the libraries until there is UI to manage several.
-        let libraries = vec![Locator::library_root(&path)];
-        self.ui_changes
-            .push(UiChange::Path(library_label(&libraries)));
-        self.library.update(|library| library.libraries = libraries);
+impl Handle<LibraryRootsChanged> for SettingsScene {
+    fn handle(&mut self, msg: &LibraryRootsChanged, _: &Ctx, _: &mut Outbox) {
+        self.ui_changes.push(UiChange::Path(library_label(&msg.0)));
         self.apply_ui();
-        out.emit(ScanRequested { check_cache: true });
     }
 }
 impl Handle<WindowSizeCaptured> for SettingsScene {
@@ -160,7 +142,6 @@ impl Handle<WindowSizeCaptured> for SettingsScene {
 }
 impl Handle<ShutdownRequested> for SettingsScene {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
-        self.directory = None;
         out.shutdown_ready();
     }
 }

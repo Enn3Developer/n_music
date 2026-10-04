@@ -15,9 +15,10 @@ pub type Result<T> = rusqlite::Result<T>;
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_tracks.sql"),
     include_str!("migrations/002_user_data.sql"),
+    include_str!("migrations/003_drop_session.sql"),
 ];
 
-/// Bump whenever [`crate::music_track::MusicTrack::read_info`] reads more or differently: rows
+/// Bump whenever [`super::reader::read_info`] reads more or differently: rows
 /// written by an older reader are then read again on the next scan.
 pub const FORMAT: i64 = 2;
 

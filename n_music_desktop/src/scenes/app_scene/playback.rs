@@ -1,4 +1,5 @@
 use super::{AppScene, Changes};
+use crate::ui::format_time;
 use n_event_bus::{Ctx, Handle, Outbox};
 use n_music_core::messages::{
     LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, TrackChanged, VolumeChanged,
@@ -23,7 +24,7 @@ impl Handle<PlaybackChanged> for AppScene {
 impl Handle<TrackChanged> for AppScene {
     fn handle(&mut self, msg: &TrackChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.dirty = true;
-        self.playing = Some(msg.locator.clone());
+        self.playing = Some(msg.track.locator.clone());
         self.playing_index = self.playing_row();
         self.apply_ui();
     }
@@ -65,16 +66,16 @@ impl Handle<VolumeChanged> for AppScene {
 impl Handle<PositionChanged> for AppScene {
     fn handle(&mut self, msg: &PositionChanged, _ctx: &Ctx, _out: &mut Outbox) {
         self.position_dirty = true;
-        if self.position.floor() != msg.0.position.floor() {
-            self.position_str = msg.0.format_pos();
+        if self.position.floor() != msg.time.position.floor() {
+            self.position_str = format_time(msg.time.position);
             self.position_text_dirty = true;
         }
-        if self.length != msg.0.length {
-            self.length = msg.0.length;
+        if self.length != msg.time.length {
+            self.length = msg.time.length;
             self.length_dirty = true;
         }
-        self.position = msg.0.position;
-        self.seek_revision = msg.1;
+        self.position = msg.time.position;
+        self.seek_revision = msg.seek as i32;
         self.apply_ui();
     }
 }

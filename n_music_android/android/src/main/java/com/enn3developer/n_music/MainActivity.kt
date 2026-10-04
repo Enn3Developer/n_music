@@ -2,8 +2,6 @@ package com.enn3developer.n_music
 
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.app.NativeActivity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -48,26 +46,21 @@ class MainActivity : NativeActivity() {
     // Called when app is open first time
     private external fun start(activity: MainActivity)
 
-    private external fun gotDirectory(directory: String, requestId: Long)
+    private external fun gotDirectory(directory: String)
     private external fun visibilityChanged(visible: Boolean)
-    private var directoryRequest: Long? = null
+    // The folder picker is open: another request is ignored.
+    private var pickingDirectory = false
     private var theme: Int = 0 // App theme: 0 = System, 1 = Light, 2 = Dark
 
     // The picked folder is read through the Storage Access Framework, which needs no runtime
     // permission.
     @Suppress("unused")
-    private fun askDirectory(requestId: Long) {
+    private fun askDirectory() {
         runOnUiThread {
-            directoryRequest = requestId
+            if (pickingDirectory) return@runOnUiThread
+            pickingDirectory = true
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), ASK_DIRECTORY)
         }
-    }
-
-    @Suppress("unused")
-    private fun set_clipboard_text(text: String) {
-        val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(text, text)
-        clipboard.setPrimaryClip(clip)
     }
 
     @Suppress("unused")
@@ -180,9 +173,10 @@ class MainActivity : NativeActivity() {
         super.onPause()
     }
 
-    private fun finishDirectory(path: String) {
-        directoryRequest?.let { gotDirectory(path, it) }
-        directoryRequest = null
+    // `uri` is null when the pick was cancelled.
+    private fun finishDirectory(uri: String?) {
+        pickingDirectory = false
+        uri?.let { gotDirectory(it) }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -190,7 +184,7 @@ class MainActivity : NativeActivity() {
         if (requestCode != ASK_DIRECTORY) return
         val uri = data?.data
         if (resultCode != RESULT_OK || uri == null) {
-            finishDirectory("")
+            finishDirectory(null)
             return
         }
         val resolver = applicationContext.contentResolver

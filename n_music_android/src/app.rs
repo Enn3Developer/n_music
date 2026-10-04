@@ -1,23 +1,21 @@
 use crate::documents::{display_path, AndroidDocumentProvider};
 use crate::localization::localize;
+use crate::messages::{
+    LocaleChangeRequested, OpenLink, PathChangeRequested, SearchChanged, ThemeChangeRequested,
+    ToggleSaveWindowSize, WindowSizeCaptured,
+};
 use crate::scenes::app_scene::TrackClicked;
 use crate::scenes::{AppScene, SettingsScene};
-use crate::settings::UiSettings;
+use crate::settings::{UiSettings, WindowSize};
 use crate::ui::color_scheme;
 use crate::{AppData, Localization, MainWindow, SettingsData};
 use n_event_bus::{App, EventWriter, JobControl, ShutdownOutcome};
-use n_music_core::library::service::LibraryService;
-use n_music_core::library::LibraryPaths;
+use n_music_core::engine::Engine;
 use n_music_core::messages::{
-    LocaleChangeRequested, LoopStatusChanged, OpenLink, PathChangeRequested, PlayNext,
-    PlayPrevious, ScanRequested, SearchChanged, Seek, SetVolume, ShuffleChanged,
-    ThemeChangeRequested, TogglePause, ToggleRepeat, ToggleSaveWindowSize,
+    PlayNext, PlayPrevious, ScanRequested, Seek, SetVolume, TogglePause, ToggleRepeat,
 };
-use n_music_core::platform::Platform;
-use n_music_core::queue::QueuePlayer;
-use n_music_core::settings::{LibrarySettings, Options, PlaybackSettings, SettingsStorage};
+use n_music_core::settings::{Options, SettingsStorage};
 use n_music_core::source::Providers;
-use n_music_core::WindowSize;
 use slint::ComponentHandle;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,15 +36,12 @@ pub fn run(
     pending: Vec<n_event_bus::Event>,
 ) {
     let (jvm, callback) = platform.jni_handles();
-    let platform: Arc<dyn Platform> = Arc::new(platform);
-    let paths = LibraryPaths::new(&platform.internal_dir(), &platform.cache_dir());
-    let library = Options::<LibrarySettings>::load(storage.clone());
-    let playback = Options::<PlaybackSettings>::load(storage.clone());
-    let ui = Options::<UiSettings>::load(storage);
+    let platform = Arc::new(platform);
+    let ui = Options::<UiSettings>::load(storage.clone());
 
     let main_window = MainWindow::new().expect("Failed to create the Android Slint window");
 
-    setup_data(&ui.get(), &library.get(), &main_window, writer.clone());
+    setup_data(&ui.get(), &main_window, writer.clone());
 
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone());
@@ -58,36 +53,25 @@ pub fn run(
         ),
     );
 
-    let library_service = LibraryService::new(providers.clone(), library.clone(), paths.clone());
-    let player = QueuePlayer::new(
-        providers.clone(),
-        playback,
-        library_service.library(),
-        &paths,
+    Engine::start(
+        &mut app,
+        &writer,
+        storage,
+        providers,
+        &platform.internal_dir(),
+        &platform.cache_dir(),
     );
-    app.register_subscriber(library_service);
-    let volume = f64::from(player.get_volume());
-    let loop_status = player.loop_status();
-    let shuffle = player.shuffle();
-    app.register_subscriber(player);
-    let mut app_scene = AppScene::new(main_window.as_weak(), volume, loop_status.clone());
+    let mut app_scene = AppScene::new(main_window.as_weak());
     app_scene.apply_ui();
     app.register_subscriber(app_scene);
     let theme = i32::from(ui.get().theme);
     app.register_subscriber(SettingsScene::new(
         main_window.as_weak(),
         ui,
-        library,
         platform.clone(),
     ));
 
-    app.register_subscriber(crate::bridge::AndroidBridge::new(
-        jvm,
-        callback,
-        theme,
-        providers.clone(),
-        paths,
-    ));
+    app.register_subscriber(crate::bridge::AndroidBridge::new(jvm, callback, theme));
 
     for event in pending {
         app.enqueue_event(event);
@@ -100,10 +84,6 @@ pub fn run(
         }
         slint::CloseRequestResponse::KeepWindowShown
     });
-    // Media controls start from the saved playback modes.
-    writer.emit(LoopStatusChanged(loop_status));
-    writer.emit(ShuffleChanged(shuffle));
-    writer.emit(ScanRequested { check_cache: true });
     let bus_thread = std::thread::Builder::new()
         .name(String::from("n_event_bus loop"))
         .spawn(move || {
@@ -130,19 +110,14 @@ pub fn run(
 
 fn request_shutdown(window: &MainWindow, writer: &EventWriter) {
     log::debug!("Shutdown requested");
-    writer.emit(n_music_core::messages::WindowSizeCaptured(WindowSize {
+    writer.emit(WindowSizeCaptured(WindowSize {
         width: window.get_last_width() as usize,
         height: window.get_last_height() as usize,
     }));
     writer.shutdown();
 }
 
-fn setup_data(
-    settings: &UiSettings,
-    library: &LibrarySettings,
-    main_window: &MainWindow,
-    writer: EventWriter,
-) {
+fn setup_data(settings: &UiSettings, main_window: &MainWindow, writer: EventWriter) {
     localize(
         settings.locale.clone(),
         main_window.global::<Localization>(),
@@ -160,7 +135,6 @@ fn setup_data(
         settings_data.set_width(settings.window_size.width as f32);
         settings_data.set_height(settings.window_size.height as f32);
         settings_data.set_save_window_size(settings.save_window_size);
-        settings_data.set_current_path(library_label(&library.libraries).into());
     }
 
     let w = writer.clone();
@@ -191,9 +165,9 @@ fn setup_data(
     app_data.on_play_next(move || w.emit(PlayNext));
     let w = writer.clone();
     app_data.on_seek(move |time, revision| {
-        w.emit(Seek::FromUi {
+        w.emit(Seek::Tracked {
             position: time as f64,
-            revision,
+            request: revision as u64,
         });
     });
     let w = writer.clone();

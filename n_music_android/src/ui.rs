@@ -1,6 +1,7 @@
+use crate::settings::Theme;
 use crate::TrackData;
-use n_music_core::services::image::squared;
-use n_music_core::{Theme, Track, TrackInfo};
+use n_music_core::library::covers::squared;
+use n_music_core::{Track, TrackInfo};
 use slint::private_unstable_api::re_exports::ColorScheme;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 use std::collections::{HashMap, HashSet};
@@ -65,18 +66,22 @@ pub fn decode_cover(path: &Path) -> Option<CoverBuffer> {
     ))
 }
 
+/// `seconds` as `mm:ss`.
+pub fn format_time(seconds: f64) -> String {
+    format!(
+        "{:02}:{:02}",
+        (seconds / 60.0).floor() as u64,
+        seconds.floor() as u64 % 60
+    )
+}
+
 /// `cover` is left empty when it is not decoded yet; see [`CoverCache`].
 pub fn to_track_data(value: &TrackInfo, index: i32, cover: Option<CoverBuffer>) -> TrackData {
     TrackData {
         artist: value.artist().into(),
         cover: cover.map(slint::Image::from_rgba8).unwrap_or_default(),
         index,
-        time: format!(
-            "{:02}:{:02}",
-            (value.length / 60.0).floor() as u64,
-            value.length.floor() as u64 % 60
-        )
-        .into(),
+        time: format_time(value.length).into(),
         title: value.title.as_str().into(),
         visible: true,
     }

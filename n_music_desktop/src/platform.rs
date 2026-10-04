@@ -1,6 +1,9 @@
-use n_music_core::jobs::settings::DirectoryChosen;
-use n_music_core::platform::Platform;
+use n_event_bus::{EventWriter, Job, JobToken};
+use n_music_core::messages::SetLibraryRoots;
+use n_music_core::source::Locator;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 fn open_link_desktop(link: String) {
     if let Err(error) = open::that(&link) {
@@ -35,17 +38,7 @@ fn cache_dir_desktop() -> PathBuf {
     cache_dir
 }
 
-fn ask_music_dir_desktop() -> PathBuf {
-    rfd::FileDialog::new().pick_folder().unwrap_or_default()
-}
-
-fn set_clipboard_text_desktop(text: String) {
-    use arboard::Clipboard;
-    match Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
-        Ok(()) => {}
-        Err(error) => log::error!("Could not write to the clipboard: {error}"),
-    }
-}
+pub type NativePlatform = DesktopPlatform;
 
 pub struct DesktopPlatform;
 
@@ -53,26 +46,49 @@ impl DesktopPlatform {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl Platform for DesktopPlatform {
-    fn set_clipboard_text(&self, text: String) {
-        set_clipboard_text_desktop(text);
-    }
-
-    fn open_link(&self, link: String) {
+    pub fn open_link(&self, link: String) {
         open_link_desktop(link)
     }
 
-    fn internal_dir(&self) -> PathBuf {
+    /// Where the app keeps its data.
+    pub fn internal_dir(&self) -> PathBuf {
         internal_dir_desktop()
     }
 
-    fn cache_dir(&self) -> PathBuf {
+    /// Where the app keeps what can be rebuilt (covers).
+    pub fn cache_dir(&self) -> PathBuf {
         cache_dir_desktop()
     }
 
-    fn ask_music_dir(&self, tag: u64, writer: n_event_bus::EventWriter) {
-        writer.emit_tagged(tag, DirectoryChosen(ask_music_dir_desktop()));
+    /// Asks for a music folder; `None` when the dialog is cancelled or one is open already.
+    fn pick_music_folder(&self) -> Option<Locator> {
+        if PICKING.swap(true, Ordering::SeqCst) {
+            return None;
+        }
+        let folder = rfd::FileDialog::new().pick_folder();
+        PICKING.store(false, Ordering::SeqCst);
+        folder.map(|folder| Locator::Local(folder.to_string_lossy().into_owned()))
+    }
+}
+
+/// A folder dialog is open: a second request is ignored.
+static PICKING: AtomicBool = AtomicBool::new(false);
+
+/// Asks for a music folder and makes it the library.
+pub struct PickFolderJob(pub Arc<NativePlatform>);
+impl Job for PickFolderJob {
+    fn run(self, _: u64, writer: EventWriter, _: Option<JobToken>) {
+        if let Some(root) = self.0.pick_music_folder() {
+            // Picking a folder replaces the libraries until there is UI to manage several.
+            writer.emit(SetLibraryRoots(vec![root]));
+        }
+    }
+}
+
+pub struct OpenLinkJob(pub Arc<NativePlatform>, pub String);
+impl Job for OpenLinkJob {
+    fn run(self, _: u64, _: EventWriter, _: Option<JobToken>) {
+        self.0.open_link(self.1);
     }
 }

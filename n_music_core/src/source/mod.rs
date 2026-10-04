@@ -29,16 +29,6 @@ pub enum Locator {
 }
 
 impl Locator {
-    /// Interprets a saved library root: `content://` URIs are document trees, anything else is
-    /// a local path.
-    pub fn library_root(path: &str) -> Self {
-        if path.starts_with("content://") {
-            Locator::DocumentTree(path.to_string())
-        } else {
-            Locator::Local(path.to_string())
-        }
-    }
-
     /// Lower-case file extension, used as a format hint and for tag readers.
     pub fn extension(&self) -> Option<String> {
         Path::new(self.file_name())

@@ -6,6 +6,7 @@ mod app;
 mod bridge;
 mod documents;
 mod localization;
+mod messages;
 mod platform;
 mod scenes;
 mod settings;
@@ -89,7 +90,6 @@ fn android_main(app: slint::android::AndroidApp) {
             if let Some(started) = envelope.payload().downcast_ref::<AndroidStarted>() {
                 let platform =
                     platform::AndroidPlatform::new(app, started.0.clone(), started.1.clone());
-                use n_music_core::platform::Platform;
                 // Interim: a JSON file until the Compose frontend brings its own storage.
                 let storage = Arc::new(n_music_core::settings::JsonFileStorage::open(
                     platform.internal_dir().join("settings.json"),
@@ -115,14 +115,15 @@ pub extern "system" fn Java_com_enn3developer_n_1music_MainActivity_gotDirectory
     mut env: jni::EnvUnowned<'local>,
     _: jni::objects::JClass<'local>,
     string: jni::objects::JString<'local>,
-    tag: jni::sys::jlong,
 ) {
     env.with_env(|env| -> jni::errors::Result<()> {
-        let path = string.try_to_string(env)?;
-        ANDROID_BUS.0.emit_tagged(
-            tag as u64,
-            n_music_core::jobs::settings::DirectoryChosen(std::path::PathBuf::from(path)),
-        );
+        let uri = string.try_to_string(env)?;
+        // Picking a folder replaces the libraries until there is UI to manage several.
+        ANDROID_BUS
+            .0
+            .emit(n_music_core::messages::SetLibraryRoots(vec![
+                n_music_core::source::Locator::DocumentTree(uri),
+            ]));
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();

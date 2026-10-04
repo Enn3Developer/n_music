@@ -1,5 +1,8 @@
-use n_music_core::platform::Platform;
+use n_event_bus::{EventWriter, Job, JobToken};
 use std::path::PathBuf;
+use std::sync::Arc;
+
+pub type NativePlatform = AndroidPlatform;
 
 pub struct AndroidPlatform {
     app: slint::android::AndroidApp,
@@ -24,28 +27,8 @@ impl AndroidPlatform {
     ) {
         (self.jvm.clone(), self.callback.clone())
     }
-}
 
-impl Platform for AndroidPlatform {
-    fn set_clipboard_text(&self, text: String) {
-        self.jvm
-            .attach_current_thread(|env| -> jni::errors::Result<()> {
-                let java_string = env.new_string(text)?;
-                env.call_method(
-                    self.callback.as_ref(),
-                    jni::jni_str!("set_clipboard_text"),
-                    jni::jni_sig!("(Ljava/lang/String;)V"),
-                    &[(&java_string).into()],
-                )
-                .inspect_err(|error| {
-                    log_jni_error(env, "MainActivity.set_clipboard_text", error)
-                })?;
-                Ok(())
-            })
-            .expect("JNI call MainActivity.set_clipboard_text failed");
-    }
-
-    fn open_link(&self, link: String) {
+    pub fn open_link(&self, link: String) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 let java_string = env.new_string(link)?;
@@ -61,7 +44,8 @@ impl Platform for AndroidPlatform {
             .expect("JNI call MainActivity.openLink failed");
     }
 
-    fn internal_dir(&self) -> PathBuf {
+    /// Where the app keeps its data.
+    pub fn internal_dir(&self) -> PathBuf {
         let path = self
             .app
             .external_data_path()
@@ -77,7 +61,8 @@ impl Platform for AndroidPlatform {
         path
     }
 
-    fn cache_dir(&self) -> PathBuf {
+    /// Where the app keeps what can be rebuilt (covers).
+    pub fn cache_dir(&self) -> PathBuf {
         let cache_dir = self
             .jvm
             .attach_current_thread(|env| -> jni::errors::Result<String> {
@@ -114,19 +99,35 @@ impl Platform for AndroidPlatform {
         cache_dir
     }
 
-    fn ask_music_dir(&self, tag: u64, _writer: n_event_bus::EventWriter) {
+    /// Opens the folder picker; the activity answers through `gotDirectory`.
+    fn pick_music_folder(&self) {
         self.jvm
             .attach_current_thread(|env| -> jni::errors::Result<()> {
                 env.call_method(
                     self.callback.as_ref(),
                     jni::jni_str!("askDirectory"),
-                    jni::jni_sig!("(J)V"),
-                    &[jni::objects::JValue::Long(tag as i64)],
+                    jni::jni_sig!("()V"),
+                    &[],
                 )
                 .inspect_err(|error| log_jni_error(env, "MainActivity.askDirectory", error))?;
                 Ok(())
             })
             .expect("JNI call MainActivity.askDirectory failed");
+    }
+}
+
+/// Asks for a music folder; the pick makes it the library (see `gotDirectory`).
+pub struct PickFolderJob(pub Arc<NativePlatform>);
+impl Job for PickFolderJob {
+    fn run(self, _: u64, _: EventWriter, _: Option<JobToken>) {
+        self.0.pick_music_folder();
+    }
+}
+
+pub struct OpenLinkJob(pub Arc<NativePlatform>, pub String);
+impl Job for OpenLinkJob {
+    fn run(self, _: u64, _: EventWriter, _: Option<JobToken>) {
+        self.0.open_link(self.1);
     }
 }
 

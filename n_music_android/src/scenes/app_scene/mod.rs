@@ -2,12 +2,13 @@ mod covers;
 mod library;
 mod playback;
 
+use crate::messages::SearchChanged;
 use crate::ui::{CoverBuffer, CoverCache};
 use crate::{AppData, MainWindow, TrackData};
 use n_event_bus::{Ctx, Message, Registrar, RunningJob, ShutdownRequested, Subscriber};
 use n_music_core::messages::{
     LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ScanFinished, ScanRequested,
-    SearchChanged, TrackChanged, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    TrackChanged, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use n_music_core::queue::LoopStatus;
 use n_music_core::source::Locator;
@@ -64,7 +65,7 @@ pub struct AppScene {
 }
 
 impl AppScene {
-    pub fn new(window: Weak<MainWindow>, volume: f64, loop_status: LoopStatus) -> Self {
+    pub fn new(window: Weak<MainWindow>) -> Self {
         Self {
             window,
             cover_job: None,
@@ -78,8 +79,8 @@ impl AppScene {
             position_str: String::from("00:00"),
             length: 0.0,
             playback: false,
-            loop_status,
-            volume,
+            loop_status: LoopStatus::default(),
+            volume: 1.0,
             track_count: 0,
             loaded: 0,
             changes: vec![],

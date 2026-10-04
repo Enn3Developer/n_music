@@ -1,7 +1,8 @@
 use crate::library::query::{Filter, PlaylistId, Query, SortKey};
+use crate::library::track::ReplayGainMode;
 use crate::queue::{ItemId, LoopStatus, QueueEntry};
 use crate::source::Locator;
-use crate::{Track, TrackTime, WindowSize};
+use crate::{Track, TrackTime};
 use n_event_bus::Message;
 
 macro_rules! messages {
@@ -31,24 +32,43 @@ pub struct Pause;
 pub struct Play;
 pub struct OutputDeviceChanged;
 pub enum Seek {
-    FromUi { position: f64, revision: i32 },
     Absolute(f64),
     Relative(f64),
-    ToItem { item: ItemId, position: f64 },
+    /// An absolute seek whose result can be told apart: positions report `request` as
+    /// [`PositionChanged::seek`] once it applied, so a UI dragging a slider can ignore
+    /// positions sent before.
+    Tracked {
+        position: f64,
+        request: u64,
+    },
+    ToItem {
+        item: ItemId,
+        position: f64,
+    },
 }
 pub struct SetVolume(pub f64);
 pub struct SetLoopStatus(pub LoopStatus);
 pub struct ToggleRepeat;
 pub struct SetShuffle(pub bool);
 pub struct ToggleShuffle;
+/// Takes effect from the next track.
+pub struct SetReplayGain(pub ReplayGainMode);
 
 pub struct PlaybackChanged(pub bool);
+/// The current item, with what the library knows about its track. Sent again when the
+/// track's metadata loads while it is current.
 pub struct TrackChanged {
     pub item: ItemId,
-    pub locator: Locator,
+    pub track: Track,
 }
 pub struct VolumeChanged(pub f64);
-pub struct PositionChanged(pub TrackTime, pub i32, pub bool);
+pub struct PositionChanged {
+    pub time: TrackTime,
+    /// The last [`Seek::Tracked`] request that applied, 0 before any.
+    pub seek: u64,
+    /// The position jumped (seek, new track, pause) rather than advanced with playback.
+    pub discontinuity: bool,
+}
 pub struct LoopStatusChanged(pub LoopStatus);
 pub struct ShuffleChanged(pub bool);
 /// The session in play order: the context with up next spliced in after the current item.
@@ -101,9 +121,6 @@ pub struct PlaylistSummary {
     pub smart: bool,
 }
 
-pub struct SearchChanged(pub String);
-
-pub struct OpenLink(pub String);
 pub struct ScanRequested {
     /// `false` reloads every track's metadata instead of trusting the cache.
     pub check_cache: bool,
@@ -112,9 +129,8 @@ pub struct ScanRequested {
 pub struct TracksEnumerated {
     pub tracks: Vec<Track>,
 }
-/// A track's metadata; `index` is its place in [`TracksEnumerated`].
+/// A track's metadata, replacing its placeholder in [`TracksEnumerated`].
 pub struct TrackMetadataLoaded {
-    pub index: usize,
     pub track: Track,
 }
 pub struct ScanFinished {
@@ -122,18 +138,16 @@ pub struct ScanFinished {
     pub complete: bool,
 }
 
-pub struct AppVisibilityChanged(pub bool);
-pub struct WindowSizeCaptured(pub WindowSize);
+/// Replaces the library folders and scans them.
+pub struct SetLibraryRoots(pub Vec<Locator>);
+/// The library folders, at startup and after every change.
+pub struct LibraryRootsChanged(pub Vec<Locator>);
 
-pub struct ThemeChangeRequested(pub i32);
-pub struct ToggleSaveWindowSize(pub bool);
-pub struct LocaleChangeRequested(pub String);
-pub struct PathChangeRequested;
+/// Whether the app is in front; positions are not reported while it is not.
+pub struct AppVisibilityChanged(pub bool);
 
 messages!(
-    OpenLink,
     AppVisibilityChanged,
-    WindowSizeCaptured,
     PlayFrom,
     Enqueue,
     RemoveQueued,
@@ -150,6 +164,7 @@ messages!(
     ToggleRepeat,
     SetShuffle,
     ToggleShuffle,
+    SetReplayGain,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,
@@ -167,13 +182,10 @@ messages!(
     RemoveFromPlaylist,
     PlaylistsChanged,
     PlaylistRejected,
-    SearchChanged,
     ScanRequested,
     TracksEnumerated,
     TrackMetadataLoaded,
     ScanFinished,
-    ThemeChangeRequested,
-    ToggleSaveWindowSize,
-    LocaleChangeRequested,
-    PathChangeRequested,
+    SetLibraryRoots,
+    LibraryRootsChanged,
 );
