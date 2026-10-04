@@ -11,6 +11,7 @@ AbstractButton {
     property real iconSize: 20
     property real stroke: 1.8
     property color color: Theme.text2
+    property real radius: 8
 
     implicitWidth: size
     implicitHeight: size
@@ -20,7 +21,7 @@ AbstractButton {
     Accessible.name: text
 
     background: Rectangle {
-        radius: 8
+        radius: button.radius
         color: button.down ? Theme.selected : button.hovered ? Theme.raised : "transparent"
         border.width: button.visualFocus ? 2 : 0
         border.color: Theme.text

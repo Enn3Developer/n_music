@@ -27,10 +27,14 @@ pub mod qobject {
         #[base = QAbstractListModel]
         /// Text the title, an artist or the album contains.
         #[qproperty(QString, search)]
+        /// Rules over the tracks, as JSON: see `query::parse_filter`.
+        #[qproperty(QString, filter)]
         /// Field names in order of precedence, each descending after a `-`: `artist,album`.
         #[qproperty(QString, sort)]
         /// What the queue calls a session played from this list, like `Tracks`.
         #[qproperty(QString, label)]
+        /// How the list is narrowed down in words, for the queue: the search and the rules.
+        #[qproperty(QString, detail)]
         /// The page showing this list, for the queue to open.
         #[qproperty(QString, origin)]
         /// How many tracks are listed.
@@ -115,8 +119,10 @@ impl Row {
 
 pub struct TrackListRust {
     search: QString,
+    filter: QString,
     sort: QString,
     label: QString,
+    detail: QString,
     origin: QString,
     count: i32,
     total: i32,
@@ -136,8 +142,10 @@ impl Default for TrackListRust {
     fn default() -> Self {
         Self {
             search: QString::default(),
+            filter: QString::default(),
             sort: QString::default(),
             label: QString::default(),
+            detail: QString::default(),
             origin: QString::default(),
             count: 0,
             total: 0,
@@ -163,6 +171,9 @@ impl cxx_qt::Initialize for qobject::TrackList {
             .on_search_changed(|list| list.refresh(Duration::ZERO))
             .release();
         self.as_mut()
+            .on_filter_changed(|list| list.refresh(Duration::ZERO))
+            .release();
+        self.as_mut()
             .on_sort_changed(|list| list.refresh(Duration::ZERO))
             .release();
         // After QML has set the properties.
@@ -186,7 +197,11 @@ impl qobject::TrackList {
     }
 
     fn query(&self) -> Query {
-        query::tracks(&self.search.to_string(), &self.sort.to_string())
+        query::tracks(
+            &self.search.to_string(),
+            &self.filter.to_string(),
+            &self.sort.to_string(),
+        )
     }
 
     /// Runs the query again after `delay`.
@@ -355,14 +370,10 @@ impl qobject::TrackList {
 
     /// Plays this list from `start`, telling the queue where the session comes from.
     fn play_from(&self, start: Option<Locator>) {
-        let search = self.search.to_string();
-        let search = search.trim();
+        let detail = self.detail.to_string();
         let context = Context {
             label: self.label.to_string(),
-            detail: (!search.is_empty())
-                .then(|| format!("“{search}”"))
-                .into_iter()
-                .collect(),
+            detail: (!detail.is_empty()).then_some(detail).into_iter().collect(),
             page: self.origin.to_string(),
         };
         hub().update(Changed::CONTEXT, |state| state.context = Some(context));

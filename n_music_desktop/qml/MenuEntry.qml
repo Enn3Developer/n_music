@@ -8,8 +8,11 @@ MenuItem {
 
     property string iconName
     property bool danger: false
+    /// Titles the entries below it instead of being one.
+    property bool heading: false
 
-    implicitHeight: 34
+    implicitHeight: heading ? 28 : 34
+    enabled: !heading
     leftPadding: 10
     rightPadding: 10
     font.pixelSize: 13
@@ -19,7 +22,7 @@ MenuItem {
 
     background: Rectangle {
         radius: 6
-        color: entry.highlighted ? Theme.menuHover : "transparent"
+        color: entry.highlighted && !entry.heading ? Theme.menuHover : "transparent"
     }
 
     contentItem: Item {
@@ -39,10 +42,14 @@ MenuItem {
             anchors.right: mark.visible ? mark.left : parent.right
             anchors.rightMargin: mark.visible ? 10 : 0
             anchors.verticalCenter: parent.verticalCenter
+            topPadding: entry.heading ? 6 : 0
             text: entry.text
             elide: Text.ElideRight
-            font: entry.font
-            color: !entry.enabled ? Theme.text3 : entry.danger ? Theme.danger : Theme.text
+            font.pixelSize: entry.heading ? 11 : entry.font.pixelSize
+            font.weight: entry.heading ? Font.DemiBold : entry.font.weight
+            font.letterSpacing: entry.heading ? 0.88 : 0
+            font.capitalization: entry.heading ? Font.AllUppercase : Font.MixedCase
+            color: entry.heading || !entry.enabled ? Theme.text3 : entry.danger ? Theme.danger : entry.checked ? Theme.accentText : Theme.text
         }
         Icon {
             id: mark

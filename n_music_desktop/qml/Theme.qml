@@ -20,6 +20,8 @@ QtObject {
     readonly property color panel: dark ? "#0E1013" : "#EEF0F3"
     readonly property color surface: dark ? "#16191D" : "#FFFFFF"
     readonly property color field: dark ? "#1A1D21" : "#FFFFFF"
+    /// Inputs and selects on a surface.
+    readonly property color input: dark ? "#1F2328" : "#FFFFFF"
     readonly property color raised: dark ? "#23272D" : "#E4E7EC"
     readonly property color hover: dark ? "#181B1F" : "#EEF0F3"
     readonly property color selected: dark ? "#1F2329" : "#E6EAF0"
@@ -32,6 +34,8 @@ QtObject {
     readonly property color shadow: dark ? "#8C000000" : "#33000000"
 
     readonly property color text: dark ? "#ECEEF1" : "#15171A"
+    /// Text a step quieter, like a condition beside its field.
+    readonly property color textSoft: dark ? "#C9CED6" : "#2F353D"
     readonly property color text2: dark ? "#A4ABB6" : "#4D5560"
     readonly property color text3: dark ? "#868E9A" : "#626A76"
 

@@ -48,21 +48,10 @@ AbstractButton {
         }
     ]
 
-    /// The order in words: an offered one's name, or the column a header click sorted by.
+    /// The order in words: an offered one's name, else its keys.
     readonly property string label: {
         const offered = options.find(option => option.sort === list.sort);
-        if (offered)
-            return offered.label;
-        const first = list.sort.split(",")[0];
-        const names = {
-            title: Tr.t.column_title,
-            album: Tr.t.column_album,
-            year: Tr.t.column_year,
-            plays: Tr.t.column_plays,
-            length: Tr.t.column_time
-        };
-        const field = first.replace("-", "");
-        return (names[field] || field) + (first.startsWith("-") ? " ↓" : " ↑");
+        return offered ? offered.label : Filters.sortLabel(list.sort);
     }
 
     implicitHeight: 32
@@ -94,7 +83,9 @@ AbstractButton {
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, 220)
             text: button.text
+            elide: Text.ElideRight
             font: button.font
             color: Theme.text2
         }

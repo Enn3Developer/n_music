@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -17,16 +18,27 @@ Item {
         return tracks.count > 0 ? count + " · " + Format.duration(tracks.duration) : count;
     }
 
+    /// The applied rules, a chip each.
+    readonly property var rules: Filters.parse(tracks.filter).rules
+
+    function removeRule(index: int) {
+        const spec = Filters.parse(tracks.filter);
+        spec.rules.splice(index, 1);
+        tracks.filter = Filters.json(spec);
+    }
+
     TrackList {
         id: tracks
         search: search.text
         sort: "artist,album"
         label: Tr.t.tracks
         origin: "tracks"
+        detail: [search.text.trim() === "" ? "" : Tr.t.search_detail.arg(search.text.trim()), Filters.summary(tracks.filter)].filter(part => part !== "").join(" · ")
     }
 
     Shortcut {
         sequences: [StandardKey.Find]
+        enabled: !drawer.shown
         onActivated: search.focusInput()
     }
 
@@ -95,16 +107,46 @@ Item {
 
                 SearchField {
                     id: search
+                    Layout.alignment: Qt.AlignTop
                     Layout.fillWidth: true
                     Layout.minimumWidth: 200
                     Layout.preferredWidth: 360
                     Layout.maximumWidth: 360
                     placeholder: Tr.t.search_tracks
                 }
-                Item {
+                Flow {
+                    Layout.alignment: Qt.AlignTop
                     Layout.fillWidth: true
+                    topPadding: 3
+                    spacing: 8
+
+                    Repeater {
+                        model: page.rules.length
+
+                        delegate: FilterChip {
+                            required property int index
+                            readonly property var words: Filters.describe(page.rules[index])
+
+                            visible: words !== null
+                            name: words ? words.name : ""
+                            detail: words ? words.text : ""
+                            onClicked: drawer.open()
+                            onRemove: page.removeRule(index)
+                        }
+                    }
+                    DashedButton {
+                        implicitHeight: 32
+                        radius: 16
+                        iconName: "filter"
+                        color: Theme.text2
+                        font.weight: Font.Normal
+                        text: Tr.t.filter
+                        onClicked: drawer.open()
+                    }
                 }
                 SortButton {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 3
                     list: tracks
                 }
             }
@@ -135,5 +177,31 @@ Item {
                 onTriggered: page.navigate("sources")
             }
         }
+    }
+
+    // Dims the page under the filter drawer; a click on it closes the drawer.
+    Rectangle {
+        anchors.fill: parent
+        color: Theme.bg
+        opacity: drawer.shown ? 0.7 : 0
+        visible: opacity > 0
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 180
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: drawer.close()
+            onWheel: wheel => wheel.accepted = true
+        }
+    }
+
+    FilterDrawer {
+        id: drawer
+        list: tracks
     }
 }
