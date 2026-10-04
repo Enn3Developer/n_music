@@ -80,21 +80,21 @@ Rectangle {
                 Layout.fillWidth: true
                 iconName: "disc"
                 text: Tr.t.albums
-                active: sidebar.page === "albums"
+                active: sidebar.page === "albums" || sidebar.page.startsWith("album:")
                 onClicked: sidebar.navigate("albums")
             }
             NavItem {
                 Layout.fillWidth: true
                 iconName: "artist"
                 text: Tr.t.artists
-                active: sidebar.page === "artists"
+                active: sidebar.page === "artists" || sidebar.page.startsWith("artist:")
                 onClicked: sidebar.navigate("artists")
             }
             NavItem {
                 Layout.fillWidth: true
                 iconName: "tag"
                 text: Tr.t.genres
-                active: sidebar.page === "genres"
+                active: sidebar.page === "genres" || sidebar.page.startsWith("genre:")
                 onClicked: sidebar.navigate("genres")
             }
             NavItem {

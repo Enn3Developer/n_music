@@ -317,6 +317,68 @@ QtObject {
         return parse(json).rules.map(describe).filter(part => part !== null).map(part => part.name + " " + part.text).join(" · ");
     }
 
+    /// The page of an album, an artist or a genre (`kind`) named `name`; an album's `artist`
+    /// tells it from others of the same name.
+    function collectionPage(kind: string, name: string, artist: string): string {
+        return kind + ":" + encodeURIComponent(kind === "album" ? JSON.stringify({
+            name: name,
+            artist: artist
+        }) : name);
+    }
+
+    /// What a page of `kind` lists, as `{ name, artist }`, from what follows its `:`.
+    function collectionKey(kind: string, argument: string): var {
+        const text = decodeURIComponent(argument);
+        if (kind !== "album")
+            return {
+                name: text,
+                artist: ""
+            };
+        try {
+            const key = JSON.parse(text);
+            return {
+                name: String(key.name ?? ""),
+                artist: String(key.artist ?? "")
+            };
+        } catch (error) {}
+        return {
+            name: "",
+            artist: ""
+        };
+    }
+
+    /// The rules listing the tracks of a collection: an album by its artist (theirs, or the
+    /// album artist), an artist, or a genre.
+    function collectionFilter(kind: string, key: var): string {
+        const rules = [
+            {
+                field: kind,
+                op: "is",
+                value: key.name
+            }
+        ];
+        if (kind === "album" && key.artist !== "")
+            rules.push({
+                group: "any",
+                rules: [
+                    {
+                        field: "album_artist",
+                        op: "is",
+                        value: key.artist
+                    },
+                    {
+                        field: "artist",
+                        op: "is",
+                        value: key.artist
+                    }
+                ]
+            });
+        return JSON.stringify({
+            match: "all",
+            rules: rules
+        });
+    }
+
     /// A sort as keys `{ field, descending }`, leaving out unknown fields.
     function parseSort(sort: string): var {
         return sort.split(",").map(key => key.trim()).filter(key => sortFields[key.replace(/^-/, "")] !== undefined).map(key => ({

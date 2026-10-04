@@ -157,6 +157,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             list: tracks
+            onNavigate: to => page.navigate(to)
             visible: tracks.count > 0
         }
 

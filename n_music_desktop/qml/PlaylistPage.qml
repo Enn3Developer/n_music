@@ -286,6 +286,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             list: tracks
+            onNavigate: to => page.navigate(to)
             layout: playlist.smart ? "smart" : "playlist"
             playlistName: playlist.smart ? "" : playlist.name
             visible: tracks.count > 0

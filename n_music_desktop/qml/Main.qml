@@ -7,12 +7,12 @@ import NMusic
 ApplicationWindow {
     id: window
 
-    /// The page the content area shows; a playlist's is `playlist:<id>`.
+    /// The page the content area shows; one of many, like a playlist's, is `<section>:<which>`.
     property string page: "tracks"
     /// The page without what follows its `:`.
-    readonly property string section: page.split(":")[0]
-    /// The playlist shown last.
-    property real playlistId: 0
+    readonly property string section: page.indexOf(":") < 0 ? page : page.slice(0, page.indexOf(":"))
+    /// What followed the `:` the last time each section showed, by section.
+    property var subpages: ({})
     /// The page shown before the queue, to go back to.
     property string beforeQueue: "tracks"
     /// Pages shown so far; they stay loaded, keeping their search and scroll position.
@@ -33,9 +33,12 @@ ApplicationWindow {
 
     onPageChanged: {
         // Not `section`: its binding may not have seen this change yet.
-        const [name, argument] = page.split(":");
-        if (name === "playlist")
-            playlistId = Number(argument);
+        const colon = page.indexOf(":");
+        const name = colon < 0 ? page : page.slice(0, colon);
+        if (colon >= 0)
+            subpages = Object.assign({}, subpages, {
+                [name]: page.slice(colon + 1)
+            });
         visited = Object.assign({}, visited, {
             [name]: true
         });
@@ -86,7 +89,52 @@ ApplicationWindow {
     Component {
         id: playlistPage
         PlaylistPage {
-            playlistId: window.playlistId
+            playlistId: Number(window.subpages.playlist ?? 0)
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: albumsPage
+        GroupsPage {
+            kind: "album"
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: artistsPage
+        GroupsPage {
+            kind: "artist"
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: genresPage
+        GroupsPage {
+            kind: "genre"
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: albumPage
+        CollectionPage {
+            kind: "album"
+            argument: window.subpages.album ?? ""
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: artistPage
+        CollectionPage {
+            kind: "artist"
+            argument: window.subpages.artist ?? ""
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: genrePage
+        CollectionPage {
+            kind: "genre"
+            argument: window.subpages.genre ?? ""
             onNavigate: to => window.page = to
         }
     }
@@ -126,7 +174,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
 
                 Repeater {
-                    model: ["tracks", "albums", "artists", "genres", "sources", "playlist", "queue", "settings"]
+                    model: ["tracks", "albums", "album", "artists", "artist", "genres", "genre", "sources", "playlist", "queue", "settings"]
 
                     Loader {
                         required property string modelData
@@ -136,6 +184,12 @@ ApplicationWindow {
                         visible: window.section === modelData
                         sourceComponent: ({
                                 tracks: tracksPage,
+                                albums: albumsPage,
+                                album: albumPage,
+                                artists: artistsPage,
+                                artist: artistPage,
+                                genres: genresPage,
+                                genre: genrePage,
                                 playlist: playlistPage,
                                 queue: queuePage
                             })[modelData] ?? placeholderPage

@@ -99,6 +99,10 @@ pub mod qobject {
         /// The ids of the playlists holding the track of `row` as an added track.
         #[qinvokable]
         fn playlists_with(self: &TrackList, row: i32) -> QVariant;
+        /// What the track of `row` belongs to, as `{ album, albumArtist, artist }`; the album's
+        /// artist falls back to the first artist, and each is empty when unknown.
+        #[qinvokable]
+        fn about(self: &TrackList, row: i32) -> QVariant;
     }
 
     impl cxx_qt::Threading for TrackList {}
@@ -110,7 +114,8 @@ use crate::{bus, format, query, worker};
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{
-    QByteArray, QHash, QHashPair_i32_QByteArray, QList, QModelIndex, QString, QStringList, QVariant,
+    QByteArray, QHash, QHashPair_i32_QByteArray, QList, QMap, QMapPair_QString_QVariant,
+    QModelIndex, QString, QStringList, QVariant,
 };
 use n_music_core::library::query::{PlaylistId, Query};
 use n_music_core::messages::{
@@ -495,6 +500,25 @@ impl qobject::TrackList {
                 tracks: vec![locator],
             });
         }
+    }
+
+    fn about(&self, row: i32) -> QVariant {
+        let mut about = QMap::<QMapPair_QString_QVariant>::default();
+        if let Some(row) = self.row(row) {
+            let track = &row.track;
+            let artist = track.artists.first().map(String::as_str);
+            for (key, value) in [
+                ("album", track.album.as_deref()),
+                ("albumArtist", track.album_artist.as_deref().or(artist)),
+                ("artist", artist),
+            ] {
+                about.insert(
+                    QString::from(key),
+                    QVariant::from(&QString::from(value.unwrap_or_default())),
+                );
+            }
+        }
+        QVariant::from(&about)
     }
 
     fn playlists_with(&self, row: i32) -> QVariant {

@@ -14,6 +14,9 @@ Item {
     /// The playlist the list shows, whose tracks can be taken out of it; empty for none.
     property string playlistName
 
+    /// Asks to show `page`, like a track's album.
+    signal navigate(string page)
+
     /// Opens the menu of `row` from `x`, `y` of `item`, rightwards or leftwards.
     function openMenu(row: int, item: Item, x: real, y: real, leftwards: bool) {
         menu.show(row, item, leftwards ? x - menu.width : x, y);
@@ -81,6 +84,7 @@ Item {
         id: menu
         list: table.list
         playlistName: table.playlistName
+        onNavigate: to => table.navigate(to)
         onNewPlaylistRequested: row => {
             naming.row = row;
             naming.ask("");

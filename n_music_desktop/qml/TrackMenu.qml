@@ -15,14 +15,26 @@ PopupMenu {
     property int row: -1
     /// The playlists holding the track already.
     property var holding: []
+    /// What the track belongs to, see `TrackList.about`.
+    property var about: ({})
+    /// The pages of the track's album and artist, empty when unknown or listed already.
+    readonly property string albumPage: about.album ? unlisted(Filters.collectionPage("album", about.album, about.albumArtist)) : ""
+    readonly property string artistPage: about.artist ? unlisted(Filters.collectionPage("artist", about.artist, "")) : ""
 
     /// New playlist was picked for the track of `row`.
     signal newPlaylistRequested(int row)
+    /// Asks to show `page`.
+    signal navigate(string page)
+
+    function unlisted(page: string): string {
+        return page === list.origin ? "" : page;
+    }
 
     /// Opens for `row` at `x`, `y` of `item`.
     function show(row: int, item: Item, x: real, y: real) {
         menu.row = row;
         holding = list.playlistsWith(row);
+        about = list.about(row);
         popup(item, x, y);
     }
 
@@ -68,6 +80,20 @@ PopupMenu {
             note: true
             text: Tr.t.smart_playlists_note
         }
+    }
+
+    Line {
+        shown: menu.albumPage !== "" || menu.artistPage !== ""
+    }
+    MenuEntry {
+        shown: menu.albumPage !== ""
+        text: Tr.t.go_to_album
+        onTriggered: menu.navigate(menu.albumPage)
+    }
+    MenuEntry {
+        shown: menu.artistPage !== ""
+        text: Tr.t.go_to_artist
+        onTriggered: menu.navigate(menu.artistPage)
     }
 
     Line {
