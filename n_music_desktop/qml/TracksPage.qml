@@ -21,6 +21,8 @@ Item {
         id: tracks
         search: search.text
         sort: "artist,album"
+        label: Tr.t.tracks
+        origin: "tracks"
     }
 
     Shortcut {

@@ -15,10 +15,9 @@ pub mod qobject {
         type QList_i32 = cxx_qt_lib::QList<i32>;
     }
 
-    extern "C++Qt" {
+    unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        #[qobject]
-        type QAbstractListModel;
+        type QAbstractListModel = crate::bridge::base::qobject::QAbstractListModel;
     }
 
     #[auto_cxx_name]
@@ -30,6 +29,10 @@ pub mod qobject {
         #[qproperty(QString, search)]
         /// Field names in order of precedence, each descending after a `-`: `artist,album`.
         #[qproperty(QString, sort)]
+        /// What the queue calls a session played from this list, like `Tracks`.
+        #[qproperty(QString, label)]
+        /// The page showing this list, for the queue to open.
+        #[qproperty(QString, origin)]
         /// How many tracks are listed.
         #[qproperty(i32, count)]
         /// How many tracks the library has.
@@ -76,7 +79,7 @@ pub mod qobject {
     impl cxx_qt::Initialize for TrackList {}
 }
 
-use crate::hub::{hub, Changed};
+use crate::hub::{hub, Changed, Context};
 use crate::{bus, format, query, worker};
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
@@ -113,6 +116,8 @@ impl Row {
 pub struct TrackListRust {
     search: QString,
     sort: QString,
+    label: QString,
+    origin: QString,
     count: i32,
     total: i32,
     duration: f64,
@@ -132,6 +137,8 @@ impl Default for TrackListRust {
         Self {
             search: QString::default(),
             sort: QString::default(),
+            label: QString::default(),
+            origin: QString::default(),
             count: 0,
             total: 0,
             duration: 0.0,
@@ -338,17 +345,30 @@ impl qobject::TrackList {
         let Some(row) = self.row(row) else {
             return;
         };
-        bus::emit(PlayFrom {
-            query: self.query(),
-            start: Some(row.track.locator.clone()),
-        });
+        self.play_from(Some(row.track.locator.clone()));
     }
 
     fn play_all(&self, shuffle: bool) {
         bus::emit(SetShuffle(shuffle));
+        self.play_from(None);
+    }
+
+    /// Plays this list from `start`, telling the queue where the session comes from.
+    fn play_from(&self, start: Option<Locator>) {
+        let search = self.search.to_string();
+        let search = search.trim();
+        let context = Context {
+            label: self.label.to_string(),
+            detail: (!search.is_empty())
+                .then(|| format!("“{search}”"))
+                .into_iter()
+                .collect(),
+            page: self.origin.to_string(),
+        };
+        hub().update(Changed::CONTEXT, |state| state.context = Some(context));
         bus::emit(PlayFrom {
             query: self.query(),
-            start: None,
+            start,
         });
     }
 }

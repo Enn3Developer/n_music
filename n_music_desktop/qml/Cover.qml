@@ -18,7 +18,7 @@ Rectangle {
         anchors.centerIn: parent
         visible: image.status !== Image.Ready
         name: "note"
-        size: Math.round(cover.size * 0.45)
+        size: Math.round(Math.min(cover.size * 0.45, 72))
         color: Theme.text3
     }
 

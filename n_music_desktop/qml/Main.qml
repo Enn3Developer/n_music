@@ -68,6 +68,12 @@ ApplicationWindow {
         }
     }
     Component {
+        id: queuePage
+        QueuePage {
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
         id: placeholderPage
         PlaceholderPage {}
     }
@@ -100,7 +106,10 @@ ApplicationWindow {
                         anchors.fill: parent
                         active: window.visited[modelData] === true
                         visible: window.page === modelData
-                        sourceComponent: modelData === "tracks" ? tracksPage : placeholderPage
+                        sourceComponent: ({
+                                tracks: tracksPage,
+                                queue: queuePage
+                            })[modelData] ?? placeholderPage
                         onLoaded: {
                             if (item instanceof PlaceholderPage)
                                 item.title = Qt.binding(() => Tr.t[modelData]);

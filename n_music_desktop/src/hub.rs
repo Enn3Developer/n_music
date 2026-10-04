@@ -8,7 +8,7 @@ use bitflags::bitflags;
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, Threading};
 use n_music_core::library::catalog::Library;
-use n_music_core::queue::LoopStatus;
+use n_music_core::queue::{ItemId, LoopStatus, QueueEntry};
 use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -33,12 +33,17 @@ bitflags! {
         const VOLUME = 1 << 7;
         /// Shuffle or repeat.
         const MODES = 1 << 8;
+        /// The session's entries.
+        const QUEUE = 1 << 9;
+        /// What the session plays from, as the interface last chose it.
+        const CONTEXT = 1 << 10;
     }
 }
 
 #[derive(Default)]
 pub struct State {
-    /// The track of the current item.
+    /// The current item and its track.
+    pub current_item: Option<ItemId>,
     pub current: Option<Track>,
     pub playing: bool,
     pub scanning: bool,
@@ -48,6 +53,21 @@ pub struct State {
     pub volume: f64,
     pub shuffle: bool,
     pub loop_status: LoopStatus,
+    /// The session in play order, up next spliced in after the current item.
+    pub queue: Arc<Vec<QueueEntry>>,
+    /// `None` until the interface plays something: the session then holds the library.
+    pub context: Option<Context>,
+}
+
+/// What a session plays from, for the queue to tell.
+#[derive(Clone)]
+pub struct Context {
+    /// The view it came from, like `Tracks`.
+    pub label: String,
+    /// How that view narrowed it down, like a search.
+    pub detail: Vec<String>,
+    /// The page that shows it.
+    pub page: String,
 }
 
 pub struct Hub {

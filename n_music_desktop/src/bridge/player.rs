@@ -17,8 +17,21 @@ pub mod qobject {
         #[qproperty(QString, title)]
         #[qproperty(QString, artist)]
         #[qproperty(QString, album)]
+        /// Empty when unknown.
+        #[qproperty(QString, year)]
         /// The cover thumbnail's file; empty without one.
         #[qproperty(QString, cover)]
+        /// Short codec name in capitals, like `FLAC`; empty when unknown.
+        #[qproperty(QString, codec)]
+        /// In Hz; 0 when unknown.
+        #[qproperty(i32, sample_rate)]
+        /// 0 when unknown or not fixed (lossy codecs).
+        #[qproperty(i32, bits)]
+        /// ReplayGain in dB; NaN when untagged.
+        #[qproperty(f64, track_gain)]
+        #[qproperty(f64, album_gain)]
+        /// How many times the current track was played.
+        #[qproperty(i32, plays)]
         #[qproperty(bool, playing)]
         /// Seconds into the current track.
         #[qproperty(f64, position)]
@@ -51,6 +64,11 @@ pub mod qobject {
         /// Off, then repeat the context, then repeat the track.
         #[qinvokable]
         fn cycle_repeat(self: &Player);
+        /// See `repeat`.
+        #[qinvokable]
+        fn change_repeat(self: &Player, repeat: i32);
+        #[qinvokable]
+        fn change_shuffle(self: &Player, shuffle: bool);
     }
 
     impl cxx_qt::Threading for Player {}
@@ -63,7 +81,7 @@ use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use n_music_core::messages::{
-    PlayNext, PlayPrevious, Seek, SetLoopStatus, SetVolume, TogglePause, ToggleShuffle,
+    PlayNext, PlayPrevious, Seek, SetLoopStatus, SetShuffle, SetVolume, TogglePause, ToggleShuffle,
 };
 use n_music_core::queue::LoopStatus;
 
@@ -73,7 +91,14 @@ pub struct PlayerRust {
     title: QString,
     artist: QString,
     album: QString,
+    year: QString,
     cover: QString,
+    codec: QString,
+    sample_rate: i32,
+    bits: i32,
+    track_gain: f64,
+    album_gain: f64,
+    plays: i32,
     playing: bool,
     position: f64,
     length: f64,
@@ -94,7 +119,8 @@ impl cxx_qt::Initialize for qobject::Player {
                 | Changed::PLAYBACK
                 | Changed::POSITION
                 | Changed::VOLUME
-                | Changed::MODES,
+                | Changed::MODES
+                | Changed::STATS,
             Self::changed,
         );
         self.as_mut().changed(Changed::all());
@@ -137,6 +163,48 @@ impl qobject::Player {
                 .and_then(|track| track.cover.as_deref())
                 .map(|path| path.to_string_lossy().into_owned());
             self.as_mut().set_cover(text(cover.as_deref()));
+            self.as_mut().set_year(QString::from(
+                &track
+                    .as_ref()
+                    .and_then(|track| track.year)
+                    .map(|year| year.to_string())
+                    .unwrap_or_default(),
+            ));
+            self.as_mut().set_codec(QString::from(
+                &track
+                    .as_ref()
+                    .and_then(|track| track.codec.as_deref())
+                    .unwrap_or_default()
+                    .to_uppercase(),
+            ));
+            let number = |value: Option<u32>| value.map_or(0, |value| value as i32);
+            self.as_mut()
+                .set_sample_rate(number(track.as_ref().and_then(|track| track.sample_rate)));
+            self.as_mut().set_bits(number(
+                track.as_ref().and_then(|track| track.bits_per_sample),
+            ));
+            let gain = |gain: Option<f32>| gain.map_or(f64::NAN, f64::from);
+            self.as_mut().set_track_gain(gain(
+                track
+                    .as_ref()
+                    .and_then(|track| track.replay_gain.track_gain),
+            ));
+            self.as_mut().set_album_gain(gain(
+                track
+                    .as_ref()
+                    .and_then(|track| track.replay_gain.album_gain),
+            ));
+        }
+        if changed.intersects(Changed::CURRENT | Changed::STATS) {
+            let plays = track.as_ref().map_or(0, |track| {
+                hub()
+                    .library()
+                    .read()
+                    .stats(&track.locator)
+                    .map_or(0, |stats| stats.plays)
+            });
+            self.as_mut()
+                .set_plays(i32::try_from(plays).unwrap_or(i32::MAX));
         }
         if changed.intersects(Changed::CURRENT | Changed::POSITION) {
             // The decoder knows the length best; the tags tell it until it does.
@@ -209,10 +277,18 @@ impl qobject::Player {
     }
 
     fn cycle_repeat(&self) {
-        bus::emit(SetLoopStatus(match self.repeat {
-            0 => LoopStatus::Playlist,
-            1 => LoopStatus::File,
+        self.change_repeat((self.repeat + 1) % 3);
+    }
+
+    fn change_repeat(&self, repeat: i32) {
+        bus::emit(SetLoopStatus(match repeat {
+            1 => LoopStatus::Playlist,
+            2 => LoopStatus::File,
             _ => LoopStatus::Off,
         }));
+    }
+
+    fn change_shuffle(&self, shuffle: bool) {
+        bus::emit(SetShuffle(shuffle));
     }
 }

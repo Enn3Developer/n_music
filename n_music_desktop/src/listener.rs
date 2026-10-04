@@ -3,11 +3,12 @@
 use crate::hub::{hub, Changed};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, ScanFinished, ScanRequested,
+    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ScanFinished, ScanRequested,
     SetLibraryRoots, ShuffleChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed,
     TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
+use std::sync::Arc;
 
 /// Registered after the core services, so the library is up to date when it runs.
 pub struct Listener;
@@ -30,6 +31,7 @@ impl Subscriber for Listener {
         reg.on::<VolumeChanged>();
         reg.on::<ShuffleChanged>();
         reg.on::<LoopStatusChanged>();
+        reg.on::<QueueChanged>();
     }
 }
 
@@ -79,7 +81,8 @@ impl Handle<TrackPlayed> for Listener {
 impl Handle<TrackChanged> for Listener {
     fn handle(&mut self, msg: &TrackChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::CURRENT, |state| {
-            state.current = Some(msg.track.clone())
+            state.current_item = Some(msg.item);
+            state.current = Some(msg.track.clone());
         });
     }
 }
@@ -114,5 +117,13 @@ impl Handle<ShuffleChanged> for Listener {
 impl Handle<LoopStatusChanged> for Listener {
     fn handle(&mut self, msg: &LoopStatusChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::MODES, |state| state.loop_status = msg.0.clone());
+    }
+}
+
+impl Handle<QueueChanged> for Listener {
+    fn handle(&mut self, msg: &QueueChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::QUEUE, |state| {
+            state.queue = Arc::new(msg.entries.clone());
+        });
     }
 }

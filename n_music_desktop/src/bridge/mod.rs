@@ -1,6 +1,8 @@
 pub mod app;
+pub mod base;
 pub mod covers;
 pub mod player;
+pub mod queue;
 pub mod scan;
 pub mod tracks;
 pub mod translations;
