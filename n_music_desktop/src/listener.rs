@@ -1,11 +1,11 @@
 //! Receives what the core reports on the bus and keeps the [`hub`] up to date.
 
-use crate::hub::{hub, Changed};
+use crate::hub::{hub, Changed, PlaylistSummary};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
-    LoopStatusChanged, PlaybackChanged, PositionChanged, QueueChanged, ScanFinished, ScanRequested,
-    SetLibraryRoots, ShuffleChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed,
-    TracksEnumerated, VolumeChanged,
+    LoopStatusChanged, PlaybackChanged, PlaylistRejected, PlaylistsChanged, PositionChanged,
+    QueueChanged, ScanFinished, ScanRequested, SetLibraryRoots, ShuffleChanged, TrackChanged,
+    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -32,6 +32,8 @@ impl Subscriber for Listener {
         reg.on::<ShuffleChanged>();
         reg.on::<LoopStatusChanged>();
         reg.on::<QueueChanged>();
+        reg.on::<PlaylistsChanged>();
+        reg.on::<PlaylistRejected>();
     }
 }
 
@@ -125,5 +127,28 @@ impl Handle<QueueChanged> for Listener {
         hub().update(Changed::QUEUE, |state| {
             state.queue = Arc::new(msg.entries.clone());
         });
+    }
+}
+
+impl Handle<PlaylistsChanged> for Listener {
+    fn handle(&mut self, msg: &PlaylistsChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        let playlists = msg
+            .0
+            .iter()
+            .map(|playlist| PlaylistSummary {
+                id: playlist.id,
+                name: playlist.name.clone(),
+                smart: playlist.smart,
+            })
+            .collect();
+        hub().update(Changed::PLAYLISTS, |state| {
+            state.playlists = Arc::new(playlists);
+        });
+    }
+}
+
+impl Handle<PlaylistRejected> for Listener {
+    fn handle(&mut self, msg: &PlaylistRejected, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::REJECTED, |state| state.rejected = msg.0.clone());
     }
 }

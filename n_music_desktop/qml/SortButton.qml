@@ -8,8 +8,10 @@ AbstractButton {
     id: button
 
     required property TrackList list
+    /// Orders offered before the usual ones, as `{ sort, label }`.
+    property var extraOptions: []
 
-    readonly property var options: [
+    readonly property var options: extraOptions.concat([
         {
             sort: "artist,album",
             label: Tr.t.sort_artist_album
@@ -46,7 +48,7 @@ AbstractButton {
             sort: "location",
             label: Tr.t.sort_location
         }
-    ]
+    ])
 
     /// The order in words: an offered one's name, else its keys.
     readonly property string label: {

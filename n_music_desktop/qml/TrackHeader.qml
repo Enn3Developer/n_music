@@ -29,6 +29,7 @@ Item {
         property bool alignRight: false
         readonly property bool sorted: field !== "" && header.first.replace("-", "") === field
 
+        visible: width > 0
         height: parent.height
         enabled: field !== ""
         hoverEnabled: true
@@ -90,11 +91,22 @@ Item {
             then: "album"
         }
         HeaderCell {
+            width: header.columns.added
+            text: Tr.t.column_added
+            field: "added"
+        }
+        HeaderCell {
             width: header.columns.plays
             alignRight: true
             text: Tr.t.column_plays
             field: "plays"
             then: "title"
+        }
+        HeaderCell {
+            width: header.columns.lastPlayed
+            alignRight: true
+            text: Tr.t.column_last_played
+            field: "lastPlayed"
         }
         HeaderCell {
             width: header.columns.time

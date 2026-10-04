@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// An applied filter rule, like `Genre is J-Pop`, with a button removing it.
+// A filter rule, like `Genre is J-Pop`, with a button removing it while `removable`.
 AbstractButton {
     id: chip
 
@@ -10,13 +10,14 @@ AbstractButton {
     property string name
     /// The rest of the rule, like `is J-Pop`.
     property string detail
+    property bool removable: true
 
     signal remove
 
-    implicitHeight: 32
+    implicitHeight: removable ? 32 : 28
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-    leftPadding: 12
-    rightPadding: 4
+    leftPadding: removable ? 12 : 10
+    rightPadding: removable ? 4 : 10
     hoverEnabled: true
     font.pixelSize: 13
     text: name + " " + detail
@@ -30,7 +31,7 @@ AbstractButton {
     }
 
     contentItem: Row {
-        spacing: 6
+        spacing: chip.removable ? 6 : 5
 
         Label {
             anchors.verticalCenter: parent.verticalCenter
@@ -46,6 +47,7 @@ AbstractButton {
         }
         IconButton {
             anchors.verticalCenter: parent.verticalCenter
+            visible: chip.removable
             size: 24
             radius: 12
             iconSize: 12

@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import NMusic
 
 // A track in a table: its number (a playing mark while current), cover, title and artist,
-// album, year, plays and length.
+// album, then the values its columns show and the length.
 Rectangle {
     id: row
 
@@ -16,6 +16,8 @@ Rectangle {
     required property string length
     required property string cover
     required property bool current
+    required property real lastPlayed
+    required property real added
     required property TrackColumns columns
     property bool selected: false
 
@@ -115,8 +117,17 @@ Rectangle {
             text: row.year
         }
         Value {
+            width: row.columns.added
+            horizontalAlignment: Text.AlignLeft
+            text: row.added > 0 ? Format.ago(row.added) : ""
+        }
+        Value {
             width: row.columns.plays
             text: row.plays
+        }
+        Value {
+            width: row.columns.lastPlayed
+            text: row.lastPlayed > 0 ? Format.ago(row.lastPlayed) : Tr.t.never_played
         }
         Value {
             width: row.columns.time
@@ -125,6 +136,7 @@ Rectangle {
     }
 
     component Value: Label {
+        visible: width > 0
         anchors.verticalCenter: parent.verticalCenter
         horizontalAlignment: Text.AlignRight
         color: Theme.text2

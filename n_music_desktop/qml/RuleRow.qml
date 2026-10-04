@@ -82,6 +82,17 @@ Item {
                 row.edited();
             }
         }
+        SelectBox {
+            Layout.fillWidth: true
+            visible: row.kind === "playlist"
+            options: Filters.playlistOptions
+            value: String(row.rule.value)
+            Accessible.name: row.field.label
+            onActivated: value => {
+                row.rule.value = value;
+                row.reshaped();
+            }
+        }
         IconButton {
             visible: row.kind === "folder"
             size: 36

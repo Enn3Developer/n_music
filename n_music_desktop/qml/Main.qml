@@ -7,8 +7,12 @@ import NMusic
 ApplicationWindow {
     id: window
 
-    /// The page the content area shows.
+    /// The page the content area shows; a playlist's is `playlist:<id>`.
     property string page: "tracks"
+    /// The page without what follows its `:`.
+    readonly property string section: page.split(":")[0]
+    /// The playlist shown last.
+    property real playlistId: 0
     /// The page shown before the queue, to go back to.
     property string beforeQueue: "tracks"
     /// Pages shown so far; they stay loaded, keeping their search and scroll position.
@@ -27,9 +31,15 @@ ApplicationWindow {
     font.family: Theme.font
     font.pixelSize: 14
 
-    onPageChanged: visited = Object.assign({}, visited, {
-        [page]: true
-    })
+    onPageChanged: {
+        // Not `section`: its binding may not have seen this change yet.
+        const [name, argument] = page.split(":");
+        if (name === "playlist")
+            playlistId = Number(argument);
+        visited = Object.assign({}, visited, {
+            [name]: true
+        });
+    }
 
     function toggleQueue() {
         if (page === "queue") {
@@ -74,8 +84,26 @@ ApplicationWindow {
         }
     }
     Component {
+        id: playlistPage
+        PlaylistPage {
+            playlistId: window.playlistId
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
         id: placeholderPage
         PlaceholderPage {}
+    }
+
+    Connections {
+        target: Playlists
+
+        function onCreated(id: real) {
+            window.page = "playlist:" + id;
+        }
+        function onRejected(message: string) {
+            rejected.show(message);
+        }
     }
 
     ColumnLayout {
@@ -98,16 +126,17 @@ ApplicationWindow {
                 Layout.fillHeight: true
 
                 Repeater {
-                    model: ["tracks", "albums", "artists", "genres", "sources", "queue", "settings"]
+                    model: ["tracks", "albums", "artists", "genres", "sources", "playlist", "queue", "settings"]
 
                     Loader {
                         required property string modelData
 
                         anchors.fill: parent
                         active: window.visited[modelData] === true
-                        visible: window.page === modelData
+                        visible: window.section === modelData
                         sourceComponent: ({
                                 tracks: tracksPage,
+                                playlist: playlistPage,
                                 queue: queuePage
                             })[modelData] ?? placeholderPage
                         onLoaded: {
@@ -115,6 +144,14 @@ ApplicationWindow {
                                 item.title = Qt.binding(() => Tr.t[modelData]);
                         }
                     }
+                }
+
+                RejectedToast {
+                    id: rejected
+                    anchors.right: parent.right
+                    anchors.rightMargin: 24
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 20
                 }
             }
         }

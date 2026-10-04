@@ -202,6 +202,31 @@ Item {
 
     FilterDrawer {
         id: drawer
-        list: tracks
+        filter: tracks.filter
+        sort: tracks.sort
+        search: tracks.search
+        saveable: true
+        onApplied: (filter, sort) => {
+            tracks.filter = filter;
+            tracks.sort = sort;
+        }
+        onSaveRequested: (filter, sort) => {
+            naming.filter = filter;
+            naming.sort = sort;
+            naming.ask("");
+        }
+    }
+
+    PromptDialog {
+        id: naming
+
+        property string filter
+        property string sort
+
+        title: Tr.t.new_smart_playlist
+        asksText: true
+        placeholder: Tr.t.playlist_name
+        confirmText: Tr.t.create
+        onConfirmed: name => Playlists.createSmart(name, filter, sort)
     }
 }

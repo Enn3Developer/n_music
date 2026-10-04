@@ -61,6 +61,12 @@ QtObject {
                 ops: ["in", "not_in"],
                 values: "folder"
             },
+            playlist: {
+                label: Tr.t.field_playlist_long,
+                name: Tr.t.field_playlist,
+                kind: "playlist",
+                ops: ["in", "not_in"]
+            },
             plays: {
                 label: Tr.t.field_plays,
                 kind: "range",
@@ -80,7 +86,7 @@ QtObject {
 
     /// The fields as choices under headings; a box shows the short name.
     readonly property var fieldOptions: {
-        const groups = [[Tr.t.filter_text, ["search"]], [Tr.t.filter_tags, ["artist", "album_artist", "album", "genre", "year", "codec"]], [Tr.t.filter_where, ["folder"]], [Tr.t.filter_listening, ["plays", "played_within", "not_played_within"]]];
+        const groups = [[Tr.t.filter_text, ["search"]], [Tr.t.filter_tags, ["artist", "album_artist", "album", "genre", "year", "codec"]], [Tr.t.filter_where, ["folder", "playlist"]], [Tr.t.filter_listening, ["plays", "played_within", "not_played_within"]]];
         const options = [];
         for (const [heading, names] of groups) {
             options.push({
@@ -165,11 +171,18 @@ QtObject {
         };
     }
 
+    /// The playlists as choices.
+    readonly property var playlistOptions: Playlists.items.map(playlist => ({
+                value: String(playlist.id),
+                label: playlist.name
+            }))
+
     function newRule(field: string): var {
+        const playlists = Playlists.items;
         return {
             field: field,
             op: fields[field].ops[0],
-            value: "",
+            value: field === "playlist" && playlists.length > 0 ? String(playlists[0].id) : "",
             from: "",
             to: "",
             amount: "30",
@@ -191,12 +204,17 @@ QtObject {
             rule[key] = fresh[key];
     }
 
-    /// A filter from JSON; empty when there is none.
+    /// A filter from JSON, its rules with every key the editors read; empty when there is none.
     function parse(json: string): var {
+        const complete = rule => fields[rule.field] ? Object.assign(newRule(rule.field), rule) : rule;
         try {
             const spec = JSON.parse(json);
-            if (spec && Array.isArray(spec.rules))
+            if (spec && Array.isArray(spec.rules)) {
+                spec.rules = spec.rules.map(rule => rule.group === undefined ? complete(rule) : Object.assign(rule, {
+                        rules: rule.rules.map(complete)
+                    }));
                 return spec;
+            }
         } catch (error) {}
         return empty();
     }
@@ -250,6 +268,14 @@ QtObject {
                 return value === "" ? null : {
                     name: name,
                     text: Tr.t["op_" + rule.op] + " " + value
+                };
+            }
+        case "playlist":
+            {
+                const playlist = Playlists.items.find(item => String(item.id) === String(rule.value));
+                return playlist === undefined ? null : {
+                    name: rule.op === "not_in" ? Tr.t.not_in_playlist : Tr.t.in_playlist,
+                    text: playlist.name
                 };
             }
         case "range":

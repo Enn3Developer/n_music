@@ -3,6 +3,7 @@ pub mod base;
 pub mod catalog;
 pub mod covers;
 pub mod player;
+pub mod playlists;
 pub mod queue;
 pub mod scan;
 pub mod tracks;

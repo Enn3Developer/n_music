@@ -42,5 +42,8 @@ QtObject {
     readonly property color danger: dark ? "#FF8A80" : "#B3261E"
     readonly property color dangerBg: dark ? "#2A1F1F" : "#FCEEEE"
     readonly property color dangerLine: dark ? "#5A3434" : "#E8B4B0"
+    /// Text on a danger background.
+    readonly property color dangerTitle: dark ? "#FFD9D5" : "#7A1C16"
+    readonly property color dangerText: dark ? "#E2C4C0" : "#8C3B35"
     readonly property color success: dark ? "#7FD1AE" : "#1E7A55"
 }

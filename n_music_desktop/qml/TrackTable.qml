@@ -9,10 +9,13 @@ Item {
 
     required property TrackList list
     readonly property alias view: view
+    /// Which value columns show, see TrackColumns.
+    property string layout: "library"
 
     TrackColumns {
         id: columns
         width: table.width - 32 - 24
+        layout: table.layout
     }
 
     TrackHeader {

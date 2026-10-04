@@ -3,12 +3,20 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// A panel sliding in from the right to write the rules and the order of a track list. It works
-// on a copy, counting the matches as it goes; Apply hands it to the list.
+// A panel sliding in from the right to write filter rules and an order. It works on a copy of
+// `filter` and `sort`, counting the matches as it goes; Apply hands them over.
 FocusScope {
     id: drawer
 
-    required property TrackList list
+    property string title: Tr.t.filter_tracks
+    /// The rules to start from, see `Filters`.
+    property string filter
+    /// The order to start from, see `query::parse_sort`.
+    property string sort
+    /// A search the matches must also pass.
+    property string search
+    /// Offers to save the rules as a smart playlist.
+    property bool saveable: false
     /// Slid in.
     property bool shown: false
     /// The filter being written, see `Filters`; edits change it in place.
@@ -18,12 +26,17 @@ FocusScope {
 
     readonly property TrackList preview: counter.object as TrackList
 
+    /// Apply was pressed.
+    signal applied(string filter, string sort)
+    /// Save as smart playlist was pressed.
+    signal saveRequested(string filter, string sort)
+
     function open() {
-        const applied = Filters.parse(list.filter);
+        const applied = Filters.parse(filter);
         if (applied.rules.length === 0)
             applied.rules.push(Filters.newRule("artist"));
         spec = applied;
-        keys = Filters.parseSort(list.sort);
+        keys = Filters.parseSort(sort);
         shown = true;
         update();
         forceActiveFocus();
@@ -33,11 +46,19 @@ FocusScope {
         shown = false;
     }
 
+    /// The order written; the one started from while it shows no key.
+    function writtenSort(): string {
+        return keys.length > 0 ? Filters.sortString(keys) : sort;
+    }
+
     function apply() {
-        list.filter = Filters.json(Filters.clean(spec));
-        if (keys.length > 0)
-            list.sort = Filters.sortString(keys);
         close();
+        applied(Filters.json(Filters.clean(spec)), writtenSort());
+    }
+
+    function save() {
+        close();
+        saveRequested(Filters.json(Filters.clean(spec)), writtenSort());
     }
 
     /// Counts the matches of the rules as they are.
@@ -98,7 +119,7 @@ FocusScope {
         onObjectChanged: drawer.update()
 
         delegate: TrackList {
-            search: drawer.list.search
+            search: drawer.search
         }
     }
 
@@ -141,7 +162,7 @@ FocusScope {
     Label {
         x: 20
         anchors.verticalCenter: closeButton.verticalCenter
-        text: Tr.t.filter_tracks
+        text: drawer.title
         color: Theme.text
         font.pixelSize: 19
         font.weight: Font.Bold
@@ -383,14 +404,25 @@ FocusScope {
             }
         }
 
-        PillButton {
+        Row {
             x: parent.width - 20 - width
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 0.5
-            implicitHeight: 38
-            primary: true
-            text: Tr.t.apply
-            onClicked: drawer.apply()
+            spacing: 8
+
+            PillButton {
+                visible: drawer.saveable
+                implicitHeight: 38
+                leftPadding: 14
+                text: Tr.t.save_smart_playlist
+                onClicked: drawer.save()
+            }
+            PillButton {
+                implicitHeight: 38
+                primary: true
+                text: Tr.t.apply
+                onClicked: drawer.apply()
+            }
         }
     }
 }

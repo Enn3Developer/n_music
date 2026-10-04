@@ -8,6 +8,7 @@ use bitflags::bitflags;
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, Threading};
 use n_music_core::library::catalog::Library;
+use n_music_core::library::query::PlaylistId;
 use n_music_core::queue::{ItemId, LoopStatus, QueueEntry};
 use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,6 +38,10 @@ bitflags! {
         const QUEUE = 1 << 9;
         /// What the session plays from, as the interface last chose it.
         const CONTEXT = 1 << 10;
+        /// The playlists, or what some hold.
+        const PLAYLISTS = 1 << 11;
+        /// The library refused a playlist change.
+        const REJECTED = 1 << 12;
     }
 }
 
@@ -57,6 +62,17 @@ pub struct State {
     pub queue: Arc<Vec<QueueEntry>>,
     /// `None` until the interface plays something: the session then holds the library.
     pub context: Option<Context>,
+    /// In the library's order; details are in the catalog.
+    pub playlists: Arc<Vec<PlaylistSummary>>,
+    /// Why the library refused the last playlist change.
+    pub rejected: String,
+}
+
+#[derive(Clone)]
+pub struct PlaylistSummary {
+    pub id: PlaylistId,
+    pub name: String,
+    pub smart: bool,
 }
 
 /// What a session plays from, for the queue to tell.

@@ -12,6 +12,8 @@ AbstractButton {
     property real stroke: 1.8
     property color color: Theme.text2
     property real radius: 8
+    /// Draws a border around it.
+    property bool outlined: false
 
     implicitWidth: size
     implicitHeight: size
@@ -23,8 +25,8 @@ AbstractButton {
     background: Rectangle {
         radius: button.radius
         color: button.down ? Theme.selected : button.hovered ? Theme.raised : "transparent"
-        border.width: button.visualFocus ? 2 : 0
-        border.color: Theme.text
+        border.width: button.visualFocus ? 2 : button.outlined ? 1 : 0
+        border.color: button.visualFocus ? Theme.text : Theme.border
     }
 
     contentItem: Item {

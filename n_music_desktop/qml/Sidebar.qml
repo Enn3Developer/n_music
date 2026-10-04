@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -105,9 +106,58 @@ Rectangle {
             }
         }
 
-        Item {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: 2
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.rightMargin: 4
+                Layout.bottomMargin: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: Tr.t.playlists.toUpperCase()
+                    color: Theme.text3
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.9
+                }
+                IconButton {
+                    size: 28
+                    radius: 6
+                    iconSize: 16
+                    stroke: 2
+                    iconName: "plus"
+                    text: Tr.t.new_playlist
+                    onClicked: naming.ask("")
+                }
+            }
+
+            ListView {
+                id: playlists
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                model: Playlists.items
+                Accessible.name: Tr.t.playlists
+
+                delegate: NavItem {
+                    required property var modelData
+
+                    width: ListView.view.width
+                    iconName: modelData.smart ? "filter" : "playlist"
+                    text: modelData.name
+                    active: sidebar.page === "playlist:" + modelData.id
+                    onClicked: sidebar.navigate("playlist:" + modelData.id)
+                }
+
+                ScrollBar.vertical: ThinScrollBar {}
+            }
         }
 
         ColumnLayout {
@@ -135,5 +185,14 @@ Rectangle {
                 onClicked: sidebar.navigate("settings")
             }
         }
+    }
+
+    PromptDialog {
+        id: naming
+        title: Tr.t.new_playlist
+        asksText: true
+        placeholder: Tr.t.playlist_name
+        confirmText: Tr.t.create
+        onConfirmed: name => Playlists.create(name)
     }
 }
