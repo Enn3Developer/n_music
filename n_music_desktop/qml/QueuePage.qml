@@ -24,9 +24,8 @@ Item {
     /// How far below its top it was picked up, and where the pointer is in the scene.
     property real grip: 0
     property real pointer: 0
-    /// Rows still to play stand `stride` apart, row `n` at `grid + n * stride`.
+    /// How far apart rows stand.
     property real stride: 0
-    property real grid: 0
     /// The held row eases into its place once let go.
     property bool settling: false
     /// Pixels a second the list scrolls by while the pointer carries a row near its top or bottom.
@@ -48,22 +47,28 @@ Item {
         grip = offset;
         pointer = sceneY;
         stride = row.height + list.spacing;
-        grid = row.y - row.index * stride;
         queue.startDrag(row.index);
         follow();
     }
 
     // Keeps the held row under the pointer, among the rows still to play, and moves it to the
-    // place it shows over.
+    // place it shows over. Places count from the held row's own: the view shifts its rows as it
+    // scrolls far, so places measured before go stale.
     function follow() {
         if (!dragging || held === null)
             return;
-        const first = list.count - queue.leftCount;
-        // Past the edges the list scrolls instead: the place the row shows over stays one the
-        // view built.
+        // Past the edges the list scrolls instead.
         const top = Math.max(0, Math.min(list.height, list.mapFromItem(null, 0, pointer).y)) + list.contentY - grip;
-        heldTop = Math.max(grid + first * stride, Math.min(grid + (list.count - 1) * stride, top));
-        queue.dragTo(Math.round((heldTop - grid) / stride));
+        const first = held.y + (list.count - queue.leftCount - held.index) * stride;
+        heldTop = Math.max(first, Math.min(first + (queue.leftCount - 1) * stride, top));
+        // The view lets go of a row moved to a place out of sight.
+        const shown = Math.max(list.contentY, Math.min(list.contentY + list.height - held.height, heldTop));
+        const to = held.index + Math.round((shown - held.y) / stride);
+        if (to !== held.index) {
+            queue.dragTo(to);
+            // Lays the move out now, for the held row's place to count from.
+            list.forceLayout();
+        }
     }
 
     function drop(keep: bool) {
