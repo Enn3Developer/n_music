@@ -191,24 +191,36 @@ impl qobject::Sources {
     }
 }
 
+/// What the source at `location` is called: its folder's name.
+pub fn name(location: &str) -> String {
+    Path::new(location).file_name().map_or_else(
+        || location.to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// What the paths of the tracks in the folder `root` start with, as the scan writes them.
+pub fn prefix(root: &str) -> String {
+    if root.ends_with(MAIN_SEPARATOR) {
+        root.to_string()
+    } else {
+        format!("{root}{MAIN_SEPARATOR}")
+    }
+}
+
 /// `root` with how many tracks of the library come from it.
 fn describe(catalog: &Catalog, root: &Locator) -> Source {
     let location = root.to_string();
-    let name = Path::new(&location).file_name().map_or_else(
-        || location.clone(),
-        |name| name.to_string_lossy().into_owned(),
-    );
+    let name = name(&location);
     let (tracks, available) = match root {
-        Locator::Local(root) => (
-            catalog
-                .tracks()
-                .iter()
-                .filter(
-                    |track| matches!(&track.locator, Locator::Local(path) if inside(path, root)),
-                )
-                .count(),
-            Path::new(root).is_dir(),
-        ),
+        Locator::Local(root) => {
+            let prefix = prefix(root);
+            let inside = |track: &&n_music_core::Track| matches!(&track.locator, Locator::Local(path) if path.starts_with(&prefix));
+            (
+                catalog.tracks().iter().filter(inside).count(),
+                Path::new(root).is_dir(),
+            )
+        }
         // Android's documents do not come up on the desktop.
         Locator::DocumentTree(_) | Locator::Document { .. } => (0, true),
     };
@@ -218,10 +230,4 @@ fn describe(catalog: &Catalog, root: &Locator) -> Source {
         tracks,
         available,
     }
-}
-
-/// `path` is in the folder `root`, both written the way the scan writes them.
-fn inside(path: &str, root: &str) -> bool {
-    path.strip_prefix(root)
-        .is_some_and(|rest| rest.starts_with(MAIN_SEPARATOR) || root.ends_with(MAIN_SEPARATOR))
 }

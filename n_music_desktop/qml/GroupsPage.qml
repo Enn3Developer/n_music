@@ -8,7 +8,7 @@ import NMusic
 Item {
     id: page
 
-    /// `album`, `artist` or `genre`.
+    /// `album`, `artist`, `genre` or `source`.
     required property string kind
 
     signal navigate(string page)
@@ -37,6 +37,14 @@ Item {
                 search: Tr.t.search_genres,
                 unknown: Tr.t.unknown_genre,
                 icon: "tag"
+            },
+            source: {
+                title: Tr.t.sources,
+                one: Tr.t.sources_one,
+                many: Tr.t.sources_many,
+                search: Tr.t.search_sources,
+                unknown: "",
+                icon: "folder"
             }
         })[kind]
 
@@ -156,6 +164,15 @@ Item {
                 required property string cover
                 required property bool known
 
+                readonly property string detail: {
+                    const tracks = Format.count(card.tracks, Tr.t.track_one, Tr.t.tracks_many);
+                    if (page.kind === "album")
+                        return [card.artist === "" ? Tr.t.unknown_artist : card.artist, card.year > 0 ? card.year : "—"].join(" · ");
+                    if (page.kind === "source")
+                        return SourceKinds.name("folder") + " · " + tracks;
+                    return tracks;
+                }
+
                 width: grid.cellWidth - 20
                 height: grid.cellHeight - 24
                 hoverEnabled: true
@@ -163,7 +180,10 @@ Item {
                 Accessible.name: text
                 onClicked: {
                     const key = groups.key(index);
-                    page.navigate(Filters.collectionPage(page.kind, key.name, key.artist));
+                    if (page.kind === "source")
+                        page.navigate(Filters.collectionPage(page.kind, key.location, ""));
+                    else
+                        page.navigate(Filters.collectionPage(page.kind, key.name, key.artist));
                 }
 
                 background: null
@@ -198,7 +218,7 @@ Item {
                         }
                         Label {
                             width: parent.width
-                            text: page.kind === "album" ? [card.artist === "" ? Tr.t.unknown_artist : card.artist, card.year > 0 ? card.year : "—"].join(" · ") : Format.count(card.tracks, Tr.t.track_one, Tr.t.tracks_many)
+                            text: card.detail
                             elide: Text.ElideRight
                             color: Theme.text2
                             font.pixelSize: 13

@@ -326,9 +326,18 @@ QtObject {
         }) : name);
     }
 
-    /// What a page of `kind` lists, as `{ name, artist }`, from what follows its `:`.
+    /// What a page of `kind` lists, as `{ name, artist }`, from what follows its `:`; a
+    /// source's also has the `location` its tracks' locations start with.
     function collectionKey(kind: string, argument: string): var {
         const text = decodeURIComponent(argument);
+        if (kind === "source") {
+            const parts = text.split(/[\\/]/).filter(part => part !== "");
+            return {
+                name: parts.length > 0 ? parts[parts.length - 1] : text,
+                artist: "",
+                location: text
+            };
+        }
         if (kind !== "album")
             return {
                 name: text,
@@ -348,8 +357,19 @@ QtObject {
     }
 
     /// The rules listing the tracks of a collection: an album by its artist (theirs, or the
-    /// album artist), an artist, or a genre.
+    /// album artist), an artist, a genre, or a source.
     function collectionFilter(kind: string, key: var): string {
+        if (kind === "source")
+            return JSON.stringify({
+                match: "all",
+                rules: [
+                    {
+                        field: "folder",
+                        op: "in",
+                        value: key.location
+                    }
+                ]
+            });
         const rules = [
             {
                 field: kind,

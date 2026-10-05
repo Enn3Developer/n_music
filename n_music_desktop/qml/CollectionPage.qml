@@ -8,7 +8,7 @@ import NMusic
 Item {
     id: page
 
-    /// `album`, `artist` or `genre`.
+    /// `album`, `artist`, `genre` or `source`.
     required property string kind
     /// What follows the `:` of the page, see `Filters.collectionPage`.
     property string argument
@@ -23,6 +23,8 @@ Item {
         const parts = [];
         if (kind === "album")
             parts.push(key.artist === "" ? Tr.t.unknown_artist : key.artist);
+        if (kind === "source")
+            parts.push(SourceKinds.name("folder"));
         parts.push(Format.count(tracks.count, Tr.t.track_one, Tr.t.tracks_many));
         if (tracks.count > 0)
             parts.push(Format.duration(tracks.duration));
@@ -32,7 +34,7 @@ Item {
     TrackList {
         id: tracks
         filter: Filters.collectionFilter(page.kind, page.key)
-        sort: page.kind === "genre" ? "artist,album" : "album"
+        sort: page.kind === "genre" || page.kind === "source" ? "artist,album" : "album"
         label: page.key.name
         detail: page.kind === "album" ? page.key.artist : ""
         origin: page.kind + ":" + page.argument
@@ -57,9 +59,10 @@ Item {
                 iconName: ({
                         album: "disc",
                         artist: "artist",
-                        genre: "tag"
+                        genre: "tag",
+                        source: "folder"
                     })[page.kind]
-                paths: page.kind === "genre" && tracks.covers.length >= 4 ? tracks.covers : []
+                paths: (page.kind === "genre" || page.kind === "source") && tracks.covers.length >= 4 ? tracks.covers : []
                 path: tracks.covers.length > 0 ? tracks.covers[0] : ""
             }
 
@@ -73,7 +76,8 @@ Item {
                     text: ({
                             album: Tr.t.field_album,
                             artist: Tr.t.field_artist,
-                            genre: Tr.t.field_genre
+                            genre: Tr.t.field_genre,
+                            source: Tr.t.source
                         })[page.kind]
                     color: Theme.text2
                     font.pixelSize: 12

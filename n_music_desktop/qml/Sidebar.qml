@@ -101,7 +101,7 @@ Rectangle {
                 Layout.fillWidth: true
                 iconName: "folder"
                 text: Tr.t.sources
-                active: sidebar.page === "sources"
+                active: sidebar.page === "sources" || sidebar.page.startsWith("source:")
                 onClicked: sidebar.navigate("sources")
             }
         }

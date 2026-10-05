@@ -115,6 +115,13 @@ ApplicationWindow {
         }
     }
     Component {
+        id: sourcesPage
+        GroupsPage {
+            kind: "source"
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
         id: albumPage
         CollectionPage {
             kind: "album"
@@ -135,6 +142,14 @@ ApplicationWindow {
         CollectionPage {
             kind: "genre"
             argument: window.subpages.genre ?? ""
+            onNavigate: to => window.page = to
+        }
+    }
+    Component {
+        id: sourcePage
+        CollectionPage {
+            kind: "source"
+            argument: window.subpages.source ?? ""
             onNavigate: to => window.page = to
         }
     }
@@ -182,7 +197,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
 
                 Repeater {
-                    model: ["tracks", "albums", "album", "artists", "artist", "genres", "genre", "sources", "playlist", "queue", "settings"]
+                    model: ["tracks", "albums", "album", "artists", "artist", "genres", "genre", "sources", "source", "playlist", "queue", "settings"]
 
                     Loader {
                         required property string modelData
@@ -198,6 +213,8 @@ ApplicationWindow {
                                 artist: artistPage,
                                 genres: genresPage,
                                 genre: genrePage,
+                                sources: sourcesPage,
+                                source: sourcePage,
                                 playlist: playlistPage,
                                 queue: queuePage,
                                 settings: settingsPage
