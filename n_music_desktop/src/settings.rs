@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 
 /// Preferences of the desktop interface.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiSettings {
     pub theme: Theme,
@@ -14,6 +14,20 @@ pub struct UiSettings {
     pub locale: Option<String>,
     pub window_size: WindowSize,
     pub save_window_size: bool,
+    /// Looks for a new version once a launch.
+    pub check_updates: bool,
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            theme: Theme::default(),
+            locale: None,
+            window_size: WindowSize::default(),
+            save_window_size: false,
+            check_updates: true,
+        }
+    }
 }
 
 impl Section for UiSettings {

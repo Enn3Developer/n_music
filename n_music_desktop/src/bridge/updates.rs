@@ -40,6 +40,7 @@ pub mod qobject {
     impl cxx_qt::Initialize for Updates {}
 }
 
+use crate::settings;
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
@@ -75,8 +76,10 @@ impl cxx_qt::Initialize for qobject::Updates {
             return;
         }
         self.as_mut().set_status(QString::from("idle"));
-        // Once a launch, when the settings first show.
-        self.check();
+        // Once a launch, when the settings first show, unless turned off.
+        if settings::ui().get().check_updates {
+            self.check();
+        }
     }
 }
 

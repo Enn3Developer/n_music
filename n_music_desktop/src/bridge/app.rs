@@ -16,6 +16,8 @@ pub mod qobject {
         #[qproperty(i32, theme)]
         /// Saved when changed.
         #[qproperty(bool, save_window_size)]
+        /// Looks for a new version once a launch; saved when changed.
+        #[qproperty(bool, check_updates)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         #[qproperty(QString, version)]
@@ -47,6 +49,7 @@ use n_music_core::messages::{AppVisibilityChanged, SetReplayGain};
 pub struct AppStateRust {
     theme: i32,
     save_window_size: bool,
+    check_updates: bool,
     window_width: i32,
     window_height: i32,
     version: QString,
@@ -60,6 +63,7 @@ impl Default for AppStateRust {
         Self {
             theme: 0,
             save_window_size: false,
+            check_updates: true,
             window_width: size.width as i32,
             window_height: size.height as i32,
             version: QString::from(env!("CARGO_PKG_VERSION")),
@@ -79,6 +83,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         };
         self.as_mut().set_theme(i32::from(ui.theme));
         self.as_mut().set_save_window_size(ui.save_window_size);
+        self.as_mut().set_check_updates(ui.check_updates);
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
         self.as_mut()
@@ -111,6 +116,12 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_save_window_size_changed(|app| {
                 let save = *app.save_window_size();
                 settings::ui().update(|ui| ui.save_window_size = save);
+            })
+            .release();
+        self.as_mut()
+            .on_check_updates_changed(|app| {
+                let check = *app.check_updates();
+                settings::ui().update(|ui| ui.check_updates = check);
             })
             .release();
     }

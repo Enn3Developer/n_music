@@ -309,6 +309,8 @@
   "up_next": "Up next",
   "up_next_hint": "Queued tracks play once, before the rest of the list.",
   "update": "Update",
+  "update_auto": "Check for updates automatically",
+  "update_auto_hint": "Once per launch, when Settings opens.",
   "update_available": "Version %1 is available",
   "update_checking": "Checking for updates…",
   "update_current": "Up to date · checked at %1",

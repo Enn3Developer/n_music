@@ -151,6 +151,7 @@ ColumnLayout {
                 readonly property string status: Updates.status
 
                 title: "N Music " + AppState.version
+                divider: automatic.visible
                 description: {
                     switch (status) {
                     case "unsupported":
@@ -193,6 +194,19 @@ ColumnLayout {
                         } else
                             Updates.check();
                     }
+                }
+            }
+            SettingRow {
+                id: automatic
+                // Copies the installer did not install update the way they were installed.
+                visible: release.status !== "unsupported"
+                title: Tr.t.update_auto
+                description: Tr.t.update_auto_hint
+
+                ToggleSwitch {
+                    checked: AppState.checkUpdates
+                    Accessible.name: Tr.t.update_auto
+                    onToggled: AppState.checkUpdates = checked
                 }
             }
         }
