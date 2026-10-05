@@ -34,6 +34,15 @@ pub struct MoveUpcoming {
     pub item: ItemId,
     pub before: Option<ItemId>,
 }
+/// Moves `item`, the current one, to play right before `before`, an item still to play or one
+/// that played, or (`None`) after all of them; it plays on, and once it ends playback goes on
+/// from there. The context's items it passes going down count as played, while queued ones play
+/// right after it; those it passes going up play again after it. Nothing moves once another item
+/// is current.
+pub struct MoveCurrent {
+    pub item: ItemId,
+    pub before: Option<ItemId>,
+}
 pub struct PlayPrevious;
 pub struct PlayNext;
 pub struct TogglePause;
@@ -219,6 +228,7 @@ messages!(
     RemoveQueued,
     ClearQueued,
     MoveUpcoming,
+    MoveCurrent,
     PlayPrevious,
     PlayNext,
     TogglePause,

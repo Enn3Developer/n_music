@@ -4,8 +4,8 @@ use super::{LoopStatus, QueuePlayer};
 use crate::audio::output_devices;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
-    LoopStatusChanged, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom,
-    PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
+    LoopStatusChanged, MoveCurrent, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play,
+    PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
     SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
     ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
     TracksEnumerated, VolumeChanged,
@@ -62,6 +62,19 @@ impl Handle<ClearQueued> for QueuePlayer {
 impl Handle<MoveUpcoming> for QueuePlayer {
     fn handle(&mut self, msg: &MoveUpcoming, _ctx: &Ctx, out: &mut Outbox) {
         self.session.move_upcoming(msg.item, msg.before);
+        self.update_next();
+        self.sync(out);
+    }
+}
+
+impl Handle<MoveCurrent> for QueuePlayer {
+    fn handle(&mut self, msg: &MoveCurrent, _ctx: &Ctx, out: &mut Outbox) {
+        let current = self.session.current().map(|item| item.id);
+        if current != Some(msg.item) || !self.session.move_current(msg.before) {
+            return;
+        }
+        // A finished context has items to play after it again.
+        self.finished = false;
         self.update_next();
         self.sync(out);
     }

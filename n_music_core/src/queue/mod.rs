@@ -12,7 +12,7 @@ use crate::library::query::Query;
 use crate::library::LibraryPaths;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
-    MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
+    MoveCurrent, MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
     PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
     SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, TogglePause,
     ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
@@ -450,6 +450,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<RemoveQueued>();
         reg.on::<ClearQueued>();
         reg.on::<MoveUpcoming>();
+        reg.on::<MoveCurrent>();
         reg.on::<PlayPrevious>();
         reg.on::<PlayNext>();
         reg.on::<TogglePause>();

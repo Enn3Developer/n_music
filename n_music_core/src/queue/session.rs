@@ -215,6 +215,56 @@ impl Session {
         self.set_upcoming(&upcoming);
     }
 
+    /// Moves the current item to play right before `before`, an item still to play or one that
+    /// played, or (`None`) after all of them; it plays on, and once it ends playback goes on
+    /// from there. The context items it passes going down count as played, while queued ones
+    /// play right after it; those it passes going up play again after it. Returns whether it
+    /// moved.
+    pub fn move_current(&mut self, before: Option<ItemId>) -> bool {
+        // A current context item leaves its slot to take another; the others shift.
+        let own = match self.current {
+            Some(Current::Context) if self.started => self.order.current(),
+            Some(Current::Detour) => None,
+            _ => return false,
+        };
+        let shift = usize::from(own.is_some());
+        // It plays after the first `at` context slots, counted without its own.
+        let at = self.split() - shift;
+        let slot = |slot: usize| slot - usize::from(own.is_some() && slot > at);
+        let to = match before {
+            None => self.order.order.len() - shift,
+            Some(before) => {
+                if let Some(position) = self.items.iter().position(|item| item.id == before) {
+                    slot(self.order.slot_of[position])
+                } else if let Some(queued) = self.queued.iter().find(|q| q.item.id == before) {
+                    slot(queued.before)
+                } else {
+                    return false;
+                }
+            }
+        };
+        if to == at {
+            return false;
+        }
+        if let Some(position) = own {
+            self.order.order.remove(at);
+            self.order.order.insert(to, position);
+            self.order.reindex();
+            self.order.cursor = to;
+        } else if to > 0 {
+            self.order.cursor = to - 1;
+            self.started = true;
+        } else {
+            self.started = false;
+        }
+        let split = self.split();
+        for queued in &mut self.queued {
+            queued.before = queued.before.max(split);
+        }
+        self.changed = true;
+        true
+    }
+
     /// Keeps each queued item behind as many context items still to play as before `change`,
     /// which reorders the context or moves where it stands.
     fn keeping_queued(&mut self, change: impl FnOnce(&mut Self)) {
