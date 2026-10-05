@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import NMusic
 
 // The library's sources as cards, by kind: a card opens its tracks or a menu updating it or
-// taking it out, and the top adds sources or updates them all.
+// taking it out, and the top adds sources, updates them all and shows how far a scan got.
 Item {
     id: page
 
@@ -38,6 +38,16 @@ Item {
                 })).filter(section => section.sources.length > 0);
     }
 
+    /// When the last complete update finished, like `today, 17:38`; empty before one.
+    readonly property string updated: {
+        if (Scan.updated <= 0)
+            return "";
+        const date = new Date(Scan.updated * 1000);
+        const time = date.toLocaleTimeString(Qt.locale(), Locale.ShortFormat);
+        const days = Format.daysSince(Scan.updated);
+        return days === 0 ? Tr.t.today_at.arg(time) : days === 1 ? Tr.t.yesterday_at.arg(time) : date.toLocaleString(Qt.locale(), Locale.ShortFormat);
+    }
+
     /// Room between the cards.
     readonly property real gap: Shell.narrow ? 12 : 20
     readonly property int columns: Math.max(1, Math.floor((cards.width + gap) / 188))
@@ -61,6 +71,18 @@ Item {
                 value: page.sort
                 Accessible.name: Tr.t.sort_by + ": " + text
                 onActivated: value => page.sort = value
+            }
+            IconButton {
+                id: narrowActions
+                size: 44
+                radius: 10
+                iconSize: 20
+                stroke: 2
+                color: Theme.text
+                iconName: "more"
+                text: Tr.t.library_actions
+                enabled: Sources.items.length > 0
+                onClicked: actions.popup(narrowActions, narrowActions.width - actions.width, narrowActions.height + 4)
             }
             AddSourceButton {
                 id: narrowAdder
@@ -123,20 +145,20 @@ Item {
                 onActivated: value => page.sort = value
             }
             IconButton {
-                id: updateAll
+                id: wideActions
                 Layout.alignment: Qt.AlignBottom
                 size: 38
                 radius: 19
                 iconSize: 17
                 outlined: true
-                iconName: "refresh"
-                text: Tr.t.update_library
-                enabled: !Scan.running && Sources.items.length > 0
-                onClicked: Scan.refresh()
+                iconName: "more"
+                text: Tr.t.library_actions
+                enabled: Sources.items.length > 0
+                onClicked: actions.popup(wideActions, wideActions.width - actions.width, wideActions.height + 4)
 
                 Tip {
-                    visible: updateAll.hovered
-                    text: updateAll.text
+                    visible: wideActions.hovered && !actions.visible
+                    text: wideActions.text
                 }
             }
             AddSourceButton {
@@ -144,6 +166,15 @@ Item {
                 Layout.alignment: Qt.AlignBottom
                 Layout.preferredHeight: 38
             }
+        }
+
+        ScanCard {
+            Layout.fillWidth: true
+            Layout.leftMargin: Shell.narrow ? 12 : 28
+            Layout.rightMargin: Shell.narrow ? 12 : 28
+            Layout.topMargin: Shell.narrow ? 12 : 0
+            Layout.bottomMargin: Shell.narrow ? 0 : 20
+            visible: Scan.running
         }
 
         Flickable {
@@ -237,6 +268,32 @@ Item {
                 action: empty ? Tr.t.add_source : ""
                 onTriggered: (Shell.narrow ? narrowAdder : adder).open()
             }
+        }
+    }
+
+    // What updates every source.
+    PopupMenu {
+        id: actions
+
+        MenuEntry {
+            iconName: "refresh"
+            enabled: !Scan.running
+            text: Tr.t.update_library
+            onTriggered: Scan.refresh()
+        }
+        MenuEntry {
+            iconName: "tag"
+            enabled: !Scan.running
+            text: Tr.t.reload_metadata_title
+            onTriggered: Scan.reload()
+        }
+        MenuLine {
+            shown: page.updated !== ""
+        }
+        MenuEntry {
+            note: true
+            shown: page.updated !== ""
+            text: Tr.t.last_update.arg(page.updated)
         }
     }
 

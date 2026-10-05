@@ -15,10 +15,6 @@ Item {
 
     readonly property var sections: [
         {
-            value: "sources",
-            label: Tr.t.sources
-        },
-        {
             value: "playback",
             label: Tr.t.playback
         },
@@ -37,31 +33,23 @@ Item {
     ]
     /// Too narrow for the sections beside the settings: they line up above them instead.
     readonly property bool stacked: width < 880
-    /// The general sections, while they show.
-    readonly property GeneralSettings general: content.item as GeneralSettings
-    /// The section of the general ones in view as the page scrolls.
+    /// The section in view as the page scrolls.
     readonly property string visibleSection: {
-        if (!general)
-            return section;
-        const names = ["playback", "appearance", "updates", "about"];
+        const names = sections.map(section => section.value);
         // At the end the last section is in view, however short.
         if (scroller.contentY >= scroller.contentHeight - scroller.height - 1)
             return names[names.length - 1];
         let shown = names[0];
         for (const name of names) {
-            if (content.y + general.sectionY(name) <= scroller.contentY + 40)
+            if (general.y + general.sectionY(name) <= scroller.contentY + 40)
                 shown = name;
         }
         return shown;
     }
 
-    /// Shows the section `name`, scrolling to it among the general ones.
+    /// Shows the section `name`, scrolling to it.
     function reveal(name: string) {
-        if (!general) {
-            scroller.contentY = 0;
-            return;
-        }
-        const top = name === "playback" ? 0 : content.y + general.sectionY(name) - 28;
+        const top = name === "playback" ? 0 : general.y + general.sectionY(name) - 28;
         scroller.contentY = Math.max(0, Math.min(top, scroller.contentHeight - scroller.height));
     }
 
@@ -131,28 +119,18 @@ Item {
             Layout.fillHeight: true
             clip: true
             contentWidth: width
-            contentHeight: content.implicitHeight + 28 + 32
+            contentHeight: general.implicitHeight + 28 + 32
             boundsBehavior: Flickable.StopAtBounds
 
-            Loader {
-                id: content
+            GeneralSettings {
+                id: general
                 x: Shell.narrow ? 16 : 28
                 y: page.stacked ? 20 : 28
                 width: Math.min(scroller.width - 2 * x, 704)
-                sourceComponent: page.section === "sources" ? sourcesSection : generalSection
             }
 
             ScrollBar.vertical: ThinScrollBar {}
         }
-    }
-
-    Component {
-        id: sourcesSection
-        SourcesSettings {}
-    }
-    Component {
-        id: generalSection
-        GeneralSettings {}
     }
 
     // A section to go to: the one in view stands out.

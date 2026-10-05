@@ -128,7 +128,7 @@ Rectangle {
                 iconColor: Theme.accentText
                 spinning: true
                 text: Tr.t.updating_library + (Scan.found > 0 ? " · " + Tr.t.read_of_found.arg(Format.number(Scan.read)).arg(Format.number(Scan.found)) : "")
-                onClicked: rail.navigate("settings:sources")
+                onClicked: rail.navigate("sources")
             }
             RailItem {
                 iconName: "queue"

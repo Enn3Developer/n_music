@@ -195,7 +195,7 @@ Rectangle {
                 hoverEnabled: true
                 text: Tr.t.updating_library
                 Accessible.name: text + (count === "" ? "" : ", " + count)
-                onClicked: sidebar.navigate("settings:sources")
+                onClicked: sidebar.navigate("sources")
 
                 background: Rectangle {
                     radius: 8
