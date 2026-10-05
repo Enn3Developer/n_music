@@ -1,5 +1,5 @@
 use super::covers::CoverStore;
-use super::db::{LibraryDb, ScannedTrack, StoredTrack};
+use super::db::{LibraryDb, LibraryTracks, ScannedTrack, StoredTrack};
 use super::reader::read_info;
 use super::LibraryPaths;
 use crate::settings::{LibrarySettings, Options};
@@ -59,11 +59,8 @@ pub struct ScanJob {
     /// The libraries to scan, each with whether it trusts the database: `false` reloads every
     /// track instead.
     pub libraries: Vec<(Locator, bool)>,
-    /// The tracks they listed when last scanned that no other library lists: a complete scan
-    /// forgets those it no longer lists.
-    pub known: HashSet<Locator>,
-    /// The libraries there are when the scan ends: if it scanned them all, it also forgets
-    /// every track none of them lists.
+    /// The libraries there are: the scan links the tracks of those only, and if it scanned them
+    /// all, it also forgets every track none of them lists.
     pub settings: Options<LibrarySettings>,
     pub paths: LibraryPaths,
     pub providers: Arc<Providers>,
@@ -79,16 +76,17 @@ pub struct Listing {
 
 /// What a scan reports, in this order.
 pub enum ScanEvent {
-    /// Each library's tracks, in the order asked. Those not loaded yet are placeholders;
-    /// `pending` of them are still to read.
+    /// Each library's tracks, in the order asked, linked in the database: it forgot the tracks
+    /// no library lists any more. Those not loaded yet are placeholders; `pending` of them are
+    /// still to read.
     Listed {
         libraries: Vec<Listing>,
         pending: usize,
     },
     /// A track's metadata, read from its file.
     Loaded(Track),
-    /// The scan is over. `complete` when it ran to the end over every library: tracks that are
-    /// gone are then forgotten, and references to moved files point to their new location.
+    /// The scan is over. `complete` when it ran to the end over every library: references to
+    /// moved files then point to their new location.
     Finished { complete: bool },
 }
 
@@ -134,6 +132,13 @@ impl Job for ScanJob {
             "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
             pending.len()
         );
+        // Whether or not every library could be listed: one that could not keeps its links.
+        if let Some(db) = db
+            .as_mut()
+            .filter(|_| !token.as_ref().is_some_and(JobToken::is_cancelled))
+        {
+            link(db, &libraries, &self.settings.get().libraries);
+        }
         writer.emit_tagged(
             tag,
             ScanEvent::Listed {
@@ -159,12 +164,7 @@ impl Job for ScanJob {
                     self.settings.get().libraries.iter().all(|library| {
                         self.libraries.iter().any(|(scanned, _)| scanned == library)
                     });
-                let forget = if whole {
-                    Forget::Unlisted(&seen)
-                } else {
-                    Forget::Gone(self.known.difference(&seen).cloned().collect())
-                };
-                clean_up(db, &covers, forget);
+                clean_up(db, &covers, whole.then_some(&seen));
             }
         }
         if cancelled {
@@ -339,24 +339,30 @@ fn store_loaded(mut db: Option<&mut LibraryDb>, rx: &std::sync::mpsc::Receiver<L
     }
 }
 
-/// Which stored tracks a complete scan forgets.
-enum Forget<'a> {
-    /// Every one it did not list: it scanned every library.
-    Unlisted(&'a HashSet<Locator>),
-    /// These, which its libraries listed when last scanned but not any more.
-    Gone(Vec<Locator>),
+/// Links each library to the tracks it listed, forgetting those no library lists any more.
+fn link(db: &mut LibraryDb, listings: &[Listing], libraries: &[Locator]) {
+    let listed: Vec<LibraryTracks> = listings
+        .iter()
+        .map(|listing| LibraryTracks {
+            library: &listing.library,
+            tracks: listing.tracks.iter().map(|track| &track.locator).collect(),
+            reachable: listing.reachable,
+        })
+        .collect();
+    match db.link(&listed, libraries) {
+        Ok(0) => {}
+        Ok(forgotten) => log::debug!("Removed {forgotten} tracks no library lists any more"),
+        Err(error) => log::error!("Could not save which tracks the libraries list: {error}"),
+    }
 }
 
-/// Forgets tracks that are gone, follows moved files and deletes covers no track uses any more.
-fn clean_up(db: &mut LibraryDb, covers: &CoverStore, forget: Forget) {
-    let deleted = match forget {
-        Forget::Unlisted(seen) => db.retain(seen),
-        Forget::Gone(gone) => db.forget(&gone),
-    };
-    match deleted {
-        Ok(0) => {}
-        Ok(deleted) => log::debug!("Removed {deleted} missing tracks from the library"),
-        Err(error) => {
+/// Forgets every track it did not list when it listed every library (`seen`, then), follows
+/// moved files and deletes covers no track uses any more.
+fn clean_up(db: &mut LibraryDb, covers: &CoverStore, seen: Option<&HashSet<Locator>>) {
+    match seen.map(|seen| db.retain(seen)) {
+        None | Some(Ok(0)) => {}
+        Some(Ok(deleted)) => log::debug!("Removed {deleted} missing tracks from the library"),
+        Some(Err(error)) => {
             log::error!("Could not remove missing tracks from the library: {error}");
             return;
         }

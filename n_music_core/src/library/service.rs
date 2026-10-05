@@ -110,12 +110,8 @@ impl LibraryService {
             return;
         }
         let libraries = std::mem::take(&mut self.waiting);
-        let known = unlisted(self.library.read().listings(), |library| {
-            libraries.iter().any(|(scanned, _)| scanned == library)
-        });
         let job = ctx.jobs.spawn_stream(ScanJob {
             libraries: libraries.clone(),
-            known,
             settings: self.settings.clone(),
             paths: self.paths.clone(),
             providers: self.providers.clone(),
@@ -380,6 +376,10 @@ impl Handle<SetLibraryRoots> for LibraryService {
             }
         }
         let tracks = self.remove(&removed);
+        if !removed.is_empty() {
+            // The database forgets the tracks no other library lists too.
+            self.store("a library removal", |db| db.link(&[], &msg.0).map(|_| ()));
+        }
         out.emit(LibraryRootsChanged(msg.0.clone()));
         if let Some(tracks) = tracks {
             out.emit(TracksEnumerated { tracks });

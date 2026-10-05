@@ -1,9 +1,10 @@
 //! The library database (SQLite). Scanned track metadata lives here; rows are keyed by locator
 //! and trusted only while the provider's version stamp and the reader's format still match.
+//! It also links each library to the tracks it lists: a track no library lists is forgotten.
 
 use super::track::{ReplayGain, TrackInfo};
 use crate::source::Locator;
-use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Row, Transaction, TransactionBehavior};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -17,6 +18,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/002_user_data.sql"),
     include_str!("migrations/003_drop_session.sql"),
     include_str!("migrations/004_session.sql"),
+    include_str!("migrations/005_library_tracks.sql"),
 ];
 
 /// Bump whenever [`super::reader::read_info`] reads more or differently: rows
@@ -26,6 +28,8 @@ pub const FORMAT: i64 = 2;
 const KIND_LOCAL: i64 = 0;
 const KIND_DOCUMENT: i64 = 1;
 const KIND_WEB: i64 = 2;
+/// Only of libraries.
+const KIND_TREE: i64 = 3;
 
 /// A track as last scanned.
 pub struct StoredTrack {
@@ -39,6 +43,15 @@ pub struct ScannedTrack<'a> {
     pub locator: &'a Locator,
     pub version: u64,
     pub info: Option<&'a TrackInfo>,
+}
+
+/// The tracks a scan listed of a library.
+pub struct LibraryTracks<'a> {
+    pub library: &'a Locator,
+    pub tracks: Vec<&'a Locator>,
+    /// It could be listed: these replace the tracks it listed before. One that could not keeps
+    /// those, gaining these, which play offline.
+    pub reachable: bool,
 }
 
 pub struct LibraryDb {
@@ -160,18 +173,109 @@ impl LibraryDb {
         Ok(stale.len())
     }
 
-    /// Deletes the tracks at `locators`; returns how many were deleted.
-    pub fn forget(&mut self, locators: &[Locator]) -> Result<usize> {
-        let transaction = self.conn.transaction()?;
-        let mut deleted = 0;
+    /// Links each library of `listed` to its tracks and unlinks those not in `libraries`, the
+    /// libraries there are. Then forgets the tracks unlinked that no library lists; returns how
+    /// many. One that could not be listed is linked once one could: until then, what it lists
+    /// is unknown.
+    pub fn link(&mut self, listed: &[LibraryTracks], libraries: &[Locator]) -> Result<usize> {
+        // Reading the links, then writing them, must not let another connection write between.
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut unlinked = HashSet::new();
+        let removed = {
+            let mut statement = transaction.prepare("SELECT id, kind, location FROM libraries")?;
+            let rows = statement.query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    decode_library(row.get(1)?, row.get(2)?),
+                ))
+            })?;
+            let mut removed = vec![];
+            for row in rows {
+                let (id, library) = row?;
+                if library.is_none_or(|library| !libraries.contains(&library)) {
+                    removed.push(id);
+                }
+            }
+            removed
+        };
+        for id in removed {
+            unlinked.extend(linked(&transaction, id)?.into_keys());
+            transaction.execute("DELETE FROM libraries WHERE id = ?1", [id])?;
+        }
+        for listing in listed {
+            let Some((kind, location)) =
+                encode_library(listing.library).filter(|_| libraries.contains(listing.library))
+            else {
+                continue;
+            };
+            let id: Option<i64> = if listing.reachable {
+                Some(transaction.query_row(
+                    "INSERT INTO libraries (kind, location) VALUES (?1, ?2) \
+                     ON CONFLICT (location) DO UPDATE SET kind = excluded.kind RETURNING id",
+                    params![kind, location],
+                    |row| row.get(0),
+                )?)
+            } else {
+                transaction
+                    .query_row(
+                        "SELECT id FROM libraries WHERE location = ?1",
+                        [location],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+            };
+            let Some(id) = id else {
+                continue;
+            };
+            let old = linked(&transaction, id)?;
+            let new: HashMap<&str, (i64, Option<&str>)> = listing
+                .tracks
+                .iter()
+                .copied()
+                .filter_map(encode_locator)
+                .map(|(kind, location, name)| (location, (kind, name)))
+                .collect();
+            if listing.reachable {
+                let mut unlink = transaction.prepare_cached(
+                    "DELETE FROM library_tracks WHERE library_id = ?1 AND location = ?2",
+                )?;
+                for location in old
+                    .keys()
+                    .filter(|location| !new.contains_key(location.as_str()))
+                {
+                    unlink.execute(params![id, location])?;
+                    unlinked.insert(location.clone());
+                }
+            }
+            let mut link = transaction.prepare_cached(
+                "INSERT INTO library_tracks (library_id, kind, location, name) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT (library_id, location) DO UPDATE SET kind = excluded.kind, \
+                     name = excluded.name",
+            )?;
+            for (location, (kind, name)) in &new {
+                let known = old.get(*location).is_some_and(|(known_kind, known_name)| {
+                    known_kind == kind && known_name.as_deref() == *name
+                });
+                if !known {
+                    link.execute(params![id, kind, location, name])?;
+                }
+            }
+        }
+        let mut forgotten = 0;
         {
-            let mut delete = transaction.prepare("DELETE FROM tracks WHERE location = ?1")?;
-            for (_, location, _) in locators.iter().filter_map(encode_locator) {
-                deleted += delete.execute([location])?;
+            let mut forget = transaction.prepare(
+                "DELETE FROM tracks WHERE location = ?1 \
+                 AND NOT EXISTS (SELECT 1 FROM library_tracks WHERE location = ?1)",
+            )?;
+            for location in &unlinked {
+                forgotten += forget.execute([location])?;
             }
         }
         transaction.commit()?;
-        Ok(deleted)
+        Ok(forgotten)
     }
 
     /// File names of every cover a track refers to.
@@ -360,6 +464,33 @@ fn save_values(transaction: &Transaction, table: &str, id: i64, values: &[String
         insert.execute(params![id, position as i64, value])?;
     }
     Ok(())
+}
+
+/// The tracks a library links, by location, with their kind and name.
+fn linked(transaction: &Transaction, id: i64) -> Result<HashMap<String, (i64, Option<String>)>> {
+    let mut statement = transaction
+        .prepare_cached("SELECT location, kind, name FROM library_tracks WHERE library_id = ?1")?;
+    let rows = statement.query_map([id], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?;
+    rows.collect()
+}
+
+/// `None` for a document, which is no library.
+fn encode_library(library: &Locator) -> Option<(i64, &str)> {
+    match library {
+        Locator::Local(path) => Some((KIND_LOCAL, path)),
+        Locator::Web(address) => Some((KIND_WEB, address)),
+        Locator::DocumentTree(uri) => Some((KIND_TREE, uri)),
+        Locator::Document { .. } => None,
+    }
+}
+
+fn decode_library(kind: i64, location: String) -> Option<Locator> {
+    match kind {
+        KIND_LOCAL => Some(Locator::Local(location)),
+        KIND_WEB => Some(Locator::Web(location)),
+        KIND_TREE => Some(Locator::DocumentTree(location)),
+        _ => None,
+    }
 }
 
 pub(super) fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&str>)> {
