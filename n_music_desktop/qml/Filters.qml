@@ -132,6 +132,10 @@ QtObject {
                 name: Tr.t.sort_key_album_short,
                 kind: "text"
             },
+            genre: {
+                label: Tr.t.sort_key_genre,
+                kind: "text"
+            },
             year: {
                 label: Tr.t.sort_key_year,
                 kind: "date"
@@ -139,6 +143,10 @@ QtObject {
             length: {
                 label: Tr.t.sort_key_length,
                 kind: "number"
+            },
+            format: {
+                label: Tr.t.sort_key_format,
+                kind: "text"
             },
             plays: {
                 label: Tr.t.sort_key_plays,

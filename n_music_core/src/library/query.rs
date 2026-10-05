@@ -105,8 +105,12 @@ pub enum SortField {
     Artist,
     /// Album artist, album, disc and track number.
     Album,
+    /// The genres, in the order the track lists them.
+    Genre,
     Year,
     Length,
+    /// Short codec name, e.g. `flac`.
+    Codec,
     Plays,
     LastPlayed,
     /// When the track was added to this playlist; tracks not in it sort last.
@@ -265,8 +269,11 @@ impl Catalog {
                 track.disc_number.unwrap_or(0),
                 track.track_number.unwrap_or(0),
             )),
+            SortField::Genre if track.genres.is_empty() => Key::Missing,
+            SortField::Genre => Key::text(Some(&track.genres.join(", "))),
             SortField::Year => Key::number(track.year.map(i64::from)),
             SortField::Length => Key::Number((track.length * 1000.0) as i64),
+            SortField::Codec => Key::text(track.codec.as_deref()),
             SortField::Plays => Key::Number(
                 self.stats(&track.locator)
                     .map_or(0, |stats| i64::from(stats.plays)),

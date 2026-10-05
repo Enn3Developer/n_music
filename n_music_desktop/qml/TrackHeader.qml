@@ -87,6 +87,7 @@ Item {
             width: header.columns.genre
             text: Tr.t.column_genre
             field: "genre"
+            then: "album"
         }
         HeaderCell {
             width: header.columns.year
@@ -118,6 +119,7 @@ Item {
             leftPadding: 14
             text: Tr.t.column_format
             field: "format"
+            then: "album"
         }
         HeaderCell {
             width: header.columns.time

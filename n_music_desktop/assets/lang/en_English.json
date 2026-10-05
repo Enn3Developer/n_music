@@ -273,6 +273,8 @@
   "sort_key_album": "Album (disc, track)",
   "sort_key_album_short": "Album",
   "sort_key_artist": "Artist",
+  "sort_key_format": "Format",
+  "sort_key_genre": "Genre",
   "sort_key_last_played": "Last played",
   "sort_key_length": "Length",
   "sort_key_location": "Location",
