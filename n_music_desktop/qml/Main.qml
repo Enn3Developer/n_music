@@ -161,8 +161,7 @@ ApplicationWindow {
     }
     Component {
         id: sourcesPage
-        GroupsPage {
-            kind: "source"
+        SourcesPage {
             onNavigate: to => window.go(to)
         }
     }

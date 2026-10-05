@@ -8,13 +8,12 @@ import NMusic
 Item {
     id: row
 
-    /// `{ name, kind, location, tracks, available, updating }`, see `Sources.items`.
+    /// As `Sources.items` lists it.
     required property var source
     /// Draws a line under it, before the next row.
     property bool divider: false
 
-    signal updateRequested
-    signal reloadRequested
+    /// Taking it out was asked for, to be confirmed first.
     signal removeRequested
 
     implicitHeight: Math.max(64, content.implicitHeight + 20)
@@ -108,30 +107,12 @@ Item {
             text: Tr.t.source_actions.arg(row.source.name)
             onClicked: actions.open()
 
-            PopupMenu {
+            SourceMenu {
                 id: actions
                 x: more.width - width
                 y: more.height + 4
-
-                MenuEntry {
-                    iconName: "refresh"
-                    enabled: !row.source.updating
-                    text: Tr.t.update_now
-                    onTriggered: row.updateRequested()
-                }
-                MenuEntry {
-                    iconName: "tag"
-                    enabled: !row.source.updating
-                    text: Tr.t.reload_metadata
-                    onTriggered: row.reloadRequested()
-                }
-                MenuLine {}
-                MenuEntry {
-                    iconName: "trash"
-                    danger: true
-                    text: Tr.t.remove
-                    onTriggered: row.removeRequested()
-                }
+                source: row.source
+                onRemoveRequested: row.removeRequested()
             }
         }
     }

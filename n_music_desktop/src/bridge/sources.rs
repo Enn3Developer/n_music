@@ -17,9 +17,11 @@ pub mod qobject {
         #[qml_element]
         #[qml_singleton]
         /// The sources in the order added, as
-        /// `{ name, kind, location, tracks, available, updating }`: `kind` is `folder` or `web`,
-        /// `available` false when the folder is gone or the playlist could not be reached, and
-        /// `updating` true while it is scanned or waits for a scan.
+        /// `{ name, kind, location, prefix, tracks, cover, available, updating }`: `kind` is
+        /// `folder` or `web`, `prefix` what its page goes by (see `Filters.collectionKey`),
+        /// `cover` the cover of one of its tracks or empty, `available` false when the folder is
+        /// gone or the playlist could not be reached, and `updating` true while it is scanned or
+        /// waits for a scan.
         #[qproperty(QVariant, items)]
         /// The library reported its sources: `items` lists them.
         #[qproperty(bool, loaded)]
@@ -46,17 +48,21 @@ pub mod qobject {
         /// What the source at `location` is called, see `items`.
         #[qinvokable]
         fn name(self: &Sources, location: &QString) -> QString;
-        /// Takes the source at `index` and its tracks out of the library.
+        /// The `file:` URL of the folder at `location`, to open it elsewhere.
         #[qinvokable]
-        fn remove(self: &Sources, index: i32);
-        /// Picks up tracks added, changed or removed in the source at `index`; unchanged ones
-        /// come from the cache.
+        fn folder_url(self: &Sources, location: &QString) -> QString;
+        /// Takes the source at `location`, as `items` writes it, and its tracks out of the
+        /// library.
         #[qinvokable]
-        fn refresh(self: &Sources, index: i32);
-        /// Reads the tags and cover of every track of the source at `index` again, ignoring
+        fn remove(self: &Sources, location: &QString);
+        /// Picks up tracks added, changed or removed in the source at `location`; unchanged
+        /// ones come from the cache.
+        #[qinvokable]
+        fn refresh(self: &Sources, location: &QString);
+        /// Reads the tags and cover of every track of the source at `location` again, ignoring
         /// the cache.
         #[qinvokable]
-        fn reload(self: &Sources, index: i32);
+        fn reload(self: &Sources, location: &QString);
         /// Makes the sources at `locations`, folders and web playlists as `items` writes them,
         /// the library's and scans them, ending the first run.
         #[qinvokable]
@@ -74,13 +80,13 @@ pub mod qobject {
 use crate::hub::{hub, Changed};
 use crate::{bus, settings, worker};
 use core::pin::Pin;
-use cxx_qt::Threading;
-use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
+use cxx_qt::{CxxQtType, Threading};
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QUrl, QVariant};
 use n_music_core::library::catalog::Catalog;
 use n_music_core::messages::{ScanRequested, SetLibraryRoots, SetStreamCache};
 use n_music_core::settings::StreamCacheSettings;
 use n_music_core::source::Locator;
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 use std::time::Duration;
 
 pub struct SourcesRust {
@@ -91,6 +97,8 @@ pub struct SourcesRust {
     cache_limit: f64,
     cache_used: f64,
     slot: u64,
+    /// What `items` lists.
+    shown: Vec<Source>,
 }
 
 impl Default for SourcesRust {
@@ -105,16 +113,20 @@ impl Default for SourcesRust {
             cache_limit: cache.limit as f64,
             cache_used: 0.0,
             slot: worker::slot(),
+            shown: vec![],
         }
     }
 }
 
 /// A source as the list shows it.
+#[derive(PartialEq)]
 struct Source {
     name: String,
     kind: &'static str,
     location: String,
+    prefix: String,
     tracks: usize,
+    cover: Option<PathBuf>,
     available: bool,
     updating: bool,
 }
@@ -123,20 +135,28 @@ impl cxx_qt::Initialize for qobject::Sources {
     fn initialize(mut self: Pin<&mut Self>) {
         hub().watch(
             self.qt_thread(),
-            Changed::ROOTS | Changed::TRACKS | Changed::SCAN,
-            |sources, _| sources.recount(),
+            Changed::ROOTS | Changed::TRACKS | Changed::SCAN | Changed::METADATA,
+            |sources, changed| {
+                // Covers come in with the metadata a scan streams.
+                let delay = if changed == Changed::METADATA {
+                    worker::STREAMING
+                } else {
+                    Duration::ZERO
+                };
+                sources.recount(delay);
+            },
         );
         hub().watch(self.qt_thread(), Changed::CACHE, |sources, _| {
             sources.show_cache()
         });
         self.as_mut().show_cache();
-        self.recount();
+        self.recount(Duration::ZERO);
     }
 }
 
 impl qobject::Sources {
-    /// Counts the tracks of every source again.
-    fn recount(self: Pin<&mut Self>) {
+    /// Counts the tracks of every source again after `delay`.
+    fn recount(self: Pin<&mut Self>, delay: Duration) {
         let (roots, updating) = {
             let state = hub().state();
             let Some(roots) = state.roots.clone() else {
@@ -147,7 +167,7 @@ impl qobject::Sources {
         let thread = self.qt_thread();
         worker::submit(
             self.slot,
-            Duration::ZERO,
+            delay,
             Box::new(move |catalog| {
                 let sources: Vec<Source> = roots
                     .iter()
@@ -159,16 +179,26 @@ impl qobject::Sources {
     }
 
     fn show(mut self: Pin<&mut Self>, sources: Vec<Source>) {
+        // Unchanged, the views keep what they show, covers and all.
+        if self.loaded && sources == self.shown {
+            return;
+        }
         let mut items = QList::<QVariant>::default();
-        for source in sources {
+        for source in &sources {
             let mut item = QMap::<QMapPair_QString_QVariant>::default();
             let text = |value: &str| QVariant::from(&QString::from(value));
             item.insert(QString::from("name"), text(&source.name));
             item.insert(QString::from("kind"), text(source.kind));
             item.insert(QString::from("location"), text(&source.location));
+            item.insert(QString::from("prefix"), text(&source.prefix));
             item.insert(
                 QString::from("tracks"),
                 QVariant::from(&i32::try_from(source.tracks).unwrap_or(i32::MAX)),
+            );
+            let cover = source.cover.as_deref().map(Path::to_string_lossy);
+            item.insert(
+                QString::from("cover"),
+                text(cover.as_deref().unwrap_or_default()),
             );
             item.insert(
                 QString::from("available"),
@@ -177,6 +207,7 @@ impl qobject::Sources {
             item.insert(QString::from("updating"), QVariant::from(&source.updating));
             items.append(QVariant::from(&item));
         }
+        self.as_mut().rust_mut().shown = sources;
         self.as_mut().set_items(QVariant::from(&items));
         self.set_loaded(true);
     }
@@ -220,27 +251,28 @@ impl qobject::Sources {
         QString::from(&name(&location.to_string()))
     }
 
-    fn remove(&self, index: i32) {
+    fn folder_url(&self, location: &QString) -> QString {
+        QUrl::from_local_file(location).to_qstring()
+    }
+
+    fn remove(&self, location: &QString) {
         let Some(roots) = hub().state().roots.clone() else {
             return;
         };
-        let Some(index) = usize::try_from(index)
-            .ok()
-            .filter(|&index| index < roots.len())
-        else {
-            return;
-        };
-        let mut roots = roots.to_vec();
-        roots.remove(index);
-        bus::emit(SetLibraryRoots(roots));
+        let location = location.to_string();
+        if roots.iter().any(|root| root.to_string() == location) {
+            let mut roots = roots.to_vec();
+            roots.retain(|root| root.to_string() != location);
+            bus::emit(SetLibraryRoots(roots));
+        }
     }
 
-    fn refresh(&self, index: i32) {
-        scan(index, true);
+    fn refresh(&self, location: &QString) {
+        scan(&location.to_string(), true);
     }
 
-    fn reload(&self, index: i32) {
-        scan(index, false);
+    fn reload(&self, location: &QString) {
+        scan(&location.to_string(), false);
     }
 
     fn set_sources(self: Pin<&mut Self>, locations: &QStringList) {
@@ -275,15 +307,12 @@ fn add(root: Locator) {
     }
 }
 
-/// Scans the source at `index`; `check_cache` false reads every track again.
-fn scan(index: i32, check_cache: bool) {
+/// Scans the source at `location`; `check_cache` false reads every track again.
+fn scan(location: &str, check_cache: bool) {
     let Some(roots) = hub().state().roots.clone() else {
         return;
     };
-    if let Some(root) = usize::try_from(index)
-        .ok()
-        .and_then(|index| roots.get(index))
-    {
+    if let Some(root) = roots.iter().find(|root| root.to_string() == location) {
         bus::emit(ScanRequested {
             library: Some(root.clone()),
             check_cache,
@@ -300,7 +329,7 @@ pub fn locator(location: &str) -> Locator {
 }
 
 /// What the source at `location` is called: its folder's name, or its playlist's.
-pub fn name(location: &str) -> String {
+fn name(location: &str) -> String {
     match locator(location) {
         root @ Locator::Web(_) => root.display_name(),
         _ => Path::new(location).file_name().map_or_else(
@@ -311,7 +340,7 @@ pub fn name(location: &str) -> String {
 }
 
 /// What the paths of the tracks in the folder `root` start with, as the scan writes them.
-pub fn prefix(root: &str) -> String {
+fn prefix(root: &str) -> String {
     if root.ends_with(MAIN_SEPARATOR) {
         root.to_string()
     } else {
@@ -321,7 +350,7 @@ pub fn prefix(root: &str) -> String {
 
 /// Whether the track at a location comes from the source `root`: inside its folder, or listed
 /// by its playlist.
-pub fn holds<'a>(catalog: &'a Catalog, root: &'a Locator) -> impl Fn(&Locator) -> bool + 'a {
+fn holds<'a>(catalog: &'a Catalog, root: &'a Locator) -> impl Fn(&Locator) -> bool + 'a {
     let prefix = match root {
         Locator::Local(root) => prefix(root),
         _ => String::new(),
@@ -334,15 +363,21 @@ pub fn holds<'a>(catalog: &'a Catalog, root: &'a Locator) -> impl Fn(&Locator) -
     }
 }
 
-/// `root` with how many tracks of the library come from it.
+/// `root` with how many tracks of the library come from it, and the cover of the first with
+/// one.
 fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
     let location = root.to_string();
     let holds = holds(catalog, root);
-    let tracks = catalog
-        .tracks()
-        .iter()
-        .filter(|track| holds(&track.locator))
-        .count();
+    let mut tracks = 0;
+    let mut cover = None;
+    for track in catalog.tracks() {
+        if holds(&track.locator) {
+            tracks += 1;
+            if cover.is_none() {
+                cover = track.cover.clone();
+            }
+        }
+    }
     let (kind, available) = match root {
         Locator::Local(root) => ("folder", Path::new(root).is_dir()),
         // Unknown before its first listing.
@@ -356,8 +391,14 @@ fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
     Source {
         name: name(&location),
         kind,
+        // What its page goes by: the folder its tracks are in, or the playlist.
+        prefix: match root {
+            Locator::Local(_) => prefix(&location),
+            _ => location.clone(),
+        },
         location,
         tracks,
+        cover,
         available,
         updating,
     }

@@ -4,7 +4,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// The tracks of an album, an artist or a genre.
+// The tracks of an album, an artist, a genre or a source; a source's has its menu too.
 Item {
     id: page
 
@@ -23,6 +23,9 @@ Item {
             artist: Tr.t.unknown_artist,
             genre: Tr.t.unknown_genre
         })[kind]
+    /// The source listed, as `Sources.items` lists it; null when the page lists no source, or
+    /// one taken out.
+    readonly property var source: kind === "source" ? Sources.items.find(source => source.prefix === key.location) ?? null : null
 
     readonly property string summary: {
         if (!tracks.ready)
@@ -145,6 +148,24 @@ Item {
                         Accessible.name: Tr.t.shuffle
                         onClicked: tracks.playAll(true)
                     }
+                    IconButton {
+                        id: more
+                        visible: page.source !== null
+                        size: 40
+                        radius: 20
+                        iconSize: 18
+                        outlined: true
+                        iconName: "more"
+                        text: Tr.t.source_actions.arg(page.name)
+                        onClicked: actions.open()
+
+                        SourceMenu {
+                            id: actions
+                            y: more.height + 4
+                            source: page.source ?? ({})
+                            onRemoveRequested: removal.askFor(page.source.location, page.source.name)
+                        }
+                    }
                     Item {
                         Layout.fillWidth: true
                     }
@@ -178,5 +199,10 @@ Item {
                 title: Tr.t.no_results
             }
         }
+    }
+
+    RemoveSourceDialog {
+        id: removal
+        onRemoved: page.navigate("sources")
     }
 }

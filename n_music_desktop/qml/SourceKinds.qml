@@ -9,6 +9,7 @@ QtObject {
         {
             value: "folder",
             name: Tr.t.source_folder,
+            group: Tr.t.local_folders,
             detail: Tr.t.source_folder_detail,
             icon: "folder",
             later: false
@@ -16,6 +17,7 @@ QtObject {
         {
             value: "web",
             name: Tr.t.source_web,
+            group: Tr.t.web_playlists,
             detail: Tr.t.source_web_detail,
             icon: "link",
             later: false
@@ -23,6 +25,7 @@ QtObject {
         {
             value: "spotify",
             name: "Spotify",
+            group: "Spotify",
             detail: Tr.t.source_spotify_detail,
             icon: "cloud",
             later: true
@@ -30,6 +33,7 @@ QtObject {
         {
             value: "youtube",
             name: "YouTube",
+            group: "YouTube",
             detail: Tr.t.source_youtube_detail,
             icon: "cloud",
             later: true
@@ -37,6 +41,7 @@ QtObject {
         {
             value: "deezer",
             name: "Deezer",
+            group: "Deezer",
             detail: Tr.t.source_deezer_detail,
             icon: "cloud",
             later: true

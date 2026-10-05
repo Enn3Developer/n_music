@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import NMusic
 
@@ -115,70 +114,7 @@ ColumnLayout {
                 font.pixelSize: 15
                 font.weight: Font.Bold
             }
-            AbstractButton {
-                id: adding
-                implicitHeight: 34
-                implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                leftPadding: 12
-                rightPadding: 12
-                hoverEnabled: true
-                text: Tr.t.add_source
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-                Accessible.role: Accessible.ButtonMenu
-                onClicked: kinds.open()
-
-                background: Rectangle {
-                    radius: height / 2
-                    color: adding.down || kinds.visible ? Theme.selected : adding.hovered ? Theme.raised : Theme.input
-                    border.width: adding.visualFocus ? 2 : 1
-                    border.color: adding.visualFocus ? Theme.text : Theme.accent
-                }
-                contentItem: Row {
-                    spacing: 6
-
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "plus"
-                        size: 14
-                        stroke: 2.2
-                        color: Theme.text
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: adding.text
-                        font: adding.font
-                        color: Theme.text
-                    }
-                }
-
-                PopupMenu {
-                    id: kinds
-                    x: adding.width - width
-                    y: adding.height + 8
-                    width: 300
-
-                    Instantiator {
-                        model: SourceKinds.all
-                        delegate: SourceKindEntry {
-                            required property var modelData
-
-                            text: modelData.name
-                            detail: modelData.detail
-                            iconName: modelData.icon
-                            later: modelData.later
-                            onTriggered: {
-                                if (modelData.value === "folder")
-                                    picker.open();
-                                else if (modelData.value === "web")
-                                    webPrompt.ask("");
-                            }
-                        }
-                        onObjectAdded: (index, entry) => kinds.insertItem(index, entry)
-                        onObjectRemoved: (index, entry) => kinds.removeItem(entry)
-                    }
-                }
-            }
+            AddSourceButton {}
         }
 
         Rectangle {
@@ -205,9 +141,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         source: modelData
                         divider: index < Sources.items.length - 1
-                        onUpdateRequested: Sources.refresh(index)
-                        onReloadRequested: Sources.reload(index)
-                        onRemoveRequested: removal.askFor(index, modelData.name)
+                        onRemoveRequested: removal.askFor(modelData.location, modelData.name)
                     }
                 }
                 Label {
@@ -326,31 +260,7 @@ ColumnLayout {
         }
     }
 
-    FolderDialog {
-        id: picker
-        title: Tr.t.choose_folder
-        onAccepted: Sources.addFolder(Catalog.folder(selectedFolder))
-    }
-
-    WebSourceDialog {
-        id: webPrompt
-        onChosen: address => Sources.addWeb(address)
-    }
-
-    PromptDialog {
+    RemoveSourceDialog {
         id: removal
-
-        property int index: -1
-
-        function askFor(index: int, name: string) {
-            removal.index = index;
-            title = Tr.t.remove_source_title.arg(name);
-            open();
-        }
-
-        message: Tr.t.remove_source_message
-        confirmText: Tr.t.remove
-        danger: true
-        onConfirmed: Sources.remove(index)
     }
 }

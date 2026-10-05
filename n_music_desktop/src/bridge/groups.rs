@@ -23,9 +23,9 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        /// What tracks are grouped by: `album`, `artist`, `genre` or `source`.
+        /// What tracks are grouped by: `album`, `artist` or `genre`.
         #[qproperty(QString, kind)]
-        /// Text a group's name, an album's artist or a source's location contains.
+        /// Text a group's name or an album's artist contains.
         #[qproperty(QString, search)]
         /// `name`, `artist` (albums), `year` or `-year` (albums), or `-tracks`.
         #[qproperty(QString, sort)]
@@ -47,9 +47,8 @@ pub mod qobject {
         #[cxx_override]
         fn role_names(self: &GroupList) -> QHash_i32_QByteArray;
 
-        /// What opens the group of `row`: `{ name, artist, location }`, the artist being an
-        /// album's and the location what a source's tracks' locations start with. The group of
-        /// the tracks without an album, an artist or a genre has an empty name.
+        /// What opens the group of `row`: `{ name, artist }`, the artist being an album's. The
+        /// group of the tracks without an album, an artist or a genre has an empty name.
         #[qinvokable]
         fn key(self: &GroupList, row: i32) -> QVariant;
     }
@@ -58,7 +57,6 @@ pub mod qobject {
     impl cxx_qt::Initialize for GroupList {}
 }
 
-use crate::bridge::sources;
 use crate::hub::{hub, Changed};
 use crate::worker;
 use core::pin::Pin;
@@ -68,7 +66,6 @@ use cxx_qt_lib::{
     QString, QVariant,
 };
 use n_music_core::library::catalog::Catalog;
-use n_music_core::source::Locator;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -85,18 +82,14 @@ enum Kind {
     Album,
     Artist,
     Genre,
-    Source,
 }
 
-/// Tracks sharing an album, an artist, a genre or a source; `name` is `None` for those lacking
-/// one.
+/// Tracks sharing an album, an artist or a genre; `name` is `None` for those lacking one.
 #[derive(Clone, PartialEq)]
 struct Group {
     name: Option<String>,
-    /// An album's artist, or where a source is.
+    /// An album's artist.
     artist: Option<String>,
-    /// What the locations of a source's tracks start with.
-    location: Option<String>,
     year: Option<i32>,
     tracks: usize,
     cover: Option<PathBuf>,
@@ -132,9 +125,9 @@ impl cxx_qt::Initialize for qobject::GroupList {
     fn initialize(mut self: Pin<&mut Self>) {
         hub().watch(
             self.qt_thread(),
-            Changed::TRACKS | Changed::METADATA | Changed::ROOTS,
+            Changed::TRACKS | Changed::METADATA,
             |list, changed| {
-                let delay = if changed.intersects(Changed::TRACKS | Changed::ROOTS) {
+                let delay = if changed.contains(Changed::TRACKS) {
                     Duration::ZERO
                 } else {
                     worker::STREAMING
@@ -161,7 +154,6 @@ impl qobject::GroupList {
         match self.kind.to_string().as_str() {
             "artist" => Kind::Artist,
             "genre" => Kind::Genre,
-            "source" => Kind::Source,
             _ => Kind::Album,
         }
     }
@@ -171,7 +163,6 @@ impl qobject::GroupList {
         let kind = self.kind_value();
         let search = self.search.to_string().trim().to_lowercase();
         let sort = self.sort.to_string();
-        let roots = hub().state().roots.clone().unwrap_or_default();
         let generation = {
             let mut list = self.as_mut().rust_mut();
             list.generation += 1;
@@ -182,7 +173,7 @@ impl qobject::GroupList {
             self.slot,
             delay,
             Box::new(move |catalog| {
-                let groups = group(catalog, kind, &roots, &search, &sort);
+                let groups = group(catalog, kind, &search, &sort);
                 let _ = thread.queue(move |list| list.show(generation, groups));
             }),
         );
@@ -256,11 +247,7 @@ impl qobject::GroupList {
             return QVariant::default();
         };
         let mut key = QMap::<QMapPair_QString_QVariant>::default();
-        for (field, value) in [
-            ("name", &group.name),
-            ("artist", &group.artist),
-            ("location", &group.location),
-        ] {
+        for (field, value) in [("name", &group.name), ("artist", &group.artist)] {
             key.insert(
                 QString::from(field),
                 QVariant::from(&QString::from(value.as_deref().unwrap_or_default())),
@@ -270,13 +257,9 @@ impl qobject::GroupList {
     }
 }
 
-/// The groups of `kind`, the sources being `roots`, whose name or artist contains `search`, in
-/// the order of `sort`.
-fn group(catalog: &Catalog, kind: Kind, roots: &[Locator], search: &str, sort: &str) -> Vec<Group> {
-    let mut groups = match kind {
-        Kind::Source => roots.iter().map(|root| source(catalog, root)).collect(),
-        _ => tagged(catalog, kind),
-    };
+/// The groups of `kind` whose name or artist contains `search`, in the order of `sort`.
+fn group(catalog: &Catalog, kind: Kind, search: &str, sort: &str) -> Vec<Group> {
+    let mut groups = tagged(catalog, kind);
     if !search.is_empty() {
         let contains = |value: &Option<String>| {
             value
@@ -300,33 +283,6 @@ fn group(catalog: &Catalog, kind: Kind, roots: &[Locator], search: &str, sort: &
     groups
 }
 
-/// The tracks of the source `root`.
-fn source(catalog: &Catalog, root: &Locator) -> Group {
-    let location = root.to_string();
-    let holds = sources::holds(catalog, root);
-    let mut group = Group {
-        name: Some(sources::name(&location)),
-        artist: Some(location.clone()),
-        // What its page goes by: the folder its tracks are in, or the playlist.
-        location: Some(match root {
-            Locator::Local(_) => sources::prefix(&location),
-            _ => location,
-        }),
-        year: None,
-        tracks: 0,
-        cover: None,
-    };
-    for track in catalog.tracks() {
-        if holds(&track.locator) {
-            group.tracks += 1;
-            if group.cover.is_none() {
-                group.cover = track.cover.clone();
-            }
-        }
-    }
-    group
-}
-
 /// The tracks grouped by album, artist or genre.
 fn tagged(catalog: &Catalog, kind: Kind) -> Vec<Group> {
     // Keyed by lower case, so `J-Pop` and `j-pop` group together.
@@ -341,7 +297,6 @@ fn tagged(catalog: &Catalog, kind: Kind) -> Vec<Group> {
             groups.push(Group {
                 name: name.map(String::from),
                 artist: artist.map(String::from),
-                location: None,
                 year: None,
                 tracks: 0,
                 cover: None,
@@ -380,8 +335,6 @@ fn tagged(catalog: &Catalog, kind: Kind) -> Vec<Group> {
                     add(Some(genre), None, track);
                 }
             }
-            // Listed by `source`.
-            Kind::Source => {}
         }
     }
     groups

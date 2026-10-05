@@ -8,7 +8,7 @@ import NMusic
 Item {
     id: page
 
-    /// `album`, `artist`, `genre` or `source`.
+    /// `album`, `artist` or `genre`.
     required property string kind
 
     signal navigate(string page)
@@ -37,14 +37,6 @@ Item {
                 search: Tr.t.search_genres,
                 unknown: Tr.t.unknown_genre,
                 icon: "tag"
-            },
-            source: {
-                title: Tr.t.sources,
-                one: Tr.t.sources_one,
-                many: Tr.t.sources_many,
-                search: Tr.t.search_sources,
-                unknown: "",
-                icon: "folder"
             }
         })[kind]
 
@@ -194,12 +186,9 @@ Item {
                 required property bool known
 
                 readonly property string detail: {
-                    const tracks = Format.count(card.tracks, Tr.t.track_one, Tr.t.tracks_many);
                     if (page.kind === "album")
                         return [card.artist === "" ? Tr.t.unknown_artist : card.artist, card.year > 0 ? card.year : "—"].join(" · ");
-                    if (page.kind === "source")
-                        return SourceKinds.name(SourceKinds.of(card.artist)) + " · " + tracks;
-                    return tracks;
+                    return Format.count(card.tracks, Tr.t.track_one, Tr.t.tracks_many);
                 }
 
                 width: grid.cellWidth - grid.gap
@@ -209,10 +198,7 @@ Item {
                 Accessible.name: text
                 onClicked: {
                     const key = groups.key(index);
-                    if (page.kind === "source")
-                        page.navigate(Filters.collectionPage(page.kind, key.location, ""));
-                    else
-                        page.navigate(Filters.collectionPage(page.kind, key.name, key.artist));
+                    page.navigate(Filters.collectionPage(page.kind, key.name, key.artist));
                 }
 
                 background: null
@@ -223,7 +209,7 @@ Item {
                         size: card.width
                         radius: page.kind === "artist" ? card.width / 2 : 8
                         path: card.cover
-                        iconName: page.kind === "source" ? SourceKinds.icon(SourceKinds.of(card.artist)) : page.words.icon
+                        iconName: page.words.icon
                         opacity: card.down ? 0.8 : 1
 
                         Rectangle {
@@ -273,7 +259,7 @@ Item {
                 title: empty ? (Scan.running ? Tr.t.scanning_library : Tr.t.empty_library) : Tr.t.no_results
                 message: empty && !Scan.running ? Tr.t.empty_library_hint : ""
                 action: empty && !Scan.running ? Tr.t.open_sources : ""
-                onTriggered: page.navigate("settings:sources")
+                onTriggered: page.navigate("sources")
             }
         }
     }
