@@ -7,8 +7,6 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qstringlist.h");
         type QStringList = cxx_qt_lib::QStringList;
-        include!("cxx-qt-lib/qurl.h");
-        type QUrl = cxx_qt_lib::QUrl;
     }
 
     #[auto_cxx_name]
@@ -22,17 +20,12 @@ pub mod qobject {
         /// `codec`), each once whatever its case, sorted.
         #[qinvokable]
         fn values(self: &Catalog, field: &QString) -> QStringList;
-
-        /// The path of a picked folder as the library writes locations; empty unless local.
-        #[qinvokable]
-        fn folder(self: &Catalog, url: &QUrl) -> QString;
     }
 }
 
 use crate::hub::hub;
-use cxx_qt_lib::{QList, QString, QStringList, QUrl};
+use cxx_qt_lib::{QList, QString, QStringList};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 pub struct CatalogRust;
@@ -66,14 +59,5 @@ impl qobject::Catalog {
             list.append(QString::from(&value));
         }
         QStringList::from(&list)
-    }
-
-    fn folder(&self, url: &QUrl) -> QString {
-        let Some(path) = url.to_local_file() else {
-            return QString::default();
-        };
-        // Qt writes `/` everywhere; the scan writes the platform's separators.
-        let path: PathBuf = Path::new(&path.to_string()).components().collect();
-        QString::from(&*path.to_string_lossy())
     }
 }

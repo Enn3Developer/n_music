@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import NMusic
 
 // Adds a source: a menu of the kinds there are, then a folder picker or a prompt for a
@@ -88,10 +87,10 @@ AbstractButton {
         }
     }
 
-    FolderDialog {
+    FolderPicker {
         id: picker
-        title: Tr.t.choose_folder
-        onAccepted: Sources.addFolder(Catalog.folder(selectedFolder))
+        taken: Sources.items.map(source => source.location)
+        onChosen: path => Sources.addFolder(path)
     }
 
     WebSourceDialog {

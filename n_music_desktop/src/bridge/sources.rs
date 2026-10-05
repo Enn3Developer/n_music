@@ -34,7 +34,7 @@ pub mod qobject {
         #[qproperty(f64, cache_used)]
         type Sources = super::SourcesRust;
 
-        /// Adds the local folder at `path`, as `Catalog.folder` writes it, and scans it.
+        /// Adds the local folder at `path`, as `FolderBrowser.path` writes it, and scans it.
         #[qinvokable]
         fn add_folder(self: &Sources, path: &QString);
         /// Adds the playlist at `address`, as `webAddress` writes it, and scans it.

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import NMusic
 
@@ -334,10 +333,10 @@ Rectangle {
         ScrollBar.vertical: ThinScrollBar {}
     }
 
-    FolderDialog {
+    FolderPicker {
         id: picker
-        title: Tr.t.choose_folder
-        onAccepted: page.add(Catalog.folder(selectedFolder))
+        taken: page.added.map(source => source.location)
+        onChosen: path => page.add(path)
     }
 
     WebSourceDialog {

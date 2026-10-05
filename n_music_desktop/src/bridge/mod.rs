@@ -2,6 +2,7 @@ pub mod app;
 pub mod base;
 pub mod catalog;
 pub mod covers;
+pub mod folders;
 pub mod groups;
 pub mod icon;
 pub mod player;
