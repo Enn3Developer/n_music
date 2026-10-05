@@ -47,8 +47,26 @@ Item {
         grip = offset;
         pointer = sceneY;
         stride = row.height + list.spacing;
+        if (row.current && !queue.showHistory && queue.historyCount > 0)
+            openHistory(row);
         queue.startDrag(row.index);
         follow();
+    }
+
+    // Lists the history above the current row, `row`, which stays where it shows. Rows coming in
+    // above the first one in sight leave it in place, but among those in sight they push the rest
+    // down, and the view lets go of rows pushed out of sight: the last played comes in first, right
+    // above the row, and the others above that one once it is out of sight.
+    function openHistory(row: QueueRow) {
+        const shown = row.y - list.contentY;
+        queue.revealHistory(1);
+        list.forceLayout();
+        const last = list.itemAtIndex(row.index - 1);
+        if (last !== null)
+            list.contentY = last.y + last.height;
+        queue.showHistory = true;
+        list.forceLayout();
+        list.contentY = row.y - shown;
     }
 
     // Keeps the held row under the pointer, anywhere for the current one, among the rows still to
@@ -99,10 +117,11 @@ Item {
     // Scrolls the list under a row carried near its edges.
     FrameAnimation {
         id: scroller
-        running: page.scrollSpeed < 0 ? !list.atYBeginning : page.scrollSpeed > 0 && !list.atYEnd
+        running: page.scrollSpeed < 0 ? !list.atYBeginning : page.scrollSpeed > 0 && list.contentY < list.lastY
         onTriggered: {
             const top = list.originY - list.topMargin;
-            const bottom = Math.max(top, list.originY + list.contentHeight + list.bottomMargin - list.height);
+            // Past the last row only as far as the view was already.
+            const bottom = Math.max(top, list.lastY, list.contentY);
             list.contentY = Math.max(top, Math.min(bottom, list.contentY + page.scrollSpeed * scroller.frameTime));
         }
     }
@@ -265,7 +284,9 @@ Item {
         height: parent.height - y
         topMargin: history.visible || Shell.narrow ? 0 : 28
         header: Shell.narrow ? nowHolder : null
-        bottomMargin: 24
+        // While a row is held the view keeps its place past the last row, where history opening
+        // above it would have it move.
+        bottomMargin: page.dragging ? Math.max(endMargin, height) : endMargin
         clip: true
         spacing: 6
         model: queue
@@ -277,6 +298,9 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         Accessible.name: Tr.t.queue
 
+        readonly property real endMargin: 24
+        /// The view's place with the last row at its bottom.
+        readonly property real lastY: Math.max(originY - topMargin, originY + contentHeight + endMargin - height)
         /// How far the rows are scrolled from their top, margin included; kept while the margin
         /// changes.
         property real scrolled: 0
@@ -340,6 +364,15 @@ Item {
                 }
             }
         }
+        // Back to the last row's place gently once the row is let go.
+        Behavior on bottomMargin {
+            enabled: list.bottomMargin > list.endMargin
+
+            NumberAnimation {
+                duration: 250
+                easing.type: Easing.OutCubic
+            }
+        }
         // Rows make way for the one dragged over them.
         moveDisplaced: Transition {
             id: displaced
@@ -389,16 +422,18 @@ Item {
         id: header
 
         required property string section
+        /// Apart from the history shown above. Outside the column, whose size follows later: the
+        /// rows under it move at once when the history opens.
+        readonly property real gap: queue.showHistory && queue.historyCount > 0 ? 16 : 0
 
         width: list.width
-        height: content.visible ? content.implicitHeight : 0
+        height: content.visible ? gap + content.implicitHeight : 0
 
         Column {
             id: content
+            y: header.gap
             width: parent.width
             visible: header.section === "next"
-            // Apart from the history shown above.
-            topPadding: queue.showHistory && queue.historyCount > 0 ? 16 : 0
             bottomPadding: 6
             spacing: 6
 

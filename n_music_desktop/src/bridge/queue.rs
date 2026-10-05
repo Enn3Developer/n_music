@@ -27,7 +27,8 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        /// Lists the items played before the current one too.
+        /// Lists the items played before the current one too. They come and go at once, above
+        /// the rows listed.
         #[qproperty(bool, show_history)]
         /// Lists the current item too, before those still to play.
         #[qproperty(bool, show_current)]
@@ -115,6 +116,10 @@ pub mod qobject {
         /// where it was.
         #[qinvokable]
         fn end_drag(self: Pin<&mut QueueList>, keep: bool);
+        /// Lists the last `count` items played before the current one above the rows listed,
+        /// ahead of the others, which wait for the history to show.
+        #[qinvokable]
+        fn reveal_history(self: Pin<&mut QueueList>, count: i32);
     }
 
     impl cxx_qt::Threading for QueueList {}
@@ -208,6 +213,8 @@ pub struct QueueListRust {
     context_detail: QString,
     context_page: QString,
     rows: Vec<Row>,
+    /// The rows played before the current item while they are not listed.
+    hidden: Vec<Row>,
     drag: Option<Drag>,
     /// The session changed while rows could not move.
     missed: bool,
@@ -228,6 +235,7 @@ impl Default for QueueListRust {
             context_detail: QString::default(),
             context_page: QString::from("tracks"),
             rows: vec![],
+            hidden: vec![],
             drag: None,
             missed: false,
             slot: worker::slot(),
@@ -248,7 +256,7 @@ impl cxx_qt::Initialize for qobject::QueueList {
             Self::changed,
         );
         self.as_mut()
-            .on_show_history_changed(|list| list.refresh(Duration::ZERO))
+            .on_show_history_changed(|list| list.list_history())
             .release();
         self.as_mut()
             .on_show_current_changed(|list| list.refresh(Duration::ZERO))
@@ -310,45 +318,53 @@ impl qobject::QueueList {
                     .and_then(|current| entries.iter().position(|entry| entry.item == current));
                 let mut counts = Counts::default();
                 let mut rows = Vec::with_capacity(entries.len());
+                let mut hidden = vec![];
                 for (index, entry) in entries.iter().enumerate() {
                     let current = position == Some(index);
                     let section = match position {
                         Some(position) if index < position => Section::History,
                         _ => Section::Next,
                     };
-                    let shown = if current {
-                        show_current
-                    } else if section == Section::History {
+                    if current && !show_current {
+                        continue;
+                    }
+                    if section == Section::History {
                         counts.history += 1;
-                        show_history
-                    } else {
+                    } else if !current {
                         counts.left += 1;
                         counts.next += usize::from(entry.queued);
-                        true
-                    };
-                    if !shown {
-                        continue;
                     }
                     let track = catalog
                         .track(&entry.locator)
                         .cloned()
                         .unwrap_or_else(|| Arc::new(TrackInfo::placeholder(entry.locator.clone())));
-                    rows.push(Row {
+                    let row = Row {
                         item: entry.item,
                         track,
                         section,
                         queued: entry.queued,
                         current,
-                    });
+                    };
+                    if section == Section::History && !show_history {
+                        hidden.push(row);
+                    } else {
+                        rows.push(row);
+                    }
                 }
-                let _ = thread.queue(move |list| list.show(generation, rows, counts));
+                let _ = thread.queue(move |list| list.show(generation, rows, hidden, counts));
             }),
         );
     }
 
     /// Shows `rows` as removals and insertions between the rows both lists keep at their
     /// ends, so the view keeps its place when the session moves on.
-    fn show(mut self: Pin<&mut Self>, generation: u64, rows: Vec<Row>, counts: Counts) {
+    fn show(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        rows: Vec<Row>,
+        hidden: Vec<Row>,
+        counts: Counts,
+    ) {
         if generation != self.generation {
             return;
         }
@@ -402,6 +418,7 @@ impl qobject::QueueList {
             self.as_mut().end_insert_rows();
         }
         self.as_mut().rust_mut().rows = rows;
+        self.as_mut().rust_mut().hidden = hidden;
         if let (Some(&first), Some(&last)) = (changed.iter().min(), changed.iter().max()) {
             let top_left = self.index(clamp(first), 0, &root);
             let bottom_right = self.index(clamp(last), 0, &root);
@@ -563,6 +580,60 @@ impl qobject::QueueList {
                 }
             }
             None => self.refresh(Duration::ZERO),
+        }
+    }
+
+    /// Lists the rows played before the current item above the others, or takes them out.
+    fn list_history(mut self: Pin<&mut Self>) {
+        if self.show_history {
+            let count = self.hidden.len();
+            self.as_mut().reveal(count);
+        } else {
+            let count = self
+                .rows
+                .iter()
+                .take_while(|row| row.section == Section::History)
+                .count();
+            if count > 0 {
+                let root = QModelIndex::default();
+                self.as_mut().begin_remove_rows(&root, 0, clamp(count - 1));
+                let hidden = self.as_mut().rust_mut().rows.drain(..count).collect();
+                self.as_mut().rust_mut().hidden = hidden;
+                self.as_mut().end_remove_rows();
+            }
+            // A drag goes on with the rows above it gone.
+            if let Some(drag) = &mut self.as_mut().rust_mut().drag {
+                drag.from = drag.from.saturating_sub(count);
+                drag.played = drag.played.saturating_sub(count);
+            }
+        }
+        // Lists under way read the rows the other way.
+        self.refresh(Duration::ZERO);
+    }
+
+    fn reveal_history(self: Pin<&mut Self>, count: i32) {
+        self.reveal(usize::try_from(count).unwrap_or(0));
+    }
+
+    /// Lists the last `count` hidden rows played before the current item above the others.
+    fn reveal(mut self: Pin<&mut Self>, count: usize) {
+        let count = count.min(self.hidden.len());
+        if count == 0 {
+            return;
+        }
+        let root = QModelIndex::default();
+        self.as_mut().begin_insert_rows(&root, 0, clamp(count - 1));
+        {
+            let mut list = self.as_mut().rust_mut();
+            let from = list.hidden.len() - count;
+            let shown: Vec<Row> = list.hidden.drain(from..).collect();
+            list.rows.splice(0..0, shown);
+        }
+        self.as_mut().end_insert_rows();
+        // A drag goes on with the rows above it.
+        if let Some(drag) = &mut self.as_mut().rust_mut().drag {
+            drag.from += count;
+            drag.played += count;
         }
     }
 
