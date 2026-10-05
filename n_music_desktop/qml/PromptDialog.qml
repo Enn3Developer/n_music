@@ -31,6 +31,14 @@ Popup {
         open();
     }
 
+    /// Return or Enter: what the focused button does, confirming anywhere else.
+    function pressReturn() {
+        if (cancelButton.activeFocus)
+            close();
+        else
+            confirm();
+    }
+
     function confirm() {
         const text = field.text.trim();
         if (asksText && text === "")
@@ -72,6 +80,9 @@ Popup {
 
     contentItem: Column {
         spacing: 14
+        // From the field too, which leaves Return to what holds it.
+        Keys.onReturnPressed: dialog.pressReturn()
+        Keys.onEnterPressed: dialog.pressReturn()
 
         Label {
             width: parent.width
@@ -94,7 +105,6 @@ Popup {
             width: parent.width
             visible: dialog.asksText
             Accessible.name: dialog.title
-            onAccepted: dialog.confirm()
             onEdited: dialog.problem = ""
         }
         Label {
@@ -111,6 +121,7 @@ Popup {
             spacing: 8
 
             PillButton {
+                id: cancelButton
                 implicitHeight: 38
                 text: Tr.t.cancel
                 onClicked: dialog.close()
