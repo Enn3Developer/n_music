@@ -5,9 +5,9 @@ use crate::audio::output_devices;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     LoopStatusChanged, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom, PlayNext,
-    PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetOutputDevice,
-    SetReplayGain, SetResume, SetShuffle, SetVolume, ShuffleChanged, TogglePause, ToggleRepeat,
-    ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade, SetLoopStatus,
+    SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, ShuffleChanged, TogglePause,
+    ToggleRepeat, ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
@@ -299,6 +299,16 @@ impl Handle<SetResume> for QueuePlayer {
         if !ctx.shutting_down {
             self.set_resume(msg.0);
             self.settings.update(|settings| settings.resume = msg.0);
+        }
+    }
+}
+
+impl Handle<SetCrossfade> for QueuePlayer {
+    fn handle(&mut self, msg: &SetCrossfade, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.player.set_crossfade(super::crossfade_duration(msg.0));
+            self.settings
+                .update(|settings| settings.crossfade = msg.0.max(0.0));
         }
     }
 }

@@ -65,6 +65,9 @@ pub struct SetReplayGain(pub ReplayGainMode);
 /// Keeps the play session between launches, reopening it on the next one; off forgets the one
 /// kept.
 pub struct SetResume(pub bool);
+/// Fades each track into the next over this many seconds; 0 plays them back to back, without a
+/// gap. Applies from the next change of track.
+pub struct SetCrossfade(pub f64);
 
 pub struct PlaybackChanged(pub bool);
 /// The current item, with what the library knows about its track. Sent again when the
@@ -213,6 +216,7 @@ messages!(
     ToggleShuffle,
     SetReplayGain,
     SetResume,
+    SetCrossfade,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,

@@ -92,10 +92,9 @@ ColumnLayout {
                                 value: String(seconds),
                                 label: seconds === 0 ? Tr.t.crossfade_off : Tr.t.crossfade_seconds.arg(seconds)
                             }))
-                    // The core plays tracks back to back, never overlapping.
-                    value: "0"
+                    value: String(AppState.crossfade)
                     Accessible.name: Tr.t.crossfade
-                    onActivated: value => AppState.changeCrossfade(Number(value))
+                    onActivated: value => AppState.crossfade = Number(value)
                 }
             }
             SettingRow {

@@ -76,6 +76,17 @@ impl Successor {
         false
     }
 
+    /// The opened track's length (0 when unknown), once it is ready.
+    pub(super) fn length(&mut self) -> Option<f64> {
+        if self.is_opening() {
+            return None;
+        }
+        match &self.state {
+            State::Ready(track) => Some(track.length),
+            _ => None,
+        }
+    }
+
     /// The opened track, once it is ready.
     pub(super) fn take(&mut self) -> Option<Decoding> {
         if self.is_opening() {

@@ -47,6 +47,9 @@ pub mod qobject {
         #[qproperty(QVariant, output_devices)]
         /// Reopens the last launch's queue and position when the app starts; sent when changed.
         #[qproperty(bool, resume)]
+        /// Seconds each track fades into the next over, 0 playing them back to back; sent when
+        /// changed.
+        #[qproperty(i32, crossfade)]
         type AppState = super::AppStateRust;
 
         /// Saves the window's size when not maximized and whether it was maximized, when they are
@@ -57,10 +60,6 @@ pub mod qobject {
         /// Whether the window can be seen; the core sends no positions while it cannot.
         #[qinvokable]
         fn set_visible(self: &AppState, visible: bool);
-
-        /// Fades each track into the next over `seconds`; 0 plays them back to back.
-        #[qinvokable]
-        fn change_crossfade(self: &AppState, seconds: i32);
 
         /// Lists the output devices there are again, in `outputDevices`.
         #[qinvokable]
@@ -79,7 +78,8 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QUrl, QVariant};
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::messages::{
-    AppVisibilityChanged, ListOutputDevices, SetOutputDevice, SetReplayGain, SetResume,
+    AppVisibilityChanged, ListOutputDevices, SetCrossfade, SetOutputDevice, SetReplayGain,
+    SetResume,
 };
 use n_music_core::settings::OutputDevice;
 
@@ -100,6 +100,7 @@ pub struct AppStateRust {
     output_device: QString,
     output_devices: QVariant,
     resume: bool,
+    crossfade: i32,
     /// The output device chosen, kept to show it while it is not there.
     chosen: Option<OutputDevice>,
 }
@@ -124,6 +125,7 @@ impl Default for AppStateRust {
             output_device: QString::default(),
             output_devices: QVariant::default(),
             resume: false,
+            crossfade: 0,
             chosen: None,
         }
     }
@@ -163,6 +165,8 @@ impl cxx_qt::Initialize for qobject::AppState {
             QUrl::from_local_file(&QString::from(&*logs.to_string_lossy())).to_qstring(),
         );
         self.as_mut().set_resume(playback.resume);
+        self.as_mut()
+            .set_crossfade(playback.crossfade.round().clamp(0.0, f64::from(i32::MAX)) as i32);
         let chosen = playback.output_device.clone();
         if let Some(chosen) = &chosen {
             self.as_mut().set_output_device(QString::from(&chosen.id));
@@ -203,6 +207,9 @@ impl cxx_qt::Initialize for qobject::AppState {
             .release();
         self.as_mut()
             .on_resume_changed(|app| bus::emit(SetResume(*app.resume())))
+            .release();
+        self.as_mut()
+            .on_crossfade_changed(|app| bus::emit(SetCrossfade(f64::from(*app.crossfade()))))
             .release();
         self.as_mut()
             .on_theme_changed(|app| {
@@ -267,15 +274,6 @@ impl qobject::AppState {
 
     fn set_visible(&self, visible: bool) {
         bus::emit(AppVisibilityChanged(visible));
-    }
-
-    fn change_crossfade(&self, seconds: i32) {
-        if seconds > 0 {
-            unimplemented!(
-                "n_music_core cannot crossfade: its player plays one track at a time and hands \
-                 each over to the next without a gap, and PlaybackSettings has no fade length"
-            );
-        }
     }
 
     fn list_output_devices(&self) {

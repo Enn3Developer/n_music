@@ -13,7 +13,7 @@ use crate::library::LibraryPaths;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged,
-    PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus,
+    PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade, SetLoopStatus,
     SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, TogglePause, ToggleRepeat,
     ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
@@ -100,7 +100,7 @@ impl QueuePlayer {
         library: Library,
         paths: LibraryPaths,
     ) -> Self {
-        let (volume, loop_status, shuffle, replay_gain, device, resume) = {
+        let (volume, loop_status, shuffle, replay_gain, device, resume, crossfade) = {
             let saved = settings.get();
             (
                 saved.volume.clamp(0.0, 1.0),
@@ -109,10 +109,12 @@ impl QueuePlayer {
                 saved.replay_gain,
                 saved.output_device.as_ref().map(|device| device.id.clone()),
                 saved.resume,
+                saved.crossfade,
             )
         };
         let mut player = Player::new(volume as f32, replay_gain, device);
         player.set_progress_interval(Some(Duration::from_millis(250)));
+        player.set_crossfade(crossfade_duration(crossfade));
 
         let (session, restored, finished) = resume
             .then(|| restore(&paths))
@@ -208,7 +210,8 @@ impl QueuePlayer {
         self.sync(out);
     }
 
-    /// Tells the running task what follows the current item, for gapless playback.
+    /// Tells the running task what follows the current item, to hand over to it without a gap
+    /// or fade into it.
     fn update_next(&mut self) {
         let next = self
             .session
@@ -466,10 +469,16 @@ impl Subscriber for QueuePlayer {
         reg.on::<LibraryRootsChanged>();
         reg.on::<SetReplayGain>();
         reg.on::<SetResume>();
+        reg.on::<SetCrossfade>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);
     }
+}
+
+/// `seconds` of crossfade; none for what is not a positive number.
+fn crossfade_duration(seconds: f64) -> Duration {
+    Duration::try_from_secs_f64(seconds).unwrap_or_default()
 }
 
 /// The session kept by the last launch, with where it left off and whether it had finished.

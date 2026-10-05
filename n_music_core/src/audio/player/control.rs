@@ -24,6 +24,8 @@ struct State {
     time: Option<(TrackTime, u64, Option<Instant>)>,
     progress_interval: Option<Duration>,
     next: Option<Next>,
+    /// How long the track fades into the next; zero hands over without a gap.
+    crossfade: Duration,
     /// The task's thread, woken on every change.
     thread: Option<Thread>,
 }
@@ -42,6 +44,7 @@ pub(super) struct Controls {
     pub(super) stopped: bool,
     pub(super) progress_interval: Option<Duration>,
     pub(super) next: Option<Next>,
+    pub(super) crossfade: Duration,
 }
 
 impl PlaybackControl {
@@ -60,6 +63,7 @@ impl PlaybackControl {
             time: None,
             progress_interval: None,
             next: None,
+            crossfade: Duration::ZERO,
             thread: None,
         })))
     }
@@ -100,6 +104,10 @@ impl PlaybackControl {
 
     pub(super) fn set_next(&self, next: Option<Next>) {
         self.update(|state| state.next = next);
+    }
+
+    pub(super) fn set_crossfade(&self, crossfade: Duration) {
+        self.update(|state| state.crossfade = crossfade);
     }
 
     pub(super) fn seek(&self, seconds: f64) -> u64 {
@@ -184,6 +192,7 @@ impl PlaybackControl {
             stopped: state.stopped,
             progress_interval: state.progress_interval,
             next: state.next.clone(),
+            crossfade: state.crossfade,
         }
     }
 

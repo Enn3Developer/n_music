@@ -1,7 +1,7 @@
 //! The playback loop of a task: applies the controls, keeps the output fed, follows what is
-//! heard and hands over to the next track without a gap.
+//! heard and hands over to the next track without a gap, or fades into it.
 
-use super::super::output::{self, AudioOutputError, Output};
+use super::super::output::{self, AudioOutputError, Output, OutputFormat};
 use super::control::{Controls, PlaybackControl};
 use super::decoding::{Decoded, Decoding, PlaybackSource};
 use super::successor::Successor;
@@ -12,11 +12,36 @@ use std::io;
 use std::time::{Duration, Instant};
 use symphonia::core::units::Time;
 
-/// A finished track still being heard while its successor is already queued.
+/// The previous track while it is still heard: its end queued before the current track
+/// (gapless), or fading out under its start (crossfade).
 struct Handover {
     previous: Decoding,
-    /// Output frame where the successor starts.
+    /// Output frame where the current track starts.
     boundary: u64,
+    /// The boundary was heard, and the current track announced.
+    advanced: bool,
+    /// The previous track's end, while it is mixed under the current track's start.
+    fade: Option<Fade>,
+}
+
+/// A crossfade being mixed: the previous track fades out as the current one fades in.
+struct Fade {
+    /// The previous track's converted samples not mixed in yet.
+    samples: Vec<f32>,
+    /// Frames mixed so far, of `frames`.
+    done: usize,
+    frames: usize,
+    /// The previous track was decoded to its end: silence follows it.
+    ended: bool,
+}
+
+impl Fade {
+    /// The previous and the current track's gains at frame `at`: equal power, so the loudness
+    /// holds through the fade.
+    fn gains(&self, at: usize) -> (f32, f32) {
+        let angle = at as f32 / self.frames as f32 * std::f32::consts::FRAC_PI_2;
+        (angle.cos(), angle.sin())
+    }
 }
 
 /// Maps output frames to the audible track's position.
@@ -110,6 +135,8 @@ struct Playback<'a, E: FnMut(PlaybackEvent)> {
     /// The seek revision positions are reported for.
     revision: u64,
     time: TrackTime,
+    /// How long the current track fades into the next.
+    crossfade: Duration,
 }
 
 impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
@@ -167,6 +194,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
                 position: 0.0,
                 length,
             },
+            crossfade: Duration::ZERO,
         }
     }
 
@@ -222,6 +250,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
     fn apply(&mut self, controls: &Controls) -> bool {
         let changed = controls.version != self.version;
         self.version = controls.version;
+        self.crossfade = controls.crossfade;
         if self.recovery.error.is_none() {
             self.recovery.error = self
                 .output
@@ -302,9 +331,12 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             };
             self.revision = revision;
             self.reporting.force = true;
-            // Seeking applies to what is heard: forget a successor that is only queued.
-            if let Some(Handover { previous, .. }) = self.handover.take() {
-                self.current = previous;
+            // Seeking applies to what is heard: forget a successor that is only queued, or the
+            // end of the previous track fading out.
+            if let Some(handover) = self.handover.take() {
+                if !handover.advanced {
+                    self.current = handover.previous;
+                }
             }
             let start = self.output.as_ref().map_or(0, Output::produced_frames);
             if self.current.length > 0.0 && target.as_secs_f64() >= self.current.length {
@@ -399,26 +431,39 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         };
         let rate = stream.format().rate as f64;
         let played = stream.played_frames();
-        if let Some(boundary) = self.handover.as_ref().map(|handover| handover.boundary) {
-            if played >= boundary {
-                self.handover = None;
-                self.timeline = Timeline {
-                    start: boundary,
-                    position: 0.0,
-                };
-                self.time.length = self.current.length;
-                self.recovery.anchor = None;
-                self.reporting.force = true;
-                (self.emit)(PlaybackEvent::Advanced {
-                    item: self.current.item,
-                    length: self.current.length,
-                });
-            }
-        }
-        let audible_length = self
+        let boundary = self
             .handover
             .as_ref()
-            .map_or(self.current.length, |handover| handover.previous.length);
+            .filter(|handover| !handover.advanced)
+            .map(|handover| handover.boundary);
+        if let Some(boundary) = boundary.filter(|&boundary| played >= boundary) {
+            if let Some(handover) = self.handover.as_mut() {
+                handover.advanced = true;
+            }
+            self.timeline = Timeline {
+                start: boundary,
+                position: 0.0,
+            };
+            self.recovery.anchor = None;
+            self.reporting.force = true;
+            (self.emit)(PlaybackEvent::Advanced {
+                item: self.current.item,
+                length: self.current.length,
+            });
+        }
+        // The previous track goes once the current one is heard and none of it is mixed in.
+        if self
+            .handover
+            .as_ref()
+            .is_some_and(|handover| handover.advanced && handover.fade.is_none())
+        {
+            self.handover = None;
+        }
+        let audible_length = match &self.handover {
+            Some(handover) if !handover.advanced => handover.previous.length,
+            _ => self.current.length,
+        };
+        self.time.length = audible_length;
         self.time.position =
             self.timeline.position + played.saturating_sub(self.timeline.start) as f64 / rate;
         if audible_length > 0.0 {
@@ -450,8 +495,8 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         if let Some(interval) = self.reporting.interval {
             timeout = timeout.min(interval.saturating_sub(self.reporting.last.elapsed()));
         }
-        if let Some(handover) = &self.handover {
-            let frames = handover.boundary.saturating_sub(played);
+        if let Some(boundary) = boundary {
+            let frames = boundary.saturating_sub(played);
             timeout = timeout.min(Duration::from_secs_f64(frames as f64 / rate));
         }
         timeout.max(Duration::from_millis(1))
@@ -493,6 +538,8 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
                 self.handover = Some(Handover {
                     previous,
                     boundary: self.output.as_ref().map_or(0, Output::produced_frames),
+                    advanced: false,
+                    fade: None,
                 });
                 self.draining = false;
                 return false;
@@ -516,16 +563,115 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         false
     }
 
-    /// Decodes the next packet; at the end, flushes what is held back and starts draining.
+    /// Decodes the next packet, fading it in over the previous track's end while a crossfade
+    /// is mixed; at the end, flushes what is held back and starts draining.
     fn decode(&mut self) -> io::Result<()> {
         let Some(format) = self.output.as_ref().map(Output::format) else {
             return Ok(());
         };
+        if self.handover.is_none() {
+            self.start_fade(format);
+        }
+        let start = self.pending.samples.len();
         if let Decoded::End = self.current.decode(format, &mut self.pending.samples)? {
             self.current.finish(format, &mut self.pending.samples)?;
             // Queue what is left, then hand over or drain; the successor starts after it.
             self.draining = true;
         }
+        self.mix_fade(format, start);
         Ok(())
+    }
+
+    /// Starts fading into the successor once the current track is within the crossfade of its
+    /// end, or within what is left of it when the successor opens later. Each fade takes at
+    /// most half of either track.
+    fn start_fade(&mut self, format: OutputFormat) {
+        let length = self.current.length;
+        if self.crossfade.is_zero() || length <= 0.0 {
+            return;
+        }
+        let rate = f64::from(format.rate);
+        // Everything decoded is queued by now.
+        let queued = self.output.as_ref().map_or(0, Output::produced_frames);
+        let decoded =
+            self.timeline.position + queued.saturating_sub(self.timeline.start) as f64 / rate;
+        let left = length - decoded;
+        let fade = self.crossfade.as_secs_f64().min(length / 2.0);
+        if left > fade {
+            return;
+        }
+        let Some(next_length) = self.successor.as_mut().and_then(Successor::length) else {
+            return;
+        };
+        let fade = if next_length > 0.0 {
+            fade.min(next_length / 2.0)
+        } else {
+            fade
+        };
+        let frames = (fade.min(left) * rate) as usize;
+        if frames == 0 {
+            return;
+        }
+        let Some(track) = self.successor.as_mut().and_then(Successor::take) else {
+            return;
+        };
+        self.successor = None;
+        let previous = std::mem::replace(&mut self.current, track);
+        self.handover = Some(Handover {
+            previous,
+            boundary: queued,
+            advanced: false,
+            fade: Some(Fade {
+                samples: vec![],
+                done: 0,
+                frames,
+                ended: false,
+            }),
+        });
+    }
+
+    /// Fades the current track's samples from `start` in, mixing the previous track's end in
+    /// as it fades out.
+    fn mix_fade(&mut self, format: OutputFormat, start: usize) {
+        let Some(handover) = self.handover.as_mut() else {
+            return;
+        };
+        let Some(fade) = handover.fade.as_mut() else {
+            return;
+        };
+        let channels = format.channels;
+        let incoming = &mut self.pending.samples[start..];
+        let frames = (incoming.len() / channels).min(fade.frames - fade.done);
+        while fade.samples.len() < frames * channels && !fade.ended {
+            match handover.previous.decode(format, &mut fade.samples) {
+                Ok(Decoded::End) => {
+                    if let Err(error) = handover.previous.finish(format, &mut fade.samples) {
+                        log::warn!("Could not finish decoding the fading track: {error}");
+                    }
+                    fade.ended = true;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    log::warn!("Could not decode the fading track: {error}");
+                    fade.ended = true;
+                }
+            }
+        }
+        for (index, frame) in incoming[..frames * channels]
+            .chunks_exact_mut(channels)
+            .enumerate()
+        {
+            let (out_gain, in_gain) = fade.gains(fade.done + index);
+            for (channel, sample) in frame.iter_mut().enumerate() {
+                let previous = fade.samples.get(index * channels + channel).copied();
+                *sample = *sample * in_gain + previous.unwrap_or(0.0) * out_gain;
+            }
+        }
+        fade.samples
+            .drain(..(frames * channels).min(fade.samples.len()));
+        fade.done += frames;
+        if fade.done >= fade.frames {
+            handover.fade = None;
+        }
     }
 }

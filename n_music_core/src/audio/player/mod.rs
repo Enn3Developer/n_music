@@ -1,5 +1,5 @@
 //! Playback of one track at a time, each in a task on its own thread, handing over to the
-//! next without a gap.
+//! next without a gap or fading into it.
 
 mod control;
 mod decoding;
@@ -24,6 +24,7 @@ pub struct Player {
     device: Option<String>,
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
+    crossfade: Duration,
     /// The device stream, kept open between tracks. A running task holds the lock.
     output: Arc<Mutex<Option<Output>>>,
 }
@@ -36,6 +37,7 @@ impl Player {
             device,
             control: None,
             progress_interval: None,
+            crossfade: Duration::ZERO,
             output: Arc::new(Mutex::new(None)),
         }
     }
@@ -116,7 +118,14 @@ impl Player {
             control.set_progress_interval(interval);
         }
     }
-    /// The track to play without a gap once the running one ends, see [`Next`].
+    /// How long each track fades into the next; zero hands over without a gap.
+    pub fn set_crossfade(&mut self, crossfade: Duration) {
+        self.crossfade = crossfade;
+        if let Some(control) = &self.control {
+            control.set_crossfade(crossfade);
+        }
+    }
+    /// The track to play once the running one ends, see [`Next`].
     pub fn set_next(&self, next: Option<Next>) {
         if let Some(control) = &self.control {
             control.set_next(next);
@@ -132,6 +141,7 @@ impl Player {
         self.end_current();
         let control = PlaybackControl::new(self.volume, self.device.clone());
         control.set_progress_interval(self.progress_interval);
+        control.set_crossfade(self.crossfade);
         self.control = Some(control.clone());
         PlaybackTask {
             source: Some((PlaybackSource { providers, locator }, item)),
@@ -147,7 +157,7 @@ impl Drop for Player {
     }
 }
 
-/// A gapless successor: `locator`, the queue `item`, follows the track at `after`.
+/// A successor: `locator`, the queue `item`, follows the track at `after`.
 /// A task only takes it while it plays `after`, so a successor computed for an older
 /// position is never used.
 #[derive(Clone, Debug, PartialEq)]
@@ -239,7 +249,7 @@ pub enum PlaybackEvent {
         length: f64,
         paused: bool,
     },
-    /// The [`Next`] track became audible, right after the previous one.
+    /// The [`Next`] track became audible, right after the previous one or fading in under it.
     Advanced {
         item: ItemId,
         length: f64,

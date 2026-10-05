@@ -120,6 +120,8 @@ pub struct PlaybackSettings {
     pub output_device: Option<OutputDevice>,
     /// The play session is kept between launches, and reopened where it left off.
     pub resume: bool,
+    /// Seconds each track fades into the next over; 0 plays them back to back, without a gap.
+    pub crossfade: f64,
 }
 
 impl Default for PlaybackSettings {
@@ -131,6 +133,7 @@ impl Default for PlaybackSettings {
             replay_gain: ReplayGainMode::default(),
             output_device: None,
             resume: false,
+            crossfade: 0.0,
         }
     }
 }
