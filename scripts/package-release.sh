@@ -41,14 +41,15 @@ if [[ "$runtime" == linux-x64 ]]; then
   mkdir -p "$pack_dir/usr/bin" "$pack_dir/usr/lib"
   cp "$binary" "$pack_dir/usr/bin/$executable"
   cp LICENSE "$pack_dir/usr/bin/LICENSE"
-  cp n_music_desktop/assets/icons/icon.png "$pack_dir/NMusic.png"
+  cp n_music_desktop/assets/icons/icon.png "$pack_dir/com.enn3developer.n_music.png"
   cp n_music_desktop/assets/icons/icon.png "$pack_dir/.DirIcon"
-  cat > "$pack_dir/NMusic.desktop" <<EOF
+  cat > "$pack_dir/com.enn3developer.n_music.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=N Music
 Exec=n_music_desktop
-Icon=NMusic
+Icon=com.enn3developer.n_music
+StartupWMClass=com.enn3developer.n_music
 Categories=AudioVideo;Audio;Player;
 X-AppImage-Version=$version
 EOF

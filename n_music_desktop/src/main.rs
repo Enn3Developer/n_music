@@ -39,7 +39,7 @@ fn main() {
         app.as_mut().set_application_name(&QString::from("N Music"));
         app.set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
     }
-    QGuiApplication::set_desktop_file_name(&QString::from("n_music"));
+    QGuiApplication::set_desktop_file_name(&QString::from("com.enn3developer.n_music"));
     bridge::icon::install();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
