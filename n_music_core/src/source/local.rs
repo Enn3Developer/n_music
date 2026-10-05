@@ -1,6 +1,8 @@
 use super::{version_stamp, Locator, OpenedStream, StreamProvider, TrackEntry};
-use std::fs::File;
+use std::collections::HashSet;
+use std::fs::{DirEntry, File};
 use std::io;
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 /// Reads tracks straight from the local file system.
@@ -21,34 +23,70 @@ impl StreamProvider for LocalProvider {
         })
     }
 
+    /// Lists the folder and every folder inside it but hidden ones, following links. What
+    /// several paths lead to is listed once, by the first path found: a folder's own files
+    /// first, then its folders, in name order.
     fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>> {
         let Locator::Local(root) = root else {
             return Err(unsupported(root));
         };
+        let root = PathBuf::from(root);
         let mut tracks = vec![];
-        for entry in std::fs::read_dir(root)?.flatten() {
-            let Ok(metadata) = entry.metadata() else {
-                continue;
-            };
-            if !metadata.is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let Ok(Some(mime)) = infer::get_from_path(&path) else {
-                continue;
-            };
-            if !mime.mime_type().contains("audio") {
+        // Where the files and folders found are, links resolved.
+        let mut listed = HashSet::new();
+        let mut first =
+            |path: &PathBuf| listed.insert(path.canonicalize().unwrap_or_else(|_| path.clone()));
+        let mut folders = vec![root.clone()];
+        while let Some(folder) = folders.pop() {
+            // A link back up the tree would otherwise be followed forever.
+            if !first(&folder) {
                 continue;
             }
-            let version = metadata
-                .modified()
-                .ok()
-                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                .map(|modified| version_stamp(metadata.len(), modified.as_millis() as u64));
-            tracks.push(TrackEntry {
-                locator: Locator::Local(path.to_string_lossy().into_owned()),
-                version,
-            });
+            let entries = match std::fs::read_dir(&folder) {
+                Ok(entries) => entries,
+                // The library itself has to be there; a folder inside that cannot be read is
+                // left out.
+                Err(error) if folder == root => return Err(error),
+                Err(error) => {
+                    log::debug!("Could not list {}: {error}", folder.display());
+                    continue;
+                }
+            };
+            let mut entries: Vec<DirEntry> = entries.flatten().collect();
+            entries.sort_by_key(DirEntry::file_name);
+            let mut inside = vec![];
+            for entry in entries {
+                let path = entry.path();
+                let Ok(metadata) = std::fs::metadata(&path) else {
+                    continue;
+                };
+                if metadata.is_dir() {
+                    if !entry.file_name().to_string_lossy().starts_with('.') {
+                        inside.push(path);
+                    }
+                    continue;
+                }
+                if !metadata.is_file() {
+                    continue;
+                }
+                let Ok(Some(mime)) = infer::get_from_path(&path) else {
+                    continue;
+                };
+                if !mime.mime_type().contains("audio") || !first(&path) {
+                    continue;
+                }
+                let version = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                    .map(|modified| version_stamp(metadata.len(), modified.as_millis() as u64));
+                tracks.push(TrackEntry {
+                    locator: Locator::Local(path.to_string_lossy().into_owned()),
+                    version,
+                });
+            }
+            // Popped in name order.
+            folders.extend(inside.into_iter().rev());
         }
         Ok(tracks)
     }

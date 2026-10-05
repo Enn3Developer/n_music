@@ -208,7 +208,7 @@ pub trait StreamProvider: Send + Sync {
     /// Opens `locator` for reading from the start.
     fn open(&self, locator: &Locator) -> io::Result<OpenedStream>;
 
-    /// Lists the audio tracks directly inside `root`.
+    /// Lists the audio tracks in `root`.
     fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>>;
 }
 
