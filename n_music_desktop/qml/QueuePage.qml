@@ -64,7 +64,15 @@ Item {
         heldTop = Math.max(first, Math.min(last, top));
         // The view lets go of a row moved to a place out of sight.
         const shown = Math.max(list.contentY, Math.min(list.contentY + list.height - held.height, heldTop));
-        const to = held.index + Math.round((shown - held.y) / stride);
+        let to = held.index + Math.round((shown - held.y) / stride);
+        // A place counts from the heading over its row, which the current one takes along: the
+        // row whose place it takes must show.
+        while (to < held.index) {
+            const taken = list.itemAtIndex(to);
+            if (taken !== null && taken.y + taken.height > list.contentY)
+                break;
+            ++to;
+        }
         if (to !== held.index) {
             queue.dragTo(to);
             // Lays the move out now, for the held row's place to count from.
