@@ -315,11 +315,13 @@ ColumnLayout {
         implicitWidth: 32
         implicitHeight: 32
         hoverEnabled: true
-        checkable: true
+        // The setting checks it, which clicking would unbind.
         checked: Theme.preset.name === modelData.name
         text: Tr.t["accent_" + modelData.name]
         Accessible.role: Accessible.RadioButton
         Accessible.name: text
+        Accessible.checkable: true
+        Accessible.checked: checked
         onClicked: AppState.accent = modelData.name
 
         background: Rectangle {
