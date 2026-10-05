@@ -150,7 +150,7 @@ ColumnLayout {
 
                 readonly property string status: Updates.status
 
-                title: "n_music " + AppState.version
+                title: "N Music " + AppState.version
                 description: {
                     switch (status) {
                     case "unsupported":

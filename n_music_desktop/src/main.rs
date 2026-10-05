@@ -36,7 +36,7 @@ fn main() {
 
     let mut app = QGuiApplication::new();
     if let Some(mut app) = app.as_mut() {
-        app.as_mut().set_application_name(&QString::from("n_music"));
+        app.as_mut().set_application_name(&QString::from("N Music"));
         app.set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
     }
     QGuiApplication::set_desktop_file_name(&QString::from("n_music"));

@@ -77,7 +77,7 @@ Rectangle {
                     radius: 10
                 }
                 Label {
-                    text: "n_music"
+                    text: "N Music"
                     color: Theme.text
                     font.pixelSize: 20
                     font.weight: Font.Bold
