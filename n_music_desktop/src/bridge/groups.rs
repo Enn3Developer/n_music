@@ -303,27 +303,30 @@ fn group(catalog: &Catalog, kind: Kind, roots: &[Locator], search: &str, sort: &
     groups
 }
 
-/// The tracks inside the source `root`.
+/// The tracks of the source `root`.
 fn source(catalog: &Catalog, root: &Locator) -> Group {
     let location = root.to_string();
-    let prefix = sources::prefix(&location);
+    let holds = sources::holds(catalog, root);
     let mut group = Group {
         name: Some(sources::name(&location)),
-        artist: Some(location),
-        location: None,
+        artist: Some(location.clone()),
+        // What its page goes by: the folder its tracks are in, or the playlist.
+        location: Some(match root {
+            Locator::Local(_) => sources::prefix(&location),
+            _ => location,
+        }),
         year: None,
         tracks: 0,
         cover: None,
     };
     for track in catalog.tracks() {
-        if matches!(&track.locator, Locator::Local(path) if path.starts_with(&prefix)) {
+        if holds(&track.locator) {
             group.tracks += 1;
             if group.cover.is_none() {
                 group.cover = track.cover.clone();
             }
         }
     }
-    group.location = Some(prefix);
     group
 }
 

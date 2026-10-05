@@ -5,7 +5,7 @@ use crate::listener::Listener;
 use n_event_bus::{App, EventWriter, JobControl, Message, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::settings::SettingsStorage;
-use n_music_core::source::{LocalProvider, Providers};
+use n_music_core::source::{LocalProvider, Providers, WebProvider};
 use n_music_media_notification::MediaNotification;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
@@ -34,7 +34,11 @@ impl Bus {
         let (writer, rx) = EventWriter::channel();
         let _ = WRITER.set(writer.clone());
         let mut app = App::new(JobControl::new(writer.clone()));
-        let providers = Arc::new(Providers::default().with_local(LocalProvider));
+        let providers = Arc::new(
+            Providers::default()
+                .with_local(LocalProvider)
+                .with_web(WebProvider::default()),
+        );
         let engine = Engine::start(&mut app, &writer, storage, providers, data_dir, cache_dir);
         hub::init(engine.library());
         // After the core services, so the library is up to date when the interface hears.

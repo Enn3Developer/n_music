@@ -24,7 +24,7 @@ Item {
         if (kind === "album")
             parts.push(key.artist === "" ? Tr.t.unknown_artist : key.artist);
         if (kind === "source")
-            parts.push(SourceKinds.name("folder"));
+            parts.push(SourceKinds.name(SourceKinds.of(key.location)));
         parts.push(Format.count(tracks.count, Tr.t.track_one, Tr.t.tracks_many));
         if (tracks.count > 0)
             parts.push(Format.duration(tracks.duration));
@@ -72,7 +72,7 @@ Item {
                         album: "",
                         artist: "artist",
                         genre: "tag",
-                        source: "folder"
+                        source: SourceKinds.icon(SourceKinds.of(page.key.location ?? ""))
                     })[page.kind]
                 paths: (page.kind === "genre" || page.kind === "source") && tracks.covers.length >= 4 ? tracks.covers : []
                 path: tracks.covers.length > 0 ? tracks.covers[0] : ""

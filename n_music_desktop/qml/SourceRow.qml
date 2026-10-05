@@ -36,7 +36,7 @@ Item {
 
             Icon {
                 anchors.centerIn: parent
-                name: "folder"
+                name: SourceKinds.icon(row.source.kind)
                 size: 18
                 color: Theme.text2
             }
@@ -86,7 +86,7 @@ Item {
             }
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: !row.source.available ? Tr.t.source_missing : row.source.updating ? Tr.t.source_updating : Tr.t.source_up_to_date
+                text: !row.source.available ? (row.source.kind === "web" ? Tr.t.source_unreachable : Tr.t.source_missing) : row.source.updating ? Tr.t.source_updating : Tr.t.source_up_to_date
                 color: !row.source.available ? Theme.danger : row.source.updating ? Theme.accentText : Theme.text2
                 font.pixelSize: 12
             }

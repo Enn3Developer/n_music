@@ -9,7 +9,7 @@ import NMusic
 Rectangle {
     id: page
 
-    /// The sources to start with, as `{ location, name, suggested }`.
+    /// The sources to start with, as `{ location, name, kind, suggested }`.
     property var added: []
     /// `added` holds what the library suggested.
     property bool seeded: false
@@ -22,18 +22,20 @@ Rectangle {
         added = Sources.items.map(source => ({
                     location: source.location,
                     name: source.name,
+                    kind: source.kind,
                     suggested: true
                 }));
     }
 
-    function addFolder(location: string) {
+    /// Adds the source at `location`, a folder or a web playlist, unless it is there.
+    function add(location: string) {
         if (location === "" || added.some(source => source.location === location))
             return;
-        const parts = location.split(/[\\/]/).filter(part => part !== "");
         added = added.concat([
             {
                 location: location,
-                name: parts.length > 0 ? parts[parts.length - 1] : location,
+                name: Sources.name(location),
+                kind: SourceKinds.of(location),
                 suggested: false
             }
         ]);
@@ -134,6 +136,8 @@ Rectangle {
                         onClicked: {
                             if (modelData.value === "folder")
                                 picker.open();
+                            else if (modelData.value === "web")
+                                webPrompt.ask("");
                             else
                                 Sources.add(modelData.value);
                         }
@@ -241,7 +245,7 @@ Rectangle {
 
                                 Icon {
                                     anchors.centerIn: parent
-                                    name: "folder"
+                                    name: SourceKinds.icon(source.modelData.kind)
                                     size: 18
                                     color: Theme.accentText
                                 }
@@ -260,7 +264,7 @@ Rectangle {
                                 }
                                 Label {
                                     Layout.fillWidth: true
-                                    text: SourceKinds.name("folder") + " · " + source.modelData.location
+                                    text: SourceKinds.name(source.modelData.kind) + " · " + source.modelData.location
                                     elide: Text.ElideMiddle
                                     color: Theme.text2
                                     font.pixelSize: 13
@@ -300,7 +304,7 @@ Rectangle {
                 text: Tr.t.build_library
                 font.pixelSize: 15
                 font.weight: Font.Bold
-                onClicked: Sources.setFolders(page.added.map(source => source.location))
+                onClicked: Sources.setSources(page.added.map(source => source.location))
 
                 background: Rectangle {
                     radius: height / 2
@@ -334,6 +338,11 @@ Rectangle {
     FolderDialog {
         id: picker
         title: Tr.t.choose_folder
-        onAccepted: page.addFolder(Catalog.folder(selectedFolder))
+        onAccepted: page.add(Catalog.folder(selectedFolder))
+    }
+
+    WebSourceDialog {
+        id: webPrompt
+        onChosen: address => page.add(address)
     }
 }

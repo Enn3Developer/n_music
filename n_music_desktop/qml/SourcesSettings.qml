@@ -170,6 +170,8 @@ ColumnLayout {
                             onTriggered: {
                                 if (modelData.value === "folder")
                                     picker.open();
+                                else if (modelData.value === "web")
+                                    webPrompt.ask("");
                                 else
                                     Sources.add(modelData.value);
                             }
@@ -281,6 +283,11 @@ ColumnLayout {
         id: picker
         title: Tr.t.choose_folder
         onAccepted: Sources.addFolder(Catalog.folder(selectedFolder))
+    }
+
+    WebSourceDialog {
+        id: webPrompt
+        onChosen: address => Sources.addWeb(address)
     }
 
     PromptDialog {

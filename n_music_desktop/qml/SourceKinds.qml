@@ -2,8 +2,8 @@ pragma Singleton
 import QtQuick
 import NMusic
 
-// The kinds of sources a library can have. The core only reads local folders so far: the others
-// are `later`.
+// The kinds of sources a library can have. The core reads local folders and web playlists so
+// far: the others are `later`.
 QtObject {
     readonly property var all: [
         {
@@ -18,7 +18,7 @@ QtObject {
             name: Tr.t.source_web,
             detail: Tr.t.source_web_detail,
             icon: "link",
-            later: true
+            later: false
         },
         {
             value: "spotify",
@@ -46,5 +46,14 @@ QtObject {
     /// The name of the kind `value`, like `Local folder`.
     function name(value: string): string {
         return all.find(kind => kind.value === value)?.name ?? value;
+    }
+
+    function icon(value: string): string {
+        return all.find(kind => kind.value === value)?.icon ?? "folder";
+    }
+
+    /// The kind of the source at `location`: `web` for an http or https address, else `folder`.
+    function of(location: string): string {
+        return /^https?:\/\//i.test(location) ? "web" : "folder";
     }
 }

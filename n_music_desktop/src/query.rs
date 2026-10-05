@@ -1,5 +1,6 @@
 //! The library queries of the views, from how QML describes them.
 
+use crate::bridge::sources;
 use n_music_core::library::query::{Filter, PlaylistId, Query, SortField, SortKey};
 use serde_json::{json, Value};
 
@@ -139,6 +140,7 @@ fn rule(rule: &Value) -> Option<Filter> {
         "genre" => not(Filter::Genre(text()?), op == "is_not"),
         "codec" => not(Filter::Codec(text()?), op == "is_not"),
         "folder" => not(Filter::Folder(text()?), op == "not_in"),
+        "source" => not(Filter::Library(sources::locator(&text()?)), op == "is_not"),
         "playlist" => not(
             Filter::Playlist(PlaylistId(number(&rule["value"])?)),
             op == "not_in",
@@ -241,6 +243,7 @@ fn rule_spec(filter: &Filter) -> Option<Value> {
         Filter::Genre(value) => text("genre", ["is", "is_not"], value),
         Filter::Codec(value) => text("codec", ["is", "is_not"], value),
         Filter::Folder(value) => text("folder", ["in", "not_in"], value),
+        Filter::Library(library) => text("source", ["is", "is_not"], &library.to_string()),
         Filter::Playlist(id) => text("playlist", ["in", "not_in"], &id.0.to_string()),
         _ if negated => return None,
         Filter::Year { from, to } => {

@@ -198,7 +198,7 @@ Item {
                     if (page.kind === "album")
                         return [card.artist === "" ? Tr.t.unknown_artist : card.artist, card.year > 0 ? card.year : "—"].join(" · ");
                     if (page.kind === "source")
-                        return SourceKinds.name("folder") + " · " + tracks;
+                        return SourceKinds.name(SourceKinds.of(card.artist)) + " · " + tracks;
                     return tracks;
                 }
 
@@ -223,7 +223,7 @@ Item {
                         size: card.width
                         radius: page.kind === "artist" ? card.width / 2 : 8
                         path: card.cover
-                        iconName: page.words.icon
+                        iconName: page.kind === "source" ? SourceKinds.icon(SourceKinds.of(card.artist)) : page.words.icon
                         opacity: card.down ? 0.8 : 1
 
                         Rectangle {

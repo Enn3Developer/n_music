@@ -16,6 +16,10 @@ Popup {
     property string confirmText
     /// The action destroys something.
     property bool danger: false
+    /// Tells what is wrong with the text typed, or "" when nothing is; null takes any text.
+    property var check: null
+    /// What is wrong with the text, shown under it until it changes.
+    property string problem
 
     /// Confirmed, with the name typed when asked for one.
     signal confirmed(string text)
@@ -23,14 +27,21 @@ Popup {
     /// Opens with `text` in the field, selected.
     function ask(text: string) {
         field.text = text;
+        problem = "";
         open();
     }
 
     function confirm() {
-        if (asksText && field.text.trim() === "")
+        const text = field.text.trim();
+        if (asksText && text === "")
             return;
+        if (asksText && check !== null) {
+            problem = check(text);
+            if (problem !== "")
+                return;
+        }
         close();
-        confirmed(field.text.trim());
+        confirmed(text);
     }
 
     parent: Overlay.overlay
@@ -84,6 +95,15 @@ Popup {
             visible: dialog.asksText
             Accessible.name: dialog.title
             onAccepted: dialog.confirm()
+            onEdited: dialog.problem = ""
+        }
+        Label {
+            width: parent.width
+            visible: dialog.problem !== ""
+            text: dialog.problem
+            wrapMode: Text.Wrap
+            color: Theme.danger
+            font.pixelSize: 13
         }
         Row {
             anchors.right: parent.right

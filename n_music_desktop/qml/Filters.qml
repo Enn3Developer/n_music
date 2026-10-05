@@ -327,17 +327,15 @@ QtObject {
     }
 
     /// What a page of `kind` lists, as `{ name, artist }`, from what follows its `:`; a
-    /// source's also has the `location` its tracks' locations start with.
+    /// source's also has its `location`: the folder its tracks are in, or the playlist.
     function collectionKey(kind: string, argument: string): var {
         const text = decodeURIComponent(argument);
-        if (kind === "source") {
-            const parts = text.split(/[\\/]/).filter(part => part !== "");
+        if (kind === "source")
             return {
-                name: parts.length > 0 ? parts[parts.length - 1] : text,
+                name: Sources.name(text),
                 artist: "",
                 location: text
             };
-        }
         if (kind !== "album")
             return {
                 name: text,
@@ -362,13 +360,15 @@ QtObject {
         if (kind === "source")
             return JSON.stringify({
                 match: "all",
-                rules: [
-                    {
+                rules: [SourceKinds.of(key.location) === "web" ? {
+                        field: "source",
+                        op: "is",
+                        value: key.location
+                    } : {
                         field: "folder",
                         op: "in",
                         value: key.location
-                    }
-                ]
+                    }]
             });
         const rules = [
             {

@@ -62,6 +62,7 @@ const QML: &[&str] = &[
     "qml/TrackMenu.qml",
     "qml/TrackRow.qml",
     "qml/TrackTable.qml",
+    "qml/WebSourceDialog.qml",
     "qml/TracksPage.qml",
 ];
 
