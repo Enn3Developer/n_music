@@ -115,6 +115,9 @@ pub struct PlaybackSettings {
     pub loop_status: LoopStatus,
     pub shuffle: bool,
     pub replay_gain: ReplayGainMode,
+    /// The device to play on while it is there; `None` plays on the system default and
+    /// follows it.
+    pub output_device: Option<OutputDevice>,
 }
 
 impl Default for PlaybackSettings {
@@ -124,8 +127,18 @@ impl Default for PlaybackSettings {
             loop_status: LoopStatus::default(),
             shuffle: false,
             replay_gain: ReplayGainMode::default(),
+            output_device: None,
         }
     }
+}
+
+/// A device to play on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputDevice {
+    /// Tells it apart across launches.
+    pub id: String,
+    /// What the system calls it.
+    pub name: String,
 }
 
 impl Section for PlaybackSettings {

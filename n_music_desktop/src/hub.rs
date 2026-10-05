@@ -10,6 +10,7 @@ use cxx_qt::{CxxQtThread, Threading};
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::PlaylistId;
 use n_music_core::queue::{ItemId, LoopStatus, QueueEntry};
+use n_music_core::settings::OutputDevice;
 use n_music_core::source::Locator;
 use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -49,6 +50,8 @@ bitflags! {
         const PROGRESS = 1 << 14;
         /// The stream cache's settings, or what its copies take.
         const CACHE = 1 << 15;
+        /// The output devices there are.
+        const DEVICES = 1 << 16;
     }
 }
 
@@ -87,6 +90,8 @@ pub struct State {
     pub creating: usize,
     /// The stream cache as the core last reported it; `None` before it did.
     pub cache: Option<StreamCache>,
+    /// The output devices as the core last listed them; `None` before it did.
+    pub output_devices: Option<Arc<Vec<OutputDevice>>>,
 }
 
 /// The stream cache's settings, and what its copies take; in bytes.

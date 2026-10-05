@@ -260,7 +260,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
                 return Err(Failure::Output(io::Error::other(error)));
             }
             if !self.recovery.active {
-                log::warn!("Audio output unavailable, retrying the system default: {error}");
+                log::warn!("Audio output unavailable, opening it again: {error}");
             }
             self.recovery.active = true;
             reload = true;
@@ -355,7 +355,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         }
     }
 
-    /// Opens the default device, once the retry delay after a failure has passed.
+    /// Opens the output device, once the retry delay after a failure has passed.
     fn open_output(&mut self, volume: f32) {
         let now = Instant::now();
         if now < self.recovery.retry_after {
@@ -365,7 +365,10 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             std::thread::park_timeout(self.recovery.retry_after - now);
             return;
         }
-        match Output::open(output_volume(volume)) {
+        match Output::open(
+            output_volume(volume),
+            self.control.output_device().as_deref(),
+        ) {
             Ok(opened) => {
                 opened.attach();
                 self.volume = volume;

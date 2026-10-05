@@ -20,6 +20,8 @@ use std::time::Duration;
 pub struct Player {
     volume: f32,
     replay_gain: ReplayGainMode,
+    /// The device chosen to play on, see [`Output::open`].
+    device: Option<String>,
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
     /// The device stream, kept open between tracks. A running task holds the lock.
@@ -27,10 +29,11 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(volume: f32, replay_gain: ReplayGainMode) -> Self {
+    pub fn new(volume: f32, replay_gain: ReplayGainMode, device: Option<String>) -> Self {
         Self {
             volume,
             replay_gain,
+            device,
             control: None,
             progress_interval: None,
             output: Arc::new(Mutex::new(None)),
@@ -46,7 +49,7 @@ impl Player {
             control.set_paused(false);
         }
     }
-    /// Reopens the output on the current default device.
+    /// Reopens the output, on the device it should be on now.
     pub fn reload_output(&self) {
         if let Some(control) = &self.control {
             control.reload_output();
@@ -55,6 +58,14 @@ impl Player {
         if let Ok(mut output) = self.output.try_lock() {
             output.take();
         }
+    }
+    /// Plays on `device` while it is there, or (`None`) on the default device.
+    pub fn set_output_device(&mut self, device: Option<String>) {
+        self.device = device.clone();
+        if let Some(control) = &self.control {
+            control.set_output_device(device);
+        }
+        self.reload_output();
     }
     pub fn is_paused(&self) -> bool {
         self.control
@@ -119,7 +130,7 @@ impl Player {
         item: ItemId,
     ) -> PlaybackTask {
         self.end_current();
-        let control = PlaybackControl::new(self.volume);
+        let control = PlaybackControl::new(self.volume, self.device.clone());
         control.set_progress_interval(self.progress_interval);
         self.control = Some(control.clone());
         PlaybackTask {

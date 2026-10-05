@@ -1,14 +1,16 @@
 //! What the queue does on commands and library changes.
 
 use super::{LoopStatus, QueuePlayer};
+use crate::audio::output_devices;
 use crate::messages::{
-    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, LoopStatusChanged,
-    OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued,
-    ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume, ShuffleChanged,
-    TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
+    LoopStatusChanged, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom, PlayNext,
+    PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetOutputDevice,
+    SetReplayGain, SetShuffle, SetVolume, ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle,
+    TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
-use n_event_bus::{Ctx, Handle, Outbox, ShutdownRequested};
+use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
 use std::time::Duration;
 
 impl Handle<PlayFrom> for QueuePlayer {
@@ -146,6 +148,35 @@ impl Handle<OutputDeviceChanged> for QueuePlayer {
         if !ctx.shutting_down {
             self.player.reload_output();
         }
+    }
+}
+
+impl Handle<SetOutputDevice> for QueuePlayer {
+    fn handle(&mut self, msg: &SetOutputDevice, ctx: &Ctx, _: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
+        self.player
+            .set_output_device(msg.0.as_ref().map(|device| device.id.clone()));
+        self.settings
+            .update(|settings| settings.output_device = msg.0.clone());
+    }
+}
+
+impl Handle<ListOutputDevices> for QueuePlayer {
+    fn handle(&mut self, _: &ListOutputDevices, ctx: &Ctx, _: &mut Outbox) {
+        if !ctx.shutting_down {
+            ctx.jobs.spawn_detached(DeviceListing);
+        }
+    }
+}
+
+/// Lists the output devices off the bus: the sound server may take its time to answer.
+struct DeviceListing;
+
+impl Job for DeviceListing {
+    fn run(self, _tag: u64, writer: EventWriter, _token: Option<JobToken>) {
+        writer.emit(OutputDevices(output_devices()));
     }
 }
 

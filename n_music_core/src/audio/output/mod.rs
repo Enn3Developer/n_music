@@ -1,6 +1,7 @@
-//! The audio output: one long-lived stream to the default device, fed with f32 frames in the
-//! device's own rate and channel layout. The stream callback applies the volume (ramped, so
-//! changes, pauses and seeks do not click), soft-clips and converts to the device's sample type.
+//! The audio output: one long-lived stream to the chosen or the default device, fed with f32
+//! frames in the device's own rate and channel layout. The stream callback applies the volume
+//! (ramped, so changes, pauses and seeks do not click), soft-clips and converts to the device's
+//! sample type.
 //!
 //! The writer keeps the queue full. Nothing waits for queued audio to play out: volume and
 //! pausing act in the callback and seeking discards the queue, so its size only buys
@@ -13,9 +14,10 @@ mod callback;
 mod device_monitor;
 mod dsp;
 
+use crate::settings::OutputDevice;
 use callback::{Callback, OutputSample, SharedState};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use device_monitor::DefaultDeviceMonitor;
+use device_monitor::DeviceMonitor;
 use rtrb::{Producer, RingBuffer};
 use std::result;
 use std::sync::atomic::Ordering;
@@ -81,7 +83,37 @@ const QUEUE: WallDuration = WallDuration::from_millis(500);
 /// The device's period: what pause and seek fades wait for, as queued audio is not.
 const PERIOD: WallDuration = WallDuration::from_millis(10);
 
-/// The stream to the default output device. Writing never blocks: callers wait with
+/// The devices the output can play on, as the system lists them.
+pub(crate) fn output_devices() -> Vec<OutputDevice> {
+    let devices = match cpal::default_host().output_devices() {
+        Ok(devices) => devices,
+        Err(error) => {
+            log::warn!("Could not list the output devices: {error}");
+            return vec![];
+        }
+    };
+    devices
+        .filter_map(|device| {
+            let id = device.id().ok()?;
+            let name = device
+                .description()
+                .map_or_else(|_| id.id().to_string(), |about| about.name().to_string());
+            Some(OutputDevice {
+                id: id.to_string(),
+                name,
+            })
+        })
+        .collect()
+}
+
+/// The device to play on: `chosen` while it is there, else the default.
+fn device(host: &cpal::Host, chosen: Option<&cpal::DeviceId>) -> Option<cpal::Device> {
+    chosen
+        .and_then(|id| host.device_by_id(id))
+        .or_else(|| host.default_output_device())
+}
+
+/// The stream to the output device. Writing never blocks: callers wait with
 /// [`Output::wait_for_room`], which the stream callback wakes up.
 pub struct Output {
     format: OutputFormat,
@@ -93,18 +125,28 @@ pub struct Output {
     /// The queue's size in samples.
     capacity: usize,
     paused: bool,
-    default_device: Option<DefaultDeviceMonitor>,
+    monitor: Option<DeviceMonitor>,
 }
 
 impl Output {
-    /// Opens the default device in its default configuration, playing at `volume`.
-    pub fn open(volume: f32) -> Result<Self> {
+    /// Opens `chosen`, an [`OutputDevice::id`], while it is there, else the default device, in
+    /// its default configuration, playing at `volume`.
+    pub fn open(volume: f32, chosen: Option<&str>) -> Result<Self> {
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
+        let chosen = chosen.and_then(|id| {
+            id.parse::<cpal::DeviceId>()
+                .inspect_err(|error| log::warn!("Ignoring the output device {id:?}: {error}"))
+                .ok()
+        });
+        let device = self::device(&host, chosen.as_ref())
             .ok_or_else(|| cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable))?;
+        if let Some(chosen) = &chosen {
+            if device.id().ok().as_ref() != Some(chosen) {
+                log::info!("Output device {chosen} is not there, playing on the default");
+            }
+        }
         let config = device.default_output_config()?;
-        let default_device = match host.id() {
+        let watch = match host.id() {
             // CPAL's PulseAudio backend targets a concrete sink and doesn't watch defaults.
             // WASAPI/CoreAudio supply native notifications; AAudio also has the Android bridge.
             #[cfg(any(
@@ -113,15 +155,21 @@ impl Output {
                 target_os = "freebsd",
                 target_os = "netbsd"
             ))]
-            cpal::HostId::PulseAudio => Some(DefaultDeviceMonitor::new(device.id()?)?),
-            _ => None,
+            cpal::HostId::PulseAudio => true,
+            // A chosen device is watched everywhere, to get back to it.
+            _ => chosen.is_some(),
+        };
+        let monitor = if watch {
+            Some(DeviceMonitor::new(device.id()?, chosen)?)
+        } else {
+            None
         };
 
         match config.sample_format() {
-            cpal::SampleFormat::F32 => Self::build::<f32>(&device, &config, default_device, volume),
-            cpal::SampleFormat::I32 => Self::build::<i32>(&device, &config, default_device, volume),
-            cpal::SampleFormat::I16 => Self::build::<i16>(&device, &config, default_device, volume),
-            cpal::SampleFormat::U16 => Self::build::<u16>(&device, &config, default_device, volume),
+            cpal::SampleFormat::F32 => Self::build::<f32>(&device, &config, monitor, volume),
+            cpal::SampleFormat::I32 => Self::build::<i32>(&device, &config, monitor, volume),
+            cpal::SampleFormat::I16 => Self::build::<i16>(&device, &config, monitor, volume),
+            cpal::SampleFormat::U16 => Self::build::<u16>(&device, &config, monitor, volume),
             format => Err(cpal::Error::with_message(
                 cpal::ErrorKind::UnsupportedConfig,
                 format!("Unsupported output sample format: {format}"),
@@ -133,7 +181,7 @@ impl Output {
     fn build<T: OutputSample>(
         device: &cpal::Device,
         config: &cpal::SupportedStreamConfig,
-        default_device: Option<DefaultDeviceMonitor>,
+        monitor: Option<DeviceMonitor>,
         volume: f32,
     ) -> Result<Self> {
         let format = OutputFormat {
@@ -184,7 +232,7 @@ impl Output {
             produced: 0,
             capacity,
             paused: false,
-            default_device,
+            monitor,
         })
     }
 
@@ -315,10 +363,7 @@ impl Output {
     pub fn check_health(&self) -> Result<()> {
         if self.state.failed.load(Ordering::Relaxed)
             || self.producer.is_abandoned()
-            || self
-                .default_device
-                .as_ref()
-                .is_some_and(DefaultDeviceMonitor::changed)
+            || self.monitor.as_ref().is_some_and(DeviceMonitor::changed)
             || (!self.paused
                 && self
                     .state

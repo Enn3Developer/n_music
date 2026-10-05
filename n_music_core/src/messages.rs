@@ -1,6 +1,7 @@
 use crate::library::query::{Filter, PlaylistId, Query, SortKey};
 use crate::library::track::ReplayGainMode;
 use crate::queue::{ItemId, LoopStatus, QueueEntry};
+use crate::settings::OutputDevice;
 use crate::source::Locator;
 use crate::{Track, TrackTime};
 use n_event_bus::Message;
@@ -30,7 +31,15 @@ pub struct PlayNext;
 pub struct TogglePause;
 pub struct Pause;
 pub struct Play;
+/// The system's audio devices changed, e.g. headphones were plugged in: playback reopens on
+/// the device it should be on.
 pub struct OutputDeviceChanged;
+/// Plays on this device while it is there, or (`None`) on the system default.
+pub struct SetOutputDevice(pub Option<OutputDevice>);
+/// Asks for the devices there are to play on, as [`OutputDevices`].
+pub struct ListOutputDevices;
+/// The devices there are to play on.
+pub struct OutputDevices(pub Vec<OutputDevice>);
 pub enum Seek {
     Absolute(f64),
     Relative(f64),
@@ -190,6 +199,9 @@ messages!(
     Pause,
     Play,
     OutputDeviceChanged,
+    SetOutputDevice,
+    ListOutputDevices,
+    OutputDevices,
     Seek,
     SetVolume,
     SetLoopStatus,

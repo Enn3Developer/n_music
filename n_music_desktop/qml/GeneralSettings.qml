@@ -103,10 +103,21 @@ ColumnLayout {
                 description: Tr.t.output_device_hint
                 divider: true
 
-                PillButton {
-                    small: true
-                    text: Tr.t.choose_device
-                    onClicked: AppState.chooseOutputDevice()
+                SelectBox {
+                    Layout.preferredWidth: 220
+                    options: [{
+                            value: "",
+                            label: Tr.t.system_default
+                        }].concat(AppState.outputDevices.map(device => ({
+                                value: device.id,
+                                label: device.connected ? device.name : Tr.t.device_missing.arg(device.name)
+                            })))
+                    value: AppState.outputDevice
+                    Accessible.name: Tr.t.output_device
+                    // Devices come and go: they are listed again on each opening.
+                    onClicked: AppState.listOutputDevices()
+                    onActivated: value => AppState.outputDevice = value
+                    Component.onCompleted: AppState.listOutputDevices()
                 }
             }
             SettingRow {

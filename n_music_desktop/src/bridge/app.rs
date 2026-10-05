@@ -7,6 +7,8 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qstringlist.h");
         type QStringList = cxx_qt_lib::QStringList;
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
     }
 
     #[auto_cxx_name]
@@ -37,6 +39,12 @@ pub mod qobject {
         #[qproperty(i32, replay_gain)]
         /// Where the logs are, as a URL to open.
         #[qproperty(QString, logs_folder)]
+        /// The id of the output device to play on, one of `outputDevices`; empty plays on the
+        /// system default. Sent when changed.
+        #[qproperty(QString, output_device)]
+        /// The output devices as `{ id, name, connected }`: those there are, after the chosen
+        /// one when it is not there (`connected` false). See `listOutputDevices`.
+        #[qproperty(QVariant, output_devices)]
         type AppState = super::AppStateRust;
 
         /// Saves the window's size when not maximized and whether it was maximized, when they are
@@ -52,24 +60,30 @@ pub mod qobject {
         #[qinvokable]
         fn change_crossfade(self: &AppState, seconds: i32);
 
-        /// Offers the output devices to play on.
+        /// Lists the output devices there are again, in `outputDevices`.
         #[qinvokable]
-        fn choose_output_device(self: &AppState);
+        fn list_output_devices(self: &AppState);
 
         /// Reopens the last launch's queue and position when the app starts.
         #[qinvokable]
         fn change_resume(self: &AppState, resume: bool);
     }
 
+    impl cxx_qt::Threading for AppState {}
     impl cxx_qt::Initialize for AppState {}
 }
 
+use crate::hub::{hub, Changed};
 use crate::settings::{self, Theme, WindowSize};
 use crate::{bus, platform};
 use core::pin::Pin;
-use cxx_qt_lib::{QList, QString, QStringList, QUrl};
+use cxx_qt::{CxxQtType, Threading};
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QUrl, QVariant};
 use n_music_core::library::track::ReplayGainMode;
-use n_music_core::messages::{AppVisibilityChanged, SetReplayGain};
+use n_music_core::messages::{
+    AppVisibilityChanged, ListOutputDevices, SetOutputDevice, SetReplayGain,
+};
+use n_music_core::settings::OutputDevice;
 
 pub struct AppStateRust {
     theme: i32,
@@ -85,6 +99,10 @@ pub struct AppStateRust {
     version: QString,
     replay_gain: i32,
     logs_folder: QString,
+    output_device: QString,
+    output_devices: QVariant,
+    /// The output device chosen, kept to show it while it is not there.
+    chosen: Option<OutputDevice>,
 }
 
 impl Default for AppStateRust {
@@ -104,6 +122,9 @@ impl Default for AppStateRust {
             version: QString::from(env!("CARGO_PKG_VERSION")),
             replay_gain: 0,
             logs_folder: QString::default(),
+            output_device: QString::default(),
+            output_devices: QVariant::default(),
+            chosen: None,
         }
     }
 }
@@ -141,6 +162,35 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_logs_folder(
             QUrl::from_local_file(&QString::from(&*logs.to_string_lossy())).to_qstring(),
         );
+        let chosen = settings::output_device();
+        if let Some(chosen) = &chosen {
+            self.as_mut().set_output_device(QString::from(&chosen.id));
+        }
+        self.as_mut().rust_mut().chosen = chosen;
+        self.as_mut().show_devices();
+        hub().watch(self.qt_thread(), Changed::DEVICES, |app, _| {
+            app.show_devices()
+        });
+        self.as_mut()
+            .on_output_device_changed(|mut app| {
+                let id = app.output_device().to_string();
+                let device = (!id.is_empty()).then(|| {
+                    let listed = hub().state().output_devices.clone().unwrap_or_default();
+                    listed
+                        .iter()
+                        .chain(&app.chosen)
+                        .find(|device| device.id == id)
+                        .cloned()
+                        .unwrap_or(OutputDevice {
+                            name: id.clone(),
+                            id,
+                        })
+                });
+                app.as_mut().rust_mut().chosen = device.clone();
+                bus::emit(SetOutputDevice(device));
+                app.show_devices();
+            })
+            .release();
         self.as_mut()
             .on_replay_gain_changed(|app| {
                 bus::emit(SetReplayGain(match *app.replay_gain() {
@@ -224,12 +274,38 @@ impl qobject::AppState {
         }
     }
 
-    fn choose_output_device(&self) {
-        unimplemented!(
-            "n_music_core cannot list or pick output devices: Output::open always opens CPAL's \
-             default output device, and DefaultDeviceMonitor only moves the stream to a new \
-             system default"
-        );
+    fn list_output_devices(&self) {
+        bus::emit(ListOutputDevices);
+    }
+
+    /// Lists the output devices as the core last reported them, after the chosen one when it
+    /// is not there; before the first listing, only the chosen one.
+    fn show_devices(mut self: Pin<&mut Self>) {
+        let listed = hub().state().output_devices.clone();
+        let devices = listed.as_deref().map_or(&[][..], Vec::as_slice);
+        let missing = self
+            .chosen
+            .as_ref()
+            .filter(|chosen| !devices.iter().any(|device| device.id == chosen.id));
+        let mut items = QList::<QVariant>::default();
+        let entries = missing
+            .map(|device| (device, listed.is_none()))
+            .into_iter()
+            .chain(devices.iter().map(|device| (device, true)));
+        for (device, connected) in entries {
+            let mut item = QMap::<QMapPair_QString_QVariant>::default();
+            item.insert(
+                QString::from("id"),
+                QVariant::from(&QString::from(&device.id)),
+            );
+            item.insert(
+                QString::from("name"),
+                QVariant::from(&QString::from(&device.name)),
+            );
+            item.insert(QString::from("connected"), QVariant::from(&connected));
+            items.append(QVariant::from(&item));
+        }
+        self.as_mut().set_output_devices(QVariant::from(&items));
     }
 
     fn change_resume(&self, resume: bool) {

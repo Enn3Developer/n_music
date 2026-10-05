@@ -9,6 +9,8 @@ use symphonia::core::units::Time;
 
 struct State {
     volume: f32,
+    /// The device chosen to play on.
+    device: Option<String>,
     paused: bool,
     reload_output: bool,
     seek: Option<(Time, u64)>,
@@ -43,9 +45,10 @@ pub(super) struct Controls {
 }
 
 impl PlaybackControl {
-    pub(super) fn new(volume: f32) -> Self {
+    pub(super) fn new(volume: f32, device: Option<String>) -> Self {
         Self(Arc::new(Mutex::new(State {
             volume,
+            device,
             paused: false,
             reload_output: false,
             seek: None,
@@ -76,6 +79,15 @@ impl PlaybackControl {
 
     pub(super) fn reload_output(&self) {
         self.update(|state| state.reload_output = true);
+    }
+
+    pub(super) fn set_output_device(&self, device: Option<String>) {
+        self.update(|state| state.device = device);
+    }
+
+    /// The device chosen to play on.
+    pub(super) fn output_device(&self) -> Option<String> {
+        self.0.lock().unwrap().device.clone()
     }
 
     pub(super) fn set_volume(&self, volume: f32) {

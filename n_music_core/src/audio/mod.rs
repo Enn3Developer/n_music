@@ -8,6 +8,8 @@ mod output;
 pub(crate) mod player;
 mod raw;
 
+pub(crate) use output::output_devices;
+
 use crate::library::track::ReplayGain;
 use crate::source::{Locator, OpenedStream, StreamProvider};
 use dca::DcaReader;

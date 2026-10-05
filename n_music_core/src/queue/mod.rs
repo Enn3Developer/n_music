@@ -8,11 +8,11 @@ use crate::audio::player::{Next, PlaybackTask, Player};
 use crate::library::catalog::Library;
 use crate::library::query::Query;
 use crate::messages::{
-    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, OutputDeviceChanged, Pause,
-    Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, QueueChanged,
-    RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume,
-    TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed,
-    TracksEnumerated,
+    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
+    OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged,
+    PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus,
+    SetOutputDevice, SetReplayGain, SetShuffle, SetVolume, TogglePause, ToggleRepeat,
+    ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
@@ -81,16 +81,17 @@ impl QueuePlayer {
         settings: Options<PlaybackSettings>,
         library: Library,
     ) -> Self {
-        let (volume, loop_status, shuffle, replay_gain) = {
+        let (volume, loop_status, shuffle, replay_gain, device) = {
             let saved = settings.get();
             (
                 saved.volume.clamp(0.0, 1.0),
                 saved.loop_status.clone(),
                 saved.shuffle,
                 saved.replay_gain,
+                saved.output_device.as_ref().map(|device| device.id.clone()),
             )
         };
-        let mut player = Player::new(volume as f32, replay_gain);
+        let mut player = Player::new(volume as f32, replay_gain, device);
         player.set_progress_interval(Some(Duration::from_millis(250)));
 
         QueuePlayer {
@@ -382,6 +383,8 @@ impl Subscriber for QueuePlayer {
         reg.on::<Pause>();
         reg.on::<Play>();
         reg.on::<OutputDeviceChanged>();
+        reg.on::<SetOutputDevice>();
+        reg.on::<ListOutputDevices>();
         reg.on::<Seek>();
         reg.on::<SetVolume>();
         reg.on::<SetLoopStatus>();
