@@ -267,8 +267,34 @@ Item {
         displayMarginEnd: page.dragging ? 2 * page.stride : 0
         boundsBehavior: Flickable.StopAtBounds
         Accessible.name: Tr.t.queue
-        // Scrolling happens in the view's layout too, where its model must not change.
-        onContentYChanged: Qt.callLater(page.follow)
+
+        /// How far the rows are scrolled from their top, margin included; kept while the margin
+        /// changes.
+        property real scrolled: 0
+        /// The margin above the rows, as last seen.
+        property real seenTopMargin: 0
+
+        function trackScroll() {
+            // Flickable moves the rows into new bounds before telling of a new margin.
+            if (topMargin === seenTopMargin)
+                scrolled = contentY - originY + topMargin;
+        }
+
+        Component.onCompleted: {
+            seenTopMargin = topMargin;
+            trackScroll();
+        }
+        onOriginYChanged: trackScroll()
+        onContentYChanged: {
+            trackScroll();
+            // Scrolling happens in the view's layout too, where its model must not change.
+            Qt.callLater(page.follow);
+        }
+        // The margin comes and goes with the history button: the rows keep their place under it.
+        onTopMarginChanged: {
+            seenTopMargin = topMargin;
+            contentY = originY - topMargin + scrolled;
+        }
 
         section.property: "section"
         section.delegate: SectionHeader {}
