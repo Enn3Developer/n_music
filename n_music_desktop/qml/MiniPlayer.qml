@@ -18,7 +18,7 @@ ApplicationWindow {
     maximumHeight: 128
     // Its own window, not one tied to the full window, which hides while it shows.
     transientParent: null
-    flags: Qt.Window | Qt.WindowStaysOnTopHint
+    flags: AppState.miniOnTop ? Qt.Window | Qt.WindowStaysOnTopHint : Qt.Window
     title: Player.loaded ? Player.title + " – N Music" : "N Music"
     color: Theme.surface
     font.family: Theme.font

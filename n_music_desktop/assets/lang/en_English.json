@@ -117,6 +117,8 @@
   "match_one": "track matches",
   "matching_after": "of these rules",
   "matching_before": "Tracks matching",
+  "mini_on_top": "Keep the mini player on top",
+  "mini_on_top_hint": "It stays above other windows, even active ones.",
   "mini_player": "Mini player",
   "mute": "Mute",
   "never_played": "Never",

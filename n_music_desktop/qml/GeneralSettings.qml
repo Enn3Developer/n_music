@@ -124,11 +124,22 @@ ColumnLayout {
             SettingRow {
                 title: Tr.t.window_size
                 description: Tr.t.window_size_hint
+                divider: true
 
                 ToggleSwitch {
                     checked: AppState.saveWindowSize
                     Accessible.name: Tr.t.window_size
                     onToggled: AppState.saveWindowSize = checked
+                }
+            }
+            SettingRow {
+                title: Tr.t.mini_on_top
+                description: Tr.t.mini_on_top_hint
+
+                ToggleSwitch {
+                    checked: AppState.miniOnTop
+                    Accessible.name: Tr.t.mini_on_top
+                    onToggled: AppState.miniOnTop = checked
                 }
             }
         }

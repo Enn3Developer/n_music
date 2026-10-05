@@ -16,6 +16,8 @@ pub struct UiSettings {
     pub save_window_size: bool,
     /// Looks for a new version once a launch.
     pub check_updates: bool,
+    /// The mini player stays above other windows.
+    pub mini_on_top: bool,
 }
 
 impl Default for UiSettings {
@@ -26,6 +28,7 @@ impl Default for UiSettings {
             window_size: WindowSize::default(),
             save_window_size: false,
             check_updates: true,
+            mini_on_top: true,
         }
     }
 }
