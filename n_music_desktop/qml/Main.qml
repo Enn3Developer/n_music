@@ -190,6 +190,13 @@ ApplicationWindow {
 
             Sidebar {
                 Layout.fillHeight: true
+                visible: !Shell.compact
+                page: window.page
+                onNavigate: to => window.page = to
+            }
+            Rail {
+                Layout.fillHeight: true
+                visible: Shell.compact
                 page: window.page
                 onNavigate: to => window.page = to
             }

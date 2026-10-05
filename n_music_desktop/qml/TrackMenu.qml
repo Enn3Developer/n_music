@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls.Basic
 import NMusic
 
 // What can be done with a track of a list: queue it, add it to a playlist, or take it out of
@@ -59,7 +58,7 @@ PopupMenu {
             text: Tr.t.new_playlist_ellipsis
             onTriggered: menu.newPlaylistRequested(menu.row)
         }
-        Line {}
+        MenuLine {}
 
         Instantiator {
             model: Playlists.items.filter(playlist => !playlist.smart)
@@ -82,7 +81,7 @@ PopupMenu {
         }
     }
 
-    Line {
+    MenuLine {
         shown: menu.albumPage !== "" || menu.artistPage !== ""
     }
     MenuEntry {
@@ -96,7 +95,7 @@ PopupMenu {
         onTriggered: menu.navigate(menu.artistPage)
     }
 
-    Line {
+    MenuLine {
         shown: menu.playlistName !== ""
     }
     MenuEntry {
@@ -104,22 +103,5 @@ PopupMenu {
         danger: true
         text: Tr.t.remove_from_playlist.arg(menu.playlistName)
         onTriggered: menu.list.removeFromPlaylist(menu.row)
-    }
-
-    component Line: MenuSeparator {
-        /// Takes no room while false, unlike `visible` alone in a menu.
-        property bool shown: true
-
-        visible: shown
-        implicitHeight: shown ? implicitContentHeight + topPadding + bottomPadding : 0
-        topPadding: 4
-        bottomPadding: 4
-        leftPadding: 6
-        rightPadding: 6
-
-        contentItem: Rectangle {
-            implicitHeight: 1
-            color: Theme.border
-        }
     }
 }

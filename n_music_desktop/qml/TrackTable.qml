@@ -17,6 +17,9 @@ Item {
     /// Asks to show `page`, like a track's album.
     signal navigate(string page)
 
+    /// Room left and right of the rows.
+    readonly property real inset: Shell.compact ? 10 : 16
+
     /// Opens the menu of `row` from `x`, `y` of `item`, rightwards or leftwards.
     function openMenu(row: int, item: Item, x: real, y: real, leftwards: bool) {
         menu.show(row, item, leftwards ? x - menu.width : x, y);
@@ -24,14 +27,18 @@ Item {
 
     TrackColumns {
         id: columns
-        width: table.width - 32 - 24
+        width: table.width - 2 * table.inset - 24
         layout: table.layout
+        compact: Shell.compact
     }
 
+    // Compact windows leave the column titles out.
     TrackHeader {
         id: header
-        x: 16
-        width: parent.width - 32
+        x: table.inset
+        width: parent.width - 2 * table.inset
+        height: visible ? implicitHeight : 0
+        visible: !columns.compact
         list: table.list
         columns: columns
     }
@@ -40,8 +47,8 @@ Item {
         id: view
         anchors.top: header.bottom
         anchors.bottom: parent.bottom
-        x: 16
-        width: parent.width - 32
+        x: table.inset
+        width: parent.width - 2 * table.inset
         bottomMargin: 12
         clip: true
         model: table.list

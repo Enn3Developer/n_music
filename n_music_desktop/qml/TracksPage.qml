@@ -48,30 +48,34 @@ Item {
 
         ColumnLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 28
-            Layout.rightMargin: 28
-            Layout.topMargin: 22
-            Layout.bottomMargin: 14
+            Layout.leftMargin: Shell.compact ? 20 : 28
+            Layout.rightMargin: Shell.compact ? 20 : 28
+            Layout.topMargin: Shell.compact ? 16 : 22
+            Layout.bottomMargin: Shell.compact ? 10 : 14
             spacing: 14
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 16
+                spacing: Shell.compact ? 10 : 16
 
-                ColumnLayout {
-                    Layout.alignment: Shell.wide ? Qt.AlignVCenter : Qt.AlignBottom
+                // The title over the summary; beside the count alone in compact windows.
+                GridLayout {
+                    Layout.alignment: Shell.regular ? Qt.AlignBottom : Qt.AlignVCenter
                     Layout.rightMargin: Shell.wide ? 8 : 0
-                    spacing: 4
+                    columns: Shell.compact ? 2 : 1
+                    rowSpacing: 4
+                    columnSpacing: 10
 
                     Label {
                         text: Tr.t.tracks
                         color: Theme.text
-                        font.pixelSize: 26
+                        font.pixelSize: Shell.compact ? 22 : 26
                         font.weight: Font.Bold
-                        font.letterSpacing: -0.52
+                        font.letterSpacing: Shell.compact ? -0.44 : -0.52
                     }
                     Label {
-                        text: page.summary
+                        Layout.alignment: Qt.AlignVCenter
+                        text: !Shell.compact ? page.summary : tracks.ready ? Format.number(tracks.count) : ""
                         color: Theme.text2
                         font.pixelSize: 13
                         font.features: {
@@ -79,19 +83,20 @@ Item {
                         }
                     }
                 }
-                // Holds the tools in wide windows.
-                RowLayout {
-                    id: wideSlot
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    visible: Shell.wide
-                }
                 Item {
                     Layout.fillWidth: true
                     visible: !Shell.wide
                 }
+                // Holds the tools in wide and compact windows.
+                RowLayout {
+                    id: inlineSlot
+                    Layout.fillWidth: Shell.wide
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: !Shell.regular
+                }
                 RowLayout {
                     Layout.alignment: Shell.wide ? Qt.AlignVCenter : Qt.AlignBottom
+                    visible: !Shell.compact
                     spacing: 8
 
                     PillButton {
@@ -108,13 +113,44 @@ Item {
                         onClicked: tracks.playAll(true)
                     }
                 }
+                AbstractButton {
+                    id: playAll
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: Shell.compact
+                    implicitWidth: 36
+                    implicitHeight: 36
+                    padding: 0
+                    hoverEnabled: true
+                    opacity: enabled ? 1 : 0.45
+                    enabled: tracks.count > 0
+                    text: Tr.t.play_all
+                    Accessible.name: text
+                    onClicked: tracks.playAll(false)
+
+                    background: Rectangle {
+                        radius: 18
+                        color: playAll.down ? Qt.darker(Theme.accent, 1.08) : playAll.hovered ? Qt.lighter(Theme.accent, 1.06) : Theme.accent
+                        border.width: playAll.visualFocus ? 2 : 0
+                        border.color: Theme.text
+                    }
+                    contentItem: Item {
+                        Icon {
+                            anchors.centerIn: parent
+                            // The triangle's weight sits left of its box.
+                            anchors.horizontalCenterOffset: 1
+                            name: "play"
+                            size: 16
+                            color: Theme.accentInk
+                        }
+                    }
+                }
             }
 
-            // Holds the tools below the title in narrower windows.
+            // Holds the tools below the title in regular windows.
             RowLayout {
                 id: regularSlot
                 Layout.fillWidth: true
-                visible: !Shell.wide
+                visible: Shell.regular
             }
         }
 
@@ -146,25 +182,28 @@ Item {
         }
     }
 
-    // Searching, filtering and sorting, beside the title in wide windows and below it otherwise;
-    // one of each, so the search keeps its text across the move.
+    // Searching, filtering and sorting: below the title in regular windows, beside it otherwise.
+    // One of each, so the search keeps its text across the move.
     RowLayout {
-        parent: Shell.wide ? wideSlot : regularSlot
-        Layout.fillWidth: true
-        spacing: 8
+        parent: Shell.regular ? regularSlot : inlineSlot
+        Layout.fillWidth: !Shell.compact
+        spacing: Shell.compact ? 10 : 8
 
         SearchField {
             id: search
-            Layout.alignment: Qt.AlignTop
+            Layout.alignment: Shell.compact ? Qt.AlignVCenter : Qt.AlignTop
             Layout.fillWidth: true
-            Layout.minimumWidth: 200
-            Layout.preferredWidth: Shell.wide ? 380 : 360
-            Layout.maximumWidth: Shell.wide ? 380 : 360
-            placeholder: Tr.t.search_tracks
+            Layout.minimumWidth: Shell.compact ? 160 : 200
+            Layout.preferredWidth: Shell.compact ? 260 : Shell.wide ? 380 : 360
+            Layout.maximumWidth: Layout.preferredWidth
+            implicitHeight: Shell.compact ? 36 : 38
+            radius: Shell.compact ? 9 : 10
+            placeholder: Shell.compact ? Tr.t.search : Tr.t.search_tracks
         }
         Flow {
             Layout.alignment: Qt.AlignTop
             Layout.fillWidth: true
+            visible: !Shell.compact
             topPadding: 3
             spacing: 8
 
@@ -192,9 +231,43 @@ Item {
                 onClicked: drawer.open()
             }
         }
+        // The chips folded into a count.
+        IconButton {
+            Layout.alignment: Qt.AlignVCenter
+            visible: Shell.compact
+            size: 36
+            radius: 9
+            iconSize: 16
+            stroke: 2
+            outlined: true
+            iconName: "filter"
+            color: Theme.text2
+            text: page.rules.length > 0 ? Tr.t.filters_active.arg(page.rules.length) : Tr.t.filter
+            onClicked: drawer.open()
+
+            Rectangle {
+                x: parent.width - width + 5
+                y: -5
+                visible: page.rules.length > 0
+                implicitWidth: Math.max(16, count.implicitWidth + 8)
+                implicitHeight: 16
+                radius: 8
+                color: Theme.accent
+
+                Label {
+                    id: count
+                    anchors.centerIn: parent
+                    text: page.rules.length
+                    color: Theme.accentInk
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                }
+            }
+        }
         SortButton {
-            Layout.alignment: Qt.AlignTop
-            Layout.topMargin: 3
+            Layout.alignment: Shell.compact ? Qt.AlignVCenter : Qt.AlignTop
+            Layout.topMargin: Shell.compact ? 0 : 3
+            iconOnly: Shell.compact
             list: tracks
         }
     }

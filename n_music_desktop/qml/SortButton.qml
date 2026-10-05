@@ -10,6 +10,8 @@ AbstractButton {
     required property TrackList list
     /// Orders offered before the usual ones, as `{ sort, label }`.
     property var extraOptions: []
+    /// Shows only its icon, in a square with a border.
+    property bool iconOnly: false
 
     readonly property var options: extraOptions.concat([
         {
@@ -56,9 +58,10 @@ AbstractButton {
         return offered ? offered.label : Filters.sortLabel(list.sort);
     }
 
-    implicitHeight: 32
-    leftPadding: 12
-    rightPadding: 12
+    implicitHeight: iconOnly ? 36 : 32
+    implicitWidth: iconOnly ? 36 : implicitContentWidth + leftPadding + rightPadding
+    leftPadding: iconOnly ? 10 : 12
+    rightPadding: leftPadding
     hoverEnabled: true
     font.pixelSize: 13
     font.weight: Font.Medium
@@ -67,10 +70,10 @@ AbstractButton {
     onClicked: menu.open()
 
     background: Rectangle {
-        radius: 8
+        radius: button.iconOnly ? 9 : 8
         color: button.down || menu.visible ? Theme.selected : button.hovered ? Theme.hover : "transparent"
-        border.width: button.visualFocus ? 2 : 0
-        border.color: Theme.text
+        border.width: button.visualFocus ? 2 : button.iconOnly ? 1 : 0
+        border.color: button.visualFocus ? Theme.text : Theme.border
     }
 
     contentItem: Row {
@@ -79,12 +82,13 @@ AbstractButton {
         Icon {
             anchors.verticalCenter: parent.verticalCenter
             name: "sort"
-            size: 15
+            size: button.iconOnly ? 16 : 15
             stroke: 1.9
             color: Theme.text2
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter
+            visible: !button.iconOnly
             width: Math.min(implicitWidth, 220)
             text: button.text
             elide: Text.ElideRight
@@ -93,6 +97,7 @@ AbstractButton {
         }
         Icon {
             anchors.verticalCenter: parent.verticalCenter
+            visible: !button.iconOnly
             name: "chevron-down"
             size: 14
             stroke: 2

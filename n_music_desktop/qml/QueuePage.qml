@@ -36,12 +36,14 @@ Item {
             spacing: 18
 
             Cover {
-                size: now.width
+                // Shrinks in short windows to keep the controls below it in view.
+                size: Math.max(160, Math.min(now.width, page.height - 28 - 24 - 3 * now.spacing - about.height - (chips.visible ? chips.height + now.spacing : 0) - ending.height))
                 radius: 12
                 path: Player.cover
             }
 
             Column {
+                id: about
                 width: now.width
                 spacing: 6
 
@@ -75,6 +77,7 @@ Item {
             }
 
             Flow {
+                id: chips
                 width: now.width
                 spacing: 6
                 visible: Player.loaded
@@ -93,6 +96,7 @@ Item {
             }
 
             Column {
+                id: ending
                 width: now.width
                 topPadding: 4
                 spacing: 10

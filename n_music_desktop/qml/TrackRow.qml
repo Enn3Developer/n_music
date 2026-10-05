@@ -59,6 +59,7 @@ Rectangle {
         Item {
             width: row.columns.number
             height: parent.height
+            visible: width > 0
 
             Label {
                 anchors.right: parent.right

@@ -9,6 +9,7 @@ QtObject {
 
     readonly property string size: width >= 1600 ? "wide" : width >= 1100 ? "regular" : width >= 720 ? "compact" : "narrow"
     readonly property bool wide: size === "wide"
+    readonly property bool regular: size === "regular"
     readonly property bool compact: size === "compact"
     readonly property bool narrow: size === "narrow"
 }

@@ -35,6 +35,8 @@ Item {
             label: Tr.t.about
         }
     ]
+    /// Too narrow for the sections beside the settings: they line up above them instead.
+    readonly property bool stacked: width < 880
     /// The general sections, while they show.
     readonly property GeneralSettings general: content.item as GeneralSettings
     /// The section of the general ones in view as the page scrolls.
@@ -66,23 +68,24 @@ Item {
     onSectionChanged: Qt.callLater(reveal, section)
     Component.onCompleted: Qt.callLater(reveal, section)
 
-    RowLayout {
+    GridLayout {
         anchors.fill: parent
-        spacing: 0
+        columns: page.stacked ? 1 : 2
+        rowSpacing: 0
+        columnSpacing: 0
 
         ColumnLayout {
-            // Layouts fill by default.
-            Layout.fillWidth: false
-            Layout.preferredWidth: 200
-            Layout.fillHeight: true
-            Layout.topMargin: 28
-            Layout.leftMargin: 20
-            Layout.rightMargin: 12
+            Layout.fillWidth: page.stacked
+            Layout.preferredWidth: page.stacked ? -1 : 200
+            Layout.fillHeight: !page.stacked
+            Layout.topMargin: page.stacked ? 22 : 28
+            Layout.leftMargin: page.stacked ? 28 : 20
+            Layout.rightMargin: page.stacked ? 28 : 12
             spacing: 2
 
             Label {
-                Layout.leftMargin: 10
-                Layout.bottomMargin: 14
+                Layout.leftMargin: page.stacked ? 0 : 10
+                Layout.bottomMargin: page.stacked ? 12 : 14
                 text: Tr.t.settings
                 color: Theme.text
                 font.pixelSize: 26
@@ -92,44 +95,25 @@ Item {
             Repeater {
                 model: page.sections
 
-                AbstractButton {
-                    id: entry
-
-                    required property var modelData
-                    readonly property bool current: page.visibleSection === modelData.value
-
+                SectionButton {
                     Layout.fillWidth: true
-                    implicitHeight: 36
-                    leftPadding: 10
-                    rightPadding: 10
-                    hoverEnabled: true
-                    text: modelData.label
-                    Accessible.role: Accessible.Button
-                    onClicked: {
-                        if (page.section === modelData.value)
-                            page.reveal(modelData.value);
-                        else
-                            page.navigate("settings:" + modelData.value);
-                    }
+                    visible: !page.stacked
+                }
+            }
+            Flow {
+                Layout.fillWidth: true
+                visible: page.stacked
+                spacing: 4
 
-                    background: Rectangle {
-                        radius: 8
-                        color: entry.current ? Theme.raised : entry.hovered ? Theme.hover : "transparent"
-                        border.width: entry.visualFocus ? 2 : 0
-                        border.color: Theme.text
-                    }
-                    contentItem: Label {
-                        text: entry.text
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                        color: entry.current || entry.hovered ? Theme.text : Theme.text2
-                        font.pixelSize: 14
-                        font.weight: entry.current ? Font.DemiBold : Font.Medium
-                    }
+                Repeater {
+                    model: page.sections
+
+                    SectionButton {}
                 }
             }
             Item {
                 Layout.fillHeight: true
+                visible: !page.stacked
             }
         }
 
@@ -145,7 +129,7 @@ Item {
             Loader {
                 id: content
                 x: 28
-                y: 28
+                y: page.stacked ? 20 : 28
                 width: Math.min(scroller.width - 56, 704)
                 sourceComponent: page.section === "sources" ? sourcesSection : generalSection
             }
@@ -161,5 +145,42 @@ Item {
     Component {
         id: generalSection
         GeneralSettings {}
+    }
+
+    // A section to go to: the one in view stands out.
+    component SectionButton: AbstractButton {
+        id: entry
+
+        required property var modelData
+        readonly property bool current: page.visibleSection === modelData.value
+
+        implicitHeight: 36
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        leftPadding: 10
+        rightPadding: 10
+        hoverEnabled: true
+        text: modelData.label
+        Accessible.role: Accessible.Button
+        onClicked: {
+            if (page.section === modelData.value)
+                page.reveal(modelData.value);
+            else
+                page.navigate("settings:" + modelData.value);
+        }
+
+        background: Rectangle {
+            radius: 8
+            color: entry.current ? Theme.raised : entry.hovered ? Theme.hover : "transparent"
+            border.width: entry.visualFocus ? 2 : 0
+            border.color: Theme.text
+        }
+        contentItem: Label {
+            text: entry.text
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            color: entry.current || entry.hovered ? Theme.text : Theme.text2
+            font.pixelSize: 14
+            font.weight: entry.current ? Font.DemiBold : Font.Medium
+        }
     }
 }
