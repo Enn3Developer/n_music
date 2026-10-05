@@ -173,6 +173,34 @@ impl LibraryDb {
         Ok(stale.len())
     }
 
+    /// The tracks each of `libraries` listed when last listed; one never listed since the
+    /// database links tracks is left out.
+    pub fn library_tracks(&self, libraries: &[Locator]) -> Result<HashMap<Locator, Vec<Locator>>> {
+        let mut found = HashMap::new();
+        for library in libraries {
+            let Some((_, location)) = encode_library(library) else {
+                continue;
+            };
+            let id: Option<i64> = self
+                .conn
+                .query_row(
+                    "SELECT id FROM libraries WHERE location = ?1",
+                    [location],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(id) = id else {
+                continue;
+            };
+            let tracks = linked(&self.conn, id)?
+                .into_iter()
+                .filter_map(|(location, (kind, name))| decode_locator(kind, location, name))
+                .collect();
+            found.insert(library.clone(), tracks);
+        }
+        Ok(found)
+    }
+
     /// Links each library of `listed` to its tracks and unlinks those not in `libraries`, the
     /// libraries there are. Then forgets the tracks unlinked that no library lists; returns how
     /// many. One that could not be listed is linked once one could: until then, what it lists
@@ -467,8 +495,8 @@ fn save_values(transaction: &Transaction, table: &str, id: i64, values: &[String
 }
 
 /// The tracks a library links, by location, with their kind and name.
-fn linked(transaction: &Transaction, id: i64) -> Result<HashMap<String, (i64, Option<String>)>> {
-    let mut statement = transaction
+fn linked(conn: &Connection, id: i64) -> Result<HashMap<String, (i64, Option<String>)>> {
+    let mut statement = conn
         .prepare_cached("SELECT location, kind, name FROM library_tracks WHERE library_id = ?1")?;
     let rows = statement.query_map([id], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?;
     rows.collect()

@@ -44,6 +44,9 @@ pub struct Listed {
     /// scan that lists it again to forget those that are gone; the library leaves them out,
     /// but those that play offline from the stream cache.
     pub reachable: bool,
+    /// That scan ran in an earlier launch: what it listed shows from the database until a scan
+    /// lists the library again.
+    pub restored: bool,
 }
 
 #[derive(Default)]
@@ -88,7 +91,8 @@ impl Catalog {
         self.stats.get(locator)
     }
 
-    /// What `library` listed when it was last scanned; `None` before its first scan.
+    /// What `library` listed when it was last scanned, in this launch or an earlier one; `None`
+    /// before its first scan.
     pub fn listed(&self, library: &Locator) -> Option<&Listed> {
         self.listings.get(library)
     }

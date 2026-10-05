@@ -110,8 +110,18 @@ impl LibraryService {
             return;
         }
         let libraries = std::mem::take(&mut self.waiting);
+        let restore = {
+            let catalog = self.library.read();
+            libraries
+                .iter()
+                .map(|(library, _)| library)
+                .filter(|library| catalog.listed(library).is_none())
+                .cloned()
+                .collect()
+        };
         let job = ctx.jobs.spawn_stream(ScanJob {
             libraries: libraries.clone(),
+            restore,
             settings: self.settings.clone(),
             paths: self.paths.clone(),
             providers: self.providers.clone(),
@@ -144,9 +154,9 @@ impl LibraryService {
         });
     }
 
-    /// Puts the tracks a scan listed in place of those its libraries listed before; the other
-    /// libraries keep theirs. Returns the library's tracks.
-    fn merge(&mut self, listed: &[Listing]) -> Vec<Track> {
+    /// Puts the tracks a scan listed, or `restored` from the database, in place of those its
+    /// libraries listed before; the other libraries keep theirs. Returns the library's tracks.
+    fn merge(&mut self, listed: &[Listing], restored: bool) -> Vec<Track> {
         let scanned: HashSet<&Locator> = listed.iter().map(|listing| &listing.library).collect();
         let mut catalog = self.library.write();
         let stale = unlisted(catalog.listings(), |library| scanned.contains(library));
@@ -173,6 +183,7 @@ impl LibraryService {
                     Listed {
                         tracks: locators.collect(),
                         reachable: true,
+                        restored,
                     },
                 );
             } else {
@@ -183,6 +194,7 @@ impl LibraryService {
                     .entry(listing.library.clone())
                     .or_default();
                 listed.reachable = false;
+                listed.restored = restored;
                 listed.tracks.extend(locators);
             }
         }
@@ -400,8 +412,13 @@ impl Handle<Tagged<ScanEvent>> for LibraryService {
             return;
         };
         match event {
+            // Only libraries the library has no tracks of yet.
+            ScanEvent::Restored(libraries) => {
+                let tracks = self.merge(libraries, true);
+                out.emit(TracksEnumerated { tracks });
+            }
             ScanEvent::Listed { libraries, pending } => {
-                let tracks = self.merge(libraries);
+                let tracks = self.merge(libraries, false);
                 if let Some(scan) = &mut self.scan {
                     // Libraries may list the same track.
                     let found: HashSet<&Locator> = libraries

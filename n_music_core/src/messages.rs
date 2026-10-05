@@ -145,7 +145,8 @@ pub struct ScanRequested {
     pub check_cache: bool,
 }
 /// The library's tracks, after a scan listed its libraries or a library was removed; those not
-/// loaded yet are placeholders.
+/// loaded yet are placeholders. At launch, the scan first shows what the libraries listed when
+/// last listed.
 pub struct TracksEnumerated {
     pub tracks: Vec<Track>,
 }

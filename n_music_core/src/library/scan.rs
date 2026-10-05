@@ -59,6 +59,9 @@ pub struct ScanJob {
     /// The libraries to scan, each with whether it trusts the database: `false` reloads every
     /// track instead.
     pub libraries: Vec<(Locator, bool)>,
+    /// Those the library has no tracks of yet: it shows them as they were when last listed
+    /// until the scan lists them.
+    pub restore: Vec<Locator>,
     /// The libraries there are: the scan links the tracks of those only, and if it scanned them
     /// all, it also forgets every track none of them lists.
     pub settings: Options<LibrarySettings>,
@@ -76,6 +79,10 @@ pub struct Listing {
 
 /// What a scan reports, in this order.
 pub enum ScanEvent {
+    /// The tracks the libraries to restore listed when last listed, as the database links them,
+    /// in the order asked; those it does not link are left out. Those not loaded are
+    /// placeholders.
+    Restored(Vec<Listing>),
     /// Each library's tracks, in the order asked, linked in the database: it forgot the tracks
     /// no library lists any more. Those not loaded yet are placeholders; `pending` of them are
     /// still to read.
@@ -99,14 +106,6 @@ impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         log::info!("Scanning libraries {tag}: {:?}", self.libraries);
-        let listings = enumerate_audio_files(&self.providers, &self.libraries);
-        let complete = listings.iter().all(|found| found.reachable);
-        let seen: HashSet<Locator> = listings
-            .iter()
-            .flat_map(|found| &found.entries)
-            .map(|entry| entry.locator.clone())
-            .collect();
-        let len = seen.len();
         let covers = CoverStore::open(&self.paths.covers);
         let mut db = self
             .paths
@@ -118,15 +117,37 @@ impl Job for ScanJob {
                 )
             })
             .ok();
+        let linked = match db.as_ref().filter(|_| !self.restore.is_empty()) {
+            Some(db) => db.library_tracks(&self.restore).unwrap_or_else(|error| {
+                log::error!("Could not read which tracks the libraries list: {error}");
+                HashMap::new()
+            }),
+            None => HashMap::new(),
+        };
         let trusted = self.libraries.iter().any(|&(_, check_cache)| check_cache);
-        let stored = match db.as_ref().filter(|_| trusted) {
+        let mut stored = match db.as_ref().filter(|_| trusted || !linked.is_empty()) {
             Some(db) => db.tracks().unwrap_or_else(|error| {
                 log::error!("Could not read the library database: {error}");
                 HashMap::new()
             }),
             None => HashMap::new(),
         };
+        if !linked.is_empty() {
+            let restored = restored(&self.restore, linked, &stored);
+            writer.emit_tagged(tag, ScanEvent::Restored(restored));
+        }
+        if !trusted {
+            stored.clear();
+        }
 
+        let listings = enumerate_audio_files(&self.providers, &self.libraries);
+        let complete = listings.iter().all(|found| found.reachable);
+        let seen: HashSet<Locator> = listings
+            .iter()
+            .flat_map(|found| &found.entries)
+            .map(|entry| entry.locator.clone())
+            .collect();
+        let len = seen.len();
         let (libraries, pending, unreadable) = match_stored(&self.libraries, listings, stored);
         log::debug!(
             "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
@@ -174,6 +195,34 @@ impl Job for ScanJob {
         }
         writer.emit_tagged(tag, ScanEvent::Finished { complete });
     }
+}
+
+/// What `libraries` listed when last listed, as the database links it (`linked`) and knows the
+/// tracks (`stored`): those not read yet, or unreadable, are placeholders.
+fn restored(
+    libraries: &[Locator],
+    mut linked: HashMap<Locator, Vec<Locator>>,
+    stored: &HashMap<Locator, StoredTrack>,
+) -> Vec<Listing> {
+    libraries
+        .iter()
+        .filter_map(|library| {
+            let mut tracks: Vec<Track> = linked
+                .remove(library)?
+                .into_iter()
+                .map(|locator| {
+                    let info = stored.get(&locator).and_then(|track| track.info.clone());
+                    Arc::new(info.unwrap_or_else(|| TrackInfo::placeholder(locator)))
+                })
+                .collect();
+            tracks.sort_by_cached_key(|track| track.locator.to_string());
+            Some(Listing {
+                library: library.clone(),
+                tracks,
+                reachable: true,
+            })
+        })
+        .collect()
 }
 
 /// Takes what the database knows of unchanged files, for the libraries that trust it. Returns

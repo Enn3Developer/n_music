@@ -57,12 +57,13 @@ impl Handle<TrackPlayed> for StreamCacheService {
 impl Handle<TracksEnumerated> for StreamCacheService {
     fn handle(&mut self, _msg: &TracksEnumerated, _ctx: &Ctx, _out: &mut Outbox) {
         let libraries = self.libraries.get().libraries.clone();
+        // Listed in this launch: what an earlier one listed may lack tracks that have a copy.
         let whole = {
             let catalog = self.library.read();
             libraries.iter().all(|library| {
                 catalog
                     .listed(library)
-                    .is_some_and(|listed| listed.reachable)
+                    .is_some_and(|listed| listed.reachable && !listed.restored)
             })
         };
         if whole {
