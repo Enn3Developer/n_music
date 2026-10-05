@@ -4,15 +4,17 @@ import QtQuick.Layouts
 import NMusic
 
 // A source of the library: its name, kind and location, its tracks, whether it is up to date,
-// and a button taking it out.
+// and a menu updating it or taking it out.
 Item {
     id: row
 
-    /// `{ name, kind, location, tracks, available }`, see `Sources.items`.
+    /// `{ name, kind, location, tracks, available, updating }`, see `Sources.items`.
     required property var source
     /// Draws a line under it, before the next row.
     property bool divider: false
 
+    signal updateRequested
+    signal reloadRequested
     signal removeRequested
 
     implicitHeight: Math.max(64, content.implicitHeight + 20)
@@ -84,19 +86,46 @@ Item {
             }
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: !row.source.available ? Tr.t.source_missing : Scan.running ? Tr.t.source_updating : Tr.t.source_up_to_date
-                color: !row.source.available ? Theme.danger : Scan.running ? Theme.accentText : Theme.text2
+                text: !row.source.available ? Tr.t.source_missing : row.source.updating ? Tr.t.source_updating : Tr.t.source_up_to_date
+                color: !row.source.available ? Theme.danger : row.source.updating ? Theme.accentText : Theme.text2
                 font.pixelSize: 12
             }
         }
         IconButton {
+            id: more
             size: 36
             iconSize: 16
             stroke: 1.9
             color: Theme.text3
-            iconName: "trash"
-            text: Tr.t.remove_source.arg(row.source.name)
-            onClicked: row.removeRequested()
+            iconName: "more"
+            text: Tr.t.source_actions.arg(row.source.name)
+            onClicked: actions.open()
+
+            PopupMenu {
+                id: actions
+                x: more.width - width
+                y: more.height + 4
+
+                MenuEntry {
+                    iconName: "refresh"
+                    enabled: !row.source.updating
+                    text: Tr.t.update_now
+                    onTriggered: row.updateRequested()
+                }
+                MenuEntry {
+                    iconName: "tag"
+                    enabled: !row.source.updating
+                    text: Tr.t.reload_metadata
+                    onTriggered: row.reloadRequested()
+                }
+                MenuLine {}
+                MenuEntry {
+                    iconName: "trash"
+                    danger: true
+                    text: Tr.t.remove
+                    onTriggered: row.removeRequested()
+                }
+            }
         }
     }
 

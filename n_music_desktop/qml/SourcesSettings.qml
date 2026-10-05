@@ -205,6 +205,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         source: modelData
                         divider: index < Sources.items.length - 1
+                        onUpdateRequested: Sources.refresh(index)
+                        onReloadRequested: Sources.reload(index)
                         onRemoveRequested: removal.askFor(index, modelData.name)
                     }
                 }

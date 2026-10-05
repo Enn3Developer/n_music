@@ -16,8 +16,10 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        /// The sources in the order added, as `{ name, kind, location, tracks, available }`:
-        /// `kind` is `folder`, and `available` false when the folder is gone.
+        /// The sources in the order added, as
+        /// `{ name, kind, location, tracks, available, updating }`: `kind` is `folder`,
+        /// `available` false when the folder is gone, and `updating` true while it is scanned
+        /// or waits for a scan.
         #[qproperty(QVariant, items)]
         /// The library reported its sources: `items` lists them.
         #[qproperty(bool, loaded)]
@@ -34,6 +36,14 @@ pub mod qobject {
         /// Takes the source at `index` and its tracks out of the library.
         #[qinvokable]
         fn remove(self: &Sources, index: i32);
+        /// Picks up tracks added, changed or removed in the source at `index`; unchanged ones
+        /// come from the cache.
+        #[qinvokable]
+        fn refresh(self: &Sources, index: i32);
+        /// Reads the tags and cover of every track of the source at `index` again, ignoring
+        /// the cache.
+        #[qinvokable]
+        fn reload(self: &Sources, index: i32);
         /// Makes the local folders at `paths` the sources and scans them, ending the first
         /// run.
         #[qinvokable]
@@ -50,7 +60,7 @@ use core::pin::Pin;
 use cxx_qt::Threading;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
 use n_music_core::library::catalog::Catalog;
-use n_music_core::messages::SetLibraryRoots;
+use n_music_core::messages::{ScanRequested, SetLibraryRoots};
 use n_music_core::source::Locator;
 use std::path::{Path, MAIN_SEPARATOR};
 use std::time::Duration;
@@ -80,32 +90,39 @@ struct Source {
     location: String,
     tracks: usize,
     available: bool,
+    updating: bool,
 }
 
 impl cxx_qt::Initialize for qobject::Sources {
     fn initialize(self: Pin<&mut Self>) {
         hub().watch(
             self.qt_thread(),
-            Changed::ROOTS | Changed::TRACKS,
-            |sources, _| sources.refresh(),
+            Changed::ROOTS | Changed::TRACKS | Changed::SCAN,
+            |sources, _| sources.recount(),
         );
-        self.refresh();
+        self.recount();
     }
 }
 
 impl qobject::Sources {
     /// Counts the tracks of every source again.
-    fn refresh(self: Pin<&mut Self>) {
-        let Some(roots) = hub().state().roots.clone() else {
-            return;
+    fn recount(self: Pin<&mut Self>) {
+        let (roots, updating) = {
+            let state = hub().state();
+            let Some(roots) = state.roots.clone() else {
+                return;
+            };
+            (roots, state.updating.clone())
         };
         let thread = self.qt_thread();
         worker::submit(
             self.slot,
             Duration::ZERO,
             Box::new(move |catalog| {
-                let sources: Vec<Source> =
-                    roots.iter().map(|root| describe(catalog, root)).collect();
+                let sources: Vec<Source> = roots
+                    .iter()
+                    .map(|root| describe(catalog, root, updating.contains(root)))
+                    .collect();
                 let _ = thread.queue(move |list| list.show(sources));
             }),
         );
@@ -127,6 +144,7 @@ impl qobject::Sources {
                 QString::from("available"),
                 QVariant::from(&source.available),
             );
+            item.insert(QString::from("updating"), QVariant::from(&source.updating));
             items.append(QVariant::from(&item));
         }
         self.as_mut().set_items(QVariant::from(&items));
@@ -178,6 +196,14 @@ impl qobject::Sources {
         bus::emit(SetLibraryRoots(roots));
     }
 
+    fn refresh(&self, index: i32) {
+        scan(index, true);
+    }
+
+    fn reload(&self, index: i32) {
+        scan(index, false);
+    }
+
     fn set_folders(self: Pin<&mut Self>, paths: &QStringList) {
         let mut roots: Vec<Locator> = vec![];
         for path in QList::<QString>::from(paths).iter() {
@@ -188,6 +214,22 @@ impl qobject::Sources {
         }
         bus::emit(SetLibraryRoots(roots));
         self.set_first_run(false);
+    }
+}
+
+/// Scans the source at `index`; `check_cache` false reads every track again.
+fn scan(index: i32, check_cache: bool) {
+    let Some(roots) = hub().state().roots.clone() else {
+        return;
+    };
+    if let Some(root) = usize::try_from(index)
+        .ok()
+        .and_then(|index| roots.get(index))
+    {
+        bus::emit(ScanRequested {
+            library: Some(root.clone()),
+            check_cache,
+        });
     }
 }
 
@@ -209,7 +251,7 @@ pub fn prefix(root: &str) -> String {
 }
 
 /// `root` with how many tracks of the library come from it.
-fn describe(catalog: &Catalog, root: &Locator) -> Source {
+fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
     let location = root.to_string();
     let name = name(&location);
     let (tracks, available) = match root {
@@ -229,5 +271,6 @@ fn describe(catalog: &Catalog, root: &Locator) -> Source {
         location,
         tracks,
         available,
+        updating,
     }
 }
