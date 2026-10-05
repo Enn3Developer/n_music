@@ -6,8 +6,8 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     LoopStatusChanged, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom, PlayNext,
     PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetOutputDevice,
-    SetReplayGain, SetShuffle, SetVolume, ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle,
-    TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    SetReplayGain, SetResume, SetShuffle, SetVolume, ShuffleChanged, TogglePause, ToggleRepeat,
+    ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
@@ -138,6 +138,18 @@ impl Handle<Seek> for QueuePlayer {
             self.seek_clamped(position, length);
             return;
         }
+        // A session reopened from the last launch plays from there: move where.
+        if self.restored.is_some() && position.is_finite() {
+            let length = self.time.length;
+            let position = if length > 0.0 {
+                position.clamp(0.0, length)
+            } else {
+                position.max(0.0)
+            };
+            self.restored = Some(position);
+            self.time.position = position;
+            self.save_state();
+        }
         let time = self.current_time();
         self.position(time, true, out);
     }
@@ -250,6 +262,16 @@ impl Handle<TracksEnumerated> for QueuePlayer {
         out.emit(QueueChanged {
             entries: self.session.entries(),
         });
+        // A session reopened from the last launch shows its track and where it left off.
+        if self.restored.is_some() && !std::mem::replace(&mut self.announced, true) {
+            let length = self.session.current().and_then(|current| {
+                let library = self.library.read();
+                library.track(&current.locator).map(|track| track.length)
+            });
+            self.time.length = length.unwrap_or_default();
+            self.announce(out);
+            self.report(out);
+        }
     }
 }
 
@@ -268,6 +290,15 @@ impl Handle<SetReplayGain> for QueuePlayer {
             self.player.set_replay_gain(msg.0);
             self.settings
                 .update(|settings| settings.replay_gain = msg.0);
+        }
+    }
+}
+
+impl Handle<SetResume> for QueuePlayer {
+    fn handle(&mut self, msg: &SetResume, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.set_resume(msg.0);
+            self.settings.update(|settings| settings.resume = msg.0);
         }
     }
 }
@@ -303,7 +334,14 @@ impl Handle<AppVisibilityChanged> for QueuePlayer {
 
 impl Handle<ShutdownRequested> for QueuePlayer {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
+        if self.player.is_playing() {
+            self.time = self.current_time();
+        }
+        self.save_state();
         self.stop(out);
+        if let Some(store) = &mut self.store {
+            store.close();
+        }
         out.shutdown_ready();
     }
 }

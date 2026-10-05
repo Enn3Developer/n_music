@@ -1,6 +1,5 @@
-use n_music_core::library::track::ReplayGainMode;
 use n_music_core::settings::{
-    LibrarySettings, Options, OutputDevice, PlaybackSettings, Section, SettingsStorage,
+    LibrarySettings, Options, PlaybackSettings, Section, SettingsStorage,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
@@ -95,28 +94,22 @@ impl From<i32> for Theme {
 
 static UI: OnceLock<Options<UiSettings>> = OnceLock::new();
 static FIRST_RUN: OnceLock<bool> = OnceLock::new();
-static REPLAY_GAIN: OnceLock<ReplayGainMode> = OnceLock::new();
-static OUTPUT_DEVICE: OnceLock<Option<OutputDevice>> = OnceLock::new();
+static PLAYBACK: OnceLock<PlaybackSettings> = OnceLock::new();
 
 /// Loads the interface preferences; call once, before the interface starts.
 pub fn load(storage: Arc<dyn SettingsStorage>) {
     // The library saves its sources once they are chosen, on the first run or in the settings.
     let _ = FIRST_RUN.set(storage.load(LibrarySettings::KEY).is_none());
-    // The player applies its saved mode without reporting it: read it where it saves it.
+    // The player applies its saved settings without reporting them: read them where it saves
+    // them.
     let playback = Options::<PlaybackSettings>::load(storage.clone());
-    let _ = REPLAY_GAIN.set(playback.get().replay_gain);
-    let _ = OUTPUT_DEVICE.set(playback.get().output_device.clone());
+    let _ = PLAYBACK.set(playback.get().clone());
     let _ = UI.set(Options::load(storage));
 }
 
-/// The ReplayGain mode playback started with.
-pub fn replay_gain() -> ReplayGainMode {
-    REPLAY_GAIN.get().copied().unwrap_or_default()
-}
-
-/// The output device playback started with; `None` is the system default.
-pub fn output_device() -> Option<OutputDevice> {
-    OUTPUT_DEVICE.get().cloned().flatten()
+/// The playback settings the player started with.
+pub fn playback() -> &'static PlaybackSettings {
+    PLAYBACK.get().expect("settings::load runs first")
 }
 
 /// No sources were ever chosen: the app runs for the first time.

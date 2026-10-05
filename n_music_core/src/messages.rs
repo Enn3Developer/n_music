@@ -62,6 +62,9 @@ pub struct SetShuffle(pub bool);
 pub struct ToggleShuffle;
 /// Takes effect from the next track.
 pub struct SetReplayGain(pub ReplayGainMode);
+/// Keeps the play session between launches, reopening it on the next one; off forgets the one
+/// kept.
+pub struct SetResume(pub bool);
 
 pub struct PlaybackChanged(pub bool);
 /// The current item, with what the library knows about its track. Sent again when the
@@ -209,6 +212,7 @@ messages!(
     SetShuffle,
     ToggleShuffle,
     SetReplayGain,
+    SetResume,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,

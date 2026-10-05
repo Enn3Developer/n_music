@@ -1,6 +1,6 @@
 //! The running playback task and what the queue does on its events.
 
-use super::{ItemId, LoopStatus, QueuePlayer};
+use super::{ItemId, LoopStatus, QueuePlayer, SAVE_INTERVAL};
 use crate::audio::player::{Failure, PlaybackEvent, PlaybackTask};
 use crate::TrackTime;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, Tagged};
@@ -33,10 +33,19 @@ impl Handle<Tagged<PlaybackEvent>> for QueuePlayer {
                 if self.player.seek_revision() == *revision {
                     self.position(*time, *discontinuity, out);
                     self.count_play(out);
+                    if (time.position - self.saved_position).abs() >= SAVE_INTERVAL {
+                        self.save_state();
+                    }
                 }
             }
             PlaybackEvent::Advanced { item, length } => self.advanced(*item, *length, out),
-            PlaybackEvent::Paused(paused) => self.set_playing(!paused, out),
+            PlaybackEvent::Paused(paused) => {
+                self.set_playing(!paused, out);
+                if *paused {
+                    self.time = self.current_time();
+                    self.save_state();
+                }
+            }
             PlaybackEvent::Ended => self.advance(false, ctx, out),
             PlaybackEvent::Failed(failure) => self.failed(failure, ctx, out),
         }

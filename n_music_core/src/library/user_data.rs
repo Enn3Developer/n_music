@@ -1,12 +1,54 @@
-//! What the user creates, in the library database: playlists and play statistics. Unlike
-//! scanned rows, none of it can be rebuilt.
+//! What the user creates, in the library database: playlists, play statistics and, while
+//! resuming is on, the play session. Unlike scanned rows, none of it can be rebuilt.
 
 use super::catalog::{PlayStats, Playlist, PlaylistItem};
 use super::db::{decode_locator, encode_locator, LibraryDb, Result};
-use super::query::{Filter, PlaylistId, SortKey};
+use super::query::{Filter, PlaylistId, Query, SortKey};
 use crate::source::Locator;
-use rusqlite::{params, Transaction};
+use rusqlite::{params, OptionalExtension, Transaction};
 use std::collections::HashMap;
+
+/// A track the session refers to.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StoredItem {
+    pub locator: Locator,
+    pub fingerprint: Option<u64>,
+}
+
+/// Where the session is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StoredCursor {
+    /// The context item at this position.
+    Context(usize),
+    /// The up-next item playing now, and the context item the context goes on after, if it
+    /// started.
+    Detour(Option<usize>),
+}
+
+/// The session's tracks; saved whenever they change.
+#[derive(Clone, Debug, Default)]
+pub struct SessionItems {
+    pub context: Option<Query>,
+    /// In context order.
+    pub items: Vec<StoredItem>,
+    /// Each item's place in the play order.
+    pub slots: Vec<usize>,
+    pub up_next: Vec<StoredItem>,
+    pub detour: Option<StoredItem>,
+}
+
+/// Where the session is; saved often.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SessionState {
+    pub cursor: Option<StoredCursor>,
+    /// Seconds into the current item.
+    pub position: f64,
+    pub finished: bool,
+}
+
+const LIST_CONTEXT: i64 = 0;
+const LIST_UP_NEXT: i64 = 1;
+const LIST_DETOUR: i64 = 2;
 
 impl LibraryDb {
     /// Every playlist with its items.
@@ -207,6 +249,146 @@ impl LibraryDb {
                 [],
             )?;
         }
+        transaction.commit()
+    }
+
+    /// The saved session, if any.
+    pub fn session(&self) -> Result<Option<(SessionItems, SessionState)>> {
+        let Some((context, list, position, offset, finished)) = self
+            .conn
+            .query_row(
+                "SELECT context, current_list, current_position, position, finished \
+                 FROM session WHERE id = 0",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, f64>(3)?,
+                        row.get::<_, bool>(4)?,
+                    ))
+                },
+            )
+            .optional()?
+        else {
+            return Ok(None);
+        };
+        let mut items = SessionItems {
+            context: context.and_then(|context| from_json(&context)),
+            ..SessionItems::default()
+        };
+        let mut statement = self.conn.prepare(
+            "SELECT list, slot, kind, location, name, fingerprint FROM session_items \
+             ORDER BY list, position",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                decode_locator(row.get(2)?, row.get(3)?, row.get(4)?),
+                row.get::<_, Option<i64>>(5)?.map(|value| value as u64),
+            ))
+        })?;
+        for row in rows {
+            let (list, slot, locator, fingerprint) = row?;
+            let Some(locator) = locator else {
+                continue;
+            };
+            let item = StoredItem {
+                locator,
+                fingerprint,
+            };
+            match list {
+                LIST_CONTEXT => {
+                    items.items.push(item);
+                    items.slots.push(slot.unwrap_or(0) as usize);
+                }
+                LIST_UP_NEXT => items.up_next.push(item),
+                LIST_DETOUR => items.detour = Some(item),
+                _ => {}
+            }
+        }
+        let cursor = match (list, position) {
+            (Some(LIST_CONTEXT), Some(position)) => Some(StoredCursor::Context(position as usize)),
+            (Some(LIST_DETOUR), after) => Some(StoredCursor::Detour(after.map(|at| at as usize))),
+            _ => None,
+        };
+        Ok(Some((
+            items,
+            SessionState {
+                cursor,
+                position: offset,
+                finished,
+            },
+        )))
+    }
+
+    /// Replaces the session's tracks.
+    pub fn save_session_items(&mut self, items: &SessionItems) -> Result<()> {
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "INSERT INTO session (id, context) VALUES (0, ?1) \
+             ON CONFLICT (id) DO UPDATE SET context = excluded.context",
+            [items.context.as_ref().map(to_json)],
+        )?;
+        transaction.execute("DELETE FROM session_items", [])?;
+        {
+            let mut insert = transaction.prepare(
+                "INSERT INTO session_items \
+                 (list, position, slot, kind, location, name, fingerprint) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            let lists = [
+                (LIST_CONTEXT, &items.items[..]),
+                (LIST_UP_NEXT, &items.up_next[..]),
+                (LIST_DETOUR, items.detour.as_slice()),
+            ];
+            for (list, stored) in lists {
+                for (position, item) in stored.iter().enumerate() {
+                    let Some((kind, location, name)) = encode_locator(&item.locator) else {
+                        continue;
+                    };
+                    let slot = (list == LIST_CONTEXT)
+                        .then(|| items.slots.get(position).map(|&slot| slot as i64))
+                        .flatten();
+                    insert.execute(params![
+                        list,
+                        position as i64,
+                        slot,
+                        kind,
+                        location,
+                        name,
+                        item.fingerprint.map(|value| value as i64),
+                    ])?;
+                }
+            }
+        }
+        transaction.commit()
+    }
+
+    pub fn save_session_state(&mut self, state: &SessionState) -> Result<()> {
+        let (list, position) = match state.cursor {
+            Some(StoredCursor::Context(position)) => (Some(LIST_CONTEXT), Some(position as i64)),
+            Some(StoredCursor::Detour(after)) => (Some(LIST_DETOUR), after.map(|at| at as i64)),
+            None => (None, None),
+        };
+        self.conn.execute(
+            "INSERT INTO session (id, current_list, current_position, position, finished) \
+             VALUES (0, ?1, ?2, ?3, ?4) \
+             ON CONFLICT (id) DO UPDATE SET current_list = excluded.current_list, \
+                 current_position = excluded.current_position, position = excluded.position, \
+                 finished = excluded.finished",
+            params![list, position, state.position, state.finished],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes the saved session.
+    pub fn forget_session(&mut self) -> Result<()> {
+        let transaction = self.conn.transaction()?;
+        transaction.execute("DELETE FROM session_items", [])?;
+        transaction.execute("DELETE FROM session", [])?;
         transaction.commit()
     }
 }

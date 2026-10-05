@@ -44,9 +44,13 @@ impl Engine {
             writer.clone(),
         ));
         let providers = Arc::new(providers.with_cache(cache.clone()));
-        let service =
-            LibraryService::new(providers.clone(), library.clone(), libraries.clone(), paths);
-        let player = QueuePlayer::new(providers, playback, library.clone());
+        let service = LibraryService::new(
+            providers.clone(),
+            library.clone(),
+            libraries.clone(),
+            paths.clone(),
+        );
+        let player = QueuePlayer::new(providers, playback, library.clone(), paths);
         writer.emit(VolumeChanged(player.volume()));
         writer.emit(LoopStatusChanged(player.loop_status()));
         writer.emit(ShuffleChanged(player.shuffle()));

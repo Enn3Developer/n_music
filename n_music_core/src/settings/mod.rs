@@ -118,6 +118,8 @@ pub struct PlaybackSettings {
     /// The device to play on while it is there; `None` plays on the system default and
     /// follows it.
     pub output_device: Option<OutputDevice>,
+    /// The play session is kept between launches, and reopened where it left off.
+    pub resume: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -128,6 +130,7 @@ impl Default for PlaybackSettings {
             shuffle: false,
             replay_gain: ReplayGainMode::default(),
             output_device: None,
+            resume: false,
         }
     }
 }

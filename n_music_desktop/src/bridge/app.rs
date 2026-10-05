@@ -45,6 +45,8 @@ pub mod qobject {
         /// The output devices as `{ id, name, connected }`: those there are, after the chosen
         /// one when it is not there (`connected` false). See `listOutputDevices`.
         #[qproperty(QVariant, output_devices)]
+        /// Reopens the last launch's queue and position when the app starts; sent when changed.
+        #[qproperty(bool, resume)]
         type AppState = super::AppStateRust;
 
         /// Saves the window's size when not maximized and whether it was maximized, when they are
@@ -63,10 +65,6 @@ pub mod qobject {
         /// Lists the output devices there are again, in `outputDevices`.
         #[qinvokable]
         fn list_output_devices(self: &AppState);
-
-        /// Reopens the last launch's queue and position when the app starts.
-        #[qinvokable]
-        fn change_resume(self: &AppState, resume: bool);
     }
 
     impl cxx_qt::Threading for AppState {}
@@ -81,7 +79,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QUrl, QVariant};
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::messages::{
-    AppVisibilityChanged, ListOutputDevices, SetOutputDevice, SetReplayGain,
+    AppVisibilityChanged, ListOutputDevices, SetOutputDevice, SetReplayGain, SetResume,
 };
 use n_music_core::settings::OutputDevice;
 
@@ -101,6 +99,7 @@ pub struct AppStateRust {
     logs_folder: QString,
     output_device: QString,
     output_devices: QVariant,
+    resume: bool,
     /// The output device chosen, kept to show it while it is not there.
     chosen: Option<OutputDevice>,
 }
@@ -124,6 +123,7 @@ impl Default for AppStateRust {
             logs_folder: QString::default(),
             output_device: QString::default(),
             output_devices: QVariant::default(),
+            resume: false,
             chosen: None,
         }
     }
@@ -151,18 +151,19 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
         self.as_mut().set_window_maximized(size.maximized);
-        self.as_mut()
-            .set_replay_gain(match settings::replay_gain() {
-                ReplayGainMode::Off => 0,
-                ReplayGainMode::Track => 1,
-                ReplayGainMode::Album => 2,
-            });
+        let playback = settings::playback();
+        self.as_mut().set_replay_gain(match playback.replay_gain {
+            ReplayGainMode::Off => 0,
+            ReplayGainMode::Track => 1,
+            ReplayGainMode::Album => 2,
+        });
         // The logs are written beside the settings.
         let logs = platform::internal_dir();
         self.as_mut().set_logs_folder(
             QUrl::from_local_file(&QString::from(&*logs.to_string_lossy())).to_qstring(),
         );
-        let chosen = settings::output_device();
+        self.as_mut().set_resume(playback.resume);
+        let chosen = playback.output_device.clone();
         if let Some(chosen) = &chosen {
             self.as_mut().set_output_device(QString::from(&chosen.id));
         }
@@ -199,6 +200,9 @@ impl cxx_qt::Initialize for qobject::AppState {
                     _ => ReplayGainMode::Off,
                 }));
             })
+            .release();
+        self.as_mut()
+            .on_resume_changed(|app| bus::emit(SetResume(*app.resume())))
             .release();
         self.as_mut()
             .on_theme_changed(|app| {
@@ -306,14 +310,5 @@ impl qobject::AppState {
             items.append(QVariant::from(&item));
         }
         self.as_mut().set_output_devices(QVariant::from(&items));
-    }
-
-    fn change_resume(&self, resume: bool) {
-        if resume {
-            unimplemented!(
-                "n_music_core does not keep the play session between launches: migration 003 \
-                 dropped its session tables, so there is no queue or position to reopen"
-            );
-        }
     }
 }

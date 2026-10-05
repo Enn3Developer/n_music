@@ -1,17 +1,20 @@
-//! The play session on the bus: what plays next and playback control. It lasts until exit.
+//! The play session on the bus: what plays next and playback control. It lasts until exit,
+//! or is kept between launches while resuming is on.
 
 mod handlers;
 mod playback;
 mod session;
+mod store;
 
 use crate::audio::player::{Next, PlaybackTask, Player};
 use crate::library::catalog::Library;
 use crate::library::query::Query;
+use crate::library::LibraryPaths;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged,
     PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetLoopStatus,
-    SetOutputDevice, SetReplayGain, SetShuffle, SetVolume, TogglePause, ToggleRepeat,
+    SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, TogglePause, ToggleRepeat,
     ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
@@ -24,6 +27,11 @@ use session::Session;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
+use store::SessionStore;
+
+/// While resuming is on, the position is saved this often during playback, for when the app is
+/// killed.
+const SAVE_INTERVAL: f64 = 10.0;
 
 #[derive(Default, Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
 /// What happens at the end of the context. Up-next tracks always play once, first.
@@ -52,6 +60,9 @@ pub struct QueueEntry {
 pub struct QueuePlayer {
     session: Session,
     library: Library,
+    paths: LibraryPaths,
+    /// Keeps the session while resuming is on.
+    store: Option<SessionStore>,
     /// The library folders, as last reported.
     libraries: Vec<Locator>,
     shuffle: bool,
@@ -72,16 +83,24 @@ pub struct QueuePlayer {
     counted: bool,
     /// Tracks that failed in a row; once every entry did, playback stops.
     failures: usize,
+    /// Where a session reopened from the last launch left off, until it plays again.
+    restored: Option<f64>,
+    /// The reopened session was announced, once the library was listed.
+    announced: bool,
+    /// The position last saved.
+    saved_position: f64,
 }
 
 impl QueuePlayer {
-    /// Starts with the saved volume and modes, and nothing to play yet.
+    /// Starts with the saved volume and modes, and with nothing to play yet or, while resuming
+    /// is on, with the session kept in the library database.
     pub fn new(
         providers: Arc<Providers>,
         settings: Options<PlaybackSettings>,
         library: Library,
+        paths: LibraryPaths,
     ) -> Self {
-        let (volume, loop_status, shuffle, replay_gain, device) = {
+        let (volume, loop_status, shuffle, replay_gain, device, resume) = {
             let saved = settings.get();
             (
                 saved.volume.clamp(0.0, 1.0),
@@ -89,14 +108,22 @@ impl QueuePlayer {
                 saved.shuffle,
                 saved.replay_gain,
                 saved.output_device.as_ref().map(|device| device.id.clone()),
+                saved.resume,
             )
         };
         let mut player = Player::new(volume as f32, replay_gain, device);
         player.set_progress_interval(Some(Duration::from_millis(250)));
 
+        let (session, restored, finished) = resume
+            .then(|| restore(&paths))
+            .flatten()
+            .unwrap_or_default();
+
         QueuePlayer {
-            session: Session::default(),
+            session,
             library,
+            store: resume.then(|| SessionStore::new(paths.clone())),
+            paths,
             libraries: vec![],
             shuffle,
             player,
@@ -106,12 +133,18 @@ impl QueuePlayer {
             job: None,
             loaded: false,
             playing: false,
-            time: TrackTime::default(),
+            time: TrackTime {
+                position: restored.unwrap_or_default(),
+                length: 0.0,
+            },
             seek_request: 0,
             pending_seek_request: None,
-            finished: false,
+            finished,
             counted: false,
             failures: 0,
+            restored,
+            announced: false,
+            saved_position: 0.0,
         }
     }
 
@@ -127,12 +160,43 @@ impl QueuePlayer {
         self.shuffle
     }
 
-    /// Publishes the entries when they changed.
+    /// Publishes the entries when they changed, and keeps them and where the session is.
     fn sync(&mut self, out: &mut Outbox) {
         if self.session.take_changed() {
             out.emit(QueueChanged {
                 entries: self.session.entries(),
             });
+            if let Some(store) = &self.store {
+                store.save_items(self.session.stored_items());
+            }
+        }
+        self.save_state();
+    }
+
+    /// Keeps where the session is, while resuming is on.
+    fn save_state(&mut self) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let position = self.restored.unwrap_or(self.time.position);
+        self.saved_position = position;
+        store.save_state(self.session.stored_state(position, self.finished));
+    }
+
+    /// Keeps the session between launches from now on, or forgets the one kept.
+    fn set_resume(&mut self, resume: bool) {
+        if resume == self.store.is_some() {
+            return;
+        }
+        if resume {
+            let store = SessionStore::new(self.paths.clone());
+            store.save_items(self.session.stored_items());
+            self.store = Some(store);
+            self.time = self.current_time();
+            self.save_state();
+        } else if let Some(mut store) = self.store.take() {
+            store.forget();
+            store.close();
         }
     }
 
@@ -166,6 +230,7 @@ impl QueuePlayer {
         let locator = self.session.get(item)?.locator.clone();
         self.session.arrive(item);
         self.finished = false;
+        self.restored = None;
         self.counted = false;
         Some(
             self.player
@@ -199,6 +264,7 @@ impl QueuePlayer {
             None => {
                 self.stop(out);
                 self.finished = true;
+                self.save_state();
             }
         }
     }
@@ -220,10 +286,13 @@ impl QueuePlayer {
         self.update_next();
     }
 
-    /// Plays from where the session is: the whole library when nothing was chosen yet, the
-    /// start of a finished context, or the next item.
+    /// Plays from where the session is: where the last launch left off, the whole library when
+    /// nothing was chosen yet, the start of a finished context, or the next item.
     fn resume(&mut self, ctx: &Ctx, out: &mut Outbox) {
-        if self.session.context().is_none() {
+        let current = self.session.current().map(|item| item.id);
+        if let (Some(position), Some(item)) = (self.restored, current) {
+            self.jump(item, position, false, ctx, out);
+        } else if self.session.context().is_none() {
             self.play_from(&Query::library(), None, ctx, out);
         } else if self.finished {
             if let Some(item) = self.session.restart(self.shuffle) {
@@ -396,8 +465,24 @@ impl Subscriber for QueuePlayer {
         reg.on::<ScanFinished>();
         reg.on::<LibraryRootsChanged>();
         reg.on::<SetReplayGain>();
+        reg.on::<SetResume>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);
     }
+}
+
+/// The session kept by the last launch, with where it left off and whether it had finished.
+fn restore(paths: &LibraryPaths) -> Option<(Session, Option<f64>, bool)> {
+    let (items, state) = paths
+        .open_db()
+        .and_then(|db| db.session())
+        .inspect_err(|error| log::error!("Could not read the saved session: {error}"))
+        .ok()??;
+    let Some(session) = Session::restore(items, &state) else {
+        log::warn!("Ignoring an inconsistent saved session");
+        return None;
+    };
+    let restored = session.current().is_some().then_some(state.position);
+    Some((session, restored, state.finished))
 }

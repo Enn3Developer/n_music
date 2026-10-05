@@ -16,6 +16,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_tracks.sql"),
     include_str!("migrations/002_user_data.sql"),
     include_str!("migrations/003_drop_session.sql"),
+    include_str!("migrations/004_session.sql"),
 ];
 
 /// Bump whenever [`super::reader::read_info`] reads more or differently: rows

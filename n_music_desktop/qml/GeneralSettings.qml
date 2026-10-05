@@ -125,10 +125,9 @@ ColumnLayout {
                 description: Tr.t.resume_hint
 
                 ToggleSwitch {
-                    // The core starts every launch afresh.
-                    checked: false
+                    checked: AppState.resume
                     Accessible.name: Tr.t.resume
-                    onToggled: AppState.changeResume(checked)
+                    onToggled: AppState.resume = checked
                 }
             }
         }

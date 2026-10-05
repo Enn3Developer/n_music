@@ -4,6 +4,7 @@
 use super::{ItemId, LoopStatus, QueueEntry};
 use crate::library::catalog::Catalog;
 use crate::library::query::Query;
+use crate::library::user_data::{SessionItems, SessionState, StoredCursor, StoredItem};
 use crate::source::Locator;
 use crate::Track;
 use rand::prelude::SliceRandom;
@@ -320,6 +321,68 @@ impl Session {
         entries.extend(self.up_next.iter().map(|item| entry(item, true)));
         entries.extend(context(&self.order.order[split..]));
         entries
+    }
+
+    pub fn stored_items(&self) -> SessionItems {
+        let stored = |item: &Item| StoredItem {
+            locator: item.locator.clone(),
+            fingerprint: item.fingerprint,
+        };
+        SessionItems {
+            context: self.context.clone(),
+            items: self.items.iter().map(stored).collect(),
+            slots: self.order.slot_of.clone(),
+            up_next: self.up_next.iter().map(stored).collect(),
+            detour: self.detour.as_ref().map(stored),
+        }
+    }
+
+    pub fn stored_state(&self, position: f64, finished: bool) -> SessionState {
+        SessionState {
+            cursor: match self.current {
+                Some(Current::Context) => self.order.current().map(StoredCursor::Context),
+                Some(Current::Detour) => Some(StoredCursor::Detour(self.context_position())),
+                None => None,
+            },
+            position,
+            finished,
+        }
+    }
+
+    /// A saved session; `None` when it does not fit together.
+    pub fn restore(items: SessionItems, state: &SessionState) -> Option<Self> {
+        let mut session = Session::default();
+        let len = items.items.len();
+        let mut order = vec![usize::MAX; len];
+        for (position, &slot) in items.slots.iter().enumerate() {
+            *order.get_mut(slot)? = position;
+        }
+        if order.contains(&usize::MAX) {
+            return None;
+        }
+        let mut make = |stored: StoredItem| session.item(stored.locator, stored.fingerprint);
+        let context: Vec<Item> = items.items.into_iter().map(&mut make).collect();
+        let up_next: VecDeque<Item> = items.up_next.into_iter().map(&mut make).collect();
+        let detour = items.detour.map(&mut make);
+        session.items = context;
+        session.up_next = up_next;
+        session.context = items.context;
+        let (current, started) = match state.cursor {
+            Some(StoredCursor::Context(position)) if position < len => {
+                (Some(Current::Context), Some(position))
+            }
+            Some(StoredCursor::Detour(after)) if detour.is_some() => {
+                (Some(Current::Detour), after.filter(|&after| after < len))
+            }
+            _ => (None, None),
+        };
+        let cursor = started.map_or(0, |position| items.slots[position]);
+        session.started = started.is_some();
+        session.detour = detour;
+        session.current = current;
+        session.order = PlayOrder::from_order(order, cursor);
+        session.changed = true;
+        Some(session)
     }
 }
 
