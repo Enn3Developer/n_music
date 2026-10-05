@@ -24,6 +24,7 @@ pub const FORMAT: i64 = 2;
 
 const KIND_LOCAL: i64 = 0;
 const KIND_DOCUMENT: i64 = 1;
+const KIND_WEB: i64 = 2;
 
 /// A track as last scanned.
 pub struct StoredTrack {
@@ -364,6 +365,7 @@ pub(super) fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&st
     match locator {
         Locator::Local(path) => Some((KIND_LOCAL, path, None)),
         Locator::Document { uri, name } => Some((KIND_DOCUMENT, uri, Some(name))),
+        Locator::Web(address) => Some((KIND_WEB, address, None)),
         Locator::DocumentTree(_) => None,
     }
 }
@@ -375,6 +377,7 @@ pub(super) fn decode_locator(kind: i64, location: String, name: Option<String>) 
             uri: location,
             name: name.unwrap_or_default(),
         }),
+        KIND_WEB => Some(Locator::Web(location)),
         _ => None,
     }
 }

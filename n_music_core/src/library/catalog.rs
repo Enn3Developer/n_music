@@ -5,7 +5,7 @@
 use super::query::{Filter, PlaylistId, SortKey};
 use crate::source::Locator;
 use crate::Track;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,6 +36,15 @@ pub struct PlayStats {
     pub last_played: i64,
 }
 
+/// What a library listed when it was last scanned.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Listed {
+    pub tracks: HashSet<Locator>,
+    /// That scan could list it. One that could not keeps the tracks it listed before, for the
+    /// scan that lists it again to forget those that are gone; the library leaves them out.
+    pub reachable: bool,
+}
+
 #[derive(Default)]
 pub struct Catalog {
     /// In scan order.
@@ -44,6 +53,8 @@ pub struct Catalog {
     by_fingerprint: HashMap<u64, usize>,
     playlists: BTreeMap<PlaylistId, Playlist>,
     stats: HashMap<Locator, PlayStats>,
+    /// By library.
+    listings: HashMap<Locator, Listed>,
 }
 
 impl Catalog {
@@ -74,6 +85,19 @@ impl Catalog {
 
     pub fn stats(&self, locator: &Locator) -> Option<&PlayStats> {
         self.stats.get(locator)
+    }
+
+    /// What `library` listed when it was last scanned; `None` before its first scan.
+    pub fn listed(&self, library: &Locator) -> Option<&Listed> {
+        self.listings.get(library)
+    }
+
+    pub(crate) fn listings(&self) -> &HashMap<Locator, Listed> {
+        &self.listings
+    }
+
+    pub(crate) fn listings_mut(&mut self) -> &mut HashMap<Locator, Listed> {
+        &mut self.listings
     }
 
     pub(crate) fn set_tracks(&mut self, tracks: Vec<Track>) {

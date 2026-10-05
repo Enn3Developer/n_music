@@ -271,7 +271,11 @@ impl Loading<'_> {
                 self.writer
                     .emit_tagged(self.tag, ScanEvent::Loaded(track.clone()));
             }
-            if tx.send((entry.locator, entry.version, track)).is_err() {
+            // A file on the web that could not be read may be back later: it is not stored as
+            // unreadable.
+            let web = matches!(entry.locator, Locator::Web(_));
+            let version = entry.version.filter(|_| track.is_some() || !web);
+            if tx.send((entry.locator, version, track)).is_err() {
                 break;
             }
         }

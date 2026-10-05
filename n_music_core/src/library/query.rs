@@ -66,6 +66,8 @@ pub enum Filter {
     Search(String),
     /// Somewhere under this folder (a location prefix).
     Folder(String),
+    /// Listed by this library when it was last scanned.
+    Library(Locator),
     /// Played this many times, both bounds inclusive.
     Plays {
         min: Option<u32>,
@@ -232,6 +234,9 @@ impl Catalog {
                     || track.album.as_deref().is_some_and(contains)
             }
             Filter::Folder(folder) => location(&track.locator).starts_with(folder.as_str()),
+            Filter::Library(library) => self
+                .listed(library)
+                .is_some_and(|listed| listed.tracks.contains(&track.locator)),
             Filter::Plays { min, max } => {
                 let plays = self.stats(&track.locator).map_or(0, |stats| stats.plays);
                 min.is_none_or(|min| plays >= min) && max.is_none_or(|max| plays <= max)
@@ -283,7 +288,7 @@ impl Catalog {
 /// The text a [`Filter::Folder`] prefix is matched against.
 fn location(locator: &Locator) -> &str {
     match locator {
-        Locator::Local(path) | Locator::DocumentTree(path) => path,
+        Locator::Local(path) | Locator::DocumentTree(path) | Locator::Web(path) => path,
         Locator::Document { uri, .. } => uri,
     }
 }

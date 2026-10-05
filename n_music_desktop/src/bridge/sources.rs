@@ -263,8 +263,8 @@ fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
                 Path::new(root).is_dir(),
             )
         }
-        // Android's documents do not come up on the desktop.
-        Locator::DocumentTree(_) | Locator::Document { .. } => (0, true),
+        // Android's documents do not come up on the desktop, nor web playlists yet.
+        Locator::DocumentTree(_) | Locator::Document { .. } | Locator::Web(_) => (0, true),
     };
     Source {
         name,

@@ -1,6 +1,6 @@
 //! Keeps the [`Library`] up to date: runs scans, applies playlist changes and records plays.
 
-use super::catalog::{Library, Playlist, PlaylistItem};
+use super::catalog::{Library, Listed, Playlist, PlaylistItem};
 use super::db::LibraryDb;
 use super::query::{now, PlaylistId};
 use super::scan::{Listing, ScanEvent, ScanJob};
@@ -30,8 +30,6 @@ pub struct LibraryService {
     /// Libraries to scan once the running scan finished, each with whether that scan trusts
     /// the cache.
     waiting: Vec<(Locator, bool)>,
-    /// The tracks each library listed when last scanned.
-    listed: HashMap<Locator, Vec<Locator>>,
     /// A scan was asked for since launch: the UIs know the folders and the saved playlists.
     started: bool,
     settings: Options<LibrarySettings>,
@@ -64,7 +62,6 @@ impl LibraryService {
             db,
             scan: None,
             waiting: vec![],
-            listed: HashMap::new(),
             started: false,
             settings,
             paths,
@@ -112,12 +109,15 @@ impl LibraryService {
             return;
         }
         let libraries = std::mem::take(&mut self.waiting);
-        let known = libraries
-            .iter()
-            .filter_map(|(library, _)| self.listed.get(library))
-            .flatten()
-            .cloned()
-            .collect();
+        let known = {
+            let catalog = self.library.read();
+            libraries
+                .iter()
+                .filter_map(|(library, _)| catalog.listed(library))
+                .flat_map(|listed| &listed.tracks)
+                .cloned()
+                .collect()
+        };
         let job = ctx.jobs.spawn_stream(ScanJob {
             libraries: libraries.clone(),
             known,
@@ -153,29 +153,12 @@ impl LibraryService {
         });
     }
 
-    /// Tracks the libraries `gone` picks listed and no other library lists.
-    fn unlisted(&self, gone: impl Fn(&Locator) -> bool) -> HashSet<Locator> {
-        let kept: HashSet<&Locator> = self
-            .listed
-            .iter()
-            .filter(|(library, _)| !gone(library))
-            .flat_map(|(_, tracks)| tracks)
-            .collect();
-        self.listed
-            .iter()
-            .filter(|(library, _)| gone(library))
-            .flat_map(|(_, tracks)| tracks)
-            .filter(|track| !kept.contains(track))
-            .cloned()
-            .collect()
-    }
-
     /// Puts the tracks a scan listed in place of those its libraries listed before; the other
     /// libraries keep theirs. Returns the library's tracks.
     fn merge(&mut self, listed: &[Listing]) -> Vec<Track> {
         let scanned: HashSet<&Locator> = listed.iter().map(|(library, _)| library).collect();
-        let stale = self.unlisted(|library| scanned.contains(library));
         let mut catalog = self.library.write();
+        let stale = unlisted(catalog.listings(), |library| scanned.contains(library));
         let mut tracks: Vec<Track> = catalog
             .tracks()
             .iter()
@@ -188,6 +171,11 @@ impl LibraryService {
             // One that could not be listed keeps what it listed before, for the scan that lists
             // it again to forget what is gone.
             let Some(library_tracks) = library_tracks else {
+                catalog
+                    .listings_mut()
+                    .entry(library.clone())
+                    .or_default()
+                    .reachable = false;
                 continue;
             };
             tracks.extend(
@@ -196,12 +184,15 @@ impl LibraryService {
                     .filter(|track| present.insert(track.locator.clone()))
                     .cloned(),
             );
-            self.listed.insert(
+            catalog.listings_mut().insert(
                 library.clone(),
-                library_tracks
-                    .iter()
-                    .map(|track| track.locator.clone())
-                    .collect(),
+                Listed {
+                    tracks: library_tracks
+                        .iter()
+                        .map(|track| track.locator.clone())
+                        .collect(),
+                    reachable: true,
+                },
             );
         }
         tracks.sort_by_cached_key(|track| track.locator.to_string());
@@ -212,14 +203,14 @@ impl LibraryService {
     /// Takes the tracks of the `removed` libraries out of the library, but those another one
     /// lists too. Returns the library's tracks when that changed them.
     fn remove(&mut self, removed: &[Locator]) -> Option<Vec<Track>> {
-        let stale = self.unlisted(|library| removed.contains(library));
+        let mut catalog = self.library.write();
+        let stale = unlisted(catalog.listings(), |library| removed.contains(library));
         for library in removed {
-            self.listed.remove(library);
+            catalog.listings_mut().remove(library);
         }
         if stale.is_empty() {
             return None;
         }
-        let mut catalog = self.library.write();
         let tracks: Vec<Track> = catalog
             .tracks()
             .iter()
@@ -296,6 +287,25 @@ impl LibraryService {
             db.add_to_playlist(id, &items, now())
         });
     }
+}
+
+/// The tracks the libraries `gone` picks listed and no other library lists.
+fn unlisted(
+    listings: &HashMap<Locator, Listed>,
+    gone: impl Fn(&Locator) -> bool,
+) -> HashSet<Locator> {
+    let kept: HashSet<&Locator> = listings
+        .iter()
+        .filter(|(library, _)| !gone(library))
+        .flat_map(|(_, listed)| &listed.tracks)
+        .collect();
+    listings
+        .iter()
+        .filter(|(library, _)| gone(library))
+        .flat_map(|(_, listed)| &listed.tracks)
+        .filter(|track| !kept.contains(track))
+        .cloned()
+        .collect()
 }
 
 impl Subscriber for LibraryService {

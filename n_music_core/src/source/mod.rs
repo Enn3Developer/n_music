@@ -5,10 +5,13 @@
 //! so new backends (Android documents, HTTP, ...) only have to implement [`StreamProvider`].
 
 mod local;
+mod web;
 
 pub use local::LocalProvider;
+pub use web::WebProvider;
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::path::Path;
@@ -26,12 +29,21 @@ pub enum Locator {
     /// A file inside a [`Locator::DocumentTree`]. Document URIs do not always contain the file
     /// name (e.g. `msf:1234`), so the display name is kept alongside.
     Document { uri: String, name: String },
+    /// An `http` or `https` address: an M3U or PLS playlist as a library root, a file as a
+    /// track.
+    Web(String),
 }
 
 impl Locator {
+    /// A [`Locator::Web`] for `address`, written the way the scan writes the tracks of a
+    /// playlist; `None` when it is not an `http` or `https` address.
+    pub fn web(address: &str) -> Option<Self> {
+        web::normalize(address).map(Locator::Web)
+    }
+
     /// Lower-case file extension, used as a format hint and for tag readers.
     pub fn extension(&self) -> Option<String> {
-        Path::new(self.file_name())
+        Path::new(&*self.file_name())
             .extension()
             .map(|ext| ext.to_string_lossy().to_lowercase())
     }
@@ -39,16 +51,19 @@ impl Locator {
     /// File name without its extension, shown when a track has no title tag.
     pub fn display_name(&self) -> String {
         let name = self.file_name();
-        Path::new(name)
-            .file_stem()
-            .map(|stem| stem.to_string_lossy().into_owned())
-            .unwrap_or_else(|| name.to_string())
+        match (Path::new(&*name).file_stem(), self) {
+            (Some(stem), _) => stem.to_string_lossy().into_owned(),
+            // An address without a path, like `https://example.com/`.
+            (None, Locator::Web(address)) => web::host(address),
+            (None, _) => name.into_owned(),
+        }
     }
 
-    fn file_name(&self) -> &str {
+    fn file_name(&self) -> Cow<'_, str> {
         match self {
-            Locator::Local(path) | Locator::DocumentTree(path) => path,
-            Locator::Document { name, .. } => name,
+            Locator::Local(path) | Locator::DocumentTree(path) => Cow::Borrowed(path),
+            Locator::Document { name, .. } => Cow::Borrowed(name),
+            Locator::Web(address) => Cow::Owned(web::file_name(address)),
         }
     }
 }
@@ -56,7 +71,9 @@ impl Locator {
 impl Display for Locator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Locator::Local(path) | Locator::DocumentTree(path) => f.write_str(path),
+            Locator::Local(text) | Locator::DocumentTree(text) | Locator::Web(text) => {
+                f.write_str(text)
+            }
             Locator::Document { uri, .. } => f.write_str(uri),
         }
     }
@@ -94,6 +111,7 @@ impl OpenedStream {
 pub struct Providers {
     local: Option<Arc<dyn StreamProvider>>,
     documents: Option<Arc<dyn StreamProvider>>,
+    web: Option<Arc<dyn StreamProvider>>,
 }
 
 impl Providers {
@@ -109,10 +127,17 @@ impl Providers {
         self
     }
 
+    /// Serves [`Locator::Web`].
+    pub fn with_web(mut self, provider: impl StreamProvider + 'static) -> Self {
+        self.web = Some(Arc::new(provider));
+        self
+    }
+
     fn route(&self, locator: &Locator) -> io::Result<&dyn StreamProvider> {
         let provider = match locator {
             Locator::Local(_) => &self.local,
             Locator::DocumentTree(_) | Locator::Document { .. } => &self.documents,
+            Locator::Web(_) => &self.web,
         };
         provider.as_deref().ok_or_else(|| {
             io::Error::new(
