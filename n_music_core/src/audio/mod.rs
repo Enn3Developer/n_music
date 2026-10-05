@@ -9,7 +9,7 @@ pub(crate) mod player;
 mod raw;
 
 use crate::library::track::ReplayGain;
-use crate::source::{Locator, StreamProvider};
+use crate::source::{Locator, OpenedStream, StreamProvider};
 use dca::DcaReader;
 use once_cell::sync::Lazy;
 use opus::OpusDecoder;
@@ -44,7 +44,11 @@ pub(crate) fn open(
     provider: &dyn StreamProvider,
     locator: &Locator,
 ) -> io::Result<Box<dyn FormatReader>> {
-    let stream = provider.open(locator)?;
+    probe(provider.open(locator)?, locator)
+}
+
+/// Probes the format of `stream`, opened from `locator`.
+pub(crate) fn probe(stream: OpenedStream, locator: &Locator) -> io::Result<Box<dyn FormatReader>> {
     let hint = stream.hint();
     let media_stream = MediaSourceStream::new(stream.source, Default::default());
     PROBE

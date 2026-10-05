@@ -41,7 +41,8 @@ pub struct PlayStats {
 pub struct Listed {
     pub tracks: HashSet<Locator>,
     /// That scan could list it. One that could not keeps the tracks it listed before, for the
-    /// scan that lists it again to forget those that are gone; the library leaves them out.
+    /// scan that lists it again to forget those that are gone; the library leaves them out,
+    /// but those that play offline from the stream cache.
     pub reachable: bool,
 }
 

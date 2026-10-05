@@ -4,12 +4,14 @@
 //! turns locators into readable streams. Everything that reads audio goes through a provider,
 //! so new backends (Android documents, HTTP, ...) only have to implement [`StreamProvider`].
 
+pub(crate) mod cache;
 mod local;
 mod web;
 
 pub use local::LocalProvider;
 pub use web::WebProvider;
 
+use cache::StreamCache;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
@@ -39,6 +41,12 @@ impl Locator {
     /// playlist; `None` when it is not an `http` or `https` address.
     pub fn web(address: &str) -> Option<Self> {
         web::normalize(address).map(Locator::Web)
+    }
+
+    /// Streamed from elsewhere rather than read on this device: the stream cache keeps copies
+    /// of these.
+    pub fn is_remote(&self) -> bool {
+        matches!(self, Locator::Web(_))
     }
 
     /// Lower-case file extension, used as a format hint and for tag readers.
@@ -106,12 +114,14 @@ impl OpenedStream {
 }
 
 /// The set of backends available on this platform. Each [`Locator`] kind is served by one
-/// backend, so requests are routed by the locator alone.
+/// backend, so requests are routed by the locator alone. Remote tracks also go through the
+/// stream cache, once the engine adds it.
 #[derive(Default)]
 pub struct Providers {
     local: Option<Arc<dyn StreamProvider>>,
     documents: Option<Arc<dyn StreamProvider>>,
     web: Option<Arc<dyn StreamProvider>>,
+    cache: Option<Arc<StreamCache>>,
 }
 
 impl Providers {
@@ -133,13 +143,38 @@ impl Providers {
         self
     }
 
-    fn route(&self, locator: &Locator) -> io::Result<&dyn StreamProvider> {
+    /// Keeps copies of remote tracks in `cache`.
+    pub(crate) fn with_cache(mut self, cache: Arc<StreamCache>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
+    /// Opens `locator` to play it: from the stream cache's copy when there is one, else from
+    /// its backend, recording it into the cache as it is read.
+    pub(crate) fn play(&self, locator: &Locator) -> io::Result<OpenedStream> {
+        let provider = self.route(locator)?;
+        match &self.cache {
+            Some(cache) if locator.is_remote() => cache.play(locator, provider),
+            _ => provider.open(locator),
+        }
+    }
+
+    /// The tracks remote library `root` listed last that the stream cache has copies of, for
+    /// when it cannot be listed.
+    pub(crate) fn offline_tracks(&self, root: &Locator) -> Vec<TrackEntry> {
+        match &self.cache {
+            Some(cache) if root.is_remote() => cache.offline(root),
+            _ => vec![],
+        }
+    }
+
+    fn route(&self, locator: &Locator) -> io::Result<&Arc<dyn StreamProvider>> {
         let provider = match locator {
             Locator::Local(_) => &self.local,
             Locator::DocumentTree(_) | Locator::Document { .. } => &self.documents,
             Locator::Web(_) => &self.web,
         };
-        provider.as_deref().ok_or_else(|| {
+        provider.as_ref().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::Unsupported,
                 format!("No provider for {locator} on this platform"),
@@ -149,12 +184,22 @@ impl Providers {
 }
 
 impl StreamProvider for Providers {
+    /// Reads from the backend, for tags to be up to date; a remote track it cannot reach is
+    /// read from its copy.
     fn open(&self, locator: &Locator) -> io::Result<OpenedStream> {
-        self.route(locator)?.open(locator)
+        let opened = self.route(locator)?.open(locator);
+        match &self.cache {
+            Some(cache) if locator.is_remote() => cache.check(locator, opened),
+            _ => opened,
+        }
     }
 
     fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>> {
-        self.route(root)?.list_tracks(root)
+        let listed = self.route(root)?.list_tracks(root)?;
+        if let Some(cache) = self.cache.as_ref().filter(|_| root.is_remote()) {
+            cache.listed(root, &listed);
+        }
+        Ok(listed)
     }
 }
 

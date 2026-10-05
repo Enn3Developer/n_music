@@ -47,9 +47,10 @@ struct Scan {
 }
 
 impl LibraryService {
-    /// Loads the playlists and statistics; tracks come with the first scan.
+    /// Loads the playlists and statistics into `library`; tracks come with the first scan.
     pub fn new(
         providers: Arc<Providers>,
+        library: Library,
         settings: Options<LibrarySettings>,
         paths: LibraryPaths,
     ) -> Self {
@@ -58,7 +59,7 @@ impl LibraryService {
             .inspect_err(|error| log::error!("Could not open the library database: {error}"))
             .ok();
         let service = Self {
-            library: Library::default(),
+            library,
             db,
             scan: None,
             waiting: vec![],
@@ -156,7 +157,7 @@ impl LibraryService {
     /// Puts the tracks a scan listed in place of those its libraries listed before; the other
     /// libraries keep theirs. Returns the library's tracks.
     fn merge(&mut self, listed: &[Listing]) -> Vec<Track> {
-        let scanned: HashSet<&Locator> = listed.iter().map(|(library, _)| library).collect();
+        let scanned: HashSet<&Locator> = listed.iter().map(|listing| &listing.library).collect();
         let mut catalog = self.library.write();
         let stale = unlisted(catalog.listings(), |library| scanned.contains(library));
         let mut tracks: Vec<Track> = catalog
@@ -167,33 +168,33 @@ impl LibraryService {
             .collect();
         let mut present: HashSet<Locator> =
             tracks.iter().map(|track| track.locator.clone()).collect();
-        for (library, library_tracks) in listed {
-            // One that could not be listed keeps what it listed before, for the scan that lists
-            // it again to forget what is gone.
-            let Some(library_tracks) = library_tracks else {
-                catalog
-                    .listings_mut()
-                    .entry(library.clone())
-                    .or_default()
-                    .reachable = false;
-                continue;
-            };
+        for listing in listed {
             tracks.extend(
-                library_tracks
+                listing
+                    .tracks
                     .iter()
                     .filter(|track| present.insert(track.locator.clone()))
                     .cloned(),
             );
-            catalog.listings_mut().insert(
-                library.clone(),
-                Listed {
-                    tracks: library_tracks
-                        .iter()
-                        .map(|track| track.locator.clone())
-                        .collect(),
-                    reachable: true,
-                },
-            );
+            let locators = listing.tracks.iter().map(|track| track.locator.clone());
+            if listing.reachable {
+                catalog.listings_mut().insert(
+                    listing.library.clone(),
+                    Listed {
+                        tracks: locators.collect(),
+                        reachable: true,
+                    },
+                );
+            } else {
+                // One that could not be listed keeps what it listed before, for the scan that
+                // lists it again to forget what is gone.
+                let listed = catalog
+                    .listings_mut()
+                    .entry(listing.library.clone())
+                    .or_default();
+                listed.reachable = false;
+                listed.tracks.extend(locators);
+            }
         }
         tracks.sort_by_cached_key(|track| track.locator.to_string());
         catalog.set_tracks(tracks.clone());
@@ -408,11 +409,7 @@ impl Handle<Tagged<ScanEvent>> for LibraryService {
             ScanEvent::Listed { libraries, pending } => {
                 let tracks = self.merge(libraries);
                 if let Some(scan) = &mut self.scan {
-                    scan.found = libraries
-                        .iter()
-                        .filter_map(|(_, tracks)| tracks.as_ref())
-                        .map(Vec::len)
-                        .sum();
+                    scan.found = libraries.iter().map(|listing| listing.tracks.len()).sum();
                     scan.pending = *pending;
                 }
                 out.emit(TracksEnumerated { tracks });

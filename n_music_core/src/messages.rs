@@ -159,10 +159,26 @@ pub struct SetLibraryRoots(pub Vec<Locator>);
 /// The library folders, at startup and after every change.
 pub struct LibraryRootsChanged(pub Vec<Locator>);
 
+/// Keeps copies of streamed tracks on disk as they play, in at most `limit` bytes: when space
+/// runs out, the most played tracks keep theirs. Turning it off deletes the copies.
+pub struct SetStreamCache {
+    pub enabled: bool,
+    pub limit: u64,
+}
+/// The stream cache's settings and the bytes its copies take, at startup and after every
+/// change.
+pub struct StreamCacheChanged {
+    pub enabled: bool,
+    pub limit: u64,
+    pub used: u64,
+}
+
 /// Whether the app is in front; positions are not reported while it is not.
 pub struct AppVisibilityChanged(pub bool);
 
 messages!(
+    SetStreamCache,
+    StreamCacheChanged,
     AppVisibilityChanged,
     PlayFrom,
     Enqueue,

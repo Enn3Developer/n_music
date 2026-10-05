@@ -46,11 +46,9 @@ pub fn run(
     let jobs = JobControl::new(writer.clone());
     let mut app = App::new(jobs.clone());
 
-    let providers = Arc::new(
-        Providers::default().with_documents(
-            AndroidDocumentProvider::new(jvm.clone(), &callback)
-                .expect("Could not access the Android content resolver"),
-        ),
+    let providers = Providers::default().with_documents(
+        AndroidDocumentProvider::new(jvm.clone(), &callback)
+            .expect("Could not access the Android content resolver"),
     );
 
     Engine::start(

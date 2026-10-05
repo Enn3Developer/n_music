@@ -34,11 +34,9 @@ impl Bus {
         let (writer, rx) = EventWriter::channel();
         let _ = WRITER.set(writer.clone());
         let mut app = App::new(JobControl::new(writer.clone()));
-        let providers = Arc::new(
-            Providers::default()
-                .with_local(LocalProvider)
-                .with_web(WebProvider::default()),
-        );
+        let providers = Providers::default()
+            .with_local(LocalProvider)
+            .with_web(WebProvider::default());
         let engine = Engine::start(&mut app, &writer, storage, providers, data_dir, cache_dir);
         hub::init(engine.library());
         // After the core services, so the library is up to date when the interface hears.

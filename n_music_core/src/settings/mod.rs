@@ -132,6 +132,28 @@ impl Section for PlaybackSettings {
     const KEY: &'static str = "core.playback";
 }
 
+/// Copies of streamed tracks, kept on disk as they play.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StreamCacheSettings {
+    pub enabled: bool,
+    /// The most the copies may take, in bytes.
+    pub limit: u64,
+}
+
+impl Default for StreamCacheSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            limit: 1 << 30,
+        }
+    }
+}
+
+impl Section for StreamCacheSettings {
+    const KEY: &'static str = "core.stream_cache";
+}
+
 /// Android folders must be picked through the Storage Access Framework.
 #[cfg(target_os = "android")]
 fn default_library() -> Option<Locator> {

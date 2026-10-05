@@ -24,28 +24,32 @@ static CLEANUP_LOCK: Mutex<()> = Mutex::new(());
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
 const CHECKPOINT_TRACKS: usize = 256;
 
-/// The tracks of each library in a stable order, `None` for one that could not be listed. A
-/// track two libraries list goes to the first.
-fn enumerate_audio_files(
-    provider: &dyn StreamProvider,
-    libraries: &[(Locator, bool)],
-) -> Vec<Option<Vec<TrackEntry>>> {
+/// The tracks a library lists. One that cannot be listed has those of its last listing that the
+/// stream cache has copies of: they play offline.
+struct Found {
+    entries: Vec<TrackEntry>,
+    reachable: bool,
+}
+
+/// The tracks of each library in a stable order. A track two libraries list goes to the first.
+fn enumerate_audio_files(providers: &Providers, libraries: &[(Locator, bool)]) -> Vec<Found> {
     let mut seen = HashSet::new();
     libraries
         .iter()
-        .map(|(root, _)| match provider.list_tracks(root) {
-            Ok(listed) => {
-                let mut entries: Vec<TrackEntry> = listed
-                    .into_iter()
-                    .filter(|entry| seen.insert(entry.locator.clone()))
-                    .collect();
-                entries.sort_by_cached_key(|entry| entry.locator.to_string());
-                Some(entries)
-            }
-            Err(error) => {
-                log::warn!("Could not enumerate library {root}: {error}");
-                None
-            }
+        .map(|(root, _)| {
+            let (entries, reachable) = match providers.list_tracks(root) {
+                Ok(listed) => (listed, true),
+                Err(error) => {
+                    log::warn!("Could not enumerate library {root}: {error}");
+                    (providers.offline_tracks(root), false)
+                }
+            };
+            let mut entries: Vec<TrackEntry> = entries
+                .into_iter()
+                .filter(|entry| seen.insert(entry.locator.clone()))
+                .collect();
+            entries.sort_by_cached_key(|entry| entry.locator.to_string());
+            Found { entries, reachable }
         })
         .collect()
 }
@@ -64,8 +68,13 @@ pub struct ScanJob {
     pub providers: Arc<Providers>,
 }
 
-/// A library and its tracks, `None` when it could not be listed.
-pub type Listing = (Locator, Option<Vec<Track>>);
+/// A library and its tracks; one that could not be listed has those that play offline.
+pub struct Listing {
+    pub library: Locator,
+    pub tracks: Vec<Track>,
+    /// It could be listed.
+    pub reachable: bool,
+}
 
 /// What a scan reports, in this order.
 pub enum ScanEvent {
@@ -91,12 +100,11 @@ impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         log::info!("Scanning libraries {tag}: {:?}", self.libraries);
-        let listings = enumerate_audio_files(self.providers.as_ref(), &self.libraries);
-        let complete = listings.iter().all(Option::is_some);
+        let listings = enumerate_audio_files(&self.providers, &self.libraries);
+        let complete = listings.iter().all(|found| found.reachable);
         let seen: HashSet<Locator> = listings
             .iter()
-            .flatten()
-            .flatten()
+            .flat_map(|found| &found.entries)
             .map(|entry| entry.locator.clone())
             .collect();
         let len = seen.len();
@@ -172,20 +180,16 @@ impl Job for ScanJob {
 /// how many are known unreadable.
 fn match_stored(
     libraries: &[(Locator, bool)],
-    listings: Vec<Option<Vec<TrackEntry>>>,
+    listings: Vec<Found>,
     mut stored: HashMap<Locator, StoredTrack>,
 ) -> (Vec<Listing>, Vec<TrackEntry>, usize) {
     let mut covers_exist = HashMap::new();
     let mut listed = Vec::with_capacity(libraries.len());
     let mut pending = vec![];
     let mut unreadable = 0;
-    for ((root, check_cache), entries) in libraries.iter().zip(listings) {
-        let Some(entries) = entries else {
-            listed.push((root.clone(), None));
-            continue;
-        };
-        let mut tracks = Vec::with_capacity(entries.len());
-        for entry in entries {
+    for ((root, check_cache), found) in libraries.iter().zip(listings) {
+        let mut tracks = Vec::with_capacity(found.entries.len());
+        for entry in found.entries {
             let hit = entry
                 .version
                 .filter(|_| *check_cache)
@@ -220,7 +224,11 @@ fn match_stored(
                 }
             }
         }
-        listed.push((root.clone(), Some(tracks)));
+        listed.push(Listing {
+            library: root.clone(),
+            tracks,
+            reachable: found.reachable,
+        });
     }
     (listed, pending, unreadable)
 }

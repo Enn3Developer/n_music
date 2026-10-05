@@ -23,9 +23,9 @@ pub(super) struct PlaybackSource {
 }
 
 impl PlaybackSource {
-    /// Opens the track from its first byte.
+    /// Opens the track from its first byte, from the stream cache's copy when there is one.
     fn open(&self) -> io::Result<Box<dyn FormatReader>> {
-        super::super::open(self.providers.as_ref(), &self.locator)
+        super::super::probe(self.providers.play(&self.locator)?, &self.locator)
     }
 }
 
