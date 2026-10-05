@@ -1,5 +1,6 @@
 //! The play session for the queue page: what played, then what is still to play, queued items
-//! among the context's where they stand. The current item is not listed.
+//! among the context's where they stand. The current item is listed when asked for, first among
+//! those still to play.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -28,6 +29,8 @@ pub mod qobject {
         #[base = QAbstractListModel]
         /// Lists the items played before the current one too.
         #[qproperty(bool, show_history)]
+        /// Lists the current item too, before those still to play.
+        #[qproperty(bool, show_current)]
         #[qproperty(i32, history_count)]
         /// Queued items still to play.
         #[qproperty(i32, up_next_count)]
@@ -88,7 +91,7 @@ pub mod qobject {
         #[cxx_override]
         fn role_names(self: &QueueList) -> QHash_i32_QByteArray;
 
-        /// Plays the item at `row`.
+        /// Plays the item at `row`; the current one from its start.
         #[qinvokable]
         fn play(self: &QueueList, row: i32);
         /// Takes the queued item at `row` out of the session.
@@ -97,12 +100,12 @@ pub mod qobject {
         /// Takes every queued item still to play out of the session.
         #[qinvokable]
         fn clear_up_next(self: &QueueList);
-        /// Starts dragging the item still to play at `row` to another place. Session updates
-        /// wait until the drag ends, so no row moves under the pointer.
+        /// Starts dragging the item at `row`, the current one or one still to play, to another
+        /// place. Session updates wait until the drag ends, so no row moves under the pointer.
         #[qinvokable]
         fn start_drag(self: Pin<&mut QueueList>, row: i32);
-        /// Moves the dragged item to `row`, kept among the items still to play, in this list
-        /// alone.
+        /// Moves the dragged item to `row` in this list alone: the current one anywhere, one
+        /// still to play among the others.
         #[qinvokable]
         fn drag_to(self: Pin<&mut QueueList>, row: i32);
         /// Ends the drag: the dragged item plays where it was dropped when `keep`, or goes back
@@ -122,7 +125,7 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{
     QByteArray, QHash, QHashPair_i32_QByteArray, QList, QModelIndex, QString, QVariant,
 };
-use n_music_core::messages::{ClearQueued, MoveUpcoming, Play, RemoveQueued, Seek};
+use n_music_core::messages::{ClearQueued, MoveCurrent, MoveUpcoming, Play, RemoveQueued, Seek};
 use n_music_core::queue::ItemId;
 use n_music_core::{Track, TrackInfo};
 use std::sync::Arc;
@@ -134,12 +137,13 @@ const LENGTH: i32 = TITLE + 2;
 const COVER: i32 = TITLE + 3;
 const SECTION: i32 = TITLE + 4;
 const QUEUED: i32 = TITLE + 5;
+const CURRENT: i32 = TITLE + 6;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
     /// Played before the current item.
     History,
-    /// Still to play.
+    /// The current item, then those still to play.
     Next,
 }
 
@@ -159,6 +163,7 @@ struct Row {
     section: Section,
     /// Queued with `Enqueue` rather than taken from the context.
     queued: bool,
+    current: bool,
 }
 
 impl Row {
@@ -166,6 +171,7 @@ impl Row {
         Arc::ptr_eq(&self.track, &other.track)
             && self.section == other.section
             && self.queued == other.queued
+            && self.current == other.current
     }
 }
 
@@ -183,12 +189,16 @@ struct Drag {
     item: ItemId,
     /// Its row when picked up.
     from: usize,
+    current: bool,
+    /// The rows played before the current item when picked up, the first ones.
+    played: usize,
     /// The session changed meanwhile.
     missed: bool,
 }
 
 pub struct QueueListRust {
     show_history: bool,
+    show_current: bool,
     history_count: i32,
     up_next_count: i32,
     left_count: i32,
@@ -205,6 +215,7 @@ impl Default for QueueListRust {
     fn default() -> Self {
         Self {
             show_history: false,
+            show_current: false,
             history_count: 0,
             up_next_count: 0,
             left_count: 0,
@@ -232,6 +243,9 @@ impl cxx_qt::Initialize for qobject::QueueList {
         );
         self.as_mut()
             .on_show_history_changed(|list| list.refresh(Duration::ZERO))
+            .release();
+        self.as_mut()
+            .on_show_current_changed(|list| list.refresh(Duration::ZERO))
             .release();
         self.as_mut().refresh(Duration::ZERO);
         self.load_context();
@@ -263,7 +277,7 @@ impl qobject::QueueList {
 
     /// Splits the session into sections again, after `delay`.
     fn refresh(mut self: Pin<&mut Self>, delay: Duration) {
-        let show_history = self.show_history;
+        let (show_history, show_current) = (self.show_history, self.show_current);
         let generation = {
             let mut list = self.as_mut().rust_mut();
             list.generation += 1;
@@ -283,19 +297,22 @@ impl qobject::QueueList {
                 let mut counts = Counts::default();
                 let mut rows = Vec::with_capacity(entries.len());
                 for (index, entry) in entries.iter().enumerate() {
+                    let current = position == Some(index);
                     let section = match position {
-                        Some(position) if index == position => continue,
                         Some(position) if index < position => Section::History,
                         _ => Section::Next,
                     };
-                    match section {
-                        Section::History => counts.history += 1,
-                        Section::Next => {
-                            counts.left += 1;
-                            counts.next += usize::from(entry.queued);
-                        }
-                    }
-                    if section == Section::History && !show_history {
+                    let shown = if current {
+                        show_current
+                    } else if section == Section::History {
+                        counts.history += 1;
+                        show_history
+                    } else {
+                        counts.left += 1;
+                        counts.next += usize::from(entry.queued);
+                        true
+                    };
+                    if !shown {
                         continue;
                     }
                     let track = catalog
@@ -307,6 +324,7 @@ impl qobject::QueueList {
                         track,
                         section,
                         queued: entry.queued,
+                        current,
                     });
                 }
                 let _ = thread.queue(move |list| list.show(generation, rows, counts));
@@ -407,6 +425,7 @@ impl qobject::QueueList {
             ),
             SECTION => QVariant::from(&QString::from(row.section.name())),
             QUEUED => QVariant::from(&row.queued),
+            CURRENT => QVariant::from(&row.current),
             _ => QVariant::default(),
         }
     }
@@ -420,6 +439,7 @@ impl qobject::QueueList {
             (COVER, "cover"),
             (SECTION, "section"),
             (QUEUED, "queued"),
+            (CURRENT, "current"),
         ] {
             roles.insert(role, QByteArray::from(name));
         }
@@ -454,31 +474,50 @@ impl qobject::QueueList {
         let Some(found) = self.row(row).filter(|found| found.section == Section::Next) else {
             return;
         };
-        let (item, from) = (found.item, row as usize);
+        let (item, from, current) = (found.item, row as usize, found.current);
+        let played = self
+            .rows
+            .iter()
+            .take_while(|row| row.section == Section::History)
+            .count();
         self.as_mut().rust_mut().drag = Some(Drag {
             item,
             from,
+            current,
+            played,
             missed: false,
         });
     }
 
-    fn drag_to(self: Pin<&mut Self>, row: i32) {
-        let Some(item) = self.drag.as_ref().map(|drag| drag.item) else {
+    fn drag_to(mut self: Pin<&mut Self>, row: i32) {
+        let Some(&Drag {
+            item,
+            current,
+            played,
+            ..
+        }) = self.drag.as_ref()
+        else {
             return;
         };
         let Some(from) = self.rows.iter().position(|row| row.item == item) else {
             return;
         };
-        let first = self
-            .rows
-            .iter()
-            .position(|row| row.section == Section::Next)
-            .unwrap_or(from);
+        let first = if current {
+            0
+        } else {
+            self.rows
+                .iter()
+                .position(|row| row.section == Section::Next && !row.current)
+                .unwrap_or(from)
+        };
         let to = usize::try_from(row)
             .unwrap_or(0)
             .min(self.rows.len() - 1)
             .max(first);
-        self.move_row(from, to);
+        self.as_mut().move_row(from, to);
+        if current {
+            self.split_at_current(from, to, played);
+        }
     }
 
     fn end_drag(mut self: Pin<&mut Self>, keep: bool) {
@@ -488,10 +527,12 @@ impl qobject::QueueList {
         let at = self.rows.iter().position(|row| row.item == drag.item);
         match at {
             Some(at) if keep && at != drag.from => {
-                bus::emit(MoveUpcoming {
-                    item: drag.item,
-                    before: self.rows.get(at + 1).map(|row| row.item),
-                });
+                let (item, before) = (drag.item, self.rows.get(at + 1).map(|row| row.item));
+                if drag.current {
+                    bus::emit(MoveCurrent { item, before });
+                } else {
+                    bus::emit(MoveUpcoming { item, before });
+                }
                 // Refreshes under way read the session before the move; this one waits for the
                 // session to make it.
                 self.refresh(MOVE_SETTLES);
@@ -499,6 +540,9 @@ impl qobject::QueueList {
             Some(at) => {
                 if !keep {
                     self.as_mut().move_row(at, drag.from);
+                    if drag.current {
+                        self.as_mut().split_at_current(at, drag.from, drag.played);
+                    }
                 }
                 if drag.missed {
                     self.refresh(Duration::ZERO);
@@ -524,6 +568,34 @@ impl qobject::QueueList {
             list.rows.insert(to, row);
         }
         self.as_mut().end_move_rows();
+    }
+
+    /// Sections the rows from `from` to `to` again, the current item dragged from one to the
+    /// other: above it the first `played` rows played, the others play after it.
+    fn split_at_current(mut self: Pin<&mut Self>, from: usize, to: usize, played: usize) {
+        let mut changed: Option<(usize, usize)> = None;
+        {
+            let mut list = self.as_mut().rust_mut();
+            for index in from.min(to)..=from.max(to) {
+                let section = if index < to.min(played) {
+                    Section::History
+                } else {
+                    Section::Next
+                };
+                if list.rows[index].section != section {
+                    list.rows[index].section = section;
+                    changed = Some((changed.map_or(index, |(first, _)| first), index));
+                }
+            }
+        }
+        if let Some((first, last)) = changed {
+            let root = QModelIndex::default();
+            let top_left = self.index(clamp(first), 0, &root);
+            let bottom_right = self.index(clamp(last), 0, &root);
+            let mut roles = QList::default();
+            roles.append(SECTION);
+            self.as_mut().data_changed(&top_left, &bottom_right, &roles);
+        }
     }
 }
 

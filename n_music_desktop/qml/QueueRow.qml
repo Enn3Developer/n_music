@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// An item of the queue: cover, title and artist, length; queued ones can be taken out. Those
-// still to play can be picked up with the mouse and dragged to another place.
+// An item of the queue: cover, title and artist, length; queued ones can be taken out, the
+// current one shows it plays. It and those still to play can be picked up with the mouse and
+// dragged to another place.
 Rectangle {
     id: row
 
@@ -14,6 +15,7 @@ Rectangle {
     required property string cover
     required property string section
     required property bool queued
+    required property bool current
     /// It is being dragged, shown `lift` away from its place.
     property bool dragged: false
     property real lift: 0
@@ -35,7 +37,7 @@ Rectangle {
     implicitHeight: dense ? 42 : 54
     radius: 8
     z: dragged ? 3 : 1
-    color: dragged ? Theme.raised : queued ? (mouse.containsMouse ? Theme.raised : Theme.surface) : mouse.containsMouse ? Theme.hover : "transparent"
+    color: dragged ? Theme.raised : current ? Theme.selected : queued ? (mouse.containsMouse ? Theme.raised : Theme.surface) : mouse.containsMouse ? Theme.hover : "transparent"
     border.width: dragged ? 1 : 0
     border.color: Theme.line2
     transform: Translate {
@@ -105,7 +107,7 @@ Rectangle {
             width: parent.width
             text: row.title
             elide: Text.ElideRight
-            color: row.section === "history" ? Theme.text2 : Theme.text
+            color: row.current ? Theme.accentText : row.section === "history" ? Theme.text2 : Theme.text
             font.pixelSize: 14
             font.weight: Font.DemiBold
         }
@@ -138,9 +140,17 @@ Rectangle {
         width: 36
         height: parent.height
 
+        PlayingBars {
+            anchors.centerIn: parent
+            visible: row.current
+            playing: row.current && Player.playing
+            size: 14
+            color: Theme.accentText
+            Accessible.name: Tr.t.now_playing
+        }
         IconButton {
             anchors.centerIn: parent
-            visible: row.queued
+            visible: row.queued && !row.current
             size: 32
             iconSize: 14
             stroke: 2.2
