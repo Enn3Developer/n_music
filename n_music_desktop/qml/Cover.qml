@@ -1,8 +1,8 @@
 import QtQuick
 import NMusic
 
-// A cover thumbnail with rounded corners, or an icon on a tile while there is none. Four
-// `paths` make a mosaic instead.
+// A cover thumbnail with rounded corners, or an icon on a tile when there is none; a bare tile
+// while it loads. Four `paths` make a mosaic instead.
 Rectangle {
     id: cover
 
@@ -19,7 +19,7 @@ Rectangle {
 
     Icon {
         anchors.centerIn: parent
-        visible: image.status !== Image.Ready
+        visible: image.status === Image.Null || image.status === Image.Error
         name: cover.iconName
         size: Math.round(Math.min(cover.size * 0.45, 72))
         color: Theme.text3
