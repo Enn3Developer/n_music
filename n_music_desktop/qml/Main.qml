@@ -256,6 +256,23 @@ ApplicationWindow {
             Layout.fillWidth: true
             queueOpen: window.page === "queue"
             onToggleQueue: window.toggleQueue()
+            onMiniRequested: {
+                window.hide();
+                mini.show();
+                mini.raise();
+                mini.requestActivate();
+            }
+        }
+    }
+
+    // Stands in for this window while it hides.
+    MiniPlayer {
+        id: mini
+        onExpandRequested: {
+            mini.hide();
+            window.show();
+            window.raise();
+            window.requestActivate();
         }
     }
 

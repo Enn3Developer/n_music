@@ -11,6 +11,8 @@ Rectangle {
     property bool queueOpen: false
 
     signal toggleQueue
+    /// The mini player was asked for.
+    signal miniRequested
 
     /// Width of the side columns; the middle one is 1.6 times as wide.
     readonly property real unit: Math.max(0, width - 40 - 48) / 3.6
@@ -204,6 +206,13 @@ Rectangle {
         visible: !Shell.narrow
         spacing: 6
 
+        IconButton {
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "mini-player"
+            color: Theme.text2
+            text: Tr.t.mini_player
+            onClicked: bar.miniRequested()
+        }
         IconButton {
             anchors.verticalCenter: parent.verticalCenter
             iconName: "queue"
