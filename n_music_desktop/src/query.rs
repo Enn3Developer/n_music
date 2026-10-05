@@ -39,6 +39,14 @@ pub fn parse_sort(sort: &str, playlist: Option<PlaylistId>) -> Vec<SortKey> {
                 "lastPlayed" => SortField::LastPlayed,
                 "location" => SortField::Location,
                 "added" => SortField::Added(playlist?),
+                "genre" => unimplemented!(
+                    "n_music_core cannot sort by genre: SortField has no genre, so the Genre \
+                     column cannot order the tracks"
+                ),
+                "format" => unimplemented!(
+                    "n_music_core cannot sort by format: SortField has no codec, so the Format \
+                     column cannot order the tracks"
+                ),
                 _ => return None,
             };
             Some(SortKey { field, descending })

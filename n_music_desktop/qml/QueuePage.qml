@@ -11,29 +11,8 @@ Item {
 
     readonly property real nowWidth: Math.max(300, Math.min(360, width - 56 - 32 - 420))
 
-    /// Codec, sample rate and bit depth, like `FLAC · 44.1 kHz · 16-bit`.
-    readonly property string format: {
-        const parts = [];
-        if (Player.codec !== "")
-            parts.push(Player.codec);
-        if (Player.sampleRate > 0) {
-            const rate = Player.sampleRate % 1000 === 0 ? Player.sampleRate / 1000 : (Player.sampleRate / 1000).toLocaleString(Qt.locale(), "f", 1);
-            parts.push(Tr.t.sample_rate_khz.arg(rate));
-        }
-        if (Player.bits > 0)
-            parts.push(Tr.t.bit_depth.arg(Player.bits));
-        return parts.join(" · ");
-    }
-
-    /// The ReplayGain playback can apply: the album's, else the track's.
-    readonly property string gain: {
-        const album = !isNaN(Player.albumGain);
-        const value = album ? Player.albumGain : Player.trackGain;
-        if (isNaN(value))
-            return "";
-        const decibels = (value < 0 ? "−" : "+") + Math.abs(value).toLocaleString(Qt.locale(), "f", 1);
-        return (album ? Tr.t.replaygain_album : Tr.t.replaygain_track).arg(decibels);
-    }
+    readonly property string format: Format.audio(Player.codec, Player.sampleRate, Player.bits)
+    readonly property string gain: Format.gain(Player.albumGain, Player.trackGain)
 
     readonly property string contextDescription: [queue.contextLabel === "" ? Tr.t.library : queue.contextLabel, queue.contextDetail, Player.shuffle ? Tr.t.shuffled : "", Tr.t.left_count.arg(Format.number(queue.leftCount))].filter(part => part !== "").join(" · ")
 

@@ -18,6 +18,8 @@ Rectangle {
     required property bool current
     required property real lastPlayed
     required property real added
+    required property string genre
+    required property string codec
     required property TrackColumns columns
     property bool selected: false
     /// Its menu is open.
@@ -126,6 +128,16 @@ Rectangle {
             color: Theme.text2
             font.pixelSize: 13
         }
+        Label {
+            width: row.columns.genre
+            visible: width > 0
+            rightPadding: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: row.genre
+            elide: Text.ElideRight
+            color: Theme.text2
+            font.pixelSize: 13
+        }
         Value {
             width: row.columns.year
             text: row.year
@@ -142,6 +154,31 @@ Rectangle {
         Value {
             width: row.columns.lastPlayed
             text: row.lastPlayed > 0 ? Format.ago(row.lastPlayed) : Tr.t.never_played
+        }
+        Item {
+            width: row.columns.format
+            visible: width > 0
+            height: parent.height
+
+            Label {
+                x: 14
+                anchors.verticalCenter: parent.verticalCenter
+                visible: row.codec !== ""
+                topPadding: 2
+                bottomPadding: 2
+                leftPadding: 6
+                rightPadding: 6
+                text: row.codec
+                color: Theme.text2
+                font.pixelSize: 12
+
+                background: Rectangle {
+                    radius: 4
+                    color: "transparent"
+                    border.width: 1
+                    border.color: Theme.border
+                }
+            }
         }
         Value {
             width: row.columns.time

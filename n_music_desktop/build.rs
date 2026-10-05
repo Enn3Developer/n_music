@@ -24,6 +24,7 @@ const QML: &[&str] = &[
     "qml/MenuButton.qml",
     "qml/MenuEntry.qml",
     "qml/NavItem.qml",
+    "qml/NowPlayingPanel.qml",
     "qml/PillButton.qml",
     "qml/PlaceholderPage.qml",
     "qml/PlayerBar.qml",
@@ -65,6 +66,7 @@ const QML_SINGLETONS: &[&str] = &[
     "qml/Format.qml",
     "qml/Filters.qml",
     "qml/SourceKinds.qml",
+    "qml/Shell.qml",
 ];
 
 /// The Rust side of the interface.

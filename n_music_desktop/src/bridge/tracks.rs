@@ -136,6 +136,8 @@ const COVER: i32 = TITLE + 6;
 const CURRENT: i32 = TITLE + 7;
 const LAST_PLAYED: i32 = TITLE + 8;
 const ADDED: i32 = TITLE + 9;
+const GENRE: i32 = TITLE + 10;
+const CODEC: i32 = TITLE + 11;
 
 struct Row {
     track: Track,
@@ -425,6 +427,10 @@ impl qobject::TrackList {
             CURRENT => QVariant::from(&(self.current.as_ref() == Some(&track.locator))),
             LAST_PLAYED => QVariant::from(&(row.last_played as f64)),
             ADDED => QVariant::from(&(row.added as f64)),
+            GENRE => QVariant::from(&QString::from(&track.genres.join(", "))),
+            CODEC => QVariant::from(&QString::from(
+                &track.codec.as_deref().unwrap_or_default().to_uppercase(),
+            )),
             _ => QVariant::default(),
         }
     }
@@ -442,6 +448,8 @@ impl qobject::TrackList {
             (CURRENT, "current"),
             (LAST_PLAYED, "lastPlayed"),
             (ADDED, "added"),
+            (GENRE, "genre"),
+            (CODEC, "codec"),
         ] {
             roles.insert(role, QByteArray::from(name));
         }

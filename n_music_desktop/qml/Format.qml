@@ -49,10 +49,39 @@ QtObject {
         return new Date(seconds * 1000).toLocaleDateString(Qt.locale(), "d MMM yyyy");
     }
 
-    /// A total length like `21 h 40 min`.
+    /// Codec, sample rate and bit depth, like `FLAC · 44.1 kHz · 16-bit`.
+    function audio(codec: string, sampleRate: int, bits: int): string {
+        const parts = [];
+        if (codec !== "")
+            parts.push(codec);
+        if (sampleRate > 0) {
+            const rate = sampleRate % 1000 === 0 ? sampleRate / 1000 : (sampleRate / 1000).toLocaleString(Qt.locale(), "f", 1);
+            parts.push(Tr.t.sample_rate_khz.arg(rate));
+        }
+        if (bits > 0)
+            parts.push(Tr.t.bit_depth.arg(bits));
+        return parts.join(" · ");
+    }
+
+    /// The ReplayGain playback can apply, like `ReplayGain album −6.2 dB`: the album's, else
+    /// the track's; empty without either.
+    function gain(albumGain: real, trackGain: real): string {
+        const album = !isNaN(albumGain);
+        const value = album ? albumGain : trackGain;
+        if (isNaN(value))
+            return "";
+        const decibels = (value < 0 ? "−" : "+") + Math.abs(value).toLocaleString(Qt.locale(), "f", 1);
+        return (album ? Tr.t.replaygain_album : Tr.t.replaygain_track).arg(decibels);
+    }
+
+    /// A total length like `21 h 40 min`, or `13 days 2 h` from a day.
     function duration(seconds: real): string {
         const minutes = Math.round(seconds / 60);
         const hours = Math.floor(minutes / 60);
+        if (hours >= 24) {
+            const days = Math.floor(hours / 24);
+            return (days === 1 ? Tr.t.duration_day : Tr.t.duration_days).arg(number(days)).arg(hours % 24);
+        }
         if (hours > 0)
             return Tr.t.duration_hours.arg(number(hours)).arg(minutes % 60);
         return Tr.t.duration_minutes.arg(minutes);

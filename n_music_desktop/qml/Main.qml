@@ -59,6 +59,8 @@ ApplicationWindow {
         onActivated: Player.toggle()
     }
     onClosing: AppState.windowClosing(width, height)
+    onWidthChanged: Shell.width = width
+    Component.onCompleted: Shell.width = width
     onVisibilityChanged: AppState.setVisible(visibility !== Window.Minimized && visibility !== Window.Hidden)
 
     FontLoader {
@@ -233,6 +235,13 @@ ApplicationWindow {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 20
                 }
+            }
+
+            // The queue page shows all of it already.
+            NowPlayingPanel {
+                Layout.fillHeight: true
+                visible: Shell.wide && window.section !== "queue"
+                onNavigate: to => window.page = to
             }
         }
 

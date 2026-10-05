@@ -59,7 +59,8 @@ Item {
                 spacing: 16
 
                 ColumnLayout {
-                    Layout.alignment: Qt.AlignBottom
+                    Layout.alignment: Shell.wide ? Qt.AlignVCenter : Qt.AlignBottom
+                    Layout.rightMargin: Shell.wide ? 8 : 0
                     spacing: 4
 
                     Label {
@@ -78,11 +79,19 @@ Item {
                         }
                     }
                 }
+                // Holds the tools in wide windows.
+                RowLayout {
+                    id: wideSlot
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: Shell.wide
+                }
                 Item {
                     Layout.fillWidth: true
+                    visible: !Shell.wide
                 }
                 RowLayout {
-                    Layout.alignment: Qt.AlignBottom
+                    Layout.alignment: Shell.wide ? Qt.AlignVCenter : Qt.AlignBottom
                     spacing: 8
 
                     PillButton {
@@ -101,54 +110,11 @@ Item {
                 }
             }
 
+            // Holds the tools below the title in narrower windows.
             RowLayout {
+                id: regularSlot
                 Layout.fillWidth: true
-                spacing: 8
-
-                SearchField {
-                    id: search
-                    Layout.alignment: Qt.AlignTop
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 200
-                    Layout.preferredWidth: 360
-                    Layout.maximumWidth: 360
-                    placeholder: Tr.t.search_tracks
-                }
-                Flow {
-                    Layout.alignment: Qt.AlignTop
-                    Layout.fillWidth: true
-                    topPadding: 3
-                    spacing: 8
-
-                    Repeater {
-                        model: page.rules.length
-
-                        delegate: FilterChip {
-                            required property int index
-                            readonly property var words: Filters.describe(page.rules[index])
-
-                            visible: words !== null
-                            name: words ? words.name : ""
-                            detail: words ? words.text : ""
-                            onClicked: drawer.open()
-                            onRemove: page.removeRule(index)
-                        }
-                    }
-                    DashedButton {
-                        implicitHeight: 32
-                        radius: 16
-                        iconName: "filter"
-                        color: Theme.text2
-                        font.weight: Font.Normal
-                        text: Tr.t.filter
-                        onClicked: drawer.open()
-                    }
-                }
-                SortButton {
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: 3
-                    list: tracks
-                }
+                visible: !Shell.wide
             }
         }
 
@@ -177,6 +143,59 @@ Item {
                 action: empty && !Scan.running ? Tr.t.open_sources : ""
                 onTriggered: page.navigate("settings:sources")
             }
+        }
+    }
+
+    // Searching, filtering and sorting, beside the title in wide windows and below it otherwise;
+    // one of each, so the search keeps its text across the move.
+    RowLayout {
+        parent: Shell.wide ? wideSlot : regularSlot
+        Layout.fillWidth: true
+        spacing: 8
+
+        SearchField {
+            id: search
+            Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
+            Layout.minimumWidth: 200
+            Layout.preferredWidth: Shell.wide ? 380 : 360
+            Layout.maximumWidth: Shell.wide ? 380 : 360
+            placeholder: Tr.t.search_tracks
+        }
+        Flow {
+            Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
+            topPadding: 3
+            spacing: 8
+
+            Repeater {
+                model: page.rules.length
+
+                delegate: FilterChip {
+                    required property int index
+                    readonly property var words: Filters.describe(page.rules[index])
+
+                    visible: words !== null
+                    name: words ? words.name : ""
+                    detail: words ? words.text : ""
+                    onClicked: drawer.open()
+                    onRemove: page.removeRule(index)
+                }
+            }
+            DashedButton {
+                implicitHeight: 32
+                radius: 16
+                iconName: "filter"
+                color: Theme.text2
+                font.weight: Font.Normal
+                text: Tr.t.filter
+                onClicked: drawer.open()
+            }
+        }
+        SortButton {
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: 3
+            list: tracks
         }
     }
 

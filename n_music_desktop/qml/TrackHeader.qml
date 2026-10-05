@@ -84,6 +84,11 @@ Item {
             field: "album"
         }
         HeaderCell {
+            width: header.columns.genre
+            text: Tr.t.column_genre
+            field: "genre"
+        }
+        HeaderCell {
             width: header.columns.year
             alignRight: true
             text: Tr.t.column_year
@@ -107,6 +112,12 @@ Item {
             alignRight: true
             text: Tr.t.column_last_played
             field: "lastPlayed"
+        }
+        HeaderCell {
+            width: header.columns.format
+            leftPadding: 14
+            text: Tr.t.column_format
+            field: "format"
         }
         HeaderCell {
             width: header.columns.time
