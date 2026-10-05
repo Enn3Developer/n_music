@@ -18,9 +18,8 @@ pub mod qobject {
         #[qml_singleton]
         type Catalog = super::CatalogRust;
 
-        /// The library's values of `field` (`artist`, `album_artist`, `album`, `genre`,
-        /// `codec`, or `folder` for the folders holding tracks), each once whatever its case,
-        /// sorted.
+        /// The library's values of `field` (`artist`, `album_artist`, `album`, `genre` or
+        /// `codec`), each once whatever its case, sorted.
         #[qinvokable]
         fn values(self: &Catalog, field: &QString) -> QStringList;
 
@@ -32,7 +31,6 @@ pub mod qobject {
 
 use crate::hub::hub;
 use cxx_qt_lib::{QList, QString, QStringList, QUrl};
-use n_music_core::source::Locator;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -60,14 +58,6 @@ impl qobject::Catalog {
                 "album" => track.album.iter().for_each(|album| add(album)),
                 "genre" => track.genres.iter().for_each(|genre| add(genre)),
                 "codec" => track.codec.iter().for_each(|codec| add(codec)),
-                "folder" => {
-                    if let Locator::Local(path) = &track.locator {
-                        Path::new(path)
-                            .parent()
-                            .iter()
-                            .for_each(|folder| add(&folder.to_string_lossy()));
-                    }
-                }
                 _ => return QStringList::default(),
             }
         }

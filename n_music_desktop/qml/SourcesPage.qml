@@ -240,7 +240,7 @@ Item {
 
                                     width: page.cardWidth
                                     source: modelData
-                                    onClicked: page.navigate(Filters.collectionPage("source", modelData.prefix, ""))
+                                    onClicked: page.navigate(Filters.collectionPage("source", modelData.location, ""))
                                     onRemoveRequested: removal.askFor(modelData.location, modelData.name)
                                 }
                             }

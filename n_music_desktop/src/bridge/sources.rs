@@ -17,11 +17,10 @@ pub mod qobject {
         #[qml_element]
         #[qml_singleton]
         /// The sources in the order added, as
-        /// `{ name, kind, location, prefix, tracks, cover, available, updating }`: `kind` is
-        /// `folder` or `web`, `prefix` what its page goes by (see `Filters.collectionKey`),
-        /// `cover` the cover of one of its tracks or empty, `available` false when the folder is
-        /// gone or the playlist could not be reached, and `updating` true while it is scanned or
-        /// waits for a scan.
+        /// `{ name, kind, location, tracks, cover, available, updating }`: `kind` is `folder` or
+        /// `web`, `tracks` how many tracks of the library it listed, `cover` the cover of one of
+        /// them or empty, `available` false when the folder is gone or the playlist could not be
+        /// reached, and `updating` true while it is scanned or waits for a scan.
         #[qproperty(QVariant, items)]
         /// The library reported its sources: `items` lists them.
         #[qproperty(bool, loaded)]
@@ -86,7 +85,7 @@ use n_music_core::library::catalog::Catalog;
 use n_music_core::messages::{ScanRequested, SetLibraryRoots, SetStreamCache};
 use n_music_core::settings::StreamCacheSettings;
 use n_music_core::source::Locator;
-use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub struct SourcesRust {
@@ -124,7 +123,6 @@ struct Source {
     name: String,
     kind: &'static str,
     location: String,
-    prefix: String,
     tracks: usize,
     cover: Option<PathBuf>,
     available: bool,
@@ -190,7 +188,6 @@ impl qobject::Sources {
             item.insert(QString::from("name"), text(&source.name));
             item.insert(QString::from("kind"), text(source.kind));
             item.insert(QString::from("location"), text(&source.location));
-            item.insert(QString::from("prefix"), text(&source.prefix));
             item.insert(
                 QString::from("tracks"),
                 QVariant::from(&i32::try_from(source.tracks).unwrap_or(i32::MAX)),
@@ -339,39 +336,15 @@ fn name(location: &str) -> String {
     }
 }
 
-/// What the paths of the tracks in the folder `root` start with, as the scan writes them.
-fn prefix(root: &str) -> String {
-    if root.ends_with(MAIN_SEPARATOR) {
-        root.to_string()
-    } else {
-        format!("{root}{MAIN_SEPARATOR}")
-    }
-}
-
-/// Whether the track at a location comes from the source `root`: inside its folder, or listed
-/// by its playlist.
-fn holds<'a>(catalog: &'a Catalog, root: &'a Locator) -> impl Fn(&Locator) -> bool + 'a {
-    let prefix = match root {
-        Locator::Local(root) => prefix(root),
-        _ => String::new(),
-    };
-    let listed = catalog.listed(root);
-    move |track| match (root, track) {
-        (Locator::Local(_), Locator::Local(path)) => path.starts_with(&prefix),
-        (Locator::Web(_), _) => listed.is_some_and(|listed| listed.tracks.contains(track)),
-        _ => false,
-    }
-}
-
-/// `root` with how many tracks of the library come from it, and the cover of the first with
-/// one.
+/// `root` with how many tracks of the library it listed, as its page's `source` rule finds
+/// them, and the cover of the first with one.
 fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
     let location = root.to_string();
-    let holds = holds(catalog, root);
+    let listed = catalog.listed(root);
     let mut tracks = 0;
     let mut cover = None;
     for track in catalog.tracks() {
-        if holds(&track.locator) {
+        if listed.is_some_and(|listed| listed.tracks.contains(&track.locator)) {
             tracks += 1;
             if cover.is_none() {
                 cover = track.cover.clone();
@@ -391,11 +364,6 @@ fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
     Source {
         name: name(&location),
         kind,
-        // What its page goes by: the folder its tracks are in, or the playlist.
-        prefix: match root {
-            Locator::Local(_) => prefix(&location),
-            _ => location.clone(),
-        },
         location,
         tracks,
         cover,

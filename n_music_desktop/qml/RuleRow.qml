@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import NMusic
 
@@ -77,7 +76,7 @@ Item {
 
         TextBox {
             Layout.fillWidth: true
-            visible: row.kind === "text" || row.kind === "folder"
+            visible: row.kind === "text"
             text: row.rule.value
             suggest: row.field.values ?? ""
             Accessible.name: row.field.label
@@ -88,22 +87,15 @@ Item {
         }
         SelectBox {
             Layout.fillWidth: true
-            visible: row.kind === "playlist"
-            options: Filters.playlistOptions
+            visible: row.kind === "playlist" || row.kind === "source"
+            options: row.kind === "source" ? Filters.sourceOptions : Filters.playlistOptions
             value: String(row.rule.value)
+            popupWidth: Math.max(width, 220)
             Accessible.name: row.field.label
             onActivated: value => {
                 row.rule.value = value;
                 row.reshaped();
             }
-        }
-        IconButton {
-            visible: row.kind === "folder"
-            size: 36
-            iconSize: 16
-            iconName: "folder"
-            text: Tr.t.choose_folder
-            onClicked: picker.open()
         }
 
         TextBox {
@@ -178,14 +170,5 @@ Item {
         color: Theme.text3
         text: Tr.t.remove_rule
         onClicked: row.remove()
-    }
-
-    FolderDialog {
-        id: picker
-        title: Tr.t.choose_folder
-        onAccepted: {
-            row.rule.value = Catalog.folder(selectedFolder);
-            row.reshaped();
-        }
     }
 }

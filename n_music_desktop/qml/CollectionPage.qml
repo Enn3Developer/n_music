@@ -25,7 +25,7 @@ Item {
         })[kind]
     /// The source listed, as `Sources.items` lists it; null when the page lists no source, or
     /// one taken out.
-    readonly property var source: kind === "source" ? Sources.items.find(source => source.prefix === key.location) ?? null : null
+    readonly property var source: kind === "source" ? Sources.items.find(source => source.location === key.location) ?? null : null
 
     readonly property string summary: {
         if (!tracks.ready)

@@ -146,7 +146,6 @@ fn rule(rule: &Value) -> Option<Filter> {
         "album" => not(Filter::Album(text()?), op == "is_not"),
         "genre" => not(Filter::Genre(text()?), op == "is_not"),
         "codec" => not(Filter::Codec(text()?), op == "is_not"),
-        "folder" => not(Filter::Folder(text()?), op == "not_in"),
         "source" => not(Filter::Library(sources::locator(&text()?)), op == "is_not"),
         "playlist" => not(
             Filter::Playlist(PlaylistId(number(&rule["value"])?)),
@@ -249,7 +248,6 @@ fn rule_spec(filter: &Filter) -> Option<Value> {
         Filter::Album(value) => text("album", ["is", "is_not"], value),
         Filter::Genre(value) => text("genre", ["is", "is_not"], value),
         Filter::Codec(value) => text("codec", ["is", "is_not"], value),
-        Filter::Folder(value) => text("folder", ["in", "not_in"], value),
         Filter::Library(library) => text("source", ["is", "is_not"], &library.to_string()),
         Filter::Playlist(id) => text("playlist", ["in", "not_in"], &id.0.to_string()),
         _ if negated => return None,

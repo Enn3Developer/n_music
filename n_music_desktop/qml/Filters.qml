@@ -54,12 +54,10 @@ QtObject {
                 ops: ["is", "is_not"],
                 values: "codec"
             },
-            folder: {
-                label: Tr.t.field_folder_long,
-                name: Tr.t.field_folder,
-                kind: "folder",
-                ops: ["in", "not_in"],
-                values: "folder"
+            source: {
+                label: Tr.t.field_source,
+                kind: "source",
+                ops: ["is", "is_not"]
             },
             playlist: {
                 label: Tr.t.field_playlist_long,
@@ -86,7 +84,7 @@ QtObject {
 
     /// The fields as choices under headings; a box shows the short name.
     readonly property var fieldOptions: {
-        const groups = [[Tr.t.filter_text, ["search"]], [Tr.t.filter_tags, ["artist", "album_artist", "album", "genre", "year", "codec"]], [Tr.t.filter_where, ["folder", "playlist"]], [Tr.t.filter_listening, ["plays", "played_within", "not_played_within"]]];
+        const groups = [[Tr.t.filter_text, ["search"]], [Tr.t.filter_tags, ["artist", "album_artist", "album", "genre", "year", "codec"]], [Tr.t.filter_where, ["source", "playlist"]], [Tr.t.filter_listening, ["plays", "played_within", "not_played_within"]]];
         const options = [];
         for (const [heading, names] of groups) {
             options.push({
@@ -185,12 +183,51 @@ QtObject {
                 label: playlist.name
             }))
 
-    function newRule(field: string): var {
+    /// The sources as choices under their kinds; one named like another also names what holds
+    /// it.
+    readonly property var sourceOptions: {
+        const sources = Sources.items;
+        const options = [];
+        for (const kind of SourceKinds.all) {
+            const ofKind = sources.filter(source => source.kind === kind.value);
+            if (ofKind.length === 0)
+                continue;
+            options.push({
+                heading: kind.group
+            });
+            for (const source of ofKind) {
+                const shared = sources.some(other => other.location !== source.location && other.name === source.name);
+                options.push({
+                    value: source.location,
+                    label: shared ? source.name + " (" + holder(source.location) + ")" : source.name
+                });
+            }
+        }
+        return options;
+    }
+
+    /// The name of the folder holding `location`, or the server of a playlist at its root.
+    function holder(location: string): string {
+        const parts = location.replace(/^https?:\/\//i, "").split(/[\\/]/).filter(part => part !== "");
+        return parts.length > 1 ? parts[parts.length - 2] : location;
+    }
+
+    /// What a rule testing `field` starts with: the first playlist or source, if it picks one.
+    function firstValue(field: string): string {
         const playlists = Playlists.items;
+        const sources = Sources.items;
+        if (field === "playlist" && playlists.length > 0)
+            return String(playlists[0].id);
+        if (field === "source" && sources.length > 0)
+            return sources[0].location;
+        return "";
+    }
+
+    function newRule(field: string): var {
         return {
             field: field,
             op: fields[field].ops[0],
-            value: field === "playlist" && playlists.length > 0 ? String(playlists[0].id) : "",
+            value: firstValue(field),
             from: "",
             to: "",
             amount: "30",
@@ -270,12 +307,19 @@ QtObject {
         const name = shortName(rule.field);
         switch (field.kind) {
         case "text":
-        case "folder":
             {
                 const value = String(rule.value).trim();
                 return value === "" ? null : {
                     name: name,
                     text: Tr.t["op_" + rule.op] + " " + value
+                };
+            }
+        case "source":
+            {
+                const source = sourceOptions.find(option => option.heading === undefined && option.value === rule.value);
+                return source === undefined ? null : {
+                    name: name,
+                    text: Tr.t["op_" + rule.op] + " " + source.label
                 };
             }
         case "playlist":
@@ -336,7 +380,7 @@ QtObject {
     }
 
     /// What a page of `kind` lists, as `{ name, artist }`, from what follows its `:`; a
-    /// source's also has its `location`: the folder its tracks are in, or the playlist.
+    /// source's also has its `location`, as `Sources.items` writes it.
     function collectionKey(kind: string, argument: string): var {
         const text = decodeURIComponent(argument);
         if (kind === "source")
@@ -369,15 +413,13 @@ QtObject {
         if (kind === "source")
             return JSON.stringify({
                 match: "all",
-                rules: [SourceKinds.of(key.location) === "web" ? {
+                rules: [
+                    {
                         field: "source",
                         op: "is",
                         value: key.location
-                    } : {
-                        field: "folder",
-                        op: "in",
-                        value: key.location
-                    }]
+                    }
+                ]
             });
         const rules = [key.name === "" ? {
                 field: kind,
