@@ -18,12 +18,17 @@ ApplicationWindow {
             tracks: true
         })
 
+    /// The window was maximized when it last showed, to reopen that way.
+    property bool maximized: AppState.windowMaximized
+    /// The window's size when it is not maximized, to reopen at.
+    property size normalSize: Qt.size(AppState.windowWidth, AppState.windowHeight)
+
     // The saved size, shrunk to fit smaller screens.
     width: Math.min(AppState.windowWidth, Screen.desktopAvailableWidth)
     height: Math.min(AppState.windowHeight, Screen.desktopAvailableHeight)
     minimumWidth: 360
     minimumHeight: 480
-    visible: true
+    visibility: AppState.windowMaximized ? Window.Maximized : Window.Windowed
     title: "N Music"
     color: Theme.bg
     font.family: Theme.font
@@ -72,10 +77,34 @@ ApplicationWindow {
         enabled: !Sources.firstRun
         onActivated: History.forward()
     }
-    onClosing: AppState.windowClosing(width, height)
-    onWidthChanged: Shell.width = width
+    onClosing: {
+        if (visibility === Window.Windowed)
+            normalSize = Qt.size(width, height);
+        AppState.windowClosing(normalSize.width, normalSize.height, maximized);
+    }
+    onWidthChanged: {
+        Shell.width = width;
+        normalSizeTimer.restart();
+    }
+    onHeightChanged: normalSizeTimer.restart()
     Component.onCompleted: Shell.width = width
-    onVisibilityChanged: AppState.setVisible(visibility !== Window.Minimized && visibility !== Window.Hidden)
+    onVisibilityChanged: {
+        AppState.setVisible(visibility !== Window.Minimized && visibility !== Window.Hidden);
+        // Minimized or hidden, it stays maximized or not as it was.
+        if (visibility === Window.Windowed || visibility === Window.Maximized)
+            maximized = visibility === Window.Maximized;
+    }
+
+    // Maximizing may resize the window just before it says it is maximized: a new size is its
+    // size when not maximized only once it held a moment.
+    Timer {
+        id: normalSizeTimer
+        interval: 500
+        onTriggered: {
+            if (window.visibility === Window.Windowed)
+                window.normalSize = Qt.size(window.width, window.height);
+        }
+    }
 
     FontLoader {
         source: "../assets/fonts/Figtree-Regular.ttf"

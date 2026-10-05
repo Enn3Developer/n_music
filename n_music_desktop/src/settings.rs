@@ -50,6 +50,9 @@ impl Section for UiSettings {
 pub struct WindowSize {
     pub width: usize,
     pub height: usize,
+    /// The window was maximized; `width` and `height` are its size when it is not.
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 impl Default for WindowSize {
@@ -57,6 +60,7 @@ impl Default for WindowSize {
         Self {
             width: 1280,
             height: 800,
+            maximized: false,
         }
     }
 }

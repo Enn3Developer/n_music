@@ -30,6 +30,8 @@ pub mod qobject {
         #[qproperty(QStringList, hidden_columns)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
+        /// The window was maximized when it last closed, to reopen that way.
+        #[qproperty(bool, window_maximized)]
         #[qproperty(QString, version)]
         /// 0 plays tracks as mastered, 1 levels each track, 2 each album; sent when changed.
         #[qproperty(i32, replay_gain)]
@@ -37,9 +39,10 @@ pub mod qobject {
         #[qproperty(QString, logs_folder)]
         type AppState = super::AppStateRust;
 
-        /// Saves the window size, when it is to be remembered.
+        /// Saves the window's size when not maximized and whether it was maximized, when they are
+        /// to be remembered.
         #[qinvokable]
-        fn window_closing(self: &AppState, width: i32, height: i32);
+        fn window_closing(self: &AppState, width: i32, height: i32, maximized: bool);
 
         /// Whether the window can be seen; the core sends no positions while it cannot.
         #[qinvokable]
@@ -78,6 +81,7 @@ pub struct AppStateRust {
     hidden_columns: QStringList,
     window_width: i32,
     window_height: i32,
+    window_maximized: bool,
     version: QString,
     replay_gain: i32,
     logs_folder: QString,
@@ -96,6 +100,7 @@ impl Default for AppStateRust {
             hidden_columns: QStringList::default(),
             window_width: size.width as i32,
             window_height: size.height as i32,
+            window_maximized: size.maximized,
             version: QString::from(env!("CARGO_PKG_VERSION")),
             replay_gain: 0,
             logs_folder: QString::default(),
@@ -124,6 +129,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_hidden_columns(QStringList::from(&hidden));
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
+        self.as_mut().set_window_maximized(size.maximized);
         self.as_mut()
             .set_replay_gain(match settings::replay_gain() {
                 ReplayGainMode::Off => 0,
@@ -193,12 +199,13 @@ impl cxx_qt::Initialize for qobject::AppState {
 }
 
 impl qobject::AppState {
-    fn window_closing(&self, width: i32, height: i32) {
+    fn window_closing(&self, width: i32, height: i32, maximized: bool) {
         if self.save_window_size {
             settings::ui().update(|ui| {
                 ui.window_size = WindowSize {
                     width: width.max(1) as usize,
                     height: height.max(1) as usize,
+                    maximized,
                 };
             });
         }
