@@ -1,5 +1,12 @@
 {
   "about": "About",
+  "accent": "Accent colour",
+  "accent_amber": "Amber",
+  "accent_blue": "Blue",
+  "accent_green": "Green",
+  "accent_rose": "Rose",
+  "accent_teal": "Teal",
+  "accent_violet": "Violet",
   "add_group": "Add group",
   "add_rule": "Add rule",
   "add_rule_to_group": "Add rule to group",

@@ -10,10 +10,51 @@ QtObject {
 
     readonly property string font: "Figtree"
 
-    readonly property color accent: "#F0A13A"
-    readonly property color accentInk: "#1A1206"
-    // Amber text fails contrast on light grounds, so light mode darkens it.
-    readonly property color accentText: dark ? accent : "#9A5800"
+    /// The accent colours to pick from, by hue: the fill, what goes on it, and text in the
+    /// accent on light grounds, where the fill fails contrast. Dark grounds take the fill.
+    readonly property var accents: [
+        {
+            name: "amber",
+            fill: "#F0A13A",
+            ink: "#1A1206",
+            lightText: "#9A5800"
+        },
+        {
+            name: "green",
+            fill: "#4FC98E",
+            ink: "#04150D",
+            lightText: "#176E46"
+        },
+        {
+            name: "teal",
+            fill: "#3CC4C0",
+            ink: "#031615",
+            lightText: "#0D6C69"
+        },
+        {
+            name: "blue",
+            fill: "#6AA6FF",
+            ink: "#06111F",
+            lightText: "#1F5CC2"
+        },
+        {
+            name: "violet",
+            fill: "#A68BFA",
+            ink: "#120A26",
+            lightText: "#6B45D1"
+        },
+        {
+            name: "rose",
+            fill: "#F2779B",
+            ink: "#22070F",
+            lightText: "#B52A5B"
+        }
+    ]
+    readonly property var preset: accents.find(accent => accent.name === AppState.accent) ?? accents[0]
+
+    readonly property color accent: preset.fill
+    readonly property color accentInk: preset.ink
+    readonly property color accentText: dark ? accent : preset.lightText
 
     readonly property color bg: dark ? "#111316" : "#F6F7F9"
     readonly property color side: dark ? "#0C0E10" : "#ECEEF2"

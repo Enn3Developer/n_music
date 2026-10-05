@@ -20,6 +20,8 @@ pub mod qobject {
         #[qproperty(bool, check_updates)]
         /// The mini player stays above other windows; saved when changed.
         #[qproperty(bool, mini_on_top)]
+        /// One of `Theme.accents`; saved when changed.
+        #[qproperty(QString, accent)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         #[qproperty(QString, version)]
@@ -53,6 +55,7 @@ pub struct AppStateRust {
     save_window_size: bool,
     check_updates: bool,
     mini_on_top: bool,
+    accent: QString,
     window_width: i32,
     window_height: i32,
     version: QString,
@@ -68,6 +71,7 @@ impl Default for AppStateRust {
             save_window_size: false,
             check_updates: true,
             mini_on_top: true,
+            accent: QString::from("amber"),
             window_width: size.width as i32,
             window_height: size.height as i32,
             version: QString::from(env!("CARGO_PKG_VERSION")),
@@ -89,6 +93,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_save_window_size(ui.save_window_size);
         self.as_mut().set_check_updates(ui.check_updates);
         self.as_mut().set_mini_on_top(ui.mini_on_top);
+        self.as_mut().set_accent(QString::from(&ui.accent));
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
         self.as_mut()
@@ -133,6 +138,12 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_mini_on_top_changed(|app| {
                 let on_top = *app.mini_on_top();
                 settings::ui().update(|ui| ui.mini_on_top = on_top);
+            })
+            .release();
+        self.as_mut()
+            .on_accent_changed(|app| {
+                let accent = app.accent().to_string();
+                settings::ui().update(|ui| ui.accent = accent);
             })
             .release();
     }

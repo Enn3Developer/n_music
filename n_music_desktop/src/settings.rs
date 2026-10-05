@@ -18,6 +18,8 @@ pub struct UiSettings {
     pub check_updates: bool,
     /// The mini player stays above other windows.
     pub mini_on_top: bool,
+    /// The name of one of the interface's accent colours.
+    pub accent: String,
 }
 
 impl Default for UiSettings {
@@ -29,6 +31,7 @@ impl Default for UiSettings {
             save_window_size: false,
             check_updates: true,
             mini_on_top: true,
+            accent: String::from("amber"),
         }
     }
 }

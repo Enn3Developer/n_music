@@ -107,6 +107,22 @@ ColumnLayout {
                 }
             }
             SettingRow {
+                title: Tr.t.accent
+                divider: true
+
+                Row {
+                    spacing: 6
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: Tr.t.accent
+
+                    Repeater {
+                        model: Theme.accents
+
+                        Swatch {}
+                    }
+                }
+            }
+            SettingRow {
                 title: Tr.t.language
                 divider: true
 
@@ -276,5 +292,47 @@ ColumnLayout {
         color: Theme.text
         font.pixelSize: 20
         font.weight: Font.Bold
+    }
+
+    // One of the accent colours, ringed while picked.
+    component Swatch: AbstractButton {
+        id: swatch
+
+        /// One of `Theme.accents`.
+        required property var modelData
+
+        implicitWidth: 32
+        implicitHeight: 32
+        hoverEnabled: true
+        checkable: true
+        checked: Theme.preset.name === modelData.name
+        text: Tr.t["accent_" + modelData.name]
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: text
+        onClicked: AppState.accent = modelData.name
+
+        background: Rectangle {
+            radius: width / 2
+            color: "transparent"
+            border.width: 2
+            border.color: swatch.checked || swatch.visualFocus ? Theme.text : swatch.hovered ? Theme.border : "transparent"
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 4
+                radius: width / 2
+                color: swatch.modelData.fill
+            }
+        }
+        contentItem: Item {
+            Icon {
+                anchors.centerIn: parent
+                visible: swatch.checked
+                name: "check"
+                size: 14
+                stroke: 2.4
+                color: swatch.modelData.ink
+            }
+        }
     }
 }
