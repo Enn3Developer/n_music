@@ -23,6 +23,8 @@ pub struct UiSettings {
     pub compact_rows: bool,
     /// Track table columns left out, by the names `TrackColumns` knows them by.
     pub hidden_columns: Vec<String>,
+    /// The folder picker lists hidden folders too.
+    pub show_hidden_folders: bool,
 }
 
 impl Default for UiSettings {
@@ -37,6 +39,7 @@ impl Default for UiSettings {
             accent: String::from("amber"),
             compact_rows: false,
             hidden_columns: Vec::new(),
+            show_hidden_folders: false,
         }
     }
 }

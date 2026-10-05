@@ -27,7 +27,8 @@ Popup {
     property bool typing: false
     /// Where it opens next: the folder holding the one picked last.
     property string from
-    /// The folder left for the one holding it, which the list then marks.
+    /// The folder the list marks once listed: the one left for the one holding it, or the one
+    /// marked as hidden folders come or go.
     property string left
 
     function choose() {
@@ -65,6 +66,12 @@ Popup {
     function stopTyping() {
         typing = false;
         list.forceActiveFocus();
+    }
+
+    /// Lists hidden folders too, or no longer, keeping the folder marked.
+    function toggleHidden() {
+        left = list.currentIndex >= 0 ? browser.folders[list.currentIndex].path : "";
+        AppState.showHiddenFolders = !AppState.showHiddenFolders;
     }
 
     function goTyped() {
@@ -122,12 +129,18 @@ Popup {
 
     FolderBrowser {
         id: browser
+        showHidden: AppState.showHiddenFolders
     }
 
     Shortcut {
         sequence: "Ctrl+L"
         enabled: picker.opened
         onActivated: picker.startTyping()
+    }
+    Shortcut {
+        sequence: "Ctrl+H"
+        enabled: picker.opened
+        onActivated: picker.toggleHidden()
     }
 
     FontMetrics {
@@ -442,6 +455,19 @@ Popup {
                     IconButton {
                         size: 34
                         iconSize: 16
+                        iconName: "eye"
+                        color: AppState.showHiddenFolders ? Theme.accentText : Theme.text2
+                        text: Tr.t.show_hidden_folders
+                        Accessible.checkable: true
+                        Accessible.checked: AppState.showHiddenFolders
+                        onClicked: {
+                            picker.toggleHidden();
+                            list.forceActiveFocus();
+                        }
+                    }
+                    IconButton {
+                        size: 34
+                        iconSize: 16
                         iconName: "pencil"
                         visible: !picker.typing
                         text: Tr.t.type_path
@@ -525,6 +551,8 @@ Popup {
                             }
                             contentItem: RowLayout {
                                 spacing: 12
+                                // Hidden folders show faded, as file managers show them.
+                                opacity: folder.modelData.hidden ? 0.6 : 1
 
                                 Icon {
                                     name: "folder"

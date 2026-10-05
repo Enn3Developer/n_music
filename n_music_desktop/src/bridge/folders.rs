@@ -22,8 +22,11 @@ pub mod qobject {
         /// The way down to `path`, as `{ name, path, kind }`: from the place it is in, with that
         /// place's `kind` (see `places`), then each folder, with an empty one.
         #[qproperty(QVariant, crumbs)]
-        /// The folders in `path` as `{ name, path }`, sorted by name; hidden ones are left out.
+        /// The folders in `path` as `{ name, path, hidden }`, sorted by name; the hidden ones
+        /// only with `show_hidden`.
         #[qproperty(QVariant, folders)]
+        /// Hidden folders are listed too; changing it lists `path` again.
+        #[qproperty(bool, show_hidden)]
         /// `path` was listed, or could not be: see `problem`.
         #[qproperty(bool, ready)]
         /// Why `path` could not be listed: `missing` when it is no folder, `unreadable` when it
@@ -64,6 +67,7 @@ pub struct FolderBrowserRust {
     place: QString,
     crumbs: QVariant,
     folders: QVariant,
+    show_hidden: bool,
     ready: bool,
     problem: QString,
     places: QVariant,
@@ -83,6 +87,7 @@ impl Default for FolderBrowserRust {
             place: QString::default(),
             crumbs: empty.clone(),
             folders: empty.clone(),
+            show_hidden: false,
             ready: false,
             problem: QString::default(),
             places: empty,
@@ -127,11 +132,15 @@ impl Place {
 struct Folder {
     name: String,
     path: PathBuf,
+    hidden: bool,
 }
 
 impl cxx_qt::Initialize for qobject::FolderBrowser {
     /// The drives come later, see `find_places`.
-    fn initialize(self: Pin<&mut Self>) {
+    fn initialize(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .on_show_hidden_changed(|browser| browser.relist())
+            .release();
         self.show_places(standard_places());
     }
 }
@@ -151,15 +160,29 @@ impl qobject::FolderBrowser {
         self.as_mut().set_problem(QString::default());
         self.as_mut().set_ready(false);
         self.as_mut().set_path(QString::from(&text_of(&path)));
+        self.list_in_background(path);
+        true
+    }
+
+    /// Lists `path` again, showing what it listed until then.
+    fn relist(self: Pin<&mut Self>) {
+        if !self.path.is_empty() {
+            let path = PathBuf::from(self.path.to_string());
+            self.list_in_background(path);
+        }
+    }
+
+    /// Lists `path` away from the interface: a folder on a slow drive or across the network can
+    /// take long to list.
+    fn list_in_background(mut self: Pin<&mut Self>, path: PathBuf) {
         self.as_mut().rust_mut().listing += 1;
         let listing = self.listing;
+        let show_hidden = self.show_hidden;
         let thread = self.qt_thread();
-        // A folder on a slow drive or across the network can take long to list.
         std::thread::spawn(move || {
-            let listed = list(&path);
+            let listed = list(&path, show_hidden);
             let _ = thread.queue(move |browser| browser.show_folders(listing, listed));
         });
-        true
     }
 
     fn find_places(self: Pin<&mut Self>) {
@@ -185,9 +208,9 @@ impl qobject::FolderBrowser {
     fn show_places(mut self: Pin<&mut Self>, places: Vec<Place>) {
         let records = places.iter().map(|place| {
             [
-                ("name", place.name.clone()),
-                ("path", text_of(&place.path)),
-                ("kind", place.kind.to_string()),
+                ("name", text(&place.name)),
+                ("path", text(&text_of(&place.path))),
+                ("kind", text(place.kind)),
             ]
         });
         self.as_mut().set_places(list_of(records));
@@ -211,9 +234,9 @@ impl qobject::FolderBrowser {
             .into_iter()
             .map(|(name, path, kind)| {
                 [
-                    ("name", name),
-                    ("path", text_of(&path)),
-                    ("kind", kind.to_string()),
+                    ("name", text(&name)),
+                    ("path", text(&text_of(&path))),
+                    ("kind", text(kind)),
                 ]
             });
         self.as_mut().set_crumbs(list_of(records));
@@ -228,8 +251,9 @@ impl qobject::FolderBrowser {
             Ok(folders) => {
                 let records = folders.iter().map(|folder| {
                     [
-                        ("name", folder.name.clone()),
-                        ("path", text_of(&folder.path)),
+                        ("name", text(&folder.name)),
+                        ("path", text(&text_of(&folder.path))),
+                        ("hidden", QVariant::from(&folder.hidden)),
                     ]
                 });
                 self.as_mut().set_folders(list_of(records));
@@ -300,8 +324,9 @@ fn crumbs(path: &Path, places: &[Place]) -> Vec<(String, PathBuf, &'static str)>
     crumbs
 }
 
-/// The folders in `path`, sorted by name whatever its case; a link to a folder counts as one.
-fn list(path: &Path) -> io::Result<Vec<Folder>> {
+/// The folders in `path`, sorted by name whatever its case, the hidden ones only with
+/// `show_hidden`; a link to a folder counts as one.
+fn list(path: &Path, show_hidden: bool) -> io::Result<Vec<Folder>> {
     let mut folders = vec![];
     for entry in fs::read_dir(path)?.flatten() {
         let folder = match entry.file_type() {
@@ -309,10 +334,12 @@ fn list(path: &Path) -> io::Result<Vec<Folder>> {
             Ok(kind) => kind.is_dir(),
             Err(_) => false,
         };
-        if folder && !hidden(&entry) {
+        let hidden = folder && hidden(&entry);
+        if folder && (show_hidden || !hidden) {
             folders.push(Folder {
                 name: entry.file_name().to_string_lossy().into_owned(),
                 path: entry.path(),
+                hidden,
             });
         }
     }
@@ -441,15 +468,21 @@ fn text_of(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// Records of text, as QML reads `{ key: "value" }` objects.
-fn list_of<const N: usize>(records: impl Iterator<Item = [(&'static str, String); N]>) -> QVariant {
+/// Records, as QML reads `{ key: value }` objects.
+fn list_of<const N: usize>(
+    records: impl Iterator<Item = [(&'static str, QVariant); N]>,
+) -> QVariant {
     let mut list = QList::<QVariant>::default();
     for record in records {
         let mut map = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in record {
-            map.insert(QString::from(key), QVariant::from(&QString::from(&value)));
+            map.insert(QString::from(key), value);
         }
         list.append(QVariant::from(&map));
     }
     QVariant::from(&list)
+}
+
+fn text(value: &str) -> QVariant {
+    QVariant::from(&QString::from(value))
 }

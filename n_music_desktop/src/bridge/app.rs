@@ -30,6 +30,8 @@ pub mod qobject {
         #[qproperty(bool, compact_rows)]
         /// Track table columns left out, see `TrackColumns.hidden`; saved when changed.
         #[qproperty(QStringList, hidden_columns)]
+        /// The folder picker lists hidden folders too; saved when changed.
+        #[qproperty(bool, show_hidden_folders)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         /// The window was maximized when it last closed, to reopen that way.
@@ -91,6 +93,7 @@ pub struct AppStateRust {
     accent: QString,
     compact_rows: bool,
     hidden_columns: QStringList,
+    show_hidden_folders: bool,
     window_width: i32,
     window_height: i32,
     window_maximized: bool,
@@ -116,6 +119,7 @@ impl Default for AppStateRust {
             accent: QString::from("amber"),
             compact_rows: false,
             hidden_columns: QStringList::default(),
+            show_hidden_folders: false,
             window_width: size.width as i32,
             window_height: size.height as i32,
             window_maximized: size.maximized,
@@ -145,6 +149,8 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_mini_on_top(ui.mini_on_top);
         self.as_mut().set_accent(QString::from(&ui.accent));
         self.as_mut().set_compact_rows(ui.compact_rows);
+        self.as_mut()
+            .set_show_hidden_folders(ui.show_hidden_folders);
         let mut hidden = QList::<QString>::default();
         for name in &ui.hidden_columns {
             hidden.append(QString::from(name));
@@ -245,6 +251,12 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_compact_rows_changed(|app| {
                 let compact = *app.compact_rows();
                 settings::ui().update(|ui| ui.compact_rows = compact);
+            })
+            .release();
+        self.as_mut()
+            .on_show_hidden_folders_changed(|app| {
+                let shown = *app.show_hidden_folders();
+                settings::ui().update(|ui| ui.show_hidden_folders = shown);
             })
             .release();
         self.as_mut()
