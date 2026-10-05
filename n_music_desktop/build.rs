@@ -36,6 +36,7 @@ const QML: &[&str] = &[
     "qml/PillButton.qml",
     "qml/PlaceholderPage.qml",
     "qml/PlayerBar.qml",
+    "qml/PlayingBars.qml",
     "qml/PlaylistPage.qml",
     "qml/PopupMenu.qml",
     "qml/PromptDialog.qml",

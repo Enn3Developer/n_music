@@ -76,12 +76,12 @@ Rectangle {
                     "tnum": 1
                 }
             }
-            Icon {
+            PlayingBars {
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.current
-                name: "equalizer"
+                playing: row.current && Player.playing
                 size: 14
                 color: Theme.accentText
                 Accessible.name: Tr.t.now_playing
