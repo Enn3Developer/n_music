@@ -18,6 +18,7 @@ const QML: &[&str] = &[
     "qml/FlatButton.qml",
     "qml/GeneralSettings.qml",
     "qml/GroupsPage.qml",
+    "qml/HistoryButtons.qml",
     "qml/Icon.qml",
     "qml/IconButton.qml",
     "qml/ImportPage.qml",
@@ -73,6 +74,7 @@ const QML_SINGLETONS: &[&str] = &[
     "qml/Filters.qml",
     "qml/SourceKinds.qml",
     "qml/Shell.qml",
+    "qml/History.qml",
 ];
 
 /// The Rust side of the interface.

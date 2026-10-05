@@ -39,9 +39,14 @@ Rectangle {
             Logo {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 14
-                Layout.bottomMargin: 14
+                Layout.bottomMargin: 6
                 size: 32
                 radius: 9
+            }
+            HistoryButtons {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.bottomMargin: 10
+                size: 26
             }
 
             RailItem {

@@ -31,6 +31,7 @@ Rectangle {
         spacing: 22
 
         RowLayout {
+            Layout.fillWidth: true
             Layout.leftMargin: 10
             spacing: 10
 
@@ -39,11 +40,14 @@ Rectangle {
                 radius: 8
             }
             Label {
+                Layout.fillWidth: true
                 text: "N Music"
+                elide: Text.ElideRight
                 color: Theme.text
                 font.pixelSize: 17
                 font.weight: Font.Bold
             }
+            HistoryButtons {}
         }
 
         ColumnLayout {

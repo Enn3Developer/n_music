@@ -70,6 +70,7 @@ QtObject {
         "chevron-down": [{ d: "M6 9l6 6 6-6" }],
         "chevron-up": [{ d: "M6 15l6-6 6 6" }],
         "chevron-right": [{ d: "M9 6l6 6-6 6" }],
+        "chevron-left": [{ d: "M15 6l-6 6 6 6" }],
         "arrow-up": [{ d: "M12 19V5M6 11l6-6 6 6" }],
         "arrow-down": [{ d: "M12 5v14M6 13l6 6 6-6" }],
         "arrow-right": [{ d: "M5 12h14M13 6l6 6-6 6" }],

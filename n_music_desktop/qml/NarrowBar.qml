@@ -3,8 +3,9 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// The top of a page in narrow windows: a button opening the navigation, the page's title and
-// its actions. With a `field`, a search button unfolds it in place of the title.
+// The top of a page in narrow windows: a button opening the navigation, one going back, the
+// page's title and its actions. With a `field`, a search button unfolds it in place of the
+// title.
 Rectangle {
     id: bar
 
@@ -72,6 +73,18 @@ Rectangle {
                 else
                     Shell.navigationRequested();
             }
+        }
+        // Forward is in the navigation, with the mouse and the keyboard.
+        IconButton {
+            visible: History.canGoBack && !bar.fieldShown
+            size: 44
+            radius: 10
+            iconSize: 20
+            stroke: 2
+            color: Theme.text
+            iconName: "chevron-left"
+            text: Tr.t.go_back
+            onClicked: History.back()
         }
         Label {
             Layout.fillWidth: true

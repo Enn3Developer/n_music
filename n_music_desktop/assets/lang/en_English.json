@@ -101,6 +101,8 @@
   "genres": "Genres",
   "genres_many": "%1 genres",
   "genres_one": "%1 genre",
+  "go_back": "Back",
+  "go_forward": "Forward",
   "go_to_album": "Go to album",
   "go_to_artist": "Go to artist",
   "group_all": "All",

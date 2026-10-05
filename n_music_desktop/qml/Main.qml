@@ -8,13 +8,11 @@ ApplicationWindow {
     id: window
 
     /// The page the content area shows; one of many, like a playlist's, is `<section>:<which>`.
-    property string page: "tracks"
+    readonly property string page: History.page
     /// The page without what follows its `:`.
     readonly property string section: page.indexOf(":") < 0 ? page : page.slice(0, page.indexOf(":"))
     /// What followed the `:` the last time each section showed, by section.
     property var subpages: ({})
-    /// The page shown before the queue, to go back to.
-    property string beforeQueue: "tracks"
     /// Pages shown so far; they stay loaded, keeping their search and scroll position.
     property var visited: ({
             tracks: true
@@ -44,19 +42,35 @@ ApplicationWindow {
         });
     }
 
+    /// Shows the page `to`, after the one shown in the history.
+    function go(to: string) {
+        // The settings remember their section: going back shows the one shown then.
+        History.go(to === "settings" ? "settings:" + (subpages.settings ?? "playback") : to);
+    }
+
     function toggleQueue() {
-        if (page === "queue") {
-            page = beforeQueue;
-        } else {
-            beforeQueue = page;
-            page = "queue";
-        }
+        if (page !== "queue")
+            go("queue");
+        else if (History.canGoBack)
+            History.back();
+        else
+            go("tracks");
     }
 
     // Space plays and pauses, unless a text field takes it.
     Shortcut {
         sequence: "Space"
         onActivated: Player.toggle()
+    }
+    Shortcut {
+        sequences: [StandardKey.Back]
+        enabled: !Sources.firstRun
+        onActivated: History.back()
+    }
+    Shortcut {
+        sequences: [StandardKey.Forward]
+        enabled: !Sources.firstRun
+        onActivated: History.forward()
     }
     onClosing: AppState.windowClosing(width, height)
     onWidthChanged: Shell.width = width
@@ -79,48 +93,48 @@ ApplicationWindow {
     Component {
         id: tracksPage
         TracksPage {
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: queuePage
         QueuePage {
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: playlistPage
         PlaylistPage {
             playlistId: Number(window.subpages.playlist ?? 0)
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: albumsPage
         GroupsPage {
             kind: "album"
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: artistsPage
         GroupsPage {
             kind: "artist"
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: genresPage
         GroupsPage {
             kind: "genre"
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: sourcesPage
         GroupsPage {
             kind: "source"
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
@@ -128,7 +142,7 @@ ApplicationWindow {
         CollectionPage {
             kind: "album"
             argument: window.subpages.album ?? ""
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
@@ -136,7 +150,7 @@ ApplicationWindow {
         CollectionPage {
             kind: "artist"
             argument: window.subpages.artist ?? ""
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
@@ -144,7 +158,7 @@ ApplicationWindow {
         CollectionPage {
             kind: "genre"
             argument: window.subpages.genre ?? ""
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
@@ -152,14 +166,14 @@ ApplicationWindow {
         CollectionPage {
             kind: "source"
             argument: window.subpages.source ?? ""
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
         id: settingsPage
         SettingsPage {
             section: window.subpages.settings ?? "playback"
-            onNavigate: to => window.page = to
+            onNavigate: to => window.go(to)
         }
     }
     Component {
@@ -171,7 +185,7 @@ ApplicationWindow {
         target: Playlists
 
         function onCreated(id: real) {
-            window.page = "playlist:" + id;
+            window.go("playlist:" + id);
         }
         function onRejected(message: string) {
             rejected.show(message);
@@ -192,13 +206,13 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 visible: Shell.regular || Shell.wide
                 page: window.page
-                onNavigate: to => window.page = to
+                onNavigate: to => window.go(to)
             }
             Rail {
                 Layout.fillHeight: true
                 visible: Shell.compact
                 page: window.page
-                onNavigate: to => window.page = to
+                onNavigate: to => window.go(to)
             }
 
             Item {
@@ -248,7 +262,7 @@ ApplicationWindow {
             NowPlayingPanel {
                 Layout.fillHeight: true
                 visible: Shell.wide && window.section !== "queue"
-                onNavigate: to => window.page = to
+                onNavigate: to => window.go(to)
             }
         }
 
@@ -262,6 +276,20 @@ ApplicationWindow {
                 mini.raise();
                 mini.requestActivate();
             }
+        }
+    }
+
+    // The mouse's back and forward buttons, wherever they are pressed; other buttons reach what
+    // is under it.
+    MouseArea {
+        anchors.fill: parent
+        enabled: !Sources.firstRun
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onPressed: mouse => {
+            if (mouse.button === Qt.BackButton)
+                History.back();
+            else
+                History.forward();
         }
     }
 
@@ -294,9 +322,18 @@ ApplicationWindow {
             anchors.fill: parent
             page: window.page
             onNavigate: to => {
-                window.page = to;
+                window.go(to);
                 navigation.close();
             }
+        }
+    }
+
+    Connections {
+        target: History
+
+        // Going back or forward from it closes it too.
+        function onPageChanged() {
+            navigation.close();
         }
     }
 
