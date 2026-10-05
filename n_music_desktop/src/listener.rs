@@ -1,11 +1,11 @@
 //! Receives what the core reports on the bus and keeps the [`hub`] up to date.
 
-use crate::hub::{hub, Changed, PlaylistSummary};
+use crate::hub::{hub, Changed, PlaylistSummary, StreamCache};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
     LibraryRootsChanged, LoopStatusChanged, PlaybackChanged, PlaylistRejected, PlaylistsChanged,
-    PositionChanged, QueueChanged, ScanFinished, ScanProgress, ShuffleChanged, TrackChanged,
-    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
+    PositionChanged, QueueChanged, ScanFinished, ScanProgress, ShuffleChanged, StreamCacheChanged,
+    TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -35,6 +35,7 @@ impl Subscriber for Listener {
         reg.on::<QueueChanged>();
         reg.on::<PlaylistsChanged>();
         reg.on::<PlaylistRejected>();
+        reg.on::<StreamCacheChanged>();
     }
 }
 
@@ -42,6 +43,18 @@ impl Handle<LibraryRootsChanged> for Listener {
     fn handle(&mut self, msg: &LibraryRootsChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::ROOTS, |state| {
             state.roots = Some(Arc::new(msg.0.clone()));
+        });
+    }
+}
+
+impl Handle<StreamCacheChanged> for Listener {
+    fn handle(&mut self, msg: &StreamCacheChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::CACHE, |state| {
+            state.cache = Some(StreamCache {
+                enabled: msg.enabled,
+                limit: msg.limit,
+                used: msg.used,
+            });
         });
     }
 }

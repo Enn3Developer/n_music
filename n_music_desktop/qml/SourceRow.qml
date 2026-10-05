@@ -86,7 +86,14 @@ Item {
             }
             Label {
                 Layout.alignment: Qt.AlignRight
-                text: !row.source.available ? (row.source.kind === "web" ? Tr.t.source_unreachable : Tr.t.source_missing) : row.source.updating ? Tr.t.source_updating : Tr.t.source_up_to_date
+                text: {
+                    if (row.source.available)
+                        return row.source.updating ? Tr.t.source_updating : Tr.t.source_up_to_date;
+                    if (row.source.kind !== "web")
+                        return Tr.t.source_missing;
+                    // Its tracks with a copy stay in the library.
+                    return row.source.tracks > 0 ? Tr.t.source_offline : Tr.t.source_unreachable;
+                }
                 color: !row.source.available ? Theme.danger : row.source.updating ? Theme.accentText : Theme.text2
                 font.pixelSize: 12
             }

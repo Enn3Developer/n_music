@@ -235,6 +235,55 @@ ColumnLayout {
         spacing: 10
 
         Label {
+            text: Tr.t.stream_cache
+            color: Theme.text
+            font.pixelSize: 15
+            font.weight: Font.Bold
+        }
+        SettingsGroup {
+            Layout.fillWidth: true
+
+            SettingRow {
+                title: Tr.t.cache_streams
+                description: Tr.t.cache_streams_hint
+                divider: Sources.cacheEnabled
+
+                ToggleSwitch {
+                    checked: Sources.cacheEnabled
+                    Accessible.name: Tr.t.cache_streams
+                    onToggled: Sources.changeCache(checked, Sources.cacheLimit)
+                }
+            }
+            SettingRow {
+                visible: Sources.cacheEnabled
+                title: Tr.t.cache_size
+                description: Tr.t.cache_used.arg(Format.size(Sources.cacheUsed)).arg(Format.size(Sources.cacheLimit))
+
+                SelectBox {
+                    Layout.preferredWidth: 140
+                    options: {
+                        const sizes = [0.5, 1, 2, 5, 10, 20, 50].map(gigabytes => gigabytes * 1073741824);
+                        // A limit set by hand stays among them.
+                        if (!sizes.includes(Sources.cacheLimit))
+                            sizes.push(Sources.cacheLimit);
+                        return sizes.sort((a, b) => a - b).map(bytes => ({
+                                    value: String(bytes),
+                                    label: Format.size(bytes)
+                                }));
+                    }
+                    value: String(Sources.cacheLimit)
+                    Accessible.name: Tr.t.cache_size
+                    onActivated: value => Sources.changeCache(true, Number(value))
+                }
+            }
+        }
+    }
+
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+
+        Label {
             text: Tr.t.maintenance
             color: Theme.text
             font.pixelSize: 15

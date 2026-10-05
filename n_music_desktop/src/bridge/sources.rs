@@ -25,6 +25,12 @@ pub mod qobject {
         #[qproperty(bool, loaded)]
         /// No sources were ever chosen, so the app asks for them before anything else.
         #[qproperty(bool, first_run)]
+        /// Tracks streamed from web playlists are cached on disk as they play, see `changeCache`.
+        #[qproperty(bool, cache_enabled)]
+        /// The most the cached tracks may take, in bytes.
+        #[qproperty(f64, cache_limit)]
+        /// What the cached tracks take, in bytes.
+        #[qproperty(f64, cache_used)]
         type Sources = super::SourcesRust;
 
         /// Adds the local folder at `path`, as `Catalog.folder` writes it, and scans it.
@@ -55,6 +61,10 @@ pub mod qobject {
         /// the library's and scans them, ending the first run.
         #[qinvokable]
         fn set_sources(self: Pin<&mut Sources>, locations: &QStringList);
+        /// Caches streamed tracks on disk as they play, or (`enabled` false) deletes them, and
+        /// lets them take at most `limit` bytes: the most played stay.
+        #[qinvokable]
+        fn change_cache(self: &Sources, enabled: bool, limit: f64);
     }
 
     impl cxx_qt::Threading for Sources {}
@@ -67,7 +77,8 @@ use core::pin::Pin;
 use cxx_qt::Threading;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
 use n_music_core::library::catalog::Catalog;
-use n_music_core::messages::{ScanRequested, SetLibraryRoots};
+use n_music_core::messages::{ScanRequested, SetLibraryRoots, SetStreamCache};
+use n_music_core::settings::StreamCacheSettings;
 use n_music_core::source::Locator;
 use std::path::{Path, MAIN_SEPARATOR};
 use std::time::Duration;
@@ -76,16 +87,23 @@ pub struct SourcesRust {
     items: QVariant,
     loaded: bool,
     first_run: bool,
+    cache_enabled: bool,
+    cache_limit: f64,
+    cache_used: f64,
     slot: u64,
 }
 
 impl Default for SourcesRust {
     fn default() -> Self {
+        let cache = StreamCacheSettings::default();
         Self {
             // A list from the start, so QML can go through it before the sources arrive.
             items: QVariant::from(&QList::<QVariant>::default()),
             loaded: false,
             first_run: settings::first_run(),
+            cache_enabled: cache.enabled,
+            cache_limit: cache.limit as f64,
+            cache_used: 0.0,
             slot: worker::slot(),
         }
     }
@@ -102,12 +120,16 @@ struct Source {
 }
 
 impl cxx_qt::Initialize for qobject::Sources {
-    fn initialize(self: Pin<&mut Self>) {
+    fn initialize(mut self: Pin<&mut Self>) {
         hub().watch(
             self.qt_thread(),
             Changed::ROOTS | Changed::TRACKS | Changed::SCAN,
             |sources, _| sources.recount(),
         );
+        hub().watch(self.qt_thread(), Changed::CACHE, |sources, _| {
+            sources.show_cache()
+        });
+        self.as_mut().show_cache();
         self.recount();
     }
 }
@@ -157,6 +179,16 @@ impl qobject::Sources {
         }
         self.as_mut().set_items(QVariant::from(&items));
         self.set_loaded(true);
+    }
+
+    /// Shows the stream cache as the core last reported it.
+    fn show_cache(mut self: Pin<&mut Self>) {
+        let Some(cache) = hub().state().cache else {
+            return;
+        };
+        self.as_mut().set_cache_enabled(cache.enabled);
+        self.as_mut().set_cache_limit(cache.limit as f64);
+        self.set_cache_used(cache.used as f64);
     }
 
     fn add_folder(&self, path: &QString) {
@@ -221,6 +253,13 @@ impl qobject::Sources {
         }
         bus::emit(SetLibraryRoots(roots));
         self.set_first_run(false);
+    }
+
+    fn change_cache(&self, enabled: bool, limit: f64) {
+        bus::emit(SetStreamCache {
+            enabled,
+            limit: limit.max(0.0) as u64,
+        });
     }
 }
 

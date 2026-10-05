@@ -24,6 +24,17 @@ QtObject {
         return minutes + ":" + rest;
     }
 
+    /// A size on disk like `512 MB` or `1.5 GB`, in units of 1024.
+    function size(bytes: real): string {
+        const megabytes = bytes / 1048576;
+        if (megabytes < 1024)
+            return Tr.t.size_mb.arg(Math.round(megabytes).toLocaleString(Qt.locale(), "f", 0));
+        const gigabytes = megabytes / 1024;
+        const tenths = Math.round(gigabytes * 10);
+        const digits = gigabytes < 10 && tenths % 10 !== 0 ? 1 : 0;
+        return Tr.t.size_gb.arg(gigabytes.toLocaleString(Qt.locale(), "f", digits));
+    }
+
     /// Whole days from the day of Unix time `seconds` to today.
     function daysSince(seconds: real): int {
         const then = new Date(seconds * 1000);

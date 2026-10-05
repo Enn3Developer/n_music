@@ -47,6 +47,8 @@ bitflags! {
         const ROOTS = 1 << 13;
         /// How many tracks the running scan found and read.
         const PROGRESS = 1 << 14;
+        /// The stream cache's settings, or what its copies take.
+        const CACHE = 1 << 15;
     }
 }
 
@@ -83,6 +85,16 @@ pub struct State {
     pub rejected: String,
     /// Playlists the interface asked for that were not created yet.
     pub creating: usize,
+    /// The stream cache as the core last reported it; `None` before it did.
+    pub cache: Option<StreamCache>,
+}
+
+/// The stream cache's settings, and what its copies take; in bytes.
+#[derive(Clone, Copy)]
+pub struct StreamCache {
+    pub enabled: bool,
+    pub limit: u64,
+    pub used: u64,
 }
 
 #[derive(Clone)]
