@@ -19,6 +19,10 @@ pub mod qobject {
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         #[qproperty(QString, version)]
+        /// 0 plays tracks as mastered, 1 levels each track, 2 each album; sent when changed.
+        #[qproperty(i32, replay_gain)]
+        /// Where the logs are, as a URL to open.
+        #[qproperty(QString, logs_folder)]
         type AppState = super::AppStateRust;
 
         /// Saves the window size, when it is to be remembered.
@@ -34,9 +38,11 @@ pub mod qobject {
 }
 
 use crate::settings::{self, Theme, WindowSize};
+use crate::{bus, platform};
 use core::pin::Pin;
-use cxx_qt_lib::QString;
-use n_music_core::messages::AppVisibilityChanged;
+use cxx_qt_lib::{QString, QUrl};
+use n_music_core::library::track::ReplayGainMode;
+use n_music_core::messages::{AppVisibilityChanged, SetReplayGain};
 
 pub struct AppStateRust {
     theme: i32,
@@ -44,6 +50,8 @@ pub struct AppStateRust {
     window_width: i32,
     window_height: i32,
     version: QString,
+    replay_gain: i32,
+    logs_folder: QString,
 }
 
 impl Default for AppStateRust {
@@ -55,6 +63,8 @@ impl Default for AppStateRust {
             window_width: size.width as i32,
             window_height: size.height as i32,
             version: QString::from(env!("CARGO_PKG_VERSION")),
+            replay_gain: 0,
+            logs_folder: QString::default(),
         }
     }
 }
@@ -71,6 +81,26 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_save_window_size(ui.save_window_size);
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
+        self.as_mut()
+            .set_replay_gain(match settings::replay_gain() {
+                ReplayGainMode::Off => 0,
+                ReplayGainMode::Track => 1,
+                ReplayGainMode::Album => 2,
+            });
+        // The logs are written beside the settings.
+        let logs = platform::internal_dir();
+        self.as_mut().set_logs_folder(
+            QUrl::from_local_file(&QString::from(&*logs.to_string_lossy())).to_qstring(),
+        );
+        self.as_mut()
+            .on_replay_gain_changed(|app| {
+                bus::emit(SetReplayGain(match *app.replay_gain() {
+                    1 => ReplayGainMode::Track,
+                    2 => ReplayGainMode::Album,
+                    _ => ReplayGainMode::Off,
+                }));
+            })
+            .release();
         self.as_mut()
             .on_theme_changed(|app| {
                 let theme = Theme::from(*app.theme());
@@ -99,6 +129,6 @@ impl qobject::AppState {
     }
 
     fn set_visible(&self, visible: bool) {
-        crate::bus::emit(AppVisibilityChanged(visible));
+        bus::emit(AppVisibilityChanged(visible));
     }
 }

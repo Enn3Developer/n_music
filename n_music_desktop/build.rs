@@ -16,6 +16,7 @@ const QML: &[&str] = &[
     "qml/FilterChip.qml",
     "qml/FilterDrawer.qml",
     "qml/FlatButton.qml",
+    "qml/GeneralSettings.qml",
     "qml/GroupsPage.qml",
     "qml/Icon.qml",
     "qml/IconButton.qml",
@@ -80,6 +81,7 @@ const BRIDGES: &[&str] = &[
     "src/bridge/sources.rs",
     "src/bridge/tracks.rs",
     "src/bridge/translations.rs",
+    "src/bridge/updates.rs",
 ];
 
 /// C++ the bridges call.

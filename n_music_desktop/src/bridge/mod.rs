@@ -10,3 +10,4 @@ pub mod scan;
 pub mod sources;
 pub mod tracks;
 pub mod translations;
+pub mod updates;

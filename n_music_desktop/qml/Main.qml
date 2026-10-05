@@ -156,7 +156,7 @@ ApplicationWindow {
     Component {
         id: settingsPage
         SettingsPage {
-            section: window.subpages.settings ?? "sources"
+            section: window.subpages.settings ?? "playback"
             onNavigate: to => window.page = to
         }
     }

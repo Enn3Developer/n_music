@@ -9,7 +9,7 @@ Item {
     id: page
 
     /// The section shown, see `sections`.
-    property string section: "sources"
+    property string section: "playback"
 
     signal navigate(string page)
 
@@ -17,8 +17,54 @@ Item {
         {
             value: "sources",
             label: Tr.t.sources
+        },
+        {
+            value: "playback",
+            label: Tr.t.playback
+        },
+        {
+            value: "appearance",
+            label: Tr.t.appearance
+        },
+        {
+            value: "updates",
+            label: Tr.t.updates
+        },
+        {
+            value: "about",
+            label: Tr.t.about
         }
     ]
+    /// The general sections, while they show.
+    readonly property GeneralSettings general: content.item as GeneralSettings
+    /// The section of the general ones in view as the page scrolls.
+    readonly property string visibleSection: {
+        if (!general)
+            return section;
+        const names = ["playback", "appearance", "updates", "about"];
+        // At the end the last section is in view, however short.
+        if (scroller.contentY >= scroller.contentHeight - scroller.height - 1)
+            return names[names.length - 1];
+        let shown = names[0];
+        for (const name of names) {
+            if (content.y + general.sectionY(name) <= scroller.contentY + 40)
+                shown = name;
+        }
+        return shown;
+    }
+
+    /// Shows the section `name`, scrolling to it among the general ones.
+    function reveal(name: string) {
+        if (!general) {
+            scroller.contentY = 0;
+            return;
+        }
+        const top = name === "playback" ? 0 : content.y + general.sectionY(name) - 28;
+        scroller.contentY = Math.max(0, Math.min(top, scroller.contentHeight - scroller.height));
+    }
+
+    onSectionChanged: Qt.callLater(reveal, section)
+    Component.onCompleted: Qt.callLater(reveal, section)
 
     RowLayout {
         anchors.fill: parent
@@ -50,7 +96,7 @@ Item {
                     id: entry
 
                     required property var modelData
-                    readonly property bool current: page.section === modelData.value
+                    readonly property bool current: page.visibleSection === modelData.value
 
                     Layout.fillWidth: true
                     implicitHeight: 36
@@ -59,7 +105,12 @@ Item {
                     hoverEnabled: true
                     text: modelData.label
                     Accessible.role: Accessible.Button
-                    onClicked: page.navigate("settings:" + modelData.value)
+                    onClicked: {
+                        if (page.section === modelData.value)
+                            page.reveal(modelData.value);
+                        else
+                            page.navigate("settings:" + modelData.value);
+                    }
 
                     background: Rectangle {
                         radius: 8
@@ -96,9 +147,7 @@ Item {
                 x: 28
                 y: 28
                 width: Math.min(scroller.width - 56, 704)
-                sourceComponent: ({
-                        sources: sourcesSection
-                    })[page.section] ?? sourcesSection
+                sourceComponent: page.section === "sources" ? sourcesSection : generalSection
             }
 
             ScrollBar.vertical: ThinScrollBar {}
@@ -108,5 +157,9 @@ Item {
     Component {
         id: sourcesSection
         SourcesSettings {}
+    }
+    Component {
+        id: generalSection
+        GeneralSettings {}
     }
 }
