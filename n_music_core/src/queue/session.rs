@@ -1,5 +1,5 @@
 //! What plays and in which order: a snapshot of the context's tracks, the order they play in,
-//! and the up-next tracks played once before the context goes on.
+//! and the queued tracks, each played once where it stands among them.
 
 use super::{ItemId, LoopStatus, QueueEntry};
 use crate::library::catalog::Catalog;
@@ -9,7 +9,6 @@ use crate::source::Locator;
 use crate::Track;
 use rand::prelude::SliceRandom;
 use rand::rng;
-use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
 pub(super) struct Item {
@@ -18,12 +17,29 @@ pub(super) struct Item {
     pub fingerprint: Option<u64>,
 }
 
+/// A queued item and where it stands in the play order.
+#[derive(Clone, Debug)]
+struct Queued {
+    item: Item,
+    /// The slot of the context item it plays before; the order's length for after the last.
+    before: usize,
+}
+
+/// One of the items still to play.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Upcoming {
+    /// The context item at this position.
+    Context(usize),
+    /// `queued` at this index.
+    Queued(usize),
+}
+
 /// Which item is current.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Current {
     /// The context item at the play order's cursor.
     Context,
-    /// [`Session::detour`], an up-next item.
+    /// [`Session::detour`], a queued item.
     Detour,
 }
 
@@ -35,8 +51,10 @@ pub(super) struct Session {
     order: PlayOrder,
     /// The cursor's context item has played: the context goes on after it, not from the start.
     started: bool,
-    up_next: VecDeque<Item>,
-    /// The up-next item playing now, taken off `up_next`.
+    /// By where they stand, never before the slots still to play: those of the same slot in the
+    /// order they play.
+    queued: Vec<Queued>,
+    /// The queued item playing now, taken off `queued`.
     detour: Option<Item>,
     current: Option<Current>,
     next_id: u64,
@@ -58,8 +76,8 @@ impl Session {
         }
     }
 
-    /// Replaces the context with `tracks`; up next stays. Returns what to play first: `start`
-    /// when it is one of the tracks.
+    /// Replaces the context with `tracks`; the queued items stay, to play first. Returns what
+    /// to play first: `start` when it is one of the tracks.
     pub fn replace_context(
         &mut self,
         query: Query,
@@ -75,6 +93,9 @@ impl Session {
         self.order = PlayOrder::new(self.items.len(), shuffle, start);
         self.context = Some(query);
         self.started = false;
+        for queued in &mut self.queued {
+            queued.before = 0;
+        }
         self.detour = None;
         self.current = None;
         self.changed = true;
@@ -100,7 +121,7 @@ impl Session {
     pub fn get(&self, id: ItemId) -> Option<&Item> {
         self.items
             .iter()
-            .chain(&self.up_next)
+            .chain(self.queued.iter().map(|queued| &queued.item))
             .chain(&self.detour)
             .find(|item| item.id == id)
     }
@@ -108,6 +129,106 @@ impl Session {
     /// The context item the context goes on after, if it started.
     fn context_position(&self) -> Option<usize> {
         self.started.then(|| self.order.current()).flatten()
+    }
+
+    /// The first slot still to play.
+    fn split(&self) -> usize {
+        self.context_position()
+            .map_or(0, |position| self.order.slot_of[position] + 1)
+    }
+
+    /// The items still to play, in the order they play.
+    fn upcoming(&self) -> Vec<Upcoming> {
+        let len = self.order.order.len();
+        let mut upcoming = Vec::with_capacity(len + self.queued.len());
+        let mut queued = self.queued.iter().enumerate().peekable();
+        for slot in self.split()..=len {
+            while let Some((index, _)) = queued.next_if(|(_, queued)| queued.before <= slot) {
+                upcoming.push(Upcoming::Queued(index));
+            }
+            if let Some(&position) = self.order.order.get(slot) {
+                upcoming.push(Upcoming::Context(position));
+            }
+        }
+        upcoming
+    }
+
+    fn upcoming_id(&self, upcoming: Upcoming) -> ItemId {
+        match upcoming {
+            Upcoming::Context(position) => self.items[position].id,
+            Upcoming::Queued(index) => self.queued[index].item.id,
+        }
+    }
+
+    /// Plays the items still to play in the order of `upcoming`, which lists each of them once.
+    fn set_upcoming(&mut self, upcoming: &[Upcoming]) {
+        let mut slot = self.split();
+        let mut old: Vec<Option<Queued>> = std::mem::take(&mut self.queued)
+            .into_iter()
+            .map(Some)
+            .collect();
+        for &entry in upcoming {
+            match entry {
+                Upcoming::Context(position) => {
+                    self.order.order[slot] = position;
+                    slot += 1;
+                }
+                Upcoming::Queued(index) => {
+                    if let Some(mut queued) = old[index].take() {
+                        queued.before = slot;
+                        self.queued.push(queued);
+                    }
+                }
+            }
+        }
+        self.order.reindex();
+        self.changed = true;
+    }
+
+    /// Moves `item`, one still to play, to play right before `before`, another one still to
+    /// play, or (`None`) after all of them; the others keep their order. `before` playing now,
+    /// it plays first.
+    pub fn move_upcoming(&mut self, item: ItemId, before: Option<ItemId>) {
+        let mut upcoming = self.upcoming();
+        let Some(from) = upcoming
+            .iter()
+            .position(|&entry| self.upcoming_id(entry) == item)
+        else {
+            return;
+        };
+        let moved = upcoming.remove(from);
+        let to = match before {
+            None => upcoming.len(),
+            Some(before) => match upcoming
+                .iter()
+                .position(|&entry| self.upcoming_id(entry) == before)
+            {
+                Some(to) => to,
+                None if self.current().is_some_and(|current| current.id == before) => 0,
+                None => return,
+            },
+        };
+        if to == from {
+            return;
+        }
+        upcoming.insert(to, moved);
+        self.set_upcoming(&upcoming);
+    }
+
+    /// Keeps each queued item behind as many context items still to play as before `change`,
+    /// which reorders the context or moves where it stands.
+    fn keeping_queued(&mut self, change: impl FnOnce(&mut Self)) {
+        let split = self.split();
+        let behind: Vec<usize> = self
+            .queued
+            .iter()
+            .map(|queued| queued.before.saturating_sub(split))
+            .collect();
+        change(self);
+        let (split, len) = (self.split(), self.order.order.len());
+        for (queued, behind) in self.queued.iter_mut().zip(behind) {
+            queued.before = (split + behind).min(len);
+        }
     }
 
     /// What plays after the current item. `manual` is a skip: it leaves a repeated track and
@@ -124,8 +245,9 @@ impl Session {
                 return Some(current.id);
             }
         }
-        if let Some(queued) = self.up_next.front() {
-            return Some(queued.id);
+        let split = self.split();
+        if let Some(queued) = self.queued.first().filter(|queued| queued.before <= split) {
+            return Some(queued.item.id);
         }
         let position = match self.context_position() {
             None => self.order.first()?,
@@ -141,7 +263,7 @@ impl Session {
     pub fn previous(&mut self, loop_status: &LoopStatus) -> Option<ItemId> {
         self.order.crossing = None;
         let position = match (self.current, self.context_position()) {
-            // Up-next items play once: back from one is back in the context.
+            // Queued items play once: back from one is back in the context.
             (Some(Current::Detour), Some(position)) => Some(position),
             (Some(Current::Detour), None) => return self.detour.as_ref().map(|item| item.id),
             (_, Some(position)) => self.order.before(position).or_else(|| {
@@ -156,14 +278,15 @@ impl Session {
         self.items.get(position).map(|item| item.id)
     }
 
-    /// Makes `id` the current item: an up-next item is taken off the list, a context item
-    /// moves the cursor (into the next or previous round across a round boundary).
+    /// Makes `id` the current item: a queued item is taken off the list, a context item moves
+    /// the cursor (into the next or previous round across a round boundary). The queued items
+    /// it skips play right after it.
     pub fn arrive(&mut self, id: ItemId) {
         if self.current().is_some_and(|current| current.id == id) {
             return;
         }
-        if let Some(index) = self.up_next.iter().position(|item| item.id == id) {
-            self.detour = self.up_next.remove(index);
+        if let Some(index) = self.queued.iter().position(|queued| queued.item.id == id) {
+            self.detour = Some(self.queued.remove(index).item);
             self.current = Some(Current::Detour);
             self.changed = true;
         } else if let Some(position) = self.items.iter().position(|item| item.id == id) {
@@ -172,6 +295,13 @@ impl Session {
             self.detour = None;
             self.started = true;
             self.current = Some(Current::Context);
+            let split = self.split();
+            for queued in &mut self.queued {
+                if queued.before < split {
+                    queued.before = split;
+                    self.changed = true;
+                }
+            }
         }
     }
 
@@ -183,51 +313,63 @@ impl Session {
 
     /// Starts the context over after it ran out; a shuffled one in a new order.
     pub fn restart(&mut self, shuffle: bool) -> Option<ItemId> {
-        if shuffle {
-            self.order = PlayOrder::new(self.items.len(), true, None);
-            self.changed = true;
-        }
-        self.started = false;
+        self.keeping_queued(|session| {
+            if shuffle {
+                session.order = PlayOrder::new(session.items.len(), true, None);
+                session.changed = true;
+            }
+            session.started = false;
+        });
         self.next(&LoopStatus::Off, shuffle, true)
     }
 
+    /// Queues tracks to play before the next context item, after what is queued there; `next`
+    /// plays them first.
     pub fn enqueue(
         &mut self,
         tracks: impl IntoIterator<Item = (Locator, Option<u64>)>,
         next: bool,
     ) {
-        let items: Vec<Item> = tracks
+        let split = self.split();
+        let items: Vec<Queued> = tracks
             .into_iter()
-            .map(|(locator, fingerprint)| self.item(locator, fingerprint))
+            .map(|(locator, fingerprint)| Queued {
+                item: self.item(locator, fingerprint),
+                before: split,
+            })
             .collect();
         if items.is_empty() {
             return;
         }
-        if next {
-            for item in items.into_iter().rev() {
-                self.up_next.push_front(item);
-            }
+        let at = if next {
+            0
         } else {
-            self.up_next.extend(items);
-        }
+            self.queued
+                .iter()
+                .take_while(|queued| queued.before <= split)
+                .count()
+        };
+        self.queued.splice(at..at, items);
         self.changed = true;
     }
 
     pub fn remove_queued(&mut self, id: ItemId) {
-        let before = self.up_next.len();
-        self.up_next.retain(|item| item.id != id);
-        self.changed |= self.up_next.len() != before;
+        let before = self.queued.len();
+        self.queued.retain(|queued| queued.item.id != id);
+        self.changed |= self.queued.len() != before;
     }
 
     pub fn clear_queued(&mut self) {
-        self.changed |= !self.up_next.is_empty();
-        self.up_next.clear();
+        self.changed |= !self.queued.is_empty();
+        self.queued.clear();
     }
 
     /// Shuffles the context from the current track on, or goes back to its own order.
     pub fn set_shuffle(&mut self, shuffle: bool) {
-        let current = self.order.current().filter(|_| self.started);
-        self.order = PlayOrder::new(self.items.len(), shuffle, current);
+        self.keeping_queued(|session| {
+            let current = session.order.current().filter(|_| session.started);
+            session.order = PlayOrder::new(session.items.len(), shuffle, current);
+        });
         self.changed = true;
     }
 
@@ -263,7 +405,7 @@ impl Session {
             }
         };
         let kept: Vec<bool> = self.items.iter_mut().map(&mut keep).collect();
-        self.up_next.retain_mut(&mut keep);
+        self.queued.retain_mut(|queued| keep(&mut queued.item));
         if let Some(detour) = &mut self.detour {
             keep(detour);
         }
@@ -273,6 +415,17 @@ impl Session {
         self.changed = true;
         if kept.iter().all(|&kept| kept) {
             return;
+        }
+        // The slots each queued item stood behind lose those dropped.
+        let mut slots_kept = Vec::with_capacity(self.order.order.len() + 1);
+        let mut count = 0;
+        for &position in &self.order.order {
+            slots_kept.push(count);
+            count += usize::from(kept[position]);
+        }
+        slots_kept.push(count);
+        for queued in &mut self.queued {
+            queued.before = slots_kept[queued.before.min(slots_kept.len() - 1)];
         }
         let mut position = 0;
         let new_position: Vec<Option<usize>> = kept
@@ -296,30 +449,26 @@ impl Session {
 
     /// How many [`Session::entries`] there are.
     pub fn len(&self) -> usize {
-        self.items.len() + usize::from(self.detour.is_some()) + self.up_next.len()
+        self.items.len() + usize::from(self.detour.is_some()) + self.queued.len()
     }
 
-    /// Everything in play order: the context up to the current item, the up-next item playing,
-    /// up next, then the rest of the context.
+    /// Everything in play order: the context up to the current item, the queued item playing,
+    /// then the items still to play.
     pub fn entries(&self) -> Vec<QueueEntry> {
         let entry = |item: &Item, queued: bool| QueueEntry {
             item: item.id,
             locator: item.locator.clone(),
             queued,
         };
-        let split = self
-            .context_position()
-            .map_or(0, |position| self.order.slot_of[position] + 1);
-        let context = |slots: &[usize]| {
-            slots
-                .iter()
-                .map(|&position| entry(&self.items[position], false))
-                .collect::<Vec<_>>()
-        };
-        let mut entries = context(&self.order.order[..split]);
+        let mut entries: Vec<QueueEntry> = self.order.order[..self.split()]
+            .iter()
+            .map(|&position| entry(&self.items[position], false))
+            .collect();
         entries.extend(self.detour.iter().map(|item| entry(item, true)));
-        entries.extend(self.up_next.iter().map(|item| entry(item, true)));
-        entries.extend(context(&self.order.order[split..]));
+        entries.extend(self.upcoming().into_iter().map(|upcoming| match upcoming {
+            Upcoming::Context(position) => entry(&self.items[position], false),
+            Upcoming::Queued(index) => entry(&self.queued[index].item, true),
+        }));
         entries
     }
 
@@ -332,7 +481,16 @@ impl Session {
             context: self.context.clone(),
             items: self.items.iter().map(stored).collect(),
             slots: self.order.slot_of.clone(),
-            up_next: self.up_next.iter().map(stored).collect(),
+            up_next: self
+                .queued
+                .iter()
+                .map(|queued| stored(&queued.item))
+                .collect(),
+            up_next_slots: self
+                .queued
+                .iter()
+                .map(|queued| Some(queued.before))
+                .collect(),
             detour: self.detour.as_ref().map(stored),
         }
     }
@@ -362,10 +520,9 @@ impl Session {
         }
         let mut make = |stored: StoredItem| session.item(stored.locator, stored.fingerprint);
         let context: Vec<Item> = items.items.into_iter().map(&mut make).collect();
-        let up_next: VecDeque<Item> = items.up_next.into_iter().map(&mut make).collect();
+        let up_next: Vec<Item> = items.up_next.into_iter().map(&mut make).collect();
         let detour = items.detour.map(&mut make);
         session.items = context;
-        session.up_next = up_next;
         session.context = items.context;
         let (current, started) = match state.cursor {
             Some(StoredCursor::Context(position)) if position < len => {
@@ -381,6 +538,17 @@ impl Session {
         session.detour = detour;
         session.current = current;
         session.order = PlayOrder::from_order(order, cursor);
+        // Saved without their places, they play before the context goes on.
+        let split = session.split();
+        let mut slots = items.up_next_slots.into_iter();
+        session.queued = up_next
+            .into_iter()
+            .map(|item| Queued {
+                item,
+                before: slots.next().flatten().unwrap_or(split).clamp(split, len),
+            })
+            .collect();
+        session.queued.sort_by_key(|queued| queued.before);
         session.changed = true;
         Some(session)
     }
@@ -433,18 +601,24 @@ impl PlayOrder {
     }
 
     fn from_order(order: Vec<usize>, cursor: usize) -> Self {
-        let mut slot_of = vec![0; order.len()];
-        for (slot, &position) in order.iter().enumerate() {
-            slot_of[position] = slot;
-        }
-        Self {
+        let mut play_order = Self {
             order,
-            slot_of,
+            slot_of: vec![],
             cursor,
             next_round: None,
             previous_round: None,
             crossing: None,
             changed: true,
+        };
+        play_order.reindex();
+        play_order
+    }
+
+    /// Finds each position's slot again after `order` changed.
+    fn reindex(&mut self) {
+        self.slot_of = vec![0; self.order.len()];
+        for (slot, &position) in self.order.iter().enumerate() {
+            self.slot_of[position] = slot;
         }
     }
 

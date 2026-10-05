@@ -20,7 +20,7 @@ pub struct StoredItem {
 pub enum StoredCursor {
     /// The context item at this position.
     Context(usize),
-    /// The up-next item playing now, and the context item the context goes on after, if it
+    /// The queued item playing now, and the context item the context goes on after, if it
     /// started.
     Detour(Option<usize>),
 }
@@ -33,7 +33,11 @@ pub struct SessionItems {
     pub items: Vec<StoredItem>,
     /// Each item's place in the play order.
     pub slots: Vec<usize>,
+    /// The queued items, by where they stand.
     pub up_next: Vec<StoredItem>,
+    /// Where each queued item stands: the slot of the context item it plays before, the
+    /// number of slots for after the last; `None` (saved without it) before the context goes on.
+    pub up_next_slots: Vec<Option<usize>>,
     pub detour: Option<StoredItem>,
 }
 
@@ -304,7 +308,10 @@ impl LibraryDb {
                     items.items.push(item);
                     items.slots.push(slot.unwrap_or(0) as usize);
                 }
-                LIST_UP_NEXT => items.up_next.push(item),
+                LIST_UP_NEXT => {
+                    items.up_next.push(item);
+                    items.up_next_slots.push(slot.map(|slot| slot as usize));
+                }
                 LIST_DETOUR => items.detour = Some(item),
                 _ => {}
             }
@@ -349,9 +356,18 @@ impl LibraryDb {
                     let Some((kind, location, name)) = encode_locator(&item.locator) else {
                         continue;
                     };
-                    let slot = (list == LIST_CONTEXT)
-                        .then(|| items.slots.get(position).map(|&slot| slot as i64))
-                        .flatten();
+                    // A context item's place in the play order; the one a queued item plays
+                    // before.
+                    let slot = match list {
+                        LIST_CONTEXT => items.slots.get(position).map(|&slot| slot as i64),
+                        LIST_UP_NEXT => items
+                            .up_next_slots
+                            .get(position)
+                            .copied()
+                            .flatten()
+                            .map(|slot| slot as i64),
+                        _ => None,
+                    };
                     insert.execute(params![
                         list,
                         position as i64,

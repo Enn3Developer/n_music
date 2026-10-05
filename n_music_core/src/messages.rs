@@ -18,14 +18,22 @@ pub struct PlayFrom {
     pub query: Query,
     pub start: Option<Locator>,
 }
-/// Queues tracks to play after the current one, before the rest of the context. `next` puts
-/// them before what is queued already.
+/// Queues tracks to play after the current one: before the next track of the context, after
+/// what is queued there already. `next` plays them first.
 pub struct Enqueue {
     pub tracks: Vec<Locator>,
     pub next: bool,
 }
 pub struct RemoveQueued(pub ItemId);
 pub struct ClearQueued;
+/// Moves an item still to play to play right before `before`, another one still to play, or
+/// (`None`) after all of them; the others keep their order. Queued items and the context's go
+/// anywhere among each other. A move of the context's is kept for the rounds after, until
+/// shuffle changes.
+pub struct MoveUpcoming {
+    pub item: ItemId,
+    pub before: Option<ItemId>,
+}
 pub struct PlayPrevious;
 pub struct PlayNext;
 pub struct TogglePause;
@@ -86,7 +94,7 @@ pub struct PositionChanged {
 }
 pub struct LoopStatusChanged(pub LoopStatus);
 pub struct ShuffleChanged(pub bool);
-/// The session in play order: the context with up next spliced in after the current item.
+/// The session in play order: the context with the queued items where they stand.
 pub struct QueueChanged {
     pub entries: Vec<QueueEntry>,
 }
@@ -210,6 +218,7 @@ messages!(
     Enqueue,
     RemoveQueued,
     ClearQueued,
+    MoveUpcoming,
     PlayPrevious,
     PlayNext,
     TogglePause,

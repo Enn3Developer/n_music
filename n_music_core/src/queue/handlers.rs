@@ -4,10 +4,11 @@ use super::{LoopStatus, QueuePlayer};
 use crate::audio::output_devices;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
-    LoopStatusChanged, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom, PlayNext,
-    PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade, SetLoopStatus,
-    SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, ShuffleChanged, TogglePause,
-    ToggleRepeat, ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    LoopStatusChanged, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play, PlayFrom,
+    PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
+    SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
+    ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
+    TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
@@ -53,6 +54,14 @@ impl Handle<RemoveQueued> for QueuePlayer {
 impl Handle<ClearQueued> for QueuePlayer {
     fn handle(&mut self, _msg: &ClearQueued, _ctx: &Ctx, out: &mut Outbox) {
         self.session.clear_queued();
+        self.update_next();
+        self.sync(out);
+    }
+}
+
+impl Handle<MoveUpcoming> for QueuePlayer {
+    fn handle(&mut self, msg: &MoveUpcoming, _ctx: &Ctx, out: &mut Outbox) {
+        self.session.move_upcoming(msg.item, msg.before);
         self.update_next();
         self.sync(out);
     }

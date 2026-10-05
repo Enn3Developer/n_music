@@ -12,10 +12,10 @@ use crate::library::query::Query;
 use crate::library::LibraryPaths;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
-    OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged,
-    PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade, SetLoopStatus,
-    SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, TogglePause, ToggleRepeat,
-    ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
+    PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
+    SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, TogglePause,
+    ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
@@ -34,7 +34,7 @@ use store::SessionStore;
 const SAVE_INTERVAL: f64 = 10.0;
 
 #[derive(Default, Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
-/// What happens at the end of the context. Up-next tracks always play once, first.
+/// What happens at the end of the context. Queued tracks play once, where they stand.
 pub enum LoopStatus {
     /// Stops after the last track; with shuffle, after the round. Skipping on goes on.
     Off,
@@ -449,6 +449,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<Enqueue>();
         reg.on::<RemoveQueued>();
         reg.on::<ClearQueued>();
+        reg.on::<MoveUpcoming>();
         reg.on::<PlayPrevious>();
         reg.on::<PlayNext>();
         reg.on::<TogglePause>();
