@@ -36,22 +36,12 @@ Rectangle {
             height: Math.max(rail.height, implicitHeight)
             spacing: 4
 
-            Rectangle {
+            Logo {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 14
                 Layout.bottomMargin: 14
-                implicitWidth: 32
-                implicitHeight: 32
+                size: 32
                 radius: 9
-                color: Theme.accent
-
-                Icon {
-                    anchors.centerIn: parent
-                    name: "note"
-                    size: 18
-                    stroke: 2.2
-                    color: Theme.accentInk
-                }
             }
 
             RailItem {

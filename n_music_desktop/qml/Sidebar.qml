@@ -34,19 +34,9 @@ Rectangle {
             Layout.leftMargin: 10
             spacing: 10
 
-            Rectangle {
-                implicitWidth: 28
-                implicitHeight: 28
+            Logo {
+                size: 28
                 radius: 8
-                color: Theme.accent
-
-                Icon {
-                    anchors.centerIn: parent
-                    name: "note"
-                    size: 16
-                    stroke: 2.2
-                    color: Theme.accentInk
-                }
             }
             Label {
                 text: "n_music"

@@ -21,6 +21,7 @@ const QML: &[&str] = &[
     "qml/Icon.qml",
     "qml/IconButton.qml",
     "qml/ImportPage.qml",
+    "qml/Logo.qml",
     "qml/MenuButton.qml",
     "qml/MenuEntry.qml",
     "qml/MenuLine.qml",
@@ -80,6 +81,7 @@ const BRIDGES: &[&str] = &[
     "src/bridge/catalog.rs",
     "src/bridge/covers.rs",
     "src/bridge/groups.rs",
+    "src/bridge/icon.rs",
     "src/bridge/player.rs",
     "src/bridge/playlists.rs",
     "src/bridge/queue.rs",
@@ -91,13 +93,14 @@ const BRIDGES: &[&str] = &[
 ];
 
 /// C++ the bridges call.
-const CPP: &[&str] = &["cpp/covers.cpp"];
+const CPP: &[&str] = &["cpp/covers.cpp", "cpp/icon.cpp"];
 
 const RESOURCES: &[&str] = &[
     "assets/fonts/Figtree-Regular.ttf",
     "assets/fonts/Figtree-Medium.ttf",
     "assets/fonts/Figtree-SemiBold.ttf",
     "assets/fonts/Figtree-Bold.ttf",
+    "assets/icons/icon.png",
 ];
 
 fn main() {

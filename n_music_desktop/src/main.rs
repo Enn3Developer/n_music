@@ -40,6 +40,7 @@ fn main() {
         app.set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
     }
     QGuiApplication::set_desktop_file_name(&QString::from("n_music"));
+    bridge::icon::install();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
         bridge::covers::install(engine.as_mut().upcast_pin());

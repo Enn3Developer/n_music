@@ -72,19 +72,9 @@ Rectangle {
             RowLayout {
                 spacing: 10
 
-                Rectangle {
-                    implicitWidth: 36
-                    implicitHeight: 36
+                Logo {
+                    size: 36
                     radius: 10
-                    color: Theme.accent
-
-                    Icon {
-                        anchors.centerIn: parent
-                        name: "note"
-                        size: 20
-                        stroke: 2.2
-                        color: Theme.accentInk
-                    }
                 }
                 Label {
                     text: "n_music"
