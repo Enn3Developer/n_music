@@ -84,6 +84,7 @@ ColumnLayout {
             SettingRow {
                 title: Tr.t.crossfade
                 description: Tr.t.crossfade_hint
+                divider: true
 
                 SelectBox {
                     Layout.preferredWidth: 140
@@ -95,6 +96,16 @@ ColumnLayout {
                     value: "0"
                     Accessible.name: Tr.t.crossfade
                     onActivated: value => AppState.changeCrossfade(Number(value))
+                }
+            }
+            SettingRow {
+                title: Tr.t.output_device
+                description: Tr.t.output_device_hint
+
+                PillButton {
+                    small: true
+                    text: Tr.t.choose_device
+                    onClicked: AppState.chooseOutputDevice()
                 }
             }
         }

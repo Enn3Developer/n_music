@@ -48,6 +48,10 @@ pub mod qobject {
         /// Fades each track into the next over `seconds`; 0 plays them back to back.
         #[qinvokable]
         fn change_crossfade(self: &AppState, seconds: i32);
+
+        /// Offers the output devices to play on.
+        #[qinvokable]
+        fn choose_output_device(self: &AppState);
     }
 
     impl cxx_qt::Initialize for AppState {}
@@ -207,5 +211,13 @@ impl qobject::AppState {
                  each over to the next without a gap, and PlaybackSettings has no fade length"
             );
         }
+    }
+
+    fn choose_output_device(&self) {
+        unimplemented!(
+            "n_music_core cannot list or pick output devices: Output::open always opens CPAL's \
+             default output device, and DefaultDeviceMonitor only moves the stream to a new \
+             system default"
+        );
     }
 }
