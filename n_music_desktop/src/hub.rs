@@ -63,8 +63,8 @@ pub struct State {
     pub unread: usize,
     /// When the last complete scan of this launch finished, in Unix seconds.
     pub updated: Option<f64>,
-    /// The library's sources, as the library last reported them.
-    pub roots: Arc<Vec<Locator>>,
+    /// The library's sources as it last reported them; `None` before it did.
+    pub roots: Option<Arc<Vec<Locator>>>,
     pub time: TrackTime,
     /// The last tracked seek that applied.
     pub seek: u64,

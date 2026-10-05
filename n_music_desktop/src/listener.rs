@@ -68,7 +68,7 @@ fn scan_started() {
 impl Handle<LibraryRootsChanged> for Listener {
     fn handle(&mut self, msg: &LibraryRootsChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::ROOTS, |state| {
-            state.roots = Arc::new(msg.0.clone())
+            state.roots = Some(Arc::new(msg.0.clone()));
         });
     }
 }

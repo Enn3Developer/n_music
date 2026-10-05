@@ -5,6 +5,8 @@ pub mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
     }
@@ -17,6 +19,10 @@ pub mod qobject {
         /// The sources in the order added, as `{ name, kind, location, tracks, available }`:
         /// `kind` is `folder`, and `available` false when the folder is gone.
         #[qproperty(QVariant, items)]
+        /// The library reported its sources: `items` lists them.
+        #[qproperty(bool, loaded)]
+        /// No sources were ever chosen, so the app asks for them before anything else.
+        #[qproperty(bool, first_run)]
         type Sources = super::SourcesRust;
 
         /// Adds the local folder at `path`, as `Catalog.folder` writes it, and scans it.
@@ -28,6 +34,10 @@ pub mod qobject {
         /// Takes the source at `index` and its tracks out of the library.
         #[qinvokable]
         fn remove(self: &Sources, index: i32);
+        /// Makes the local folders at `paths` the sources and scans them, ending the first
+        /// run.
+        #[qinvokable]
+        fn set_folders(self: Pin<&mut Sources>, paths: &QStringList);
     }
 
     impl cxx_qt::Threading for Sources {}
@@ -35,10 +45,10 @@ pub mod qobject {
 }
 
 use crate::hub::{hub, Changed};
-use crate::{bus, worker};
+use crate::{bus, settings, worker};
 use core::pin::Pin;
 use cxx_qt::Threading;
-use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
 use n_music_core::library::catalog::Catalog;
 use n_music_core::messages::SetLibraryRoots;
 use n_music_core::source::Locator;
@@ -47,6 +57,8 @@ use std::time::Duration;
 
 pub struct SourcesRust {
     items: QVariant,
+    loaded: bool,
+    first_run: bool,
     slot: u64,
 }
 
@@ -55,6 +67,8 @@ impl Default for SourcesRust {
         Self {
             // A list from the start, so QML can go through it before the sources arrive.
             items: QVariant::from(&QList::<QVariant>::default()),
+            loaded: false,
+            first_run: settings::first_run(),
             slot: worker::slot(),
         }
     }
@@ -82,7 +96,9 @@ impl cxx_qt::Initialize for qobject::Sources {
 impl qobject::Sources {
     /// Counts the tracks of every source again.
     fn refresh(self: Pin<&mut Self>) {
-        let roots = hub().state().roots.clone();
+        let Some(roots) = hub().state().roots.clone() else {
+            return;
+        };
         let thread = self.qt_thread();
         worker::submit(
             self.slot,
@@ -95,7 +111,7 @@ impl qobject::Sources {
         );
     }
 
-    fn show(self: Pin<&mut Self>, sources: Vec<Source>) {
+    fn show(mut self: Pin<&mut Self>, sources: Vec<Source>) {
         let mut items = QList::<QVariant>::default();
         for source in sources {
             let mut item = QMap::<QMapPair_QString_QVariant>::default();
@@ -113,17 +129,17 @@ impl qobject::Sources {
             );
             items.append(QVariant::from(&item));
         }
-        self.set_items(QVariant::from(&items));
+        self.as_mut().set_items(QVariant::from(&items));
+        self.set_loaded(true);
     }
 
     fn add_folder(&self, path: &QString) {
-        let path = path.to_string();
-        if path.is_empty() {
+        let Some(roots) = hub().state().roots.clone() else {
             return;
-        }
-        let root = Locator::Local(path);
-        let mut roots = hub().state().roots.to_vec();
-        if !roots.contains(&root) {
+        };
+        let root = Locator::Local(path.to_string());
+        if !path.is_empty() && !roots.contains(&root) {
+            let mut roots = roots.to_vec();
             roots.push(root);
             bus::emit(SetLibraryRoots(roots));
         }
@@ -148,15 +164,30 @@ impl qobject::Sources {
     }
 
     fn remove(&self, index: i32) {
-        let mut roots = hub().state().roots.to_vec();
+        let Some(roots) = hub().state().roots.clone() else {
+            return;
+        };
         let Some(index) = usize::try_from(index)
             .ok()
             .filter(|&index| index < roots.len())
         else {
             return;
         };
+        let mut roots = roots.to_vec();
         roots.remove(index);
         bus::emit(SetLibraryRoots(roots));
+    }
+
+    fn set_folders(self: Pin<&mut Self>, paths: &QStringList) {
+        let mut roots: Vec<Locator> = vec![];
+        for path in QList::<QString>::from(paths).iter() {
+            let root = Locator::Local(path.to_string());
+            if !path.is_empty() && !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+        bus::emit(SetLibraryRoots(roots));
+        self.set_first_run(false);
     }
 }
 

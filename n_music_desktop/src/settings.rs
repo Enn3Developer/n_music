@@ -1,4 +1,4 @@
-use n_music_core::settings::{Options, Section, SettingsStorage};
+use n_music_core::settings::{LibrarySettings, Options, Section, SettingsStorage};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 
@@ -61,10 +61,18 @@ impl From<i32> for Theme {
 }
 
 static UI: OnceLock<Options<UiSettings>> = OnceLock::new();
+static FIRST_RUN: OnceLock<bool> = OnceLock::new();
 
 /// Loads the interface preferences; call once, before the interface starts.
 pub fn load(storage: Arc<dyn SettingsStorage>) {
+    // The library saves its sources once they are chosen, on the first run or in the settings.
+    let _ = FIRST_RUN.set(storage.load(LibrarySettings::KEY).is_none());
     let _ = UI.set(Options::load(storage));
+}
+
+/// No sources were ever chosen: the app runs for the first time.
+pub fn first_run() -> bool {
+    FIRST_RUN.get().copied().unwrap_or(false)
 }
 
 /// The interface preferences.

@@ -14,6 +14,8 @@ Control {
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     leftPadding: 7
     rightPadding: 7
+    font.pixelSize: 11
+    font.weight: Font.DemiBold
     Accessible.role: Accessible.StaticText
     Accessible.name: text
 
@@ -21,8 +23,7 @@ Control {
         text: badge.text
         verticalAlignment: Text.AlignVCenter
         color: Theme.text2
-        font.pixelSize: 11
-        font.weight: Font.DemiBold
+        font: badge.font
     }
     background: Rectangle {
         radius: height / 2

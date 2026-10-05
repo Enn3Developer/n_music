@@ -163,6 +163,7 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors.fill: parent
+        visible: !Sources.firstRun
         spacing: 0
 
         RowLayout {
@@ -223,5 +224,12 @@ ApplicationWindow {
             queueOpen: window.page === "queue"
             onToggleQueue: window.toggleQueue()
         }
+    }
+
+    // The first run asks where the music is before the library shows.
+    Loader {
+        anchors.fill: parent
+        active: Sources.firstRun
+        sourceComponent: ImportPage {}
     }
 }

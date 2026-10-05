@@ -19,6 +19,7 @@ const QML: &[&str] = &[
     "qml/GroupsPage.qml",
     "qml/Icon.qml",
     "qml/IconButton.qml",
+    "qml/ImportPage.qml",
     "qml/MenuButton.qml",
     "qml/MenuEntry.qml",
     "qml/NavItem.qml",
