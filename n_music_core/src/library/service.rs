@@ -6,10 +6,10 @@ use super::query::{now, PlaylistId};
 use super::scan::{Listing, ScanEvent, ScanJob};
 use super::LibraryPaths;
 use crate::messages::{
-    AddToPlaylist, CreatePlaylist, DeletePlaylist, LibraryRootsChanged, PlaylistRejected,
-    PlaylistSummary, PlaylistsChanged, RemoveFromPlaylist, RenamePlaylist, ScanFinished,
-    ScanProgress, ScanRequested, SetLibraryRoots, SetPlaylistRule, SetPlaylistSort,
-    TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    AddToPlaylist, CreatePlaylist, DeletePlaylist, LibraryRenamed, LibraryRootsChanged,
+    PlaylistRejected, PlaylistSummary, PlaylistsChanged, RemoveFromPlaylist, RenameLibrary,
+    RenamePlaylist, ScanFinished, ScanProgress, ScanRequested, SetLibraryRoots, SetPlaylistRule,
+    SetPlaylistSort, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{LibrarySettings, Options};
 use crate::source::{Locator, Providers};
@@ -47,7 +47,8 @@ struct Scan {
 }
 
 impl LibraryService {
-    /// Loads the playlists and statistics into `library`; tracks come with the first scan.
+    /// Loads the playlists, statistics and library names into `library`; tracks come with the
+    /// first scan.
     pub fn new(
         providers: Arc<Providers>,
         library: Library,
@@ -76,7 +77,8 @@ impl LibraryService {
         self.library.clone()
     }
 
-    /// Reads the playlists and statistics again, e.g. after a scan followed moved files.
+    /// Reads the playlists, statistics and library names again, e.g. after a scan followed moved
+    /// files.
     fn reload(&self) {
         let Some(db) = &self.db else {
             return;
@@ -89,6 +91,10 @@ impl LibraryService {
         match db.play_stats() {
             Ok(stats) => catalog.set_stats(stats),
             Err(error) => log::error!("Could not read the play statistics: {error}"),
+        }
+        match db.library_names() {
+            Ok(names) => catalog.set_library_names(names),
+            Err(error) => log::error!("Could not read the library names: {error}"),
         }
     }
 
@@ -204,12 +210,13 @@ impl LibraryService {
     }
 
     /// Takes the tracks of the `removed` libraries out of the library, but those another one
-    /// lists too. Returns the library's tracks when that changed them.
+    /// lists too, and forgets their names. Returns the library's tracks when that changed them.
     fn remove(&mut self, removed: &[Locator]) -> Option<Vec<Track>> {
         let mut catalog = self.library.write();
         let stale = unlisted(catalog.listings(), |library| removed.contains(library));
         for library in removed {
             catalog.listings_mut().remove(library);
+            catalog.name_library(library, None);
         }
         if stale.is_empty() {
             return None;
@@ -319,6 +326,7 @@ impl Subscriber for LibraryService {
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<ScanRequested>();
         reg.on::<SetLibraryRoots>();
+        reg.on::<RenameLibrary>();
         reg.on::<CreatePlaylist>();
         reg.on::<RenamePlaylist>();
         reg.on::<DeletePlaylist>();
@@ -390,7 +398,9 @@ impl Handle<SetLibraryRoots> for LibraryService {
         let tracks = self.remove(&removed);
         if !removed.is_empty() {
             // The database forgets the tracks no other library lists too.
-            self.store("a library removal", |db| db.link(&[], &msg.0).map(|_| ()));
+            self.store("a library removal", |db| {
+                db.link(&[], || msg.0.clone()).map(|_| ())
+            });
         }
         out.emit(LibraryRootsChanged(msg.0.clone()));
         if let Some(tracks) = tracks {
@@ -403,6 +413,36 @@ impl Handle<SetLibraryRoots> for LibraryService {
         }
         self.start_next(ctx);
         self.report(out);
+    }
+}
+
+impl Handle<RenameLibrary> for LibraryService {
+    fn handle(&mut self, msg: &RenameLibrary, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
+        if !self.settings.get().libraries.contains(&msg.library) {
+            log::warn!("Not renaming {}: it is not a library", msg.library);
+            return;
+        }
+        // A blank name is none.
+        let name = msg
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+        {
+            let mut catalog = self.library.write();
+            if catalog.library_name(&msg.library) == name {
+                return;
+            }
+            catalog.name_library(&msg.library, name.map(str::to_string));
+        }
+        self.store("a library name", |db| db.name_library(&msg.library, name));
+        out.emit(LibraryRenamed {
+            library: msg.library.clone(),
+            name: name.map(str::to_string),
+        });
     }
 }
 

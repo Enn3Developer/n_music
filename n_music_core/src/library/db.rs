@@ -1,6 +1,7 @@
 //! The library database (SQLite). Scanned track metadata lives here; rows are keyed by locator
 //! and trusted only while the provider's version stamp and the reader's format still match.
 //! It also links each library to the tracks it lists: a track no library lists is forgotten.
+//! And it keeps the names libraries were given.
 
 use super::track::{ReplayGain, TrackInfo};
 use crate::source::Locator;
@@ -19,6 +20,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/003_drop_session.sql"),
     include_str!("migrations/004_session.sql"),
     include_str!("migrations/005_library_tracks.sql"),
+    include_str!("migrations/006_library_names.sql"),
 ];
 
 /// Bump whenever [`super::reader::read_info`] reads more or differently: rows
@@ -184,7 +186,7 @@ impl LibraryDb {
             let id: Option<i64> = self
                 .conn
                 .query_row(
-                    "SELECT id FROM libraries WHERE location = ?1",
+                    "SELECT id FROM libraries WHERE location = ?1 AND listed",
                     [location],
                     |row| row.get(0),
                 )
@@ -201,15 +203,23 @@ impl LibraryDb {
         Ok(found)
     }
 
-    /// Links each library of `listed` to its tracks and unlinks those not in `libraries`, the
-    /// libraries there are. Then forgets the tracks unlinked that no library lists; returns how
-    /// many. One that could not be listed is linked once one could: until then, what it lists
-    /// is unknown.
-    pub fn link(&mut self, listed: &[LibraryTracks], libraries: &[Locator]) -> Result<usize> {
+    /// Links each library of `listed` to its tracks and forgets those not in `libraries`, the
+    /// libraries there are, names and all. Then forgets the tracks unlinked that no library
+    /// lists; returns how many. One that could not be listed is linked once one could: until
+    /// then, what it lists is unknown.
+    ///
+    /// `libraries` is asked once no other connection can write: a library added meanwhile, and
+    /// named at once, keeps its name.
+    pub fn link(
+        &mut self,
+        listed: &[LibraryTracks],
+        libraries: impl FnOnce() -> Vec<Locator>,
+    ) -> Result<usize> {
         // Reading the links, then writing them, must not let another connection write between.
         let transaction = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let libraries = libraries();
         let mut unlinked = HashSet::new();
         let removed = {
             let mut statement = transaction.prepare("SELECT id, kind, location FROM libraries")?;
@@ -241,14 +251,15 @@ impl LibraryDb {
             let id: Option<i64> = if listing.reachable {
                 Some(transaction.query_row(
                     "INSERT INTO libraries (kind, location) VALUES (?1, ?2) \
-                     ON CONFLICT (location) DO UPDATE SET kind = excluded.kind RETURNING id",
+                     ON CONFLICT (location) DO UPDATE SET kind = excluded.kind, listed = 1 \
+                     RETURNING id",
                     params![kind, location],
                     |row| row.get(0),
                 )?)
             } else {
                 transaction
                     .query_row(
-                        "SELECT id FROM libraries WHERE location = ?1",
+                        "SELECT id FROM libraries WHERE location = ?1 AND listed",
                         [location],
                         |row| row.get(0),
                     )
@@ -304,6 +315,50 @@ impl LibraryDb {
         }
         transaction.commit()?;
         Ok(forgotten)
+    }
+
+    /// The names libraries were given.
+    pub fn library_names(&self) -> Result<HashMap<Locator, String>> {
+        let mut statement = self.conn.prepare(
+            "SELECT kind, location, display_name FROM libraries WHERE display_name IS NOT NULL",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((decode_library(row.get(0)?, row.get(1)?), row.get(2)?))
+        })?;
+        let mut names = HashMap::new();
+        for row in rows {
+            if let (Some(library), name) = row? {
+                names.insert(library, name);
+            }
+        }
+        Ok(names)
+    }
+
+    /// Calls `library` `name`, or (`None`) by its folder's or playlist's name again.
+    pub fn name_library(&mut self, library: &Locator, name: Option<&str>) -> Result<()> {
+        let Some((kind, location)) = encode_library(library) else {
+            return Ok(());
+        };
+        match name {
+            // One not listed yet gets a row for its name alone.
+            Some(name) => self.conn.execute(
+                "INSERT INTO libraries (kind, location, display_name, listed) \
+                 VALUES (?1, ?2, ?3, 0) \
+                 ON CONFLICT (location) DO UPDATE SET display_name = excluded.display_name",
+                params![kind, location, name],
+            )?,
+            None => {
+                self.conn.execute(
+                    "DELETE FROM libraries WHERE location = ?1 AND NOT listed",
+                    [location],
+                )?;
+                self.conn.execute(
+                    "UPDATE libraries SET display_name = NULL WHERE location = ?1",
+                    [location],
+                )?
+            }
+        };
+        Ok(())
     }
 
     /// File names of every cover a track refers to.

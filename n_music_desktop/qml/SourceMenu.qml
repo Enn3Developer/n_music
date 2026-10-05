@@ -1,17 +1,24 @@
 import QtQuick
 import NMusic
 
-// What can be done with a source: update it, read its tags again, open its folder, or take it
-// out of the library.
+// What can be done with a source: rename it, update it, read its tags again, open its folder,
+// or take it out of the library.
 PopupMenu {
     id: menu
 
     /// The source, as `Sources.items` lists it.
     required property var source
 
+    /// Renaming it was asked for.
+    signal renameRequested
     /// Taking it out was asked for, to be confirmed first.
     signal removeRequested
 
+    MenuEntry {
+        iconName: "pencil"
+        text: Tr.t.rename
+        onTriggered: menu.renameRequested()
+    }
     MenuEntry {
         iconName: "refresh"
         enabled: menu.source.updating === false

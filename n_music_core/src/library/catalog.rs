@@ -1,6 +1,6 @@
-//! The library in memory: the scanned tracks, the playlists and the play statistics. Queries
-//! run here rather than in SQL, because the database lags behind a running scan and does not
-//! keep tracks the provider cannot version.
+//! The library in memory: the scanned tracks, the playlists, the play statistics and the names
+//! libraries were given. Queries run here rather than in SQL, because the database lags behind a
+//! running scan and does not keep tracks the provider cannot version.
 
 use super::query::{Filter, PlaylistId, SortKey};
 use crate::source::Locator;
@@ -59,6 +59,8 @@ pub struct Catalog {
     stats: HashMap<Locator, PlayStats>,
     /// By library.
     listings: HashMap<Locator, Listed>,
+    /// By library; the others go by their folder's or playlist's name.
+    names: HashMap<Locator, String>,
 }
 
 impl Catalog {
@@ -97,12 +99,29 @@ impl Catalog {
         self.listings.get(library)
     }
 
+    /// What `library` was named; `None` when it goes by its folder's or playlist's name.
+    pub fn library_name(&self, library: &Locator) -> Option<&str> {
+        self.names.get(library).map(String::as_str)
+    }
+
     pub(crate) fn listings(&self) -> &HashMap<Locator, Listed> {
         &self.listings
     }
 
     pub(crate) fn listings_mut(&mut self) -> &mut HashMap<Locator, Listed> {
         &mut self.listings
+    }
+
+    pub(crate) fn set_library_names(&mut self, names: HashMap<Locator, String>) {
+        self.names = names;
+    }
+
+    /// Calls `library` `name`, or (`None`) by its folder's or playlist's name again.
+    pub(crate) fn name_library(&mut self, library: &Locator, name: Option<String>) {
+        match name {
+            Some(name) => self.names.insert(library.clone(), name),
+            None => self.names.remove(library),
+        };
     }
 
     pub(crate) fn set_tracks(&mut self, tracks: Vec<Track>) {

@@ -174,6 +174,16 @@ pub struct ScanFinished {
 pub struct SetLibraryRoots(pub Vec<Locator>);
 /// The library folders, at startup and after every change.
 pub struct LibraryRootsChanged(pub Vec<Locator>);
+/// Calls a library `name`, or (`None`) by its folder's or playlist's name again.
+pub struct RenameLibrary {
+    pub library: Locator,
+    pub name: Option<String>,
+}
+/// A library was renamed; names are in the [`crate::library::catalog::Library`].
+pub struct LibraryRenamed {
+    pub library: Locator,
+    pub name: Option<String>,
+}
 
 /// Keeps copies of streamed tracks on disk as they play, in at most `limit` bytes: when space
 /// runs out, the most played tracks keep theirs. Turning it off deletes the copies.
@@ -242,4 +252,6 @@ messages!(
     ScanFinished,
     SetLibraryRoots,
     LibraryRootsChanged,
+    RenameLibrary,
+    LibraryRenamed,
 );

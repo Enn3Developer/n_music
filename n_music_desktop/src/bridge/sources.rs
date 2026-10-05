@@ -16,11 +16,13 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        /// The sources in the order added, as
-        /// `{ name, kind, location, tracks, cover, available, updating }`: `kind` is `folder` or
-        /// `web`, `tracks` how many tracks of the library it listed, `cover` the cover of one of
-        /// them or empty, `available` false when the folder is gone or the playlist could not be
-        /// reached, and `updating` true while it is scanned or waits for a scan.
+        /// The sources in the order added, as `{ name, displayName, defaultName, kind, location,
+        /// tracks, cover, available, updating }`: `name` is what it is called, its `displayName`
+        /// when it was given one (empty otherwise), else its `defaultName`, its folder's or
+        /// playlist's; `kind` is `folder` or `web`, `tracks` how many tracks of the library it
+        /// listed, `cover` the cover of one of them or empty, `available` false when the folder
+        /// is gone or the playlist could not be reached, and `updating` true while it is scanned
+        /// or waits for a scan.
         #[qproperty(QVariant, items)]
         /// The library reported its sources: `items` lists them.
         #[qproperty(bool, loaded)]
@@ -34,12 +36,14 @@ pub mod qobject {
         #[qproperty(f64, cache_used)]
         type Sources = super::SourcesRust;
 
-        /// Adds the local folder at `path`, as `FolderBrowser.path` writes it, and scans it.
+        /// Adds the local folder at `path`, as `FolderBrowser.path` writes it, called `name`
+        /// unless that is blank, and scans it.
         #[qinvokable]
-        fn add_folder(self: &Sources, path: &QString);
-        /// Adds the playlist at `address`, as `webAddress` writes it, and scans it.
+        fn add_folder(self: &Sources, path: &QString, name: &QString);
+        /// Adds the playlist at `address`, as `webAddress` writes it, called `name` unless that
+        /// is blank, and scans it.
         #[qinvokable]
-        fn add_web(self: &Sources, address: &QString);
+        fn add_web(self: &Sources, address: &QString, name: &QString);
         /// The playlist address typed in `text` as the library writes it, `https://` when it
         /// names no scheme; empty when it is not an `http` or `https` address.
         #[qinvokable]
@@ -47,6 +51,13 @@ pub mod qobject {
         /// What the source at `location` is called, see `items`.
         #[qinvokable]
         fn name(self: &Sources, location: &QString) -> QString;
+        /// What the source at `location` is called without a name of its own: its folder's or
+        /// playlist's name.
+        #[qinvokable]
+        fn default_name(self: &Sources, location: &QString) -> QString;
+        /// Calls the source at `location` `name`, or by its default name when that is blank.
+        #[qinvokable]
+        fn rename(self: &Sources, location: &QString, name: &QString);
         /// The `file:` URL of the folder at `location`, to open it elsewhere.
         #[qinvokable]
         fn folder_url(self: &Sources, location: &QString) -> QString;
@@ -63,9 +74,10 @@ pub mod qobject {
         #[qinvokable]
         fn reload(self: &Sources, location: &QString);
         /// Makes the sources at `locations`, folders and web playlists as `items` writes them,
-        /// the library's and scans them, ending the first run.
+        /// the library's and scans them, ending the first run. Each is called the name at the
+        /// same place in `names`, unless that is blank.
         #[qinvokable]
-        fn set_sources(self: Pin<&mut Sources>, locations: &QStringList);
+        fn set_sources(self: Pin<&mut Sources>, locations: &QStringList, names: &QStringList);
         /// Caches streamed tracks on disk as they play, or (`enabled` false) deletes them, and
         /// lets them take at most `limit` bytes: the most played stay.
         #[qinvokable]
@@ -82,7 +94,7 @@ use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QUrl, QVariant};
 use n_music_core::library::catalog::Catalog;
-use n_music_core::messages::{ScanRequested, SetLibraryRoots, SetStreamCache};
+use n_music_core::messages::{RenameLibrary, ScanRequested, SetLibraryRoots, SetStreamCache};
 use n_music_core::settings::StreamCacheSettings;
 use n_music_core::source::Locator;
 use std::path::{Path, PathBuf};
@@ -121,6 +133,8 @@ impl Default for SourcesRust {
 #[derive(PartialEq)]
 struct Source {
     name: String,
+    display_name: String,
+    default_name: String,
     kind: &'static str,
     location: String,
     tracks: usize,
@@ -186,6 +200,8 @@ impl qobject::Sources {
             let mut item = QMap::<QMapPair_QString_QVariant>::default();
             let text = |value: &str| QVariant::from(&QString::from(value));
             item.insert(QString::from("name"), text(&source.name));
+            item.insert(QString::from("displayName"), text(&source.display_name));
+            item.insert(QString::from("defaultName"), text(&source.default_name));
             item.insert(QString::from("kind"), text(source.kind));
             item.insert(QString::from("location"), text(&source.location));
             item.insert(
@@ -219,15 +235,15 @@ impl qobject::Sources {
         self.set_cache_used(cache.used as f64);
     }
 
-    fn add_folder(&self, path: &QString) {
+    fn add_folder(&self, path: &QString, name: &QString) {
         if !path.is_empty() {
-            add(Locator::Local(path.to_string()));
+            add(Locator::Local(path.to_string()), &name.to_string());
         }
     }
 
-    fn add_web(&self, address: &QString) {
+    fn add_web(&self, address: &QString, name: &QString) {
         if let Some(root) = Locator::web(&address.to_string()) {
-            add(root);
+            add(root, &name.to_string());
         }
     }
 
@@ -245,7 +261,33 @@ impl qobject::Sources {
     }
 
     fn name(&self, location: &QString) -> QString {
-        QString::from(&name(&location.to_string()))
+        let location = location.to_string();
+        let name = hub()
+            .library()
+            .read()
+            .library_name(&locator(&location))
+            .map(str::to_string);
+        QString::from(&name.unwrap_or_else(|| default_name(&location)))
+    }
+
+    fn default_name(&self, location: &QString) -> QString {
+        QString::from(&default_name(&location.to_string()))
+    }
+
+    fn rename(&self, location: &QString, name: &QString) {
+        let location = location.to_string();
+        let root = hub().state().roots.as_ref().and_then(|roots| {
+            roots
+                .iter()
+                .find(|root| root.to_string() == location)
+                .cloned()
+        });
+        if let Some(root) = root {
+            bus::emit(RenameLibrary {
+                library: root,
+                name: named(&name.to_string()),
+            });
+        }
     }
 
     fn folder_url(&self, location: &QString) -> QString {
@@ -272,15 +314,28 @@ impl qobject::Sources {
         scan(&location.to_string(), false);
     }
 
-    fn set_sources(self: Pin<&mut Self>, locations: &QStringList) {
+    fn set_sources(self: Pin<&mut Self>, locations: &QStringList, names: &QStringList) {
+        let names: Vec<String> = QList::<QString>::from(names)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let mut roots: Vec<Locator> = vec![];
-        for location in QList::<QString>::from(locations).iter() {
+        let mut renames = vec![];
+        for (index, location) in QList::<QString>::from(locations).iter().enumerate() {
             let root = locator(&location.to_string());
             if !location.is_empty() && !roots.contains(&root) {
+                renames.push(RenameLibrary {
+                    library: root.clone(),
+                    name: names.get(index).and_then(|name| named(name)),
+                });
                 roots.push(root);
             }
         }
         bus::emit(SetLibraryRoots(roots));
+        // Named once they are libraries.
+        for rename in renames {
+            bus::emit(rename);
+        }
         self.set_first_run(false);
     }
 
@@ -292,16 +347,29 @@ impl qobject::Sources {
     }
 }
 
-/// Adds `root` to the sources, unless it is one.
-fn add(root: Locator) {
+/// Adds `root` to the sources, called `name` unless that is blank, unless it is one.
+fn add(root: Locator, name: &str) {
     let Some(roots) = hub().state().roots.clone() else {
         return;
     };
     if !roots.contains(&root) {
         let mut roots = roots.to_vec();
-        roots.push(root);
+        roots.push(root.clone());
         bus::emit(SetLibraryRoots(roots));
+        // Named once it is a library.
+        if let Some(name) = named(name) {
+            bus::emit(RenameLibrary {
+                library: root,
+                name: Some(name),
+            });
+        }
     }
+}
+
+/// `name` as typed: `None` when blank.
+fn named(name: &str) -> Option<String> {
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// Scans the source at `location`; `check_cache` false reads every track again.
@@ -325,8 +393,9 @@ pub fn locator(location: &str) -> Locator {
     }
 }
 
-/// What the source at `location` is called: its folder's name, or its playlist's.
-fn name(location: &str) -> String {
+/// What the source at `location` is called without a name of its own: its folder's name, or
+/// its playlist's.
+fn default_name(location: &str) -> String {
     match locator(location) {
         root @ Locator::Web(_) => root.display_name(),
         _ => Path::new(location).file_name().map_or_else(
@@ -361,8 +430,16 @@ fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
         // Android's documents do not come up on the desktop.
         Locator::DocumentTree(_) | Locator::Document { .. } => ("folder", true),
     };
+    let default_name = default_name(&location);
+    let display_name = catalog.library_name(root).unwrap_or_default().to_string();
     Source {
-        name: name(&location),
+        name: if display_name.is_empty() {
+            default_name.clone()
+        } else {
+            display_name.clone()
+        },
+        display_name,
+        default_name,
         kind,
         location,
         tracks,

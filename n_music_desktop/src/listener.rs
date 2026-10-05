@@ -3,10 +3,10 @@
 use crate::hub::{hub, Changed, PlaylistSummary, StreamCache};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
-    LibraryRootsChanged, LoopStatusChanged, OutputDevices, PlaybackChanged, PlaylistRejected,
-    PlaylistsChanged, PositionChanged, QueueChanged, ScanFinished, ScanProgress, ShuffleChanged,
-    StreamCacheChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
-    VolumeChanged,
+    LibraryRenamed, LibraryRootsChanged, LoopStatusChanged, OutputDevices, PlaybackChanged,
+    PlaylistRejected, PlaylistsChanged, PositionChanged, QueueChanged, ScanFinished, ScanProgress,
+    ShuffleChanged, StreamCacheChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed,
+    TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -22,6 +22,7 @@ impl Subscriber for Listener {
 
     fn register(reg: &mut Registrar<Self>) {
         reg.on::<LibraryRootsChanged>();
+        reg.on::<LibraryRenamed>();
         reg.on::<ScanProgress>();
         reg.on::<TracksEnumerated>();
         reg.on::<TrackMetadataLoaded>();
@@ -54,6 +55,13 @@ impl Handle<LibraryRootsChanged> for Listener {
         hub().update(Changed::ROOTS, |state| {
             state.roots = Some(Arc::new(msg.0.clone()));
         });
+    }
+}
+
+impl Handle<LibraryRenamed> for Listener {
+    fn handle(&mut self, _msg: &LibraryRenamed, _ctx: &Ctx, _out: &mut Outbox) {
+        // The name is in the library.
+        hub().notify(Changed::ROOTS);
     }
 }
 

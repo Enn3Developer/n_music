@@ -89,12 +89,13 @@ AbstractButton {
 
     FolderPicker {
         id: picker
+        asksName: true
         taken: Sources.items.map(source => source.location)
-        onChosen: path => Sources.addFolder(path)
+        onChosen: (path, name) => Sources.addFolder(path, name)
     }
 
     WebSourceDialog {
         id: webPrompt
-        onChosen: address => Sources.addWeb(address)
+        onChosen: (address, name) => Sources.addWeb(address, name)
     }
 }

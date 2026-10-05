@@ -241,6 +241,7 @@ Item {
                                     width: page.cardWidth
                                     source: modelData
                                     onClicked: page.navigate(Filters.collectionPage("source", modelData.location, ""))
+                                    onRenameRequested: renaming.askFor(modelData)
                                     onRemoveRequested: removal.askFor(modelData.location, modelData.name)
                                 }
                             }
@@ -295,6 +296,10 @@ Item {
             shown: page.updated !== ""
             text: Tr.t.last_update.arg(page.updated)
         }
+    }
+
+    SourceNameDialog {
+        id: renaming
     }
 
     RemoveSourceDialog {

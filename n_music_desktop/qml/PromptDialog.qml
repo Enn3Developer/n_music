@@ -3,7 +3,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// A small modal dialog confirming an action, optionally asking for a name first.
+// A small modal dialog confirming an action, optionally asking for a name first; what it
+// holds goes under the name.
 Popup {
     id: dialog
 
@@ -11,6 +12,8 @@ Popup {
     property string message
     /// Asks for a name in a text field.
     property bool asksText: false
+    /// The name may be left empty.
+    property bool optional: false
     property alias text: field.text
     property alias placeholder: field.placeholderText
     property string confirmText
@@ -20,6 +23,7 @@ Popup {
     property var check: null
     /// What is wrong with the text, shown under it until it changes.
     property string problem
+    default property alias extra: more.data
 
     /// Confirmed, with the name typed when asked for one.
     signal confirmed(string text)
@@ -41,7 +45,7 @@ Popup {
 
     function confirm() {
         const text = field.text.trim();
-        if (asksText && text === "")
+        if (asksText && !optional && text === "")
             return;
         if (asksText && check !== null) {
             problem = check(text);
@@ -115,6 +119,12 @@ Popup {
             color: Theme.danger
             font.pixelSize: 13
         }
+        Column {
+            id: more
+            width: parent.width
+            visible: children.length > 0
+            spacing: 14
+        }
         Row {
             anchors.right: parent.right
             topPadding: 4
@@ -131,7 +141,7 @@ Popup {
                 implicitHeight: 38
                 primary: !dialog.danger
                 danger: dialog.danger
-                enabled: !dialog.asksText || field.text.trim() !== ""
+                enabled: !dialog.asksText || dialog.optional || field.text.trim() !== ""
                 text: dialog.confirmText
                 onClicked: dialog.confirm()
             }

@@ -44,7 +44,7 @@ bitflags! {
         const PLAYLISTS = 1 << 11;
         /// The library refused a playlist change.
         const REJECTED = 1 << 12;
-        /// The library's sources.
+        /// The library's sources, or what one is called.
         const ROOTS = 1 << 13;
         /// How many tracks the running scan found and read.
         const PROGRESS = 1 << 14;

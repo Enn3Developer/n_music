@@ -18,14 +18,15 @@ Item {
     readonly property var key: Filters.collectionKey(kind, argument)
     /// The page lists the tracks without the tag, like Unknown album.
     readonly property bool unknown: kind !== "source" && key.name === ""
-    readonly property string name: !unknown ? key.name : ({
+    /// The source listed, as `Sources.items` lists it; null when the page lists no source, or
+    /// one taken out.
+    readonly property var source: kind === "source" ? Sources.items.find(source => source.location === key.location) ?? null : null
+    /// What the page is called; a source's changes as it is renamed.
+    readonly property string name: source !== null ? source.name : !unknown ? key.name : ({
             album: Tr.t.unknown_album,
             artist: Tr.t.unknown_artist,
             genre: Tr.t.unknown_genre
         })[kind]
-    /// The source listed, as `Sources.items` lists it; null when the page lists no source, or
-    /// one taken out.
-    readonly property var source: kind === "source" ? Sources.items.find(source => source.location === key.location) ?? null : null
 
     readonly property string summary: {
         if (!tracks.ready)
@@ -109,14 +110,33 @@ Item {
                     font.letterSpacing: 0.96
                     font.capitalization: Font.AllUppercase
                 }
-                Label {
-                    Layout.maximumWidth: about.width
-                    text: page.name
-                    elide: Text.ElideRight
-                    color: Theme.text
-                    font.pixelSize: Shell.narrow ? 22 : 34
-                    font.weight: Font.Bold
-                    font.letterSpacing: Shell.narrow ? -0.44 : -0.68
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        Layout.maximumWidth: about.width - (rename.visible ? rename.width + 8 : 0)
+                        text: page.name
+                        elide: Text.ElideRight
+                        color: Theme.text
+                        font.pixelSize: Shell.narrow ? 22 : 34
+                        font.weight: Font.Bold
+                        font.letterSpacing: Shell.narrow ? -0.44 : -0.68
+                    }
+                    IconButton {
+                        id: rename
+                        visible: page.source !== null
+                        size: Shell.narrow ? 28 : 34
+                        iconSize: 16
+                        stroke: 1.9
+                        iconName: "pencil"
+                        color: Theme.text3
+                        text: Tr.t.rename_source
+                        onClicked: renaming.askFor(page.source)
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
                 }
                 Label {
                     Layout.maximumWidth: about.width
@@ -163,6 +183,7 @@ Item {
                             id: actions
                             y: more.height + 4
                             source: page.source ?? ({})
+                            onRenameRequested: renaming.askFor(page.source)
                             onRemoveRequested: removal.askFor(page.source.location, page.source.name)
                         }
                     }
@@ -199,6 +220,10 @@ Item {
                 title: Tr.t.no_results
             }
         }
+    }
+
+    SourceNameDialog {
+        id: renaming
     }
 
     RemoveSourceDialog {

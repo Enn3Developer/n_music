@@ -13,9 +13,11 @@ Popup {
     property string confirmText: Tr.t.add_this_folder
     /// The paths of the folders picked before: they show as added, and cannot be picked again.
     property var taken: []
+    /// Asks for a name for the source the folder becomes, which can be left empty.
+    property bool asksName: false
 
-    /// The folder at `path` was picked.
-    signal chosen(string path)
+    /// The folder at `path` was picked, named `name` unless that is empty.
+    signal chosen(string path, string name)
 
     readonly property bool narrow: width < 600
     /// The folder shown was picked before.
@@ -33,7 +35,7 @@ Popup {
             return;
         from = browser.parentPath !== "" ? browser.parentPath : browser.path;
         close();
-        chosen(browser.path);
+        chosen(browser.path, asksName ? naming.text.trim() : "");
     }
 
     function go(path: string) {
@@ -101,6 +103,7 @@ Popup {
     onAboutToShow: {
         typing = false;
         left = "";
+        naming.text = "";
         browser.findPlaces();
         browser.open(from !== "" ? from : browser.start());
     }
@@ -585,6 +588,15 @@ Popup {
             Layout.bottomMargin: 12
             spacing: 10
 
+            SourceNameField {
+                id: naming
+                Layout.fillWidth: true
+                Layout.rightMargin: 6
+                visible: picker.asksName
+                defaultName: browser.path !== "" ? Sources.defaultName(browser.path) : ""
+                Keys.onReturnPressed: picker.choose()
+                Keys.onEnterPressed: picker.choose()
+            }
             Label {
                 id: where
                 Layout.fillWidth: true

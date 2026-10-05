@@ -12,6 +12,8 @@ AbstractButton {
     /// The source, as `Sources.items` lists it.
     required property var source
 
+    /// Renaming it was asked for.
+    signal renameRequested
     /// Taking it out was asked for, to be confirmed first.
     signal removeRequested
 
@@ -168,6 +170,7 @@ AbstractButton {
     SourceMenu {
         id: menu
         source: card.source
+        onRenameRequested: card.renameRequested()
         onRemoveRequested: card.removeRequested()
     }
 }

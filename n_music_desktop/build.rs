@@ -58,6 +58,8 @@ const QML: &[&str] = &[
     "qml/SourceCard.qml",
     "qml/SourceKindEntry.qml",
     "qml/SourceMenu.qml",
+    "qml/SourceNameDialog.qml",
+    "qml/SourceNameField.qml",
     "qml/SourcesPage.qml",
     "qml/TextBox.qml",
     "qml/ThinScrollBar.qml",

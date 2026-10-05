@@ -8,7 +8,8 @@ import NMusic
 Rectangle {
     id: page
 
-    /// The sources to start with, as `{ location, name, kind, suggested }`.
+    /// The sources to start with, as `{ location, name, displayName, kind, suggested }`, like
+    /// `Sources.items`.
     property var added: []
     /// `added` holds what the library suggested.
     property bool seeded: false
@@ -21,19 +22,22 @@ Rectangle {
         added = Sources.items.map(source => ({
                     location: source.location,
                     name: source.name,
+                    displayName: source.displayName,
                     kind: source.kind,
                     suggested: true
                 }));
     }
 
-    /// Adds the source at `location`, a folder or a web playlist, unless it is there.
-    function add(location: string) {
+    /// Adds the source at `location`, a folder or a web playlist, unless it is there, named
+    /// `displayName` unless that is empty.
+    function add(location: string, displayName: string) {
         if (location === "" || added.some(source => source.location === location))
             return;
         added = added.concat([
             {
                 location: location,
-                name: Sources.name(location),
+                name: displayName !== "" ? displayName : Sources.defaultName(location),
+                displayName: displayName,
                 kind: SourceKinds.of(location),
                 suggested: false
             }
@@ -302,7 +306,7 @@ Rectangle {
                 text: Tr.t.build_library
                 font.pixelSize: 15
                 font.weight: Font.Bold
-                onClicked: Sources.setSources(page.added.map(source => source.location))
+                onClicked: Sources.setSources(page.added.map(source => source.location), page.added.map(source => source.displayName))
 
                 background: Rectangle {
                     radius: height / 2
@@ -335,12 +339,13 @@ Rectangle {
 
     FolderPicker {
         id: picker
+        asksName: true
         taken: page.added.map(source => source.location)
-        onChosen: path => page.add(path)
+        onChosen: (path, name) => page.add(path, name)
     }
 
     WebSourceDialog {
         id: webPrompt
-        onChosen: address => page.add(address)
+        onChosen: (address, name) => page.add(address, name)
     }
 }

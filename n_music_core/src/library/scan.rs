@@ -167,7 +167,7 @@ impl Job for ScanJob {
             .as_mut()
             .filter(|_| !token.as_ref().is_some_and(JobToken::is_cancelled))
         {
-            link(db, &libraries, &self.settings.get().libraries);
+            link(db, &libraries, &self.settings);
         }
         writer.emit_tagged(
             tag,
@@ -427,7 +427,7 @@ fn store_loaded(mut db: Option<&mut LibraryDb>, rx: &std::sync::mpsc::Receiver<L
 }
 
 /// Links each library to the tracks it listed, forgetting those no library lists any more.
-fn link(db: &mut LibraryDb, listings: &[Listing], libraries: &[Locator]) {
+fn link(db: &mut LibraryDb, listings: &[Listing], settings: &Options<LibrarySettings>) {
     let listed: Vec<LibraryTracks> = listings
         .iter()
         .map(|listing| LibraryTracks {
@@ -436,7 +436,7 @@ fn link(db: &mut LibraryDb, listings: &[Listing], libraries: &[Locator]) {
             reachable: listing.reachable,
         })
         .collect();
-    match db.link(&listed, libraries) {
+    match db.link(&listed, || settings.get().libraries.clone()) {
         Ok(0) => {}
         Ok(forgotten) => log::debug!("Removed {forgotten} tracks no library lists any more"),
         Err(error) => log::error!("Could not save which tracks the libraries list: {error}"),
