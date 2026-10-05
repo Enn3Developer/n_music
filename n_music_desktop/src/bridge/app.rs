@@ -44,6 +44,10 @@ pub mod qobject {
         /// Whether the window can be seen; the core sends no positions while it cannot.
         #[qinvokable]
         fn set_visible(self: &AppState, visible: bool);
+
+        /// Fades each track into the next over `seconds`; 0 plays them back to back.
+        #[qinvokable]
+        fn change_crossfade(self: &AppState, seconds: i32);
     }
 
     impl cxx_qt::Initialize for AppState {}
@@ -194,5 +198,14 @@ impl qobject::AppState {
 
     fn set_visible(&self, visible: bool) {
         bus::emit(AppVisibilityChanged(visible));
+    }
+
+    fn change_crossfade(&self, seconds: i32) {
+        if seconds > 0 {
+            unimplemented!(
+                "n_music_core cannot crossfade: its player plays one track at a time and hands \
+                 each over to the next without a gap, and PlaybackSettings has no fade length"
+            );
+        }
     }
 }

@@ -76,6 +76,27 @@ ColumnLayout {
                     font.pixelSize: 13
                 }
             }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: Theme.line
+            }
+            SettingRow {
+                title: Tr.t.crossfade
+                description: Tr.t.crossfade_hint
+
+                SelectBox {
+                    Layout.preferredWidth: 140
+                    options: [0, 2, 4, 6, 8, 10, 12].map(seconds => ({
+                                value: String(seconds),
+                                label: seconds === 0 ? Tr.t.crossfade_off : Tr.t.crossfade_seconds.arg(seconds)
+                            }))
+                    // The core plays tracks back to back, never overlapping.
+                    value: "0"
+                    Accessible.name: Tr.t.crossfade
+                    onActivated: value => AppState.changeCrossfade(Number(value))
+                }
+            }
         }
     }
 
