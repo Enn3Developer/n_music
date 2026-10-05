@@ -35,7 +35,6 @@ Rectangle {
             // Leaves room for a few tracks after it in short windows.
             size: Math.min(panel.width - 40, Math.max(120, panel.height - 400))
             radius: 12
-            iconName: "note"
             path: Player.cover
         }
 

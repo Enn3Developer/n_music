@@ -26,6 +26,7 @@ const QML: &[&str] = &[
     "qml/MenuEntry.qml",
     "qml/MenuLine.qml",
     "qml/MiniPlayer.qml",
+    "qml/MonoLogo.qml",
     "qml/NarrowBar.qml",
     "qml/NavItem.qml",
     "qml/NowPlayingPanel.qml",

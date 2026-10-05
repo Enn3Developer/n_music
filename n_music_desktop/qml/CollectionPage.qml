@@ -69,7 +69,7 @@ Item {
                 size: Shell.narrow ? 96 : 168
                 radius: page.kind === "artist" ? art.size / 2 : Shell.narrow ? 8 : 10
                 iconName: ({
-                        album: "disc",
+                        album: "",
                         artist: "artist",
                         genre: "tag",
                         source: "folder"

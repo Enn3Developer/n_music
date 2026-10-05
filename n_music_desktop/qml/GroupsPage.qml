@@ -20,7 +20,7 @@ Item {
                 many: Tr.t.albums_many,
                 search: Tr.t.search_albums,
                 unknown: Tr.t.unknown_album,
-                icon: "disc"
+                icon: ""
             },
             artist: {
                 title: Tr.t.artists,
