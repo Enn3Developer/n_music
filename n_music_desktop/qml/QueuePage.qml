@@ -16,8 +16,86 @@ Item {
 
     readonly property string contextDescription: [queue.contextLabel === "" ? Tr.t.library : queue.contextLabel, queue.contextDetail, Player.shuffle ? Tr.t.shuffled : "", Tr.t.left_count.arg(Format.number(queue.leftCount))].filter(part => part !== "").join(" · ")
 
+    /// A row is being dragged to another place: `held`, its top showing at `heldTop` in the
+    /// list's content.
+    property bool dragging: false
+    property QueueRow held: null
+    property real heldTop: 0
+    /// How far below its top it was picked up, and where the pointer is in the scene.
+    property real grip: 0
+    property real pointer: 0
+    /// Rows still to play stand `stride` apart, row `n` at `grid + n * stride`.
+    property real stride: 0
+    property real grid: 0
+    /// The held row eases into its place once let go.
+    property bool settling: false
+    /// Pixels a second the list scrolls by while the pointer carries a row near its top or bottom.
+    readonly property real scrollSpeed: {
+        if (!dragging)
+            return 0;
+        const y = list.mapFromItem(null, 0, pointer).y;
+        const edge = Math.min(64, list.height / 4);
+        if (y < edge)
+            return -1200 * Math.min(1, (edge - y) / edge);
+        if (y > list.height - edge)
+            return 1200 * Math.min(1, (y - list.height + edge) / edge);
+        return 0;
+    }
+
+    function pickUp(row: QueueRow, offset: real, sceneY: real) {
+        dragging = true;
+        held = row;
+        grip = offset;
+        pointer = sceneY;
+        stride = row.height + list.spacing;
+        grid = row.y - row.index * stride;
+        queue.startDrag(row.index);
+        follow();
+    }
+
+    // Keeps the held row under the pointer, among the rows still to play, and moves it to the
+    // place it shows over.
+    function follow() {
+        if (!dragging || held === null)
+            return;
+        const first = list.count - queue.leftCount;
+        // Past the edges the list scrolls instead: the place the row shows over stays one the
+        // view built.
+        const top = Math.max(0, Math.min(list.height, list.mapFromItem(null, 0, pointer).y)) + list.contentY - grip;
+        heldTop = Math.max(grid + first * stride, Math.min(grid + (list.count - 1) * stride, top));
+        queue.dragTo(Math.round((heldTop - grid) / stride));
+    }
+
+    function drop(keep: bool) {
+        if (!dragging)
+            return;
+        dragging = false;
+        queue.endDrag(keep);
+        settling = true;
+        held = null;
+        settling = false;
+    }
+
     QueueList {
         id: queue
+    }
+
+    // Scrolls the list under a row carried near its edges.
+    FrameAnimation {
+        id: scroller
+        running: page.scrollSpeed < 0 ? !list.atYBeginning : page.scrollSpeed > 0 && !list.atYEnd
+        onTriggered: {
+            const top = list.originY - list.topMargin;
+            const bottom = Math.max(top, list.originY + list.contentHeight + list.bottomMargin - list.height);
+            list.contentY = Math.max(top, Math.min(bottom, list.contentY + page.scrollSpeed * scroller.frameTime));
+        }
+    }
+
+    // Escape puts a dragged row back.
+    Shortcut {
+        sequences: [StandardKey.Cancel]
+        enabled: page.dragging
+        onActivated: page.drop(false)
     }
 
     NarrowBar {
@@ -176,16 +254,57 @@ Item {
         spacing: 6
         model: queue
         reuseItems: true
+        // The view lets go of a row moved past those it built, so a dragged one keeps some built
+        // past either edge.
+        displayMarginBeginning: page.dragging ? 2 * page.stride : 0
+        displayMarginEnd: page.dragging ? 2 * page.stride : 0
         boundsBehavior: Flickable.StopAtBounds
         Accessible.name: Tr.t.queue
+        // Scrolling happens in the view's layout too, where its model must not change.
+        onContentYChanged: Qt.callLater(page.follow)
 
         section.property: "section"
         section.delegate: SectionHeader {}
 
         delegate: QueueRow {
+            id: entry
             width: ListView.view.width
+            dragged: page.held === entry
+            lift: dragged ? page.heldTop - y : 0
             onActivated: queue.play(index)
             onRemove: queue.remove(index)
+            onPickedUp: (offset, sceneY) => page.pickUp(entry, offset, sceneY)
+            onCarried: sceneY => {
+                page.pointer = sceneY;
+                page.follow();
+            }
+            onDropped: page.drop(true)
+            // These can come while the view lays its rows out, which must not change its model.
+            onDragCanceled: Qt.callLater(page.drop, false)
+            ListView.onPooled: {
+                if (entry.dragged)
+                    Qt.callLater(page.drop, false);
+            }
+            Component.onDestruction: {
+                if (entry.dragged)
+                    Qt.callLater(page.drop, false);
+            }
+
+            Behavior on lift {
+                enabled: page.settling
+                NumberAnimation {
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+            }
+        }
+        // Rows make way for the one dragged over them.
+        moveDisplaced: Transition {
+            NumberAnimation {
+                property: "y"
+                duration: 160
+                easing.type: Easing.OutCubic
+            }
         }
 
         ScrollBar.vertical: ThinScrollBar {}
@@ -226,8 +345,6 @@ Item {
         id: header
 
         required property string section
-        /// Something is listed above: shown history, or up next above the context.
-        readonly property bool below: section === "next" ? queue.showHistory && queue.historyCount > 0 : (queue.showHistory && queue.historyCount > 0) || queue.upNextCount > 0
 
         width: list.width
         height: content.visible ? content.implicitHeight : 0
@@ -235,8 +352,9 @@ Item {
         Column {
             id: content
             width: parent.width
-            visible: header.section !== "history"
-            topPadding: header.below ? 16 : 0
+            visible: header.section === "next"
+            // Apart from the history shown above.
+            topPadding: queue.showHistory && queue.historyCount > 0 ? 16 : 0
             bottomPadding: 6
             spacing: 6
 
@@ -245,42 +363,50 @@ Item {
                 height: 32
 
                 Label {
+                    anchors.left: parent.left
+                    anchors.right: actions.left
+                    anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: header.section === "next" ? Tr.t.up_next : Tr.t.playing_from
+                    text: Tr.t.up_next
+                    elide: Text.ElideRight
                     color: Theme.text
                     font.pixelSize: 18
                     font.weight: Font.Bold
                 }
-                FlatButton {
+                Row {
+                    id: actions
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: header.section === "next"
-                    text: Tr.t.clear
-                    onClicked: queue.clearUpNext()
-                }
-                AbstractButton {
-                    id: link
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: header.section === "context"
-                    hoverEnabled: true
-                    text: Tr.t.open_in_library
-                    onClicked: page.navigate(queue.contextPage)
+                    spacing: 14
 
-                    background: null
-                    contentItem: Label {
-                        text: link.text
-                        color: link.hovered ? Theme.text : Theme.text2
-                        font.pixelSize: 13
-                        font.underline: true
+                    FlatButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: queue.upNextCount > 0
+                        text: Tr.t.clear_queued
+                        onClicked: queue.clearUpNext()
+                    }
+                    AbstractButton {
+                        id: link
+                        anchors.verticalCenter: parent.verticalCenter
+                        hoverEnabled: true
+                        text: Tr.t.open_in_library
+                        onClicked: page.navigate(queue.contextPage)
+
+                        background: null
+                        contentItem: Label {
+                            text: link.text
+                            color: link.hovered ? Theme.text : Theme.text2
+                            font.pixelSize: 13
+                            font.underline: true
+                        }
                     }
                 }
             }
             Label {
                 width: parent.width
-                text: header.section === "next" ? Tr.t.up_next_hint : page.contextDescription
+                text: Tr.t.playing_from.arg(page.contextDescription)
                 elide: Text.ElideRight
-                color: header.section === "next" ? Theme.text3 : Theme.text2
+                color: Theme.text2
                 font.pixelSize: 13
             }
         }

@@ -128,7 +128,7 @@ Rectangle {
                     required property string artist
                     required property string length
                     required property string cover
-                    required property string section
+                    required property bool queued
 
                     width: ListView.view.width
                     height: AppState.compactRows ? 42 : 52
@@ -171,11 +171,11 @@ Rectangle {
                             }
                         }
                         Label {
-                            text: entry.section === "next" ? Tr.t.queued : entry.length
-                            color: entry.section === "next" ? Theme.accentText : Theme.text3
-                            font.pixelSize: entry.section === "next" ? 11 : 12
-                            font.weight: entry.section === "next" ? Font.DemiBold : Font.Normal
-                            font.capitalization: entry.section === "next" ? Font.AllUppercase : Font.MixedCase
+                            text: entry.queued ? Tr.t.queued : entry.length
+                            color: entry.queued ? Theme.accentText : Theme.text3
+                            font.pixelSize: entry.queued ? 11 : 12
+                            font.weight: entry.queued ? Font.DemiBold : Font.Normal
+                            font.capitalization: entry.queued ? Font.AllUppercase : Font.MixedCase
                             font.features: {
                                 "tnum": 1
                             }
