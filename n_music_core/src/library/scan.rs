@@ -31,9 +31,9 @@ struct Found {
     reachable: bool,
 }
 
-/// The tracks of each library in a stable order. A track two libraries list goes to the first.
+/// The tracks of each library, each once, in a stable order. Two libraries may list the same
+/// track, like playlists sharing a file or a folder inside another.
 fn enumerate_audio_files(providers: &Providers, libraries: &[(Locator, bool)]) -> Vec<Found> {
-    let mut seen = HashSet::new();
     libraries
         .iter()
         .map(|(root, _)| {
@@ -44,6 +44,7 @@ fn enumerate_audio_files(providers: &Providers, libraries: &[(Locator, bool)]) -
                     (providers.offline_tracks(root), false)
                 }
             };
+            let mut seen = HashSet::new();
             let mut entries: Vec<TrackEntry> = entries
                 .into_iter()
                 .filter(|entry| seen.insert(entry.locator.clone()))
@@ -58,8 +59,8 @@ pub struct ScanJob {
     /// The libraries to scan, each with whether it trusts the database: `false` reloads every
     /// track instead.
     pub libraries: Vec<(Locator, bool)>,
-    /// The tracks they listed when last scanned: a complete scan forgets those it no longer
-    /// lists.
+    /// The tracks they listed when last scanned that no other library lists: a complete scan
+    /// forgets those it no longer lists.
     pub known: HashSet<Locator>,
     /// The libraries there are when the scan ends: if it scanned them all, it also forgets
     /// every track none of them lists.
@@ -177,19 +178,25 @@ impl Job for ScanJob {
 
 /// Takes what the database knows of unchanged files, for the libraries that trust it. Returns
 /// the tracks of each library (placeholders for those still to read), the entries to read and
-/// how many are known unreadable.
+/// how many are known unreadable. A track several libraries list is read once, as the first
+/// of them asks.
 fn match_stored(
     libraries: &[(Locator, bool)],
     listings: Vec<Found>,
     mut stored: HashMap<Locator, StoredTrack>,
 ) -> (Vec<Listing>, Vec<TrackEntry>, usize) {
     let mut covers_exist = HashMap::new();
+    let mut matched: HashMap<Locator, Track> = HashMap::new();
     let mut listed = Vec::with_capacity(libraries.len());
     let mut pending = vec![];
     let mut unreadable = 0;
     for ((root, check_cache), found) in libraries.iter().zip(listings) {
         let mut tracks = Vec::with_capacity(found.entries.len());
         for entry in found.entries {
+            if let Some(track) = matched.get(&entry.locator) {
+                tracks.push(track.clone());
+                continue;
+            }
             let hit = entry
                 .version
                 .filter(|_| *check_cache)
@@ -210,19 +217,21 @@ fn match_stored(
                                 .or_insert_with_key(|cover: &PathBuf| cover.is_file())
                         })
                 });
-            match hit {
+            let track = match hit {
                 Some(StoredTrack {
                     info: Some(info), ..
-                }) => tracks.push(Arc::new(info)),
+                }) => Arc::new(info),
                 Some(StoredTrack { info: None, .. }) => {
                     unreadable += 1;
-                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
+                    Arc::new(TrackInfo::placeholder(entry.locator.clone()))
                 }
                 None => {
-                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
-                    pending.push(entry);
+                    pending.push(entry.clone());
+                    Arc::new(TrackInfo::placeholder(entry.locator.clone()))
                 }
-            }
+            };
+            matched.insert(entry.locator, track.clone());
+            tracks.push(track);
         }
         listed.push(Listing {
             library: root.clone(),

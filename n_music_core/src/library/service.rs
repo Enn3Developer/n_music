@@ -110,15 +110,9 @@ impl LibraryService {
             return;
         }
         let libraries = std::mem::take(&mut self.waiting);
-        let known = {
-            let catalog = self.library.read();
-            libraries
-                .iter()
-                .filter_map(|(library, _)| catalog.listed(library))
-                .flat_map(|listed| &listed.tracks)
-                .cloned()
-                .collect()
-        };
+        let known = unlisted(self.library.read().listings(), |library| {
+            libraries.iter().any(|(scanned, _)| scanned == library)
+        });
         let job = ctx.jobs.spawn_stream(ScanJob {
             libraries: libraries.clone(),
             known,
@@ -409,7 +403,13 @@ impl Handle<Tagged<ScanEvent>> for LibraryService {
             ScanEvent::Listed { libraries, pending } => {
                 let tracks = self.merge(libraries);
                 if let Some(scan) = &mut self.scan {
-                    scan.found = libraries.iter().map(|listing| listing.tracks.len()).sum();
+                    // Libraries may list the same track.
+                    let found: HashSet<&Locator> = libraries
+                        .iter()
+                        .flat_map(|listing| &listing.tracks)
+                        .map(|track| &track.locator)
+                        .collect();
+                    scan.found = found.len();
                     scan.pending = *pending;
                 }
                 out.emit(TracksEnumerated { tracks });
