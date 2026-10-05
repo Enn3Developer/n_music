@@ -158,6 +158,20 @@ impl LibraryDb {
         Ok(stale.len())
     }
 
+    /// Deletes the tracks at `locators`; returns how many were deleted.
+    pub fn forget(&mut self, locators: &[Locator]) -> Result<usize> {
+        let transaction = self.conn.transaction()?;
+        let mut deleted = 0;
+        {
+            let mut delete = transaction.prepare("DELETE FROM tracks WHERE location = ?1")?;
+            for (_, location, _) in locators.iter().filter_map(encode_locator) {
+                deleted += delete.execute([location])?;
+            }
+        }
+        transaction.commit()?;
+        Ok(deleted)
+    }
+
     /// File names of every cover a track refers to.
     pub fn cover_names(&self) -> Result<HashSet<String>> {
         let mut statement = self

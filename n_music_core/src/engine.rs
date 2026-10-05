@@ -41,7 +41,10 @@ impl Engine {
         writer.emit(VolumeChanged(player.volume()));
         writer.emit(LoopStatusChanged(player.loop_status()));
         writer.emit(ShuffleChanged(player.shuffle()));
-        writer.emit(ScanRequested { check_cache: true });
+        writer.emit(ScanRequested {
+            library: None,
+            check_cache: true,
+        });
         app.register_subscriber(service);
         app.register_subscriber(player);
         Self { library }

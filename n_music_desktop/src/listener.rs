@@ -4,10 +4,9 @@ use crate::hub::{hub, Changed, PlaylistSummary};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
     LibraryRootsChanged, LoopStatusChanged, PlaybackChanged, PlaylistRejected, PlaylistsChanged,
-    PositionChanged, QueueChanged, ScanFinished, ScanRequested, SetLibraryRoots, ShuffleChanged,
-    TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
+    PositionChanged, QueueChanged, ScanFinished, ScanProgress, ShuffleChanged, TrackChanged,
+    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
 };
-use n_music_core::TrackInfo;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -21,9 +20,8 @@ impl Subscriber for Listener {
     }
 
     fn register(reg: &mut Registrar<Self>) {
-        reg.on::<ScanRequested>();
-        reg.on::<SetLibraryRoots>();
         reg.on::<LibraryRootsChanged>();
+        reg.on::<ScanProgress>();
         reg.on::<TracksEnumerated>();
         reg.on::<TrackMetadataLoaded>();
         reg.on::<ScanFinished>();
@@ -40,31 +38,6 @@ impl Subscriber for Listener {
     }
 }
 
-impl Handle<ScanRequested> for Listener {
-    fn handle(&mut self, _msg: &ScanRequested, ctx: &Ctx, _out: &mut Outbox) {
-        if !ctx.shutting_down {
-            scan_started();
-        }
-    }
-}
-
-impl Handle<SetLibraryRoots> for Listener {
-    fn handle(&mut self, _msg: &SetLibraryRoots, ctx: &Ctx, _out: &mut Outbox) {
-        if !ctx.shutting_down {
-            scan_started();
-        }
-    }
-}
-
-/// A scan replaces the last one; what it finds is not known yet.
-fn scan_started() {
-    hub().update(Changed::SCAN | Changed::PROGRESS, |state| {
-        state.scanning = true;
-        state.found = 0;
-        state.unread = 0;
-    });
-}
-
 impl Handle<LibraryRootsChanged> for Listener {
     fn handle(&mut self, msg: &LibraryRootsChanged, _ctx: &Ctx, _out: &mut Outbox) {
         hub().update(Changed::ROOTS, |state| {
@@ -73,18 +46,20 @@ impl Handle<LibraryRootsChanged> for Listener {
     }
 }
 
-impl Handle<TracksEnumerated> for Listener {
-    fn handle(&mut self, msg: &TracksEnumerated, _ctx: &Ctx, _out: &mut Outbox) {
-        // The core does not say which tracks it still reads: they are the placeholders.
-        let unread = msg
-            .tracks
-            .iter()
-            .filter(|track| ***track == TrackInfo::placeholder(track.locator.clone()))
-            .count();
-        hub().update(Changed::TRACKS | Changed::PROGRESS, |state| {
-            state.found = msg.tracks.len();
-            state.unread = unread;
+impl Handle<ScanProgress> for Listener {
+    fn handle(&mut self, msg: &ScanProgress, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::SCAN | Changed::PROGRESS, |state| {
+            state.scanning = !msg.libraries.is_empty();
+            state.updating = Arc::new(msg.libraries.clone());
+            state.found = msg.found;
+            state.unread = msg.pending;
         });
+    }
+}
+
+impl Handle<TracksEnumerated> for Listener {
+    fn handle(&mut self, _msg: &TracksEnumerated, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().notify(Changed::TRACKS);
     }
 }
 
@@ -103,8 +78,12 @@ impl Handle<ScanFinished> for Listener {
             .map_or(0.0, |since| since.as_secs_f64());
         // A complete scan also reloads the play statistics.
         hub().update(Changed::TRACKS | Changed::STATS | Changed::SCAN, |state| {
-            state.scanning = false;
-            if msg.complete {
+            // Only a scan of every source updates the whole library.
+            let whole = state
+                .roots
+                .as_ref()
+                .is_some_and(|roots| roots.iter().all(|root| msg.libraries.contains(root)));
+            if msg.complete && whole {
                 state.updated = Some(now);
             }
         });

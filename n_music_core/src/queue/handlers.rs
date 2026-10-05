@@ -2,10 +2,10 @@
 
 use super::{LoopStatus, QueuePlayer};
 use crate::messages::{
-    AppVisibilityChanged, ClearQueued, Enqueue, LoopStatusChanged, OutputDeviceChanged, Pause,
-    Play, PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek,
-    SetLoopStatus, SetReplayGain, SetShuffle, SetVolume, ShuffleChanged, TogglePause, ToggleRepeat,
-    ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
+    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, LoopStatusChanged,
+    OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued,
+    ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume, ShuffleChanged,
+    TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, Handle, Outbox, ShutdownRequested};
@@ -243,13 +243,23 @@ impl Handle<SetReplayGain> for QueuePlayer {
 
 impl Handle<ScanFinished> for QueuePlayer {
     fn handle(&mut self, msg: &ScanFinished, ctx: &Ctx, out: &mut Outbox) {
-        if ctx.shutting_down || !msg.complete {
-            return;
+        if !ctx.shutting_down && msg.complete {
+            self.reconcile(out);
         }
-        let library = self.library.clone();
-        self.session.reconcile(&library.read());
-        self.update_next();
-        self.sync(out);
+    }
+}
+
+impl Handle<LibraryRootsChanged> for QueuePlayer {
+    fn handle(&mut self, msg: &LibraryRootsChanged, ctx: &Ctx, out: &mut Outbox) {
+        let removed = self
+            .libraries
+            .iter()
+            .any(|library| !msg.0.contains(library));
+        self.libraries = msg.0.clone();
+        // The library took the tracks of the removed folders out already.
+        if removed && !ctx.shutting_down {
+            self.reconcile(out);
+        }
     }
 }
 

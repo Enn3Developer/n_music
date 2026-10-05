@@ -151,7 +151,12 @@ fn setup_data(settings: &UiSettings, main_window: &MainWindow, writer: EventWrit
     let w = writer.clone();
     settings_data.on_path(move || w.emit(PathChangeRequested));
     let w = writer.clone();
-    settings_data.on_scan(move || w.emit(ScanRequested { check_cache: false }));
+    settings_data.on_scan(move || {
+        w.emit(ScanRequested {
+            library: None,
+            check_cache: false,
+        })
+    });
 
     let w = writer.clone();
     app_data.on_clicked(move |i| w.emit(TrackClicked(i as usize)));

@@ -57,7 +57,9 @@ pub struct State {
     pub current: Option<Track>,
     pub playing: bool,
     pub scanning: bool,
-    /// Tracks the last scan found; 0 until it listed the sources.
+    /// The sources being scanned or waiting for a scan.
+    pub updating: Arc<Vec<Locator>>,
+    /// Tracks the running scan found; 0 until it listed its sources.
     pub found: usize,
     /// Tracks found that are still to be read.
     pub unread: usize,

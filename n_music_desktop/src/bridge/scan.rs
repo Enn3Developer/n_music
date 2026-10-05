@@ -7,20 +7,22 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        /// A scan of the library's sources is running.
+        /// A scan of some sources is running or waiting.
         #[qproperty(bool, running)]
-        /// Tracks the scan found; 0 until it listed the sources.
+        /// Tracks the running scan found; 0 until it listed its sources.
         #[qproperty(i32, found)]
         /// Tracks found that were read, from their files or the cache.
         #[qproperty(i32, read)]
-        /// When the last complete scan finished, in Unix seconds; 0 before one since launch.
+        /// When the last complete scan of every source finished, in Unix seconds; 0 before one
+        /// since launch.
         #[qproperty(f64, updated)]
         type Scan = super::ScanRust;
 
-        /// Picks up tracks added, changed or removed; unchanged ones come from the cache.
+        /// Picks up tracks added, changed or removed in every source; unchanged ones come from
+        /// the cache.
         #[qinvokable]
         fn refresh(self: &Scan);
-        /// Reads every track's tags and cover again, ignoring the cache.
+        /// Reads the tags and cover of every track again, ignoring the cache.
         #[qinvokable]
         fn reload(self: &Scan);
     }
@@ -68,10 +70,16 @@ impl qobject::Scan {
     }
 
     fn refresh(&self) {
-        bus::emit(ScanRequested { check_cache: true });
+        bus::emit(ScanRequested {
+            library: None,
+            check_cache: true,
+        });
     }
 
     fn reload(&self) {
-        bus::emit(ScanRequested { check_cache: false });
+        bus::emit(ScanRequested {
+            library: None,
+            check_cache: false,
+        });
     }
 }

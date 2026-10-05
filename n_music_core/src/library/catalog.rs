@@ -90,18 +90,17 @@ impl Catalog {
         self.tracks = tracks;
     }
 
-    /// Replaces the track at scan `index` with its freshly read metadata.
-    pub(crate) fn update_track(&mut self, index: usize, track: Track) {
-        let Some(slot) = self.tracks.get_mut(index) else {
-            return;
+    /// Replaces a track with its freshly read metadata; `false` when the library does not have
+    /// it.
+    pub(crate) fn update_track(&mut self, track: Track) -> bool {
+        let Some(&index) = self.by_locator.get(&track.locator) else {
+            return false;
         };
-        if slot.locator != track.locator {
-            return;
-        }
         if let Some(fingerprint) = track.fingerprint {
             self.by_fingerprint.insert(fingerprint, index);
         }
-        *slot = track;
+        self.tracks[index] = track;
+        true
     }
 
     pub(crate) fn set_playlists(&mut self, playlists: Vec<Playlist>) {

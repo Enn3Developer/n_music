@@ -2,6 +2,7 @@ use super::covers::CoverStore;
 use super::db::{LibraryDb, ScannedTrack, StoredTrack};
 use super::reader::read_info;
 use super::LibraryPaths;
+use crate::settings::{LibrarySettings, Options};
 use crate::source::{Locator, Providers, StreamProvider, TrackEntry};
 use crate::{Track, TrackInfo};
 use n_event_bus::{job_emits, EventWriter, Job, JobToken, Tagged};
@@ -23,46 +24,60 @@ static CLEANUP_LOCK: Mutex<()> = Mutex::new(());
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
 const CHECKPOINT_TRACKS: usize = 256;
 
-/// The tracks of every root, in a stable order, and whether every root could be listed.
+/// The tracks of each library in a stable order, `None` for one that could not be listed. A
+/// track two libraries list goes to the first.
 fn enumerate_audio_files(
     provider: &dyn StreamProvider,
-    roots: &[Locator],
-) -> (Vec<TrackEntry>, bool) {
+    libraries: &[(Locator, bool)],
+) -> Vec<Option<Vec<TrackEntry>>> {
     let mut seen = HashSet::new();
-    let mut entries = vec![];
-    let mut complete = true;
-    for root in roots {
-        match provider.list_tracks(root) {
-            Ok(listed) => entries.extend(
-                listed
+    libraries
+        .iter()
+        .map(|(root, _)| match provider.list_tracks(root) {
+            Ok(listed) => {
+                let mut entries: Vec<TrackEntry> = listed
                     .into_iter()
-                    .filter(|entry| seen.insert(entry.locator.clone())),
-            ),
-            Err(error) => {
-                complete = false;
-                log::warn!("Could not enumerate library {root}: {error}");
+                    .filter(|entry| seen.insert(entry.locator.clone()))
+                    .collect();
+                entries.sort_by_cached_key(|entry| entry.locator.to_string());
+                Some(entries)
             }
-        }
-    }
-    entries.sort_by_cached_key(|entry| entry.locator.to_string());
-    (entries, complete)
+            Err(error) => {
+                log::warn!("Could not enumerate library {root}: {error}");
+                None
+            }
+        })
+        .collect()
 }
 
 pub struct ScanJob {
-    pub roots: Vec<Locator>,
+    /// The libraries to scan, each with whether it trusts the database: `false` reloads every
+    /// track instead.
+    pub libraries: Vec<(Locator, bool)>,
+    /// The tracks they listed when last scanned: a complete scan forgets those it no longer
+    /// lists.
+    pub known: HashSet<Locator>,
+    /// The libraries there are when the scan ends: if it scanned them all, it also forgets
+    /// every track none of them lists.
+    pub settings: Options<LibrarySettings>,
     pub paths: LibraryPaths,
-    /// `false` reloads every track instead of trusting the database.
-    pub check_cache: bool,
     pub providers: Arc<Providers>,
 }
 
+/// A library and its tracks, `None` when it could not be listed.
+pub type Listing = (Locator, Option<Vec<Track>>);
+
 /// What a scan reports, in this order.
 pub enum ScanEvent {
-    /// Every track found; those not loaded yet are placeholders.
-    Enumerated(Vec<Track>),
-    /// A track's metadata, read from the file; `index` is its place in `Enumerated`.
-    Loaded { index: usize, track: Track },
-    /// The scan is over. `complete` when it ran to the end over every root: tracks that are
+    /// Each library's tracks, in the order asked. Those not loaded yet are placeholders;
+    /// `pending` of them are still to read.
+    Listed {
+        libraries: Vec<Listing>,
+        pending: usize,
+    },
+    /// A track's metadata, read from its file.
+    Loaded(Track),
+    /// The scan is over. `complete` when it ran to the end over every library: tracks that are
     /// gone are then forgotten, and references to moved files point to their new location.
     Finished { complete: bool },
 }
@@ -72,16 +87,19 @@ job_emits!(ScanJob => Tagged<ScanEvent>);
 /// A loaded track on its way to the database; `None` when it could not be read.
 type Loaded = (Locator, Option<u64>, Option<Track>);
 
-/// A track to read from its file; `.0` is its place in [`ScanEvent::Enumerated`].
-type Pending = (usize, TrackEntry);
-
 impl Job for ScanJob {
     fn run(self, tag: u64, writer: EventWriter, token: Option<JobToken>) {
         let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-        log::info!("Scanning libraries {tag}: {:?}", self.roots);
-        let (entries, complete) = enumerate_audio_files(self.providers.as_ref(), &self.roots);
-        let len = entries.len();
-        let seen: HashSet<Locator> = entries.iter().map(|entry| entry.locator.clone()).collect();
+        log::info!("Scanning libraries {tag}: {:?}", self.libraries);
+        let listings = enumerate_audio_files(self.providers.as_ref(), &self.libraries);
+        let complete = listings.iter().all(Option::is_some);
+        let seen: HashSet<Locator> = listings
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.locator.clone())
+            .collect();
+        let len = seen.len();
         let covers = CoverStore::open(&self.paths.covers);
         let mut db = self
             .paths
@@ -93,7 +111,8 @@ impl Job for ScanJob {
                 )
             })
             .ok();
-        let stored = match db.as_ref().filter(|_| self.check_cache) {
+        let trusted = self.libraries.iter().any(|&(_, check_cache)| check_cache);
+        let stored = match db.as_ref().filter(|_| trusted) {
             Some(db) => db.tracks().unwrap_or_else(|error| {
                 log::error!("Could not read the library database: {error}");
                 HashMap::new()
@@ -101,12 +120,18 @@ impl Job for ScanJob {
             None => HashMap::new(),
         };
 
-        let (tracks, pending, unreadable) = match_stored(entries, stored);
+        let (libraries, pending, unreadable) = match_stored(&self.libraries, listings, stored);
         log::debug!(
             "Scan {tag}: {len} tracks, {} to load, {unreadable} known unreadable",
             pending.len()
         );
-        writer.emit_tagged(tag, ScanEvent::Enumerated(tracks));
+        writer.emit_tagged(
+            tag,
+            ScanEvent::Listed {
+                libraries,
+                pending: pending.len(),
+            },
+        );
         let loading = Loading {
             tag,
             writer: &writer,
@@ -121,7 +146,16 @@ impl Job for ScanJob {
         if let Some(db) = db.as_mut().filter(|_| complete) {
             let _lock = CLEANUP_LOCK.lock().unwrap();
             if GENERATION.load(Ordering::SeqCst) == generation {
-                clean_up(db, &covers, &seen);
+                let whole =
+                    self.settings.get().libraries.iter().all(|library| {
+                        self.libraries.iter().any(|(scanned, _)| scanned == library)
+                    });
+                let forget = if whole {
+                    Forget::Unlisted(&seen)
+                } else {
+                    Forget::Gone(self.known.difference(&seen).cloned().collect())
+                };
+                clean_up(db, &covers, forget);
             }
         }
         if cancelled {
@@ -133,51 +167,62 @@ impl Job for ScanJob {
     }
 }
 
-/// Takes what the database knows of unchanged files. Returns every track, placeholders for
-/// those still to read, the entries to read and how many are known unreadable.
+/// Takes what the database knows of unchanged files, for the libraries that trust it. Returns
+/// the tracks of each library (placeholders for those still to read), the entries to read and
+/// how many are known unreadable.
 fn match_stored(
-    entries: Vec<TrackEntry>,
+    libraries: &[(Locator, bool)],
+    listings: Vec<Option<Vec<TrackEntry>>>,
     mut stored: HashMap<Locator, StoredTrack>,
-) -> (Vec<Track>, Vec<Pending>, usize) {
+) -> (Vec<Listing>, Vec<TrackEntry>, usize) {
     let mut covers_exist = HashMap::new();
-    let mut tracks = Vec::with_capacity(entries.len());
+    let mut listed = Vec::with_capacity(libraries.len());
     let mut pending = vec![];
     let mut unreadable = 0;
-    for (index, entry) in entries.into_iter().enumerate() {
-        let hit = entry
-            .version
-            .and_then(|version| {
-                stored
-                    .remove(&entry.locator)
-                    .filter(|track| track.version == version)
-            })
-            // The OS may have cleaned the cache directory.
-            .filter(|track| {
-                track
-                    .info
-                    .as_ref()
-                    .and_then(|info| info.cover.clone())
-                    .is_none_or(|cover| {
-                        *covers_exist
-                            .entry(cover)
-                            .or_insert_with_key(|cover: &PathBuf| cover.is_file())
-                    })
-            });
-        match hit {
-            Some(StoredTrack {
-                info: Some(info), ..
-            }) => tracks.push(Arc::new(info)),
-            Some(StoredTrack { info: None, .. }) => {
-                unreadable += 1;
-                tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
-            }
-            None => {
-                tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
-                pending.push((index, entry));
+    for ((root, check_cache), entries) in libraries.iter().zip(listings) {
+        let Some(entries) = entries else {
+            listed.push((root.clone(), None));
+            continue;
+        };
+        let mut tracks = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let hit = entry
+                .version
+                .filter(|_| *check_cache)
+                .and_then(|version| {
+                    stored
+                        .remove(&entry.locator)
+                        .filter(|track| track.version == version)
+                })
+                // The OS may have cleaned the cache directory.
+                .filter(|track| {
+                    track
+                        .info
+                        .as_ref()
+                        .and_then(|info| info.cover.clone())
+                        .is_none_or(|cover| {
+                            *covers_exist
+                                .entry(cover)
+                                .or_insert_with_key(|cover: &PathBuf| cover.is_file())
+                        })
+                });
+            match hit {
+                Some(StoredTrack {
+                    info: Some(info), ..
+                }) => tracks.push(Arc::new(info)),
+                Some(StoredTrack { info: None, .. }) => {
+                    unreadable += 1;
+                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator)));
+                }
+                None => {
+                    tracks.push(Arc::new(TrackInfo::placeholder(entry.locator.clone())));
+                    pending.push(entry);
+                }
             }
         }
+        listed.push((root.clone(), Some(tracks)));
     }
-    (tracks, pending, unreadable)
+    (listed, pending, unreadable)
 }
 
 /// Reads pending tracks on a few workers, reporting each and storing them as they come.
@@ -190,7 +235,7 @@ struct Loading<'a> {
 }
 
 impl Loading<'_> {
-    fn run(&self, pending: Vec<Pending>, db: Option<&mut LibraryDb>) {
+    fn run(&self, pending: Vec<TrackEntry>, db: Option<&mut LibraryDb>) {
         let concurrency = std::thread::available_parallelism()
             .map(usize::from)
             .unwrap_or(1)
@@ -214,22 +259,17 @@ impl Loading<'_> {
 
     fn work(
         &self,
-        queue: &Mutex<std::vec::IntoIter<Pending>>,
+        queue: &Mutex<std::vec::IntoIter<TrackEntry>>,
         tx: std::sync::mpsc::Sender<Loaded>,
     ) {
         while !self.token.is_some_and(JobToken::is_cancelled) {
-            let Some((index, entry)) = queue.lock().unwrap().next() else {
+            let Some(entry) = queue.lock().unwrap().next() else {
                 break;
             };
             let track = read_track(self.provider, self.covers, &entry.locator).map(Arc::new);
             if let Some(track) = &track {
-                self.writer.emit_tagged(
-                    self.tag,
-                    ScanEvent::Loaded {
-                        index,
-                        track: track.clone(),
-                    },
-                );
+                self.writer
+                    .emit_tagged(self.tag, ScanEvent::Loaded(track.clone()));
             }
             if tx.send((entry.locator, entry.version, track)).is_err() {
                 break;
@@ -278,9 +318,21 @@ fn store_loaded(mut db: Option<&mut LibraryDb>, rx: &std::sync::mpsc::Receiver<L
     }
 }
 
+/// Which stored tracks a complete scan forgets.
+enum Forget<'a> {
+    /// Every one it did not list: it scanned every library.
+    Unlisted(&'a HashSet<Locator>),
+    /// These, which its libraries listed when last scanned but not any more.
+    Gone(Vec<Locator>),
+}
+
 /// Forgets tracks that are gone, follows moved files and deletes covers no track uses any more.
-fn clean_up(db: &mut LibraryDb, covers: &CoverStore, seen: &HashSet<Locator>) {
-    match db.retain(seen) {
+fn clean_up(db: &mut LibraryDb, covers: &CoverStore, forget: Forget) {
+    let deleted = match forget {
+        Forget::Unlisted(seen) => db.retain(seen),
+        Forget::Gone(gone) => db.forget(&gone),
+    };
+    match deleted {
         Ok(0) => {}
         Ok(deleted) => log::debug!("Removed {deleted} missing tracks from the library"),
         Err(error) => {

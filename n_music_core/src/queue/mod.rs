@@ -8,10 +8,11 @@ use crate::audio::player::{Next, PlaybackTask, Player};
 use crate::library::catalog::Library;
 use crate::library::query::Query;
 use crate::messages::{
-    AppVisibilityChanged, ClearQueued, Enqueue, OutputDeviceChanged, Pause, Play, PlayFrom,
-    PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued,
-    ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume, TogglePause,
-    ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, OutputDeviceChanged, Pause,
+    Play, PlayFrom, PlayNext, PlayPrevious, PlaybackChanged, PositionChanged, QueueChanged,
+    RemoveQueued, ScanFinished, Seek, SetLoopStatus, SetReplayGain, SetShuffle, SetVolume,
+    TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed,
+    TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
@@ -51,6 +52,8 @@ pub struct QueueEntry {
 pub struct QueuePlayer {
     session: Session,
     library: Library,
+    /// The library folders, as last reported.
+    libraries: Vec<Locator>,
     shuffle: bool,
     providers: Arc<Providers>,
     settings: Options<PlaybackSettings>,
@@ -93,6 +96,7 @@ impl QueuePlayer {
         QueuePlayer {
             session: Session::default(),
             library,
+            libraries: vec![],
             shuffle,
             player,
             providers,
@@ -129,6 +133,14 @@ impl QueuePlayer {
                 entries: self.session.entries(),
             });
         }
+    }
+
+    /// Drops the entries whose tracks left the library, or points them to where they moved.
+    fn reconcile(&mut self, out: &mut Outbox) {
+        let library = self.library.clone();
+        self.session.reconcile(&library.read());
+        self.update_next();
+        self.sync(out);
     }
 
     /// Tells the running task what follows the current item, for gapless playback.
@@ -379,6 +391,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<TracksEnumerated>();
         reg.on::<TrackMetadataLoaded>();
         reg.on::<ScanFinished>();
+        reg.on::<LibraryRootsChanged>();
         reg.on::<SetReplayGain>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();

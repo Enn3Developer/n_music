@@ -3,20 +3,22 @@
 use super::catalog::{Library, Playlist, PlaylistItem};
 use super::db::LibraryDb;
 use super::query::{now, PlaylistId};
-use super::scan::{ScanEvent, ScanJob};
+use super::scan::{Listing, ScanEvent, ScanJob};
 use super::LibraryPaths;
 use crate::messages::{
     AddToPlaylist, CreatePlaylist, DeletePlaylist, LibraryRootsChanged, PlaylistRejected,
     PlaylistSummary, PlaylistsChanged, RemoveFromPlaylist, RenamePlaylist, ScanFinished,
-    ScanRequested, SetLibraryRoots, SetPlaylistRule, SetPlaylistSort, TrackMetadataLoaded,
-    TrackPlayed, TracksEnumerated,
+    ScanProgress, ScanRequested, SetLibraryRoots, SetPlaylistRule, SetPlaylistSort,
+    TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{LibrarySettings, Options};
 use crate::source::{Locator, Providers};
+use crate::Track;
 use n_event_bus::{
     Ctx, Handle, Outbox, Registrar, RunningJob, ShutdownRequested, Subscriber, Tagged,
 };
 use std::any::Any;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct LibraryService {
@@ -24,10 +26,26 @@ pub struct LibraryService {
     /// `None` when the database could not be opened: playlists and statistics then only
     /// last until exit.
     db: Option<LibraryDb>,
-    scan: Option<RunningJob>,
+    scan: Option<Scan>,
+    /// Libraries to scan once the running scan finished, each with whether that scan trusts
+    /// the cache.
+    waiting: Vec<(Locator, bool)>,
+    /// The tracks each library listed when last scanned.
+    listed: HashMap<Locator, Vec<Locator>>,
+    /// A scan was asked for since launch: the UIs know the folders and the saved playlists.
+    started: bool,
     settings: Options<LibrarySettings>,
     paths: LibraryPaths,
     providers: Arc<Providers>,
+}
+
+struct Scan {
+    job: RunningJob,
+    /// Each with whether its scan trusts the cache.
+    libraries: Vec<(Locator, bool)>,
+    /// The tracks it listed, and how many of those it still reads.
+    found: usize,
+    pending: usize,
 }
 
 impl LibraryService {
@@ -45,6 +63,9 @@ impl LibraryService {
             library: Library::default(),
             db,
             scan: None,
+            waiting: vec![],
+            listed: HashMap::new(),
+            started: false,
             settings,
             paths,
             providers,
@@ -73,14 +94,140 @@ impl LibraryService {
         }
     }
 
-    /// Starts a scan of the library folders, replacing a running one.
-    fn scan(&mut self, check_cache: bool, ctx: &Ctx) {
-        self.scan = Some(ctx.jobs.spawn_stream(ScanJob {
-            roots: self.settings.get().libraries.clone(),
+    /// Scans `library` after the running scan; a reload asked for stays one.
+    fn wait_for(&mut self, library: Locator, check_cache: bool) {
+        match self
+            .waiting
+            .iter_mut()
+            .find(|(waiting, _)| *waiting == library)
+        {
+            Some((_, trusted)) => *trusted &= check_cache,
+            None => self.waiting.push((library, check_cache)),
+        }
+    }
+
+    /// Scans every library waiting, unless a scan runs.
+    fn start_next(&mut self, ctx: &Ctx) {
+        if ctx.shutting_down || self.scan.is_some() || self.waiting.is_empty() {
+            return;
+        }
+        let libraries = std::mem::take(&mut self.waiting);
+        let known = libraries
+            .iter()
+            .filter_map(|(library, _)| self.listed.get(library))
+            .flatten()
+            .cloned()
+            .collect();
+        let job = ctx.jobs.spawn_stream(ScanJob {
+            libraries: libraries.clone(),
+            known,
+            settings: self.settings.clone(),
             paths: self.paths.clone(),
-            check_cache,
             providers: self.providers.clone(),
-        }));
+        });
+        self.scan = Some(Scan {
+            job,
+            libraries,
+            found: 0,
+            pending: 0,
+        });
+    }
+
+    /// Tells which libraries are scanned or waiting, and how far the running scan got.
+    fn report(&self, out: &mut Outbox) {
+        let mut libraries: Vec<Locator> = vec![];
+        let running = self.scan.iter().flat_map(|scan| &scan.libraries);
+        for (library, _) in running.chain(&self.waiting) {
+            if !libraries.contains(library) {
+                libraries.push(library.clone());
+            }
+        }
+        let (found, pending) = self
+            .scan
+            .as_ref()
+            .map_or((0, 0), |scan| (scan.found, scan.pending));
+        out.emit(ScanProgress {
+            libraries,
+            found,
+            pending,
+        });
+    }
+
+    /// Tracks the libraries `gone` picks listed and no other library lists.
+    fn unlisted(&self, gone: impl Fn(&Locator) -> bool) -> HashSet<Locator> {
+        let kept: HashSet<&Locator> = self
+            .listed
+            .iter()
+            .filter(|(library, _)| !gone(library))
+            .flat_map(|(_, tracks)| tracks)
+            .collect();
+        self.listed
+            .iter()
+            .filter(|(library, _)| gone(library))
+            .flat_map(|(_, tracks)| tracks)
+            .filter(|track| !kept.contains(track))
+            .cloned()
+            .collect()
+    }
+
+    /// Puts the tracks a scan listed in place of those its libraries listed before; the other
+    /// libraries keep theirs. Returns the library's tracks.
+    fn merge(&mut self, listed: &[Listing]) -> Vec<Track> {
+        let scanned: HashSet<&Locator> = listed.iter().map(|(library, _)| library).collect();
+        let stale = self.unlisted(|library| scanned.contains(library));
+        let mut catalog = self.library.write();
+        let mut tracks: Vec<Track> = catalog
+            .tracks()
+            .iter()
+            .filter(|track| !stale.contains(&track.locator))
+            .cloned()
+            .collect();
+        let mut present: HashSet<Locator> =
+            tracks.iter().map(|track| track.locator.clone()).collect();
+        for (library, library_tracks) in listed {
+            // One that could not be listed keeps what it listed before, for the scan that lists
+            // it again to forget what is gone.
+            let Some(library_tracks) = library_tracks else {
+                continue;
+            };
+            tracks.extend(
+                library_tracks
+                    .iter()
+                    .filter(|track| present.insert(track.locator.clone()))
+                    .cloned(),
+            );
+            self.listed.insert(
+                library.clone(),
+                library_tracks
+                    .iter()
+                    .map(|track| track.locator.clone())
+                    .collect(),
+            );
+        }
+        tracks.sort_by_cached_key(|track| track.locator.to_string());
+        catalog.set_tracks(tracks.clone());
+        tracks
+    }
+
+    /// Takes the tracks of the `removed` libraries out of the library, but those another one
+    /// lists too. Returns the library's tracks when that changed them.
+    fn remove(&mut self, removed: &[Locator]) -> Option<Vec<Track>> {
+        let stale = self.unlisted(|library| removed.contains(library));
+        for library in removed {
+            self.listed.remove(library);
+        }
+        if stale.is_empty() {
+            return None;
+        }
+        let mut catalog = self.library.write();
+        let tracks: Vec<Track> = catalog
+            .tracks()
+            .iter()
+            .filter(|track| !stale.contains(&track.locator))
+            .cloned()
+            .collect();
+        catalog.set_tracks(tracks.clone());
+        Some(tracks)
     }
 
     fn publish(&self, out: &mut Outbox) {
@@ -177,13 +324,27 @@ impl Handle<ScanRequested> for LibraryService {
         if ctx.shutting_down {
             return;
         }
-        if self.scan.is_none() {
+        let libraries = self.settings.get().libraries.clone();
+        if !self.started {
             // The first scan of a launch: the UIs learn about the folders and the saved
             // playlists too.
-            out.emit(LibraryRootsChanged(self.settings.get().libraries.clone()));
+            self.started = true;
+            out.emit(LibraryRootsChanged(libraries.clone()));
             self.publish(out);
         }
-        self.scan(msg.check_cache, ctx);
+        match &msg.library {
+            None => {
+                for library in libraries {
+                    self.wait_for(library, msg.check_cache);
+                }
+            }
+            Some(library) if libraries.contains(library) => {
+                self.wait_for(library.clone(), msg.check_cache);
+            }
+            Some(library) => log::warn!("Not scanning {library}: it is not a library"),
+        }
+        self.start_next(ctx);
+        self.report(out);
     }
 }
 
@@ -192,39 +353,83 @@ impl Handle<SetLibraryRoots> for LibraryService {
         if ctx.shutting_down {
             return;
         }
+        let old = self.settings.get().libraries.clone();
         self.settings
             .update(|settings| settings.libraries = msg.0.clone());
+        let removed: Vec<Locator> = old
+            .iter()
+            .filter(|library| !msg.0.contains(library))
+            .cloned()
+            .collect();
+        self.waiting
+            .retain(|(library, _)| !removed.contains(library));
+        // A scan of a removed library starts over without it.
+        let stopped = self.scan.take_if(|scan| {
+            scan.libraries
+                .iter()
+                .any(|(library, _)| removed.contains(library))
+        });
+        for (library, check_cache) in stopped.into_iter().flat_map(|scan| scan.libraries) {
+            if !removed.contains(&library) {
+                self.wait_for(library, check_cache);
+            }
+        }
+        let tracks = self.remove(&removed);
         out.emit(LibraryRootsChanged(msg.0.clone()));
-        self.scan(true, ctx);
+        if let Some(tracks) = tracks {
+            out.emit(TracksEnumerated { tracks });
+        }
+        for library in &msg.0 {
+            if !old.contains(library) {
+                self.wait_for(library.clone(), true);
+            }
+        }
+        self.start_next(ctx);
+        self.report(out);
     }
 }
 
 impl Handle<Tagged<ScanEvent>> for LibraryService {
-    fn handle(&mut self, msg: &Tagged<ScanEvent>, _ctx: &Ctx, out: &mut Outbox) {
-        let Some(event) = self.scan.as_ref().and_then(|job| job.open(msg)) else {
+    fn handle(&mut self, msg: &Tagged<ScanEvent>, ctx: &Ctx, out: &mut Outbox) {
+        let Some(event) = self.scan.as_ref().and_then(|scan| scan.job.open(msg)) else {
             return;
         };
         match event {
-            ScanEvent::Enumerated(tracks) => {
-                self.library.write().set_tracks(tracks.clone());
-                out.emit(TracksEnumerated {
-                    tracks: tracks.clone(),
-                });
+            ScanEvent::Listed { libraries, pending } => {
+                let tracks = self.merge(libraries);
+                if let Some(scan) = &mut self.scan {
+                    scan.found = libraries
+                        .iter()
+                        .filter_map(|(_, tracks)| tracks.as_ref())
+                        .map(Vec::len)
+                        .sum();
+                    scan.pending = *pending;
+                }
+                out.emit(TracksEnumerated { tracks });
+                self.report(out);
             }
-            ScanEvent::Loaded { index, track } => {
-                self.library.write().update_track(*index, track.clone());
-                out.emit(TrackMetadataLoaded {
-                    track: track.clone(),
-                });
+            ScanEvent::Loaded(track) => {
+                if self.library.write().update_track(track.clone()) {
+                    if let Some(scan) = &mut self.scan {
+                        scan.pending = scan.pending.saturating_sub(1);
+                    }
+                    out.emit(TrackMetadataLoaded {
+                        track: track.clone(),
+                    });
+                }
             }
             ScanEvent::Finished { complete } => {
+                let libraries = self.scan.take().map_or(vec![], |scan| scan.libraries);
                 if *complete {
                     self.reload();
                     self.publish(out);
                 }
                 out.emit(ScanFinished {
+                    libraries: libraries.into_iter().map(|(library, _)| library).collect(),
                     complete: *complete,
                 });
+                self.start_next(ctx);
+                self.report(out);
             }
         }
     }
@@ -352,6 +557,7 @@ impl Handle<TrackPlayed> for LibraryService {
 impl Handle<ShutdownRequested> for LibraryService {
     fn handle(&mut self, _: &ShutdownRequested, _: &Ctx, out: &mut Outbox) {
         self.scan = None;
+        self.waiting.clear();
         out.shutdown_ready();
     }
 }

@@ -121,11 +121,16 @@ pub struct PlaylistSummary {
     pub smart: bool,
 }
 
+/// Scans a library, or every one. It waits for a scan already running, and libraries asked for
+/// meanwhile are scanned together after it.
 pub struct ScanRequested {
+    /// `None` scans every library.
+    pub library: Option<Locator>,
     /// `false` reloads every track's metadata instead of trusting the cache.
     pub check_cache: bool,
 }
-/// The library's tracks; those not loaded yet are placeholders.
+/// The library's tracks, after a scan listed its libraries or a library was removed; those not
+/// loaded yet are placeholders.
 pub struct TracksEnumerated {
     pub tracks: Vec<Track>,
 }
@@ -133,12 +138,23 @@ pub struct TracksEnumerated {
 pub struct TrackMetadataLoaded {
     pub track: Track,
 }
+/// Where scanning is, sent when a scan is asked for, lists its libraries or finishes. Tracks read
+/// since come as [`TrackMetadataLoaded`].
+pub struct ScanProgress {
+    /// The libraries being scanned or waiting for a scan; empty when none is.
+    pub libraries: Vec<Locator>,
+    /// The tracks the running scan listed, and how many of those it still reads.
+    pub found: usize,
+    pub pending: usize,
+}
 pub struct ScanFinished {
-    /// The scan ran to the end over every root.
+    pub libraries: Vec<Locator>,
+    /// The scan ran to the end over each of `libraries`.
     pub complete: bool,
 }
 
-/// Replaces the library folders and scans them.
+/// Replaces the library folders: scans the ones added and takes the tracks of the ones removed
+/// out of the library.
 pub struct SetLibraryRoots(pub Vec<Locator>);
 /// The library folders, at startup and after every change.
 pub struct LibraryRootsChanged(pub Vec<Locator>);
@@ -185,6 +201,7 @@ messages!(
     ScanRequested,
     TracksEnumerated,
     TrackMetadataLoaded,
+    ScanProgress,
     ScanFinished,
     SetLibraryRoots,
     LibraryRootsChanged,
