@@ -101,11 +101,23 @@ ColumnLayout {
             SettingRow {
                 title: Tr.t.output_device
                 description: Tr.t.output_device_hint
+                divider: true
 
                 PillButton {
                     small: true
                     text: Tr.t.choose_device
                     onClicked: AppState.chooseOutputDevice()
+                }
+            }
+            SettingRow {
+                title: Tr.t.resume
+                description: Tr.t.resume_hint
+
+                ToggleSwitch {
+                    // The core starts every launch afresh.
+                    checked: false
+                    Accessible.name: Tr.t.resume
+                    onToggled: AppState.changeResume(checked)
                 }
             }
         }

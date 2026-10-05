@@ -52,6 +52,10 @@ pub mod qobject {
         /// Offers the output devices to play on.
         #[qinvokable]
         fn choose_output_device(self: &AppState);
+
+        /// Reopens the last launch's queue and position when the app starts.
+        #[qinvokable]
+        fn change_resume(self: &AppState, resume: bool);
     }
 
     impl cxx_qt::Initialize for AppState {}
@@ -219,5 +223,14 @@ impl qobject::AppState {
              default output device, and DefaultDeviceMonitor only moves the stream to a new \
              system default"
         );
+    }
+
+    fn change_resume(&self, resume: bool) {
+        if resume {
+            unimplemented!(
+                "n_music_core does not keep the play session between launches: migration 003 \
+                 dropped its session tables, so there is no queue or position to reopen"
+            );
+        }
     }
 }

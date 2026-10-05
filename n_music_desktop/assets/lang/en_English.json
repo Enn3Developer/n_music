@@ -223,6 +223,8 @@
   "replay_gain_track_note": "Per track brings every song to the same loudness, even within an album.",
   "replaygain_album": "ReplayGain album %1 dB",
   "replaygain_track": "ReplayGain track %1 dB",
+  "resume": "Resume where you left off",
+  "resume_hint": "Reopens the last queue and position when N Music starts.",
   "rules_and": "and",
   "rules_every_track": "Every track",
   "rules_many": "%1 rules",
