@@ -8,9 +8,8 @@ mod service;
 pub(crate) use service::StreamCacheService;
 
 use self::recording::{Recorder, Recording};
-use super::{Locator, OpenedStream, StreamProvider, TrackEntry};
+use super::{Locator, OpenedStream, StreamProvider};
 use crate::library::catalog::{Catalog, Library};
-use crate::library::write_atomic;
 use crate::messages::StreamCacheChanged;
 use crate::settings::{Options, StreamCacheSettings};
 use n_event_bus::EventWriter;
@@ -22,8 +21,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// Where the last listing of each remote library is kept, in the cache's folder.
-const LISTS: &str = "lists";
 /// Downloaded at a time when completing a recording.
 const CHUNK: usize = 64 * 1024;
 
@@ -69,6 +66,9 @@ impl StreamCache {
         library: Library,
         writer: EventWriter,
     ) -> Self {
+        // The listings of remote libraries were kept there before the library database linked
+        // libraries to their tracks.
+        remove_all(&dir.join("lists"));
         let mut state = State::default();
         if settings.get().enabled {
             state.copies = copies_in(&dir);
@@ -179,51 +179,14 @@ impl StreamCache {
         }
     }
 
-    /// Keeps what remote library `root` lists, for when it cannot be listed.
-    pub(crate) fn listed(&self, root: &Locator, entries: &[TrackEntry]) {
-        if !self.settings.get().enabled {
-            return;
-        }
-        let entries: Vec<(&Locator, Option<u64>)> = entries
-            .iter()
-            .map(|entry| (&entry.locator, entry.version))
-            .collect();
-        let path = self.list_path(root);
-        let kept = serde_json::to_vec(&entries)
-            .map_err(io::Error::other)
-            .and_then(|bytes| {
-                fs::create_dir_all(self.dir.join(LISTS))?;
-                write_atomic(&path, &bytes)
-            });
-        if let Err(error) = kept {
-            log::warn!("Could not keep the listing of {root}: {error}");
-        }
+    /// It has a copy of `locator`.
+    pub(crate) fn has_copy(&self, locator: &Locator) -> bool {
+        self.lock().copies.contains_key(&key(locator))
     }
 
-    /// The tracks remote library `root` listed last that have a copy.
-    pub(crate) fn offline(&self, root: &Locator) -> Vec<TrackEntry> {
-        if !self.settings.get().enabled {
-            return vec![];
-        }
-        let entries: Vec<(Locator, Option<u64>)> = match fs::read(self.list_path(root)) {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
-                log::warn!("Could not read the listing kept of {root}: {error}");
-                vec![]
-            }),
-            Err(_) => vec![],
-        };
-        let state = self.lock();
-        entries
-            .into_iter()
-            .filter(|(locator, _)| state.copies.contains_key(&key(locator)))
-            .map(|(locator, version)| TrackEntry { locator, version })
-            .collect()
-    }
-
-    /// Deletes the copies of tracks the library does not hold, and the listings of libraries
-    /// other than `libraries`. Call it only once each of them could be listed: before, the
-    /// library may lack tracks that have a copy.
-    pub(crate) fn prune(&self, libraries: &[Locator]) {
+    /// Deletes the copies of tracks the library does not hold. Call it only once each library
+    /// could be listed: before, the library may lack tracks that have a copy.
+    pub(crate) fn prune(&self) {
         let pruned = {
             let catalog = self.library.read();
             let held: HashSet<u64> = catalog
@@ -242,19 +205,6 @@ impl StreamCache {
             self.remove_copies(&mut state, &unheld);
             unheld.len()
         };
-        let lists: HashSet<PathBuf> = libraries
-            .iter()
-            .filter(|library| library.is_remote())
-            .map(|library| self.list_path(library))
-            .collect();
-        for entry in fs::read_dir(self.dir.join(LISTS)).into_iter().flatten() {
-            let Ok(entry) = entry else {
-                continue;
-            };
-            if !lists.contains(&entry.path()) {
-                remove(&entry.path());
-            }
-        }
         if pruned > 0 {
             log::info!("Deleted the copies of {pruned} tracks no library lists");
             self.report();
@@ -504,7 +454,7 @@ impl StreamCache {
         self.remove_copies(&mut state, &evicted);
     }
 
-    /// Deletes every copy, recording and listing.
+    /// Deletes every copy and recording.
     fn clear(&self) {
         let mut state = self.lock();
         for (recording, _) in state.recordings.values() {
@@ -532,18 +482,12 @@ impl StreamCache {
         self.dir.join(format!("{key:016x}"))
     }
 
-    fn list_path(&self, library: &Locator) -> PathBuf {
-        self.dir
-            .join(LISTS)
-            .join(format!("{:016x}.json", key(library)))
-    }
-
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap()
     }
 }
 
-/// Names the copy of a track, or the listing of a library.
+/// Names the copy of a track.
 fn key(locator: &Locator) -> u64 {
     // Serialized, its kind is part of it: the text alone could be alike across kinds.
     xxhash_rust::xxh3::xxh3_64(&serde_json::to_vec(locator).unwrap_or_default())

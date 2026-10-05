@@ -32,8 +32,13 @@ struct Found {
 }
 
 /// The tracks of each library, each once, in a stable order. Two libraries may list the same
-/// track, like playlists sharing a file or a folder inside another.
-fn enumerate_audio_files(providers: &Providers, libraries: &[(Locator, bool)]) -> Vec<Found> {
+/// track, like playlists sharing a file or a folder inside another. One that cannot be listed
+/// has its `offline` tracks.
+fn enumerate_audio_files(
+    providers: &Providers,
+    libraries: &[(Locator, bool)],
+    offline: impl Fn(&Locator) -> Vec<TrackEntry>,
+) -> Vec<Found> {
     libraries
         .iter()
         .map(|(root, _)| {
@@ -41,7 +46,7 @@ fn enumerate_audio_files(providers: &Providers, libraries: &[(Locator, bool)]) -
                 Ok(listed) => (listed, true),
                 Err(error) => {
                     log::warn!("Could not enumerate library {root}: {error}");
-                    (providers.offline_tracks(root), false)
+                    (offline(root), false)
                 }
             };
             let mut seen = HashSet::new();
@@ -140,7 +145,11 @@ impl Job for ScanJob {
             stored.clear();
         }
 
-        let listings = enumerate_audio_files(&self.providers, &self.libraries);
+        let listings = enumerate_audio_files(&self.providers, &self.libraries, |library| {
+            db.as_ref().map_or_else(Vec::new, |db| {
+                offline_tracks(db, &self.providers, library, &stored)
+            })
+        });
         let complete = listings.iter().all(|found| found.reachable);
         let seen: HashSet<Locator> = listings
             .iter()
@@ -195,6 +204,35 @@ impl Job for ScanJob {
         }
         writer.emit_tagged(tag, ScanEvent::Finished { complete });
     }
+}
+
+/// The tracks `library` listed when last listed, as the database links it, that the stream
+/// cache has copies of, each with the version it was read at (as `stored`): they play offline.
+fn offline_tracks(
+    db: &LibraryDb,
+    providers: &Providers,
+    library: &Locator,
+    stored: &HashMap<Locator, StoredTrack>,
+) -> Vec<TrackEntry> {
+    // Only a remote library lists streamed tracks, the only ones with copies.
+    if !library.is_remote() {
+        return vec![];
+    }
+    let linked = db
+        .library_tracks(std::slice::from_ref(library))
+        .unwrap_or_else(|error| {
+            log::error!("Could not read which tracks {library} lists: {error}");
+            HashMap::new()
+        });
+    linked
+        .into_values()
+        .flatten()
+        .filter(|locator| providers.has_copy(locator))
+        .map(|locator| TrackEntry {
+            version: stored.get(&locator).map(|track| track.version),
+            locator,
+        })
+        .collect()
 }
 
 /// What `libraries` listed when last listed, as the database links it (`linked`) and knows the

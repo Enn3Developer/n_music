@@ -159,13 +159,11 @@ impl Providers {
         }
     }
 
-    /// The tracks remote library `root` listed last that the stream cache has copies of, for
-    /// when it cannot be listed.
-    pub(crate) fn offline_tracks(&self, root: &Locator) -> Vec<TrackEntry> {
-        match &self.cache {
-            Some(cache) if root.is_remote() => cache.offline(root),
-            _ => vec![],
-        }
+    /// The stream cache has a copy of `locator`: it plays offline.
+    pub(crate) fn has_copy(&self, locator: &Locator) -> bool {
+        self.cache
+            .as_ref()
+            .is_some_and(|cache| cache.has_copy(locator))
     }
 
     fn route(&self, locator: &Locator) -> io::Result<&Arc<dyn StreamProvider>> {
@@ -195,11 +193,7 @@ impl StreamProvider for Providers {
     }
 
     fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>> {
-        let listed = self.route(root)?.list_tracks(root)?;
-        if let Some(cache) = self.cache.as_ref().filter(|_| root.is_remote()) {
-            cache.listed(root, &listed);
-        }
-        Ok(listed)
+        self.route(root)?.list_tracks(root)
     }
 }
 

@@ -67,7 +67,7 @@ impl Handle<TracksEnumerated> for StreamCacheService {
             })
         };
         if whole {
-            self.cache.prune(&libraries);
+            self.cache.prune();
         }
     }
 }
