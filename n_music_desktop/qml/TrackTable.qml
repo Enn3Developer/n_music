@@ -18,7 +18,7 @@ Item {
     signal navigate(string page)
 
     /// Room left and right of the rows.
-    readonly property real inset: Shell.compact ? 10 : 16
+    readonly property real inset: Shell.narrow ? 6 : Shell.compact ? 10 : 16
 
     /// Opens the menu of `row` from `x`, `y` of `item`, rightwards or leftwards.
     function openMenu(row: int, item: Item, x: real, y: real, leftwards: bool) {
@@ -27,18 +27,19 @@ Item {
 
     TrackColumns {
         id: columns
-        width: table.width - 2 * table.inset - 24
+        width: table.width - 2 * table.inset - 2 * columns.padding
         layout: table.layout
         compact: Shell.compact
+        narrow: Shell.narrow
     }
 
-    // Compact windows leave the column titles out.
+    // Compact and narrow windows leave the column titles out.
     TrackHeader {
         id: header
         x: table.inset
         width: parent.width - 2 * table.inset
         height: visible ? implicitHeight : 0
-        visible: !columns.compact
+        visible: !columns.slim
         list: table.list
         columns: columns
     }

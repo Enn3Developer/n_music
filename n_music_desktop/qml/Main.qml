@@ -190,7 +190,7 @@ ApplicationWindow {
 
             Sidebar {
                 Layout.fillHeight: true
-                visible: !Shell.compact
+                visible: Shell.regular || Shell.wide
                 page: window.page
                 onNavigate: to => window.page = to
             }
@@ -256,6 +256,42 @@ ApplicationWindow {
             Layout.fillWidth: true
             queueOpen: window.page === "queue"
             onToggleQueue: window.toggleQueue()
+        }
+    }
+
+    // Narrow windows keep the navigation here, sliding in from the left.
+    Drawer {
+        id: navigation
+        width: Math.min(280, window.width - 56)
+        height: window.height
+        edge: Qt.LeftEdge
+        interactive: Shell.narrow
+        padding: 0
+
+        Overlay.modal: Rectangle {
+            color: Theme.shadow
+        }
+        background: null
+
+        Sidebar {
+            anchors.fill: parent
+            page: window.page
+            onNavigate: to => {
+                window.page = to;
+                navigation.close();
+            }
+        }
+    }
+
+    Connections {
+        target: Shell
+
+        function onNavigationRequested() {
+            navigation.open();
+        }
+        function onNarrowChanged() {
+            if (!Shell.narrow)
+                navigation.close();
         }
     }
 

@@ -5,7 +5,8 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 import NMusic
 
-// A filter rule being written: the field it tests, the condition, and the value.
+// A filter rule being written: the field it tests, the condition, and the value, which goes
+// on a line of its own when the row is narrow.
 Item {
     id: row
 
@@ -22,8 +23,10 @@ Item {
     readonly property string kind: field.kind
     readonly property bool low: kind === "range" && rule.op !== "until" && rule.op !== "at_most"
     readonly property bool high: kind === "range" && rule.op !== "from" && rule.op !== "at_least"
+    /// Too narrow for the value beside the condition.
+    readonly property bool wrapped: width < 440
 
-    implicitHeight: 36
+    implicitHeight: wrapped ? 36 + 8 + 36 : 36
 
     SelectBox {
         id: fieldBox
@@ -66,7 +69,8 @@ Item {
     }
 
     RowLayout {
-        x: opBox.x + opBox.width + 8
+        x: row.wrapped ? 0 : opBox.x + opBox.width + 8
+        y: row.wrapped ? 36 + 8 : 0
         width: remove.x - 8 - x
         height: 36
         spacing: 6
@@ -166,7 +170,7 @@ Item {
     IconButton {
         id: remove
         x: row.width - width
-        anchors.verticalCenter: parent.verticalCenter
+        y: (36 - height) / 2
         size: 32
         iconSize: 14
         stroke: 2.2

@@ -3,7 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// A row of a SettingsGroup: what it is, what it does, and its control at the end.
+// A row of a SettingsGroup: what it is, what it does, and its control at the end, or below
+// when the row is narrow.
 Item {
     id: row
 
@@ -15,18 +16,35 @@ Item {
     /// Draws a line under it, before the next row.
     property bool divider: false
     default property alias control: content.data
+    /// How wide the controls are side by side.
+    readonly property real controlsWidth: {
+        let total = 0;
+        // The words come first.
+        for (let index = 1; index < content.children.length; ++index) {
+            const control = content.children[index];
+            const preferred = control.Layout.preferredWidth;
+            if (control.visible)
+                total += (preferred >= 0 ? preferred : control.implicitWidth) + content.columnSpacing;
+        }
+        return total;
+    }
+    /// Too narrow for the controls beside the words: they go below them.
+    readonly property bool stacked: width - 32 - controlsWidth < 160
 
     Layout.fillWidth: true
     implicitHeight: content.implicitHeight + 28
 
-    RowLayout {
+    GridLayout {
         id: content
         anchors.fill: parent
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         anchors.topMargin: 14
         anchors.bottomMargin: 14
-        spacing: 16
+        // One row for the words and every control, else a column.
+        columns: row.stacked ? 1 : 16
+        rowSpacing: 12
+        columnSpacing: 16
 
         ColumnLayout {
             Layout.fillWidth: true

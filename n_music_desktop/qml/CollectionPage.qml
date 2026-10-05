@@ -44,18 +44,30 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        NarrowBar {
+            Layout.fillWidth: true
+            visible: Shell.narrow
+            title: ({
+                    album: Tr.t.albums,
+                    artist: Tr.t.artists,
+                    genre: Tr.t.genres,
+                    source: Tr.t.sources
+                })[page.kind]
+        }
+
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 28
-            Layout.rightMargin: 28
-            Layout.topMargin: 28
-            Layout.bottomMargin: 18
-            spacing: 24
+            Layout.leftMargin: Shell.narrow ? 16 : 28
+            Layout.rightMargin: Shell.narrow ? 16 : 28
+            Layout.topMargin: Shell.narrow ? 16 : 28
+            Layout.bottomMargin: Shell.narrow ? 12 : 18
+            spacing: Shell.narrow ? 16 : 24
 
             Cover {
+                id: art
                 Layout.alignment: Qt.AlignBottom
-                size: 168
-                radius: page.kind === "artist" ? 84 : 10
+                size: Shell.narrow ? 96 : 168
+                radius: page.kind === "artist" ? art.size / 2 : Shell.narrow ? 8 : 10
                 iconName: ({
                         album: "disc",
                         artist: "artist",
@@ -73,6 +85,7 @@ Item {
                 spacing: 8
 
                 Label {
+                    visible: !Shell.narrow
                     text: ({
                             album: Tr.t.field_album,
                             artist: Tr.t.field_artist,
@@ -90,9 +103,9 @@ Item {
                     text: page.key.name
                     elide: Text.ElideRight
                     color: Theme.text
-                    font.pixelSize: 34
+                    font.pixelSize: Shell.narrow ? 22 : 34
                     font.weight: Font.Bold
-                    font.letterSpacing: -0.68
+                    font.letterSpacing: Shell.narrow ? -0.44 : -0.68
                 }
                 Label {
                     Layout.maximumWidth: about.width
@@ -119,14 +132,16 @@ Item {
                     }
                     PillButton {
                         iconName: "shuffle"
-                        text: Tr.t.shuffle
+                        text: Shell.narrow ? "" : Tr.t.shuffle
                         enabled: tracks.count > 0
+                        Accessible.name: Tr.t.shuffle
                         onClicked: tracks.playAll(true)
                     }
                     Item {
                         Layout.fillWidth: true
                     }
                     SortButton {
+                        iconOnly: Shell.narrow
                         list: tracks
                     }
                 }

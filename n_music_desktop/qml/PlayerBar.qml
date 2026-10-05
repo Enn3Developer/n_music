@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// The current track and the playback controls, along the bottom of the window.
+// The current track and the playback controls, along the bottom of the window; narrow windows
+// get a mini player, its track opening the queue.
 Rectangle {
     id: bar
 
@@ -14,7 +15,7 @@ Rectangle {
     /// Width of the side columns; the middle one is 1.6 times as wide.
     readonly property real unit: Math.max(0, width - 40 - 48) / 3.6
 
-    implicitHeight: 88
+    implicitHeight: Shell.narrow ? 72 : 88
     color: Theme.surface
 
     Rectangle {
@@ -27,6 +28,7 @@ Rectangle {
         x: 20
         width: bar.unit
         height: parent.height
+        visible: !Shell.narrow
 
         Cover {
             id: art
@@ -65,6 +67,7 @@ Rectangle {
         x: 20 + bar.unit + 24
         width: bar.unit * 1.6
         anchors.verticalCenter: parent.verticalCenter
+        visible: !Shell.narrow
         spacing: 6
 
         Row {
@@ -198,6 +201,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: 20
         anchors.verticalCenter: parent.verticalCenter
+        visible: !Shell.narrow
         spacing: 6
 
         IconButton {
@@ -228,6 +232,123 @@ Rectangle {
                 when: !volume.pressed
                 value: Player.volume
                 restoreMode: Binding.RestoreNone
+            }
+        }
+    }
+
+    Item {
+        anchors.fill: parent
+        anchors.topMargin: 1
+        visible: Shell.narrow
+
+        // How far the track got.
+        Rectangle {
+            width: parent.width
+            height: 3
+            color: Theme.track
+
+            Rectangle {
+                width: Player.length > 0 ? parent.width * Math.min(1, Player.position / Player.length) : 0
+                height: parent.height
+                color: Theme.accent
+            }
+        }
+
+        AbstractButton {
+            id: current
+            x: 12
+            y: 3
+            width: mini.x - 10 - x
+            height: parent.height - 3
+            hoverEnabled: true
+            text: Tr.t.queue
+            Accessible.name: (Player.loaded ? Player.title + ", " : "") + text
+            onClicked: bar.toggleQueue()
+
+            background: Rectangle {
+                anchors.fill: parent
+                anchors.topMargin: 8
+                anchors.bottomMargin: 8
+                anchors.leftMargin: -6
+                radius: 8
+                color: current.down ? Theme.selected : current.hovered ? Theme.hover : "transparent"
+                border.width: current.visualFocus ? 2 : 0
+                border.color: Theme.text
+            }
+            contentItem: Row {
+                spacing: 10
+
+                Cover {
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 44
+                    radius: 5
+                    path: Player.cover
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: current.width - 44 - 10
+                    spacing: 2
+
+                    Label {
+                        width: parent.width
+                        text: Player.loaded ? Player.title : Tr.t.not_playing
+                        elide: Text.ElideRight
+                        color: Player.loaded ? Theme.text : Theme.text3
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                    Label {
+                        width: parent.width
+                        visible: Player.loaded && text !== ""
+                        text: Player.artist
+                        elide: Text.ElideRight
+                        color: Theme.text2
+                        font.pixelSize: 12
+                    }
+                }
+            }
+        }
+
+        Row {
+            id: mini
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: current.verticalCenter
+            spacing: 10
+
+            AbstractButton {
+                id: toggle
+                implicitWidth: 44
+                implicitHeight: 44
+                hoverEnabled: true
+                text: Player.playing ? Tr.t.pause : Tr.t.play
+                Accessible.name: text
+                onClicked: Player.toggle()
+
+                background: Rectangle {
+                    radius: 22
+                    color: toggle.down ? Qt.darker(Theme.text, 1.1) : Theme.text
+                    border.width: toggle.visualFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
+                contentItem: Item {
+                    Icon {
+                        anchors.centerIn: parent
+                        anchors.horizontalCenterOffset: Player.playing ? 0 : 1
+                        name: Player.playing ? "pause" : "play"
+                        size: 18
+                        color: Theme.surface
+                    }
+                }
+            }
+            IconButton {
+                size: 44
+                radius: 10
+                iconName: "next"
+                stroke: 2
+                color: Theme.text
+                text: Tr.t.next
+                onClicked: Player.next()
             }
         }
     }

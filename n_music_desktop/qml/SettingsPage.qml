@@ -74,16 +74,24 @@ Item {
         rowSpacing: 0
         columnSpacing: 0
 
+        // Narrow windows are stacked too.
+        NarrowBar {
+            Layout.fillWidth: true
+            visible: Shell.narrow
+            title: Tr.t.settings
+        }
+
         ColumnLayout {
             Layout.fillWidth: page.stacked
             Layout.preferredWidth: page.stacked ? -1 : 200
             Layout.fillHeight: !page.stacked
-            Layout.topMargin: page.stacked ? 22 : 28
-            Layout.leftMargin: page.stacked ? 28 : 20
-            Layout.rightMargin: page.stacked ? 28 : 12
+            Layout.topMargin: Shell.narrow ? 12 : page.stacked ? 22 : 28
+            Layout.leftMargin: Shell.narrow ? 16 : page.stacked ? 28 : 20
+            Layout.rightMargin: Shell.narrow ? 16 : page.stacked ? 28 : 12
             spacing: 2
 
             Label {
+                visible: !Shell.narrow
                 Layout.leftMargin: page.stacked ? 0 : 10
                 Layout.bottomMargin: page.stacked ? 12 : 14
                 text: Tr.t.settings
@@ -128,9 +136,9 @@ Item {
 
             Loader {
                 id: content
-                x: 28
+                x: Shell.narrow ? 16 : 28
                 y: page.stacked ? 20 : 28
-                width: Math.min(scroller.width - 56, 704)
+                width: Math.min(scroller.width - 2 * x, 704)
                 sourceComponent: page.section === "sources" ? sourcesSection : generalSection
             }
 

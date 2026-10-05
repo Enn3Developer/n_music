@@ -11,14 +11,16 @@ AbstractButton {
     property var options: []
     property string value
     property string iconName
+    /// Shows only its icon, like the actions of a NarrowBar.
+    property bool iconOnly: false
 
     /// The user picked the choice of `value`.
     signal activated(string value)
 
     readonly property var current: options.find(option => option.value === value) ?? null
 
-    implicitHeight: 38
-    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+    implicitHeight: iconOnly ? 44 : 38
+    implicitWidth: iconOnly ? 44 : implicitContentWidth + leftPadding + rightPadding
     leftPadding: 12
     rightPadding: 12
     hoverEnabled: true
@@ -28,7 +30,7 @@ AbstractButton {
     onClicked: menu.open()
 
     background: Rectangle {
-        radius: 8
+        radius: button.iconOnly ? 10 : 8
         color: button.down || menu.visible ? Theme.selected : button.hovered ? Theme.hover : "transparent"
         border.width: button.visualFocus ? 2 : 0
         border.color: Theme.text
@@ -41,18 +43,20 @@ AbstractButton {
             anchors.verticalCenter: parent.verticalCenter
             visible: button.iconName !== ""
             name: button.iconName
-            size: 15
-            stroke: 1.9
-            color: Theme.text2
+            size: button.iconOnly ? 20 : 15
+            stroke: button.iconOnly ? 2 : 1.9
+            color: button.iconOnly ? Theme.text : Theme.text2
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter
+            visible: !button.iconOnly
             text: button.text
             font: button.font
             color: Theme.text2
         }
         Icon {
             anchors.verticalCenter: parent.verticalCenter
+            visible: !button.iconOnly
             name: "chevron-down"
             size: 14
             stroke: 2

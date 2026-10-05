@@ -14,7 +14,8 @@ AbstractButton {
 
     implicitHeight: small ? 36 : 40
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-    leftPadding: small ? 14 : primary ? 18 : 16
+    // Round around an icon alone.
+    leftPadding: text === "" ? (implicitHeight - 16) / 2 : small ? 14 : primary ? 18 : 16
     rightPadding: leftPadding
     hoverEnabled: true
     opacity: enabled ? 1 : 0.45
@@ -47,6 +48,7 @@ AbstractButton {
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter
+            visible: button.text !== ""
             text: button.text
             font: button.font
             color: button.primary ? Theme.accentInk : button.danger ? Theme.danger : Theme.text

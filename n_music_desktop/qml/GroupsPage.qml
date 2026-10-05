@@ -87,8 +87,26 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        NarrowBar {
+            id: bar
+            Layout.fillWidth: true
+            visible: Shell.narrow
+            title: page.words.title
+            field: search
+
+            MenuButton {
+                iconOnly: true
+                iconName: "sort"
+                options: page.orders
+                value: groups.sort
+                Accessible.name: Tr.t.sort_by + ": " + text
+                onActivated: value => groups.sort = value
+            }
+        }
+
         RowLayout {
             Layout.fillWidth: true
+            visible: !Shell.narrow
             Layout.leftMargin: 28
             Layout.rightMargin: 28
             Layout.topMargin: 22
@@ -118,12 +136,20 @@ Item {
             Item {
                 Layout.fillWidth: true
             }
-            SearchField {
-                id: search
+            RowLayout {
+                id: searchHolder
                 Layout.alignment: Qt.AlignBottom
-                Layout.preferredWidth: 260
-                Layout.minimumWidth: 160
-                placeholder: page.words.search
+
+                // In the bar while it searches, in narrow windows.
+                SearchField {
+                    id: search
+                    parent: Shell.narrow && bar.fieldShown ? bar.slot : searchHolder
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.fillWidth: Shell.narrow
+                    Layout.preferredWidth: Shell.narrow ? -1 : 260
+                    Layout.minimumWidth: Shell.narrow ? 0 : 160
+                    placeholder: page.words.search
+                }
             }
             MenuButton {
                 Layout.alignment: Qt.AlignBottom
@@ -138,15 +164,18 @@ Item {
             id: grid
 
             readonly property int columns: Math.max(1, Math.floor(width / 188))
+            /// Room between the cards.
+            readonly property real gap: Shell.narrow ? 12 : 20
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 28
-            Layout.rightMargin: 8
+            Layout.leftMargin: Shell.narrow ? 12 : 28
+            Layout.rightMargin: Shell.narrow ? 0 : 8
+            Layout.topMargin: Shell.narrow ? 12 : 0
             clip: true
             visible: groups.count > 0
             cellWidth: width / columns
-            cellHeight: cellWidth - 20 + 10 + 40 + 24
+            cellHeight: cellWidth - gap + 10 + 40 + 24
             bottomMargin: 24
             model: groups
             reuseItems: true
@@ -173,7 +202,7 @@ Item {
                     return tracks;
                 }
 
-                width: grid.cellWidth - 20
+                width: grid.cellWidth - grid.gap
                 height: grid.cellHeight - 24
                 hoverEnabled: true
                 text: known ? name : page.words.unknown

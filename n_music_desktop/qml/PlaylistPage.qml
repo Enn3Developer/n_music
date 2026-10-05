@@ -56,19 +56,25 @@ Item {
         anchors.fill: parent
         spacing: 0
 
+        NarrowBar {
+            Layout.fillWidth: true
+            visible: Shell.narrow
+            title: Tr.t.playlists
+        }
+
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 28
-            Layout.rightMargin: 28
-            Layout.topMargin: 28
-            Layout.bottomMargin: 18
-            spacing: 24
+            Layout.leftMargin: Shell.narrow ? 16 : 28
+            Layout.rightMargin: Shell.narrow ? 16 : 28
+            Layout.topMargin: Shell.narrow ? 16 : 28
+            Layout.bottomMargin: Shell.narrow ? 12 : 18
+            spacing: Shell.narrow ? 16 : 24
 
             Cover {
                 Layout.alignment: Qt.AlignBottom
                 visible: !playlist.smart
-                size: 168
-                radius: 10
+                size: Shell.narrow ? 96 : 168
+                radius: Shell.narrow ? 8 : 10
                 iconName: "playlist"
                 paths: tracks.covers.length >= 4 ? tracks.covers : []
                 path: tracks.covers.length > 0 ? tracks.covers[0] : ""
@@ -76,9 +82,9 @@ Item {
             Rectangle {
                 Layout.alignment: Qt.AlignBottom
                 visible: playlist.smart
-                implicitWidth: 168
-                implicitHeight: 168
-                radius: 10
+                implicitWidth: Shell.narrow ? 96 : 168
+                implicitHeight: implicitWidth
+                radius: Shell.narrow ? 8 : 10
                 color: Theme.field
                 border.width: 1
                 border.color: Theme.track
@@ -86,7 +92,7 @@ Item {
                 Icon {
                     anchors.centerIn: parent
                     name: "filter"
-                    size: 64
+                    size: Shell.narrow ? 40 : 64
                     stroke: 1.4
                     color: Theme.accentText
                 }
@@ -99,6 +105,7 @@ Item {
                 spacing: 8
 
                 Label {
+                    visible: !Shell.narrow
                     text: playlist.smart ? Tr.t.smart_playlist : Tr.t.playlist
                     color: Theme.text2
                     font.pixelSize: 12
@@ -116,14 +123,14 @@ Item {
                         text: playlist.name
                         elide: Text.ElideRight
                         color: Theme.text
-                        font.pixelSize: 34
+                        font.pixelSize: Shell.narrow ? 22 : 34
                         font.weight: Font.Bold
-                        font.letterSpacing: -0.68
+                        font.letterSpacing: Shell.narrow ? -0.44 : -0.68
                     }
                     IconButton {
                         id: rename
                         visible: !playlist.smart
-                        size: 34
+                        size: Shell.narrow ? 28 : 34
                         iconSize: 16
                         stroke: 1.9
                         iconName: "pencil"
@@ -222,8 +229,10 @@ Item {
                         onClicked: tracks.playAll(false)
                     }
                     PillButton {
-                        text: Tr.t.shuffle
+                        iconName: Shell.narrow ? "shuffle" : ""
+                        text: Shell.narrow ? "" : Tr.t.shuffle
                         enabled: tracks.count > 0
+                        Accessible.name: Tr.t.shuffle
                         onClicked: tracks.playAll(true)
                     }
                     IconButton {
@@ -265,6 +274,7 @@ Item {
                         Layout.fillWidth: true
                     }
                     SortButton {
+                        iconOnly: Shell.narrow
                         list: tracks
                         extraOptions: playlist.smart ? [] : [
                             {

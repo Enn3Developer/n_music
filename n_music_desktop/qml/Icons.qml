@@ -73,6 +73,7 @@ QtObject {
         "arrow-up": [{ d: "M12 19V5M6 11l6-6 6 6" }],
         "arrow-down": [{ d: "M12 5v14M6 13l6 6 6-6" }],
         "arrow-right": [{ d: "M5 12h14M13 6l6 6-6 6" }],
+        "arrow-left": [{ d: "M19 12H5M11 6l-6 6 6 6" }],
         "pencil": [{ d: "M4 20h4L19 9l-4-4L4 16z" }],
         "trash": [{ d: "M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" }],
         "link": [

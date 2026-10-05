@@ -7,6 +7,9 @@ QtObject {
     /// The window's width, set by the window.
     property real width: 1280
 
+    /// A page asked for the navigation, which narrow windows keep in a drawer.
+    signal navigationRequested
+
     readonly property string size: width >= 1600 ? "wide" : width >= 1100 ? "regular" : width >= 720 ? "compact" : "narrow"
     readonly property bool wide: size === "wide"
     readonly property bool regular: size === "regular"

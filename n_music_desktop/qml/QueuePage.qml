@@ -20,24 +20,35 @@ Item {
         id: queue
     }
 
+    NarrowBar {
+        id: bar
+        width: page.width
+        visible: Shell.narrow
+        title: Tr.t.queue
+    }
+
     Flickable {
+        id: side
         x: 28
         width: page.nowWidth
         height: parent.height
+        visible: !Shell.narrow
         contentHeight: now.height + 28 + 24
         clip: true
         interactive: contentHeight > height
         boundsBehavior: Flickable.StopAtBounds
 
+        // Atop the list in narrow windows, scrolling with it.
         Column {
             id: now
-            y: 28
+            parent: Shell.narrow && list.headerItem ? list.headerItem : side.contentItem
+            y: Shell.narrow ? 16 : 28
             width: parent.width
             spacing: 18
 
             Cover {
                 // Shrinks in short windows to keep the controls below it in view.
-                size: Math.max(160, Math.min(now.width, page.height - 28 - 24 - 3 * now.spacing - about.height - (chips.visible ? chips.height + now.spacing : 0) - ending.height))
+                size: Shell.narrow ? Math.min(now.width, 240) : Math.max(160, Math.min(now.width, page.height - 28 - 24 - 3 * now.spacing - about.height - (chips.visible ? chips.height + now.spacing : 0) - ending.height))
                 radius: 12
                 path: Player.cover
             }
@@ -142,8 +153,9 @@ Item {
 
     FlatButton {
         id: history
-        x: list.x
-        y: 28
+        parent: Shell.narrow && list.headerItem ? list.headerItem : page
+        x: Shell.narrow ? 0 : list.x
+        y: Shell.narrow ? now.y + now.height + 24 : 28
         visible: queue.historyCount > 0
         filled: true
         iconName: queue.showHistory ? "chevron-down" : "chevron-right"
@@ -153,11 +165,12 @@ Item {
 
     ListView {
         id: list
-        x: 28 + page.nowWidth + 32
-        y: history.visible ? history.y + history.height + 16 : 0
-        width: page.width - x - 28
+        x: Shell.narrow ? 16 : 28 + page.nowWidth + 32
+        y: Shell.narrow ? bar.height : history.visible ? history.y + history.height + 16 : 0
+        width: Shell.narrow ? page.width - 32 : page.width - x - 28
         height: parent.height - y
-        topMargin: history.visible ? 0 : 28
+        topMargin: history.visible || Shell.narrow ? 0 : 28
+        header: Shell.narrow ? nowHolder : null
         bottomMargin: 24
         clip: true
         spacing: 6
@@ -186,6 +199,26 @@ Item {
         message: Tr.t.queue_empty_hint
         action: Tr.t.open_tracks
         onTriggered: page.navigate("tracks")
+    }
+
+    // Holds what plays now and the history button in narrow windows.
+    Component {
+        id: nowHolder
+
+        Item {
+            /// The height the view last saw.
+            property real seen: height
+
+            width: list.width
+            height: now.y + now.height + 24 + (history.visible ? history.height + 16 : 0)
+            // The view keeps its position as this grows above the tracks, which would scroll
+            // this out of view while it shows.
+            onHeightChanged: {
+                if (list.contentY < 0)
+                    list.contentY -= height - seen;
+                seen = height;
+            }
+        }
     }
 
     // ListView shows section headers itself, so history's empty one hides its content.

@@ -3,7 +3,8 @@ import QtQuick.Controls.Basic
 import NMusic
 
 // A track in a table: its number (a playing mark while current), cover, title and artist,
-// album, then the values its columns show and the length.
+// album, then the values its columns show and the length; narrow ones put the length beside the
+// artist.
 Rectangle {
     id: row
 
@@ -31,7 +32,7 @@ Rectangle {
     /// under a button at the right edge.
     signal menuRequested(Item item, real x, real y, bool leftwards)
 
-    implicitHeight: 52
+    implicitHeight: columns.narrow ? 60 : 52
     radius: 8
     color: selected ? Theme.raised : current || menuOpen ? Theme.selected : mouse.containsMouse ? Theme.hover : "transparent"
 
@@ -53,7 +54,7 @@ Rectangle {
     }
 
     Row {
-        x: 12
+        x: row.columns.padding
         height: parent.height
 
         Item {
@@ -92,6 +93,8 @@ Rectangle {
             Cover {
                 id: art
                 anchors.verticalCenter: parent.verticalCenter
+                size: row.columns.narrow ? 44 : 36
+                radius: row.columns.narrow ? 5 : 4
                 path: row.cover
             }
             Column {
@@ -107,14 +110,17 @@ Rectangle {
                     text: row.title
                     elide: Text.ElideRight
                     color: row.current ? Theme.accentText : Theme.text
-                    font.pixelSize: 14
+                    font.pixelSize: row.columns.narrow ? 15 : 14
                     font.weight: Font.DemiBold
                 }
                 Label {
                     width: parent.width
-                    text: row.artist === "" ? Tr.t.unknown_artist : row.artist
+                    text: {
+                        const artist = row.artist === "" ? Tr.t.unknown_artist : row.artist;
+                        return row.columns.narrow ? artist + " · " + row.length : artist;
+                    }
                     elide: Text.ElideRight
-                    color: row.artist === "" ? Theme.text3 : Theme.text2
+                    color: row.artist === "" && !row.columns.narrow ? Theme.text3 : Theme.text2
                     font.pixelSize: 13
                 }
             }
@@ -122,6 +128,7 @@ Rectangle {
 
         Label {
             width: row.columns.album
+            visible: width > 0
             rightPadding: 12
             anchors.verticalCenter: parent.verticalCenter
             text: row.album
@@ -193,10 +200,10 @@ Rectangle {
                 id: more
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                size: 32
-                radius: 6
+                size: row.columns.narrow ? 40 : 32
+                radius: row.columns.narrow ? 8 : 6
                 iconSize: 16
-                iconName: "more"
+                iconName: row.columns.narrow ? "more-vertical" : "more"
                 color: row.menuOpen ? Theme.text : Theme.text3
                 focusPolicy: Qt.NoFocus
                 text: Tr.t.track_actions.arg(row.title)
@@ -205,7 +212,7 @@ Rectangle {
                 Rectangle {
                     z: -1
                     anchors.fill: parent
-                    radius: 6
+                    radius: more.radius
                     visible: row.menuOpen
                     color: Theme.menuHover
                 }
