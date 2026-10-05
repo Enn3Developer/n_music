@@ -31,7 +31,7 @@ Item {
         running: bars.energy > 0 && bars.visible && bars.Window.visibility !== Window.Minimized && bars.Window.visibility !== Window.Hidden
         from: 0
         to: 1
-        duration: 3000
+        duration: 4000
         loops: Animation.Infinite
     }
 
@@ -70,9 +70,9 @@ Item {
         required property real shift
 
         readonly property real unit: bars.size / 24
-        readonly property real swing: 0.5 + 0.3 * Math.sin(2 * Math.PI * (fast * bars.phase + shift)) + 0.2 * Math.sin(2 * Math.PI * (slow * bars.phase + 2 * shift))
-        /// From 3 to 16 tall while playing, `rest` when still.
-        readonly property real tall: rest + bars.energy * (3 + 13 * swing - rest)
+        readonly property real swing: 0.5 + 0.25 * Math.sin(2 * Math.PI * (fast * bars.phase + shift)) + 0.25 * Math.sin(2 * Math.PI * (slow * bars.phase + 2 * shift))
+        /// From 4 to 15 tall while playing, `rest` when still.
+        readonly property real tall: rest + bars.energy * (4 + 11 * swing - rest)
 
         x: at * unit
         y: (20 - tall) * unit
