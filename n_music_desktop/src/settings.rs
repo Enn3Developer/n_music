@@ -20,6 +20,8 @@ pub struct UiSettings {
     pub mini_on_top: bool,
     /// The name of one of the interface's accent colours.
     pub accent: String,
+    /// Track lists use smaller covers and tighter rows.
+    pub compact_rows: bool,
 }
 
 impl Default for UiSettings {
@@ -32,6 +34,7 @@ impl Default for UiSettings {
             check_updates: true,
             mini_on_top: true,
             accent: String::from("amber"),
+            compact_rows: false,
         }
     }
 }

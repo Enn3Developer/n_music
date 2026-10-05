@@ -49,6 +49,8 @@
   "column_title": "Title",
   "column_year": "Year",
   "combine_rules": "Combine rules",
+  "compact_rows": "Compact rows",
+  "compact_rows_hint": "Smaller covers and tighter rows, so more tracks fit.",
   "create": "Create",
   "credits": "Made by Enn3DevPlayer and others",
   "delete_playlist": "Delete playlist",

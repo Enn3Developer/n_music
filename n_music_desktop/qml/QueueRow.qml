@@ -16,7 +16,10 @@ Rectangle {
     signal activated
     signal remove
 
-    implicitHeight: 54
+    /// Smaller covers and tighter rows, from the settings.
+    readonly property bool dense: AppState.compactRows
+
+    implicitHeight: dense ? 42 : 54
     radius: 8
     color: section === "next" ? (mouse.containsMouse ? Theme.raised : Theme.surface) : mouse.containsMouse ? Theme.hover : "transparent"
 
@@ -31,7 +34,7 @@ Rectangle {
         id: art
         x: 8
         anchors.verticalCenter: parent.verticalCenter
-        size: 40
+        size: row.dense ? 32 : 40
         path: row.cover
         opacity: row.section === "history" ? 0.6 : 1
     }
@@ -41,7 +44,7 @@ Rectangle {
         anchors.right: time.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 2
+        spacing: row.dense ? 0 : 2
 
         Label {
             width: parent.width
@@ -56,7 +59,7 @@ Rectangle {
             text: row.artist === "" ? Tr.t.unknown_artist : row.artist
             elide: Text.ElideRight
             color: row.artist === "" ? Theme.text3 : Theme.text2
-            font.pixelSize: 13
+            font.pixelSize: row.dense ? 12 : 13
         }
     }
     Label {

@@ -123,6 +123,17 @@ ColumnLayout {
                 }
             }
             SettingRow {
+                title: Tr.t.compact_rows
+                description: Tr.t.compact_rows_hint
+                divider: true
+
+                ToggleSwitch {
+                    checked: AppState.compactRows
+                    Accessible.name: Tr.t.compact_rows
+                    onToggled: AppState.compactRows = checked
+                }
+            }
+            SettingRow {
                 title: Tr.t.language
                 divider: true
 

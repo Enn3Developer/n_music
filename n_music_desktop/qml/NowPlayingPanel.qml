@@ -131,7 +131,7 @@ Rectangle {
                     required property string section
 
                     width: ListView.view.width
-                    height: 52
+                    height: AppState.compactRows ? 42 : 52
                     leftPadding: 6
                     rightPadding: 6
                     hoverEnabled: true
@@ -146,13 +146,13 @@ Rectangle {
                         spacing: 10
 
                         Cover {
-                            size: 40
+                            size: AppState.compactRows ? 32 : 40
                             radius: 4
                             path: entry.cover
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: AppState.compactRows ? 0 : 2
 
                             Label {
                                 Layout.fillWidth: true

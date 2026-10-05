@@ -25,6 +25,8 @@ Rectangle {
     property bool selected: false
     /// Its menu is open.
     property bool menuOpen: false
+    /// Smaller covers and tighter rows, from the settings.
+    readonly property bool dense: AppState.compactRows
 
     signal clicked
     signal activated
@@ -32,7 +34,7 @@ Rectangle {
     /// under a button at the right edge.
     signal menuRequested(Item item, real x, real y, bool leftwards)
 
-    implicitHeight: columns.narrow ? 60 : 52
+    implicitHeight: columns.narrow ? (dense ? 48 : 60) : dense ? 40 : 52
     radius: 8
     color: selected ? Theme.raised : current || menuOpen ? Theme.selected : mouse.containsMouse ? Theme.hover : "transparent"
 
@@ -93,7 +95,7 @@ Rectangle {
             Cover {
                 id: art
                 anchors.verticalCenter: parent.verticalCenter
-                size: row.columns.narrow ? 44 : 36
+                size: row.columns.narrow ? (row.dense ? 36 : 44) : row.dense ? 28 : 36
                 radius: row.columns.narrow ? 5 : 4
                 path: row.cover
             }
@@ -103,14 +105,14 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                spacing: row.dense ? 0 : 2
 
                 Label {
                     width: parent.width
                     text: row.title
                     elide: Text.ElideRight
                     color: row.current ? Theme.accentText : Theme.text
-                    font.pixelSize: row.columns.narrow ? 15 : 14
+                    font.pixelSize: row.columns.narrow && !row.dense ? 15 : 14
                     font.weight: Font.DemiBold
                 }
                 Label {
@@ -121,7 +123,7 @@ Rectangle {
                     }
                     elide: Text.ElideRight
                     color: row.artist === "" && !row.columns.narrow ? Theme.text3 : Theme.text2
-                    font.pixelSize: 13
+                    font.pixelSize: row.dense ? 12 : 13
                 }
             }
         }

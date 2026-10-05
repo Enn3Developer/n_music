@@ -22,6 +22,8 @@ pub mod qobject {
         #[qproperty(bool, mini_on_top)]
         /// One of `Theme.accents`; saved when changed.
         #[qproperty(QString, accent)]
+        /// Track lists use smaller covers and tighter rows; saved when changed.
+        #[qproperty(bool, compact_rows)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         #[qproperty(QString, version)]
@@ -56,6 +58,7 @@ pub struct AppStateRust {
     check_updates: bool,
     mini_on_top: bool,
     accent: QString,
+    compact_rows: bool,
     window_width: i32,
     window_height: i32,
     version: QString,
@@ -72,6 +75,7 @@ impl Default for AppStateRust {
             check_updates: true,
             mini_on_top: true,
             accent: QString::from("amber"),
+            compact_rows: false,
             window_width: size.width as i32,
             window_height: size.height as i32,
             version: QString::from(env!("CARGO_PKG_VERSION")),
@@ -94,6 +98,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_check_updates(ui.check_updates);
         self.as_mut().set_mini_on_top(ui.mini_on_top);
         self.as_mut().set_accent(QString::from(&ui.accent));
+        self.as_mut().set_compact_rows(ui.compact_rows);
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
         self.as_mut()
@@ -144,6 +149,12 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_accent_changed(|app| {
                 let accent = app.accent().to_string();
                 settings::ui().update(|ui| ui.accent = accent);
+            })
+            .release();
+        self.as_mut()
+            .on_compact_rows_changed(|app| {
+                let compact = *app.compact_rows();
+                settings::ui().update(|ui| ui.compact_rows = compact);
             })
             .release();
     }
