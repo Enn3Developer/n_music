@@ -11,11 +11,15 @@ use symphonia::core::io::MediaSource;
 use ureq::http::{Response, StatusCode};
 use ureq::{Agent, Body};
 
-/// How far ahead of reading the download goes, at least and at most: in between, as far as
-/// reading got since it last jumped. Reading tags then fetches little, and playing keeps
+/// How far ahead of reading the download goes, at least and at most: in between, as much as
+/// reading read since it last jumped. Reading tags then fetches little, and playing keeps
 /// seconds of audio at hand.
 const MIN_AHEAD: u64 = 256 * 1024;
 const MAX_AHEAD: u64 = 8 * 1024 * 1024;
+/// How far ahead the download goes right after reading jumps, then twice what reading read
+/// until that reaches `MIN_AHEAD`: seeking jumps around, reading a few KiB at each stop before
+/// it lands.
+const JUMP_AHEAD: u64 = 64 * 1024;
 /// Reading this soon after opening is taken for reading tags, however far it goes: the download
 /// keeps only `MIN_AHEAD` ahead.
 const SETTLING: Duration = Duration::from_secs(1);
@@ -23,6 +27,10 @@ const SETTLING: Duration = Duration::from_secs(1);
 const BEHIND: u64 = 256 * 1024;
 /// Read from the network at a time.
 const CHUNK: usize = 64 * 1024;
+/// When reading jumps away from a response with this much left at most, the rest still comes,
+/// for the window reading left: a connection is used again only once its response was read to
+/// the end, and a new one costs round trips of handshakes.
+const DRAIN: u64 = 64 * 1024;
 /// Reading gives up when the download did not move for this long.
 const STALL: Duration = Duration::from_secs(20);
 /// A request for part of the file has this long to bring it.
@@ -68,8 +76,8 @@ struct State {
     parked: Window,
     /// Where reading is.
     position: u64,
-    /// Where reading went on from when it last jumped.
-    since: u64,
+    /// How much reading read since it last jumped.
+    read: u64,
     /// Counts the jumps of reading to where the download cannot get by going on.
     jumps: u64,
     /// Without ranges, the download reached the end of the file.
@@ -111,7 +119,7 @@ impl State {
             window: Window::default(),
             parked: Window::default(),
             position: 0,
-            since: 0,
+            read: 0,
             jumps: 0,
             complete: false,
             error: None,
@@ -121,12 +129,13 @@ impl State {
 
     /// How far ahead of reading the download goes.
     fn ahead(&self) -> u64 {
+        if self.jumps > 0 && self.read < MIN_AHEAD / 2 {
+            return (2 * self.read).max(JUMP_AHEAD);
+        }
         if self.opened.elapsed() < SETTLING {
             return MIN_AHEAD;
         }
-        self.position
-            .saturating_sub(self.since)
-            .clamp(MIN_AHEAD, MAX_AHEAD)
+        self.read.clamp(MIN_AHEAD, MAX_AHEAD)
     }
 
     /// Drops what is too far behind reading.
@@ -145,7 +154,7 @@ impl State {
     /// without, it starts over from the start of the file.
     fn jump(&mut self, to: u64, ranges: bool) {
         self.jumps += 1;
-        self.since = to;
+        self.read = 0;
         if !ranges {
             self.restart();
             return;
@@ -229,6 +238,7 @@ impl Read for WebFile {
         let count = copy(&window.data, (self.position - window.start) as usize, buf);
         self.position += count as u64;
         state.position = self.position;
+        state.read += count as u64;
         state.trim();
         self.shared.changed.notify_all();
         Ok(count)
@@ -326,11 +336,11 @@ impl Download {
     /// Reads `first`, the response to the opening request, which brings the file up to
     /// `expected`, then asks for more as reading goes.
     fn run(self, first: Response<Body>, expected: Option<u64>) {
-        let mut pending = Some((first, expected));
+        let mut pending = Some((first, 0, expected));
         let mut jumps = 0;
         let mut failures = 0;
         loop {
-            let (response, expected) = match pending.take() {
+            let (response, from, expected) = match pending.take() {
                 Some(pending) => pending,
                 None => {
                     let before = jumps;
@@ -341,7 +351,7 @@ impl Download {
                         failures = 0;
                     }
                     match self.request(from, to) {
-                        Ok(response) => (response, to.or(self.len)),
+                        Ok(response) => (response, from, to.or(self.len)),
                         Err(error) => {
                             if !self.retry(error, &mut failures, jumps) {
                                 return;
@@ -351,7 +361,7 @@ impl Download {
                     }
                 }
             };
-            match self.receive(response, expected, jumps) {
+            match self.receive(response, from, expected, jumps) {
                 Ok(()) => failures = 0,
                 Err(error) => {
                     let error = io::Error::new(
@@ -384,10 +394,16 @@ impl Download {
                 } else {
                     let len = self.len.unwrap_or(u64::MAX);
                     let end = state.window.end();
-                    if end < len && end < state.position + state.ahead() / 2 {
-                        let to = (state.position + state.ahead())
-                            .max(end + CHUNK as u64)
-                            .min(len);
+                    let ahead = state.ahead();
+                    if end < len && end < state.position + ahead / 2 {
+                        let to = (state.position + ahead).max(end + CHUNK as u64);
+                        // Less than a request left at the end comes too, not on a round trip of
+                        // its own.
+                        let to = if to.saturating_add(CHUNK as u64) >= len {
+                            len
+                        } else {
+                            to
+                        };
                         return Some((end, Some(to)));
                     }
                 }
@@ -409,15 +425,17 @@ impl Download {
         Ok(response)
     }
 
-    /// Adds the body of `response`, which brings the file up to `expected`, to the download;
-    /// without ranges, as fast as reading goes. Stops early when reading jumps or the file is
-    /// dropped.
+    /// Adds the body of `response`, which brings the file from `at` up to `expected`, to the
+    /// download; without ranges, as fast as reading goes. Stops early when the file is dropped,
+    /// or when reading jumps with more than `DRAIN` of the body left.
     fn receive(
         &self,
         response: Response<Body>,
+        mut at: u64,
         expected: Option<u64>,
         jumps: u64,
     ) -> io::Result<()> {
+        let body_end = response.body().content_length().map(|len| at + len);
         let mut body = response.into_body().into_reader();
         let mut chunk = vec![0; CHUNK];
         loop {
@@ -427,8 +445,22 @@ impl Download {
                 Err(error) => return Err(error),
             };
             let mut state = self.shared.lock();
-            if state.closed || state.jumps != jumps {
+            if state.closed {
                 return Ok(());
+            }
+            let data = &chunk[..read];
+            if state.jumps != jumps {
+                // Reading jumped away: what little is left still comes, for the window it left.
+                let parked = &mut state.parked;
+                if parked.end() == at && !parked.data.is_empty() {
+                    parked.data.extend(data);
+                }
+                at += read as u64;
+                let left = body_end.map_or(u64::MAX, |end| end.saturating_sub(at));
+                if read == 0 || left > DRAIN {
+                    return Ok(());
+                }
+                continue;
             }
             if read == 0 {
                 if expected.is_some_and(|expected| state.window.end() < expected) {
@@ -443,7 +475,8 @@ impl Download {
                 }
                 return Ok(());
             }
-            state.window.data.extend(&chunk[..read]);
+            state.window.data.extend(data);
+            at += read as u64;
             state.trim();
             self.shared.changed.notify_all();
             if !self.ranges {
