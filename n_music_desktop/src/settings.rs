@@ -22,6 +22,8 @@ pub struct UiSettings {
     pub accent: String,
     /// Track lists use smaller covers and tighter rows.
     pub compact_rows: bool,
+    /// Track table columns left out, by the names `TrackColumns` knows them by.
+    pub hidden_columns: Vec<String>,
 }
 
 impl Default for UiSettings {
@@ -35,6 +37,7 @@ impl Default for UiSettings {
             mini_on_top: true,
             accent: String::from("amber"),
             compact_rows: false,
+            hidden_columns: Vec::new(),
         }
     }
 }

@@ -31,6 +31,7 @@ Item {
         layout: table.layout
         compact: Shell.compact
         narrow: Shell.narrow
+        hidden: AppState.hiddenColumns
     }
 
     // Compact and narrow windows leave the column titles out.

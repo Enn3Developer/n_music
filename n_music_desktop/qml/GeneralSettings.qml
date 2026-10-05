@@ -134,6 +134,63 @@ ColumnLayout {
                 }
             }
             SettingRow {
+                title: Tr.t.track_columns
+                description: Tr.t.track_columns_hint
+                divider: true
+                controlsBelow: true
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: Tr.t.track_columns
+
+                    Repeater {
+                        // In the order of the table.
+                        model: [
+                            {
+                                name: "number",
+                                label: Tr.t.column_number
+                            },
+                            {
+                                name: "album",
+                                label: Tr.t.column_album
+                            },
+                            {
+                                name: "genre",
+                                label: Tr.t.column_genre
+                            },
+                            {
+                                name: "year",
+                                label: Tr.t.column_year
+                            },
+                            {
+                                name: "added",
+                                label: Tr.t.column_added
+                            },
+                            {
+                                name: "plays",
+                                label: Tr.t.column_plays
+                            },
+                            {
+                                name: "lastPlayed",
+                                label: Tr.t.column_last_played
+                            },
+                            {
+                                name: "format",
+                                label: Tr.t.column_format
+                            },
+                            {
+                                name: "time",
+                                label: Tr.t.column_time
+                            }
+                        ]
+
+                        ColumnToggle {}
+                    }
+                }
+            }
+            SettingRow {
                 title: Tr.t.language
                 divider: true
 
@@ -303,6 +360,56 @@ ColumnLayout {
         color: Theme.text
         font.pixelSize: 20
         font.weight: Font.Bold
+    }
+
+    // A track table column, shown while checked.
+    component ColumnToggle: AbstractButton {
+        id: toggle
+
+        /// `{ name, label }`, see `TrackColumns.hidden`.
+        required property var modelData
+
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        implicitHeight: 32
+        leftPadding: 10
+        rightPadding: 12
+        hoverEnabled: true
+        // The setting checks it, which clicking would unbind.
+        checked: AppState.hiddenColumns.indexOf(modelData.name) < 0
+        text: modelData.label
+        font.pixelSize: 13
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: text
+        Accessible.checkable: true
+        Accessible.checked: checked
+        onClicked: {
+            const hidden = AppState.hiddenColumns.filter(name => name !== toggle.modelData.name);
+            AppState.hiddenColumns = toggle.checked ? hidden.concat([toggle.modelData.name]) : hidden;
+        }
+
+        background: Rectangle {
+            radius: height / 2
+            color: toggle.checked ? Theme.raised : toggle.hovered ? Theme.hover : "transparent"
+            border.width: toggle.visualFocus ? 2 : 1
+            border.color: toggle.visualFocus ? Theme.text : toggle.checked ? Theme.raised : Theme.border
+        }
+        contentItem: Row {
+            spacing: 6
+
+            Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: toggle.checked ? "check" : "plus"
+                size: 14
+                stroke: 2.4
+                color: toggle.checked ? Theme.accentText : Theme.text3
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: toggle.text
+                font: toggle.font
+                color: toggle.checked ? Theme.text : Theme.text2
+            }
+        }
     }
 
     // One of the accent colours, ringed while picked.

@@ -15,6 +15,9 @@ Item {
     property color descriptionIconColor: Theme.text2
     /// Draws a line under it, before the next row.
     property bool divider: false
+    /// Puts the controls under the words even where they would fit beside them, for ones
+    /// that wrap, like a Flow, whose width would decide whether it fits.
+    property bool controlsBelow: false
     default property alias control: content.data
     /// How wide the controls are side by side.
     readonly property real controlsWidth: {
@@ -29,7 +32,7 @@ Item {
         return total;
     }
     /// Too narrow for the controls beside the words: they go below them.
-    readonly property bool stacked: width - 32 - controlsWidth < 160
+    readonly property bool stacked: controlsBelow || width - 32 - controlsWidth < 160
 
     Layout.fillWidth: true
     implicitHeight: content.implicitHeight + 28

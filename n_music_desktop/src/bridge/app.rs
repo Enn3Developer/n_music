@@ -5,6 +5,8 @@ pub mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
     }
 
     #[auto_cxx_name]
@@ -24,6 +26,8 @@ pub mod qobject {
         #[qproperty(QString, accent)]
         /// Track lists use smaller covers and tighter rows; saved when changed.
         #[qproperty(bool, compact_rows)]
+        /// Track table columns left out, see `TrackColumns.hidden`; saved when changed.
+        #[qproperty(QStringList, hidden_columns)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         #[qproperty(QString, version)]
@@ -48,7 +52,7 @@ pub mod qobject {
 use crate::settings::{self, Theme, WindowSize};
 use crate::{bus, platform};
 use core::pin::Pin;
-use cxx_qt_lib::{QString, QUrl};
+use cxx_qt_lib::{QList, QString, QStringList, QUrl};
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::messages::{AppVisibilityChanged, SetReplayGain};
 
@@ -59,6 +63,7 @@ pub struct AppStateRust {
     mini_on_top: bool,
     accent: QString,
     compact_rows: bool,
+    hidden_columns: QStringList,
     window_width: i32,
     window_height: i32,
     version: QString,
@@ -76,6 +81,7 @@ impl Default for AppStateRust {
             mini_on_top: true,
             accent: QString::from("amber"),
             compact_rows: false,
+            hidden_columns: QStringList::default(),
             window_width: size.width as i32,
             window_height: size.height as i32,
             version: QString::from(env!("CARGO_PKG_VERSION")),
@@ -99,6 +105,11 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_mini_on_top(ui.mini_on_top);
         self.as_mut().set_accent(QString::from(&ui.accent));
         self.as_mut().set_compact_rows(ui.compact_rows);
+        let mut hidden = QList::<QString>::default();
+        for name in &ui.hidden_columns {
+            hidden.append(QString::from(name));
+        }
+        self.as_mut().set_hidden_columns(QStringList::from(&hidden));
         self.as_mut().set_window_width(size.width as i32);
         self.as_mut().set_window_height(size.height as i32);
         self.as_mut()
@@ -155,6 +166,15 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_compact_rows_changed(|app| {
                 let compact = *app.compact_rows();
                 settings::ui().update(|ui| ui.compact_rows = compact);
+            })
+            .release();
+        self.as_mut()
+            .on_hidden_columns_changed(|app| {
+                let hidden = QList::<QString>::from(app.hidden_columns())
+                    .iter()
+                    .map(|name| name.to_string())
+                    .collect();
+                settings::ui().update(|ui| ui.hidden_columns = hidden);
             })
             .release();
     }
