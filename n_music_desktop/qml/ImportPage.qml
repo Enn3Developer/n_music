@@ -130,6 +130,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         padding: 14
+                        enabled: !modelData.later
                         hoverEnabled: true
                         text: modelData.name
                         Accessible.description: modelData.detail
@@ -138,8 +139,6 @@ Rectangle {
                                 picker.open();
                             else if (modelData.value === "web")
                                 webPrompt.ask("");
-                            else
-                                Sources.add(modelData.value);
                         }
 
                         background: Rectangle {

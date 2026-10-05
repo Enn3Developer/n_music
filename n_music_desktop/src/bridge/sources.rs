@@ -33,9 +33,6 @@ pub mod qobject {
         /// Adds the playlist at `address`, as `webAddress` writes it, and scans it.
         #[qinvokable]
         fn add_web(self: &Sources, address: &QString);
-        /// Adds a source of `kind`: `spotify`, `youtube` or `deezer`.
-        #[qinvokable]
-        fn add(self: &Sources, kind: &QString);
         /// The playlist address typed in `text` as the library writes it, `https://` when it
         /// names no scheme; empty when it is not an `http` or `https` address.
         #[qinvokable]
@@ -172,19 +169,6 @@ impl qobject::Sources {
         if let Some(root) = Locator::web(&address.to_string()) {
             add(root);
         }
-    }
-
-    fn add(&self, kind: &QString) {
-        let service = match kind.to_string().as_str() {
-            "spotify" => "Spotify",
-            "youtube" => "YouTube",
-            "deezer" => "Deezer",
-            _ => return,
-        };
-        unimplemented!(
-            "n_music_core cannot use {service} as a source: a Locator is a local path, an Android \
-             document or a web address, and Providers has no backend for streaming services"
-        );
     }
 
     fn web_address(&self, text: &QString) -> QString {

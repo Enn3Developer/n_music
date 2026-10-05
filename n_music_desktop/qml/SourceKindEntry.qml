@@ -3,8 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// A kind of source in a menu: its icon, its name and what it brings, with a Later badge while
-// the core cannot read it.
+// A kind of source in a menu: its icon, its name and what it brings; disabled, with a Later
+// badge, while the core cannot read it.
 MenuItem {
     id: entry
 
@@ -12,6 +12,7 @@ MenuItem {
     property string detail
     property bool later: false
 
+    enabled: !later
     implicitHeight: Math.max(50, implicitContentHeight + topPadding + bottomPadding)
     topPadding: 8
     bottomPadding: 8

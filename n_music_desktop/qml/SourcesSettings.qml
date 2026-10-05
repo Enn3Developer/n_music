@@ -172,8 +172,6 @@ ColumnLayout {
                                     picker.open();
                                 else if (modelData.value === "web")
                                     webPrompt.ask("");
-                                else
-                                    Sources.add(modelData.value);
                             }
                         }
                         onObjectAdded: (index, entry) => kinds.insertItem(index, entry)
