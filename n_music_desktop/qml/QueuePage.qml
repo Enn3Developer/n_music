@@ -85,6 +85,7 @@ Item {
     QueueList {
         id: queue
         showCurrent: true
+        moving: displaced.running
     }
 
     // Scrolls the list under a row carried near its edges.
@@ -333,6 +334,8 @@ Item {
         }
         // Rows make way for the one dragged over them.
         moveDisplaced: Transition {
+            id: displaced
+
             NumberAnimation {
                 property: "y"
                 duration: 160

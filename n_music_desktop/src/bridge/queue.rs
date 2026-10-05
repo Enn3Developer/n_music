@@ -31,6 +31,9 @@ pub mod qobject {
         #[qproperty(bool, show_history)]
         /// Lists the current item too, before those still to play.
         #[qproperty(bool, show_current)]
+        /// Rows are sliding into their places: session updates wait until they stop, as one
+        /// landing meanwhile would leave them where they stopped.
+        #[qproperty(bool, moving)]
         #[qproperty(i32, history_count)]
         /// Queued items still to play.
         #[qproperty(i32, up_next_count)]
@@ -192,13 +195,12 @@ struct Drag {
     current: bool,
     /// The rows played before the current item when picked up, the first ones.
     played: usize,
-    /// The session changed meanwhile.
-    missed: bool,
 }
 
 pub struct QueueListRust {
     show_history: bool,
     show_current: bool,
+    moving: bool,
     history_count: i32,
     up_next_count: i32,
     left_count: i32,
@@ -207,6 +209,8 @@ pub struct QueueListRust {
     context_page: QString,
     rows: Vec<Row>,
     drag: Option<Drag>,
+    /// The session changed while rows could not move.
+    missed: bool,
     slot: u64,
     generation: u64,
 }
@@ -216,6 +220,7 @@ impl Default for QueueListRust {
         Self {
             show_history: false,
             show_current: false,
+            moving: false,
             history_count: 0,
             up_next_count: 0,
             left_count: 0,
@@ -224,6 +229,7 @@ impl Default for QueueListRust {
             context_page: QString::from("tracks"),
             rows: vec![],
             drag: None,
+            missed: false,
             slot: worker::slot(),
             generation: 0,
         }
@@ -246,6 +252,13 @@ impl cxx_qt::Initialize for qobject::QueueList {
             .release();
         self.as_mut()
             .on_show_current_changed(|list| list.refresh(Duration::ZERO))
+            .release();
+        self.as_mut()
+            .on_moving_changed(|list| {
+                if !list.moving && list.drag.is_none() && list.missed {
+                    list.refresh(Duration::ZERO);
+                }
+            })
             .release();
         self.as_mut().refresh(Duration::ZERO);
         self.load_context();
@@ -281,6 +294,7 @@ impl qobject::QueueList {
         let generation = {
             let mut list = self.as_mut().rust_mut();
             list.generation += 1;
+            list.missed = false;
             list.generation
         };
         let thread = self.qt_thread();
@@ -338,9 +352,10 @@ impl qobject::QueueList {
         if generation != self.generation {
             return;
         }
-        // No row moves under the pointer: the drag's end catches up.
-        if let Some(drag) = &mut self.as_mut().rust_mut().drag {
-            drag.missed = true;
+        // No row moves under the pointer or while rows slide: the drag's end or the rows'
+        // stop catches up.
+        if self.drag.is_some() || self.moving {
+            self.as_mut().rust_mut().missed = true;
             return;
         }
         let (old_len, new_len) = (self.rows.len(), rows.len());
@@ -485,7 +500,6 @@ impl qobject::QueueList {
             from,
             current,
             played,
-            missed: false,
         });
     }
 
@@ -544,7 +558,7 @@ impl qobject::QueueList {
                         self.as_mut().split_at_current(at, drag.from, drag.played);
                     }
                 }
-                if drag.missed {
+                if self.missed {
                     self.refresh(Duration::ZERO);
                 }
             }
