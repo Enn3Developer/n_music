@@ -16,12 +16,20 @@ Item {
     signal navigate(string page)
 
     readonly property var key: Filters.collectionKey(kind, argument)
+    /// The page lists the tracks without the tag, like Unknown album.
+    readonly property bool unknown: kind !== "source" && key.name === ""
+    readonly property string name: !unknown ? key.name : ({
+            album: Tr.t.unknown_album,
+            artist: Tr.t.unknown_artist,
+            genre: Tr.t.unknown_genre
+        })[kind]
 
     readonly property string summary: {
         if (!tracks.ready)
             return "";
         const parts = [];
-        if (kind === "album")
+        // The tracks without an album are by any artist.
+        if (kind === "album" && !unknown)
             parts.push(key.artist === "" ? Tr.t.unknown_artist : key.artist);
         if (kind === "source")
             parts.push(SourceKinds.name(SourceKinds.of(key.location)));
@@ -35,7 +43,7 @@ Item {
         id: tracks
         filter: Filters.collectionFilter(page.kind, page.key)
         sort: page.kind === "genre" || page.kind === "source" ? "artist,album" : "album"
-        label: page.key.name
+        label: page.name
         detail: page.kind === "album" ? page.key.artist : ""
         origin: page.kind + ":" + page.argument
     }
@@ -100,7 +108,7 @@ Item {
                 }
                 Label {
                     Layout.maximumWidth: about.width
-                    text: page.key.name
+                    text: page.name
                     elide: Text.ElideRight
                     color: Theme.text
                     font.pixelSize: Shell.narrow ? 22 : 34

@@ -48,7 +48,8 @@ pub mod qobject {
         fn role_names(self: &GroupList) -> QHash_i32_QByteArray;
 
         /// What opens the group of `row`: `{ name, artist, location }`, the artist being an
-        /// album's and the location what a source's tracks' locations start with.
+        /// album's and the location what a source's tracks' locations start with. The group of
+        /// the tracks without an album, an artist or a genre has an empty name.
         #[qinvokable]
         fn key(self: &GroupList, row: i32) -> QVariant;
     }
@@ -254,16 +255,12 @@ impl qobject::GroupList {
         let Some(group) = self.group_at(row) else {
             return QVariant::default();
         };
-        let Some(name) = &group.name else {
-            unimplemented!(
-                "n_music_core has no filter matching tracks that lack an album, an artist or a \
-                 genre (Filter::Album, Filter::Artist and Filter::Genre need a value), so their \
-                 group cannot be opened"
-            );
-        };
         let mut key = QMap::<QMapPair_QString_QVariant>::default();
-        key.insert(QString::from("name"), QVariant::from(&QString::from(name)));
-        for (field, value) in [("artist", &group.artist), ("location", &group.location)] {
+        for (field, value) in [
+            ("name", &group.name),
+            ("artist", &group.artist),
+            ("location", &group.location),
+        ] {
             key.insert(
                 QString::from(field),
                 QVariant::from(&QString::from(value.as_deref().unwrap_or_default())),

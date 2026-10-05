@@ -57,6 +57,8 @@ pub enum Filter {
     Genre(String),
     /// Short codec name, e.g. `flac`.
     Codec(String),
+    /// The track has no value for this tag.
+    Untagged(Tag),
     /// Released within these years, both inclusive.
     Year {
         from: Option<i32>,
@@ -81,6 +83,14 @@ pub enum Filter {
     NotPlayedWithin {
         seconds: u64,
     },
+}
+
+/// A tag a track can lack, see [`Filter::Untagged`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Tag {
+    Artist,
+    Album,
+    Genre,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -227,6 +237,9 @@ impl Catalog {
                 .codec
                 .as_deref()
                 .is_some_and(|value| same(value, codec)),
+            Filter::Untagged(Tag::Artist) => track.artists.is_empty(),
+            Filter::Untagged(Tag::Album) => track.album.is_none(),
+            Filter::Untagged(Tag::Genre) => track.genres.is_empty(),
             Filter::Year { from, to } => track.year.is_some_and(|year| {
                 from.is_none_or(|from| year >= from) && to.is_none_or(|to| year <= to)
             }),

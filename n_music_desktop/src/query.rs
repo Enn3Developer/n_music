@@ -1,7 +1,7 @@
 //! The library queries of the views, from how QML describes them.
 
 use crate::bridge::sources;
-use n_music_core::library::query::{Filter, PlaylistId, Query, SortField, SortKey};
+use n_music_core::library::query::{Filter, PlaylistId, Query, SortField, SortKey, Tag};
 use serde_json::{json, Value};
 
 /// The tracks of `playlist` (all without one) matching `search` (all when blank) and `filter`
@@ -84,6 +84,8 @@ pub fn sort_string(keys: &[SortKey]) -> String {
 ///
 /// `match` is `all` or `any`, a group's `all`, `any` or `none`. Rules missing a value are left
 /// out, as the editor shows them while they are being written; `None` when nothing is left.
+/// The op `missing` of an `artist`, `album` or `genre` rule, which needs no value, lists the
+/// tracks without that tag.
 pub fn parse_filter(json: &str) -> Option<Filter> {
     let spec: Value = serde_json::from_str(json).ok()?;
     let rules: Vec<Filter> = spec["rules"].as_array()?.iter().filter_map(entry).collect();
@@ -128,6 +130,15 @@ fn rule(rule: &Value) -> Option<Filter> {
             filter
         }
     };
+    if op == "missing" {
+        let tag = match rule["field"].as_str()? {
+            "artist" => Tag::Artist,
+            "album" => Tag::Album,
+            "genre" => Tag::Genre,
+            _ => return None,
+        };
+        return Some(Filter::Untagged(tag));
+    }
     let filter = match rule["field"].as_str()? {
         "search" => not(Filter::Search(text()?), op == "not_contains"),
         "artist" => not(Filter::Artist(text()?), op == "is_not"),

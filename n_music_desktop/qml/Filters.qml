@@ -326,7 +326,8 @@ QtObject {
     }
 
     /// The page of an album, an artist or a genre (`kind`) named `name`; an album's `artist`
-    /// tells it from others of the same name.
+    /// tells it from others of the same name. Without a name, the page of the tracks without
+    /// one, like Unknown album.
     function collectionPage(kind: string, name: string, artist: string): string {
         return kind + ":" + encodeURIComponent(kind === "album" ? JSON.stringify({
             name: name,
@@ -363,7 +364,7 @@ QtObject {
     }
 
     /// The rules listing the tracks of a collection: an album by its artist (theirs, or the
-    /// album artist), an artist, a genre, or a source.
+    /// album artist), an artist, a genre, or a source; without a name, the tracks without one.
     function collectionFilter(kind: string, key: var): string {
         if (kind === "source")
             return JSON.stringify({
@@ -378,13 +379,14 @@ QtObject {
                         value: key.location
                     }]
             });
-        const rules = [
-            {
+        const rules = [key.name === "" ? {
+                field: kind,
+                op: "missing"
+            } : {
                 field: kind,
                 op: "is",
                 value: key.name
-            }
-        ];
+            }];
         if (kind === "album" && key.artist !== "")
             rules.push({
                 group: "any",
