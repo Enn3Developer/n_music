@@ -92,7 +92,7 @@ if [[ "$runtime" == osx-arm64 ]]; then
   options+=(--icon "$stage/NMusic.icns" --bundleId com.enn3developer.n-music)
 fi
 
-dotnet vpk pack --packId NMusic --packTitle "N Music" \
+dotnet vpk pack --packId com.enn3developer.n_music --packTitle "N Music" \
   --packAuthors Enn3Developer --packVersion "$version" \
   --packDir "$pack_dir" --mainExe "$executable" \
   --runtime "$runtime" --channel "$channel" \
