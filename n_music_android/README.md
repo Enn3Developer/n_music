@@ -24,6 +24,23 @@ Then, from this folder:
 `android/build/generated/uniffi`. Gradle compiles both into the app, so run the script again
 whenever the Rust side changes. `compile_rust_release.sh` does the same with the release profile.
 
+Gradle needs a UTF-8 locale, `LANG=C.UTF-8` for example: one translation in `assets/lang` has a
+file name that is not ASCII.
+
+## The interim screens
+
+Until the new design lands, the app shows the Slint app's two screens, ported to Compose with its
+palette, icons and translations:
+
+- The main screen lists the library in play order, with search, a button that scrolls to the
+  playing track, the scan's progress, and the control panel.
+- Settings has the theme, the music folder, a rescan, the language, and the version, credits and
+  license.
+
+The theme and the language stay in the core's settings file, in the `android.ui` section the
+Slint app used, so the choices made there carry over. The translations in `assets/lang` follow the
+desktop app's format, and keys a translation lacks show in English.
+
 ## How Kotlin reaches the core
 
 - `n_music_ffi` exports the core with UniFFI. `Core.start` runs the core services on their own

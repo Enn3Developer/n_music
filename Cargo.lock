@@ -2538,6 +2538,7 @@ dependencies = [
  "n_event_bus",
  "n_music_core",
  "ndk-context",
+ "serde_json",
  "tempfile",
  "uniffi",
 ]

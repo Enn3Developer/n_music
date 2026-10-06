@@ -20,10 +20,10 @@ use n_event_bus::{App, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::Query;
-use n_music_core::settings::JsonFileStorage;
+use n_music_core::settings::{JsonFileStorage, SettingsStorage};
 use n_music_core::source::Providers;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -38,6 +38,8 @@ pub struct Core {
     events: flume::Receiver<CoreEvent>,
     library: Library,
     library_changed: Arc<AtomicBool>,
+    scan_read: Arc<AtomicU64>,
+    storage: Arc<JsonFileStorage>,
 }
 
 #[uniffi::export]
@@ -82,16 +84,35 @@ impl Core {
         let count = self.library.read().select(&query).len();
         u32::try_from(count).unwrap_or(u32::MAX)
     }
+
+    /// The settings section `key` as JSON, or `None` when nothing is stored under it. The
+    /// interface keeps its own sections next to the core's, in the same file.
+    pub fn setting(&self, key: String) -> Option<String> {
+        self.storage.load(&key).map(|value| value.to_string())
+    }
+
+    /// Stores `json` as the settings section `key`; text that is not JSON is dropped.
+    pub fn set_setting(&self, key: String, json: String) {
+        match serde_json::from_str(&json) {
+            Ok(value) => self.storage.store(&key, value),
+            Err(error) => log::error!("Not storing settings section {key}: {error}"),
+        }
+    }
 }
 
 impl Core {
     /// Notes that Kotlin took `event`.
     fn taken(&self, event: CoreEvent) -> CoreEvent {
-        if matches!(event, CoreEvent::LibraryChanged) {
-            // Changes from now on announce themselves again.
-            self.library_changed.store(false, Ordering::Release);
+        match event {
+            CoreEvent::LibraryChanged { .. } => {
+                // Changes from now on announce themselves again.
+                self.library_changed.store(false, Ordering::Release);
+                CoreEvent::LibraryChanged {
+                    read: self.scan_read.load(Ordering::Acquire),
+                }
+            }
+            event => event,
         }
-        event
     }
 
     fn launch(data_dir: &Path, cache_dir: &Path) -> Self {
@@ -109,15 +130,24 @@ impl Core {
 
         let (writer, rx) = EventWriter::channel();
         let mut app = App::new(JobControl::new(writer.clone()));
-        let engine = Engine::start(&mut app, &writer, storage, providers(), data_dir, cache_dir);
+        let engine = Engine::start(
+            &mut app,
+            &writer,
+            storage.clone(),
+            providers(),
+            data_dir,
+            cache_dir,
+        );
         let library = engine.library();
         let (events, receiver) = flume::unbounded();
         let library_changed = Arc::new(AtomicBool::new(false));
+        let scan_read = Arc::new(AtomicU64::new(0));
         // After the core services, so the library is up to date when Kotlin hears.
         app.register_subscriber(KotlinBridge::new(
             events,
             library.clone(),
             library_changed.clone(),
+            scan_read.clone(),
         ));
         std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
@@ -135,6 +165,8 @@ impl Core {
             events: receiver,
             library,
             library_changed,
+            scan_read,
+            storage,
         }
     }
 }

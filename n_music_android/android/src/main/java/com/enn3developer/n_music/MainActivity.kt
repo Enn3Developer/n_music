@@ -1,23 +1,36 @@
 package com.enn3developer.n_music
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
-import com.enn3developer.n_music.ui.NMusicApp
+import com.enn3developer.n_music.ui.AppScreen
+import com.enn3developer.n_music.ui.LocalStrings
+import com.enn3developer.n_music.ui.Localizations
 import com.enn3developer.n_music.ui.NMusicTheme
+import com.enn3developer.n_music.ui.SettingsScreen
 import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : ComponentActivity() {
@@ -29,14 +42,32 @@ class MainActivity : ComponentActivity() {
         }
 
     private val askNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val message = if (granted) "Permission granted" else "Permission denied"
+            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            NMusicTheme {
-                NMusicApp(onPickFolder = { pickFolder.launch(null) })
+            val ui by UiPreferences.settings.collectAsStateWithLifecycle()
+            val strings = remember(ui.locale) {
+                Localizations.strings(this, Localizations.denominator(ui.locale))
+            }
+            NMusicTheme(ui.theme) {
+                CompositionLocalProvider(LocalStrings provides strings) {
+                    var settings by rememberSaveable { mutableStateOf(false) }
+                    if (settings) {
+                        SettingsScreen(
+                            onBack = { settings = false },
+                            onPickFolder = { pickFolder.launch(null) },
+                            onOpenLink = ::openLink,
+                        )
+                    } else {
+                        AppScreen(onSettings = { settings = true })
+                    }
+                }
             }
         }
         // The media notification needs it from Android 13.
@@ -60,6 +91,14 @@ class MainActivity : ComponentActivity() {
         controller?.let(MediaController::releaseFuture)
         controller = null
         super.onStop()
+    }
+
+    private fun openLink(link: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+        } catch (error: ActivityNotFoundException) {
+            Log.w("n_music", "Nothing can open $link", error)
+        }
     }
 
     private fun useFolder(uri: Uri) {

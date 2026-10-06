@@ -68,7 +68,7 @@ fn reports_a_scanned_folder_and_answers_queries() {
             "the track never loaded: {tracks:?}"
         );
         wait_for(&core, |event| {
-            matches!(event, CoreEvent::LibraryChanged).then_some(())
+            matches!(event, CoreEvent::LibraryChanged { .. }).then_some(())
         });
     };
     assert_eq!(track.title, "silence");
@@ -80,26 +80,45 @@ fn reports_a_scanned_folder_and_answers_queries() {
     wait_for(&core, |event| {
         matches!(event, CoreEvent::ShuffleChanged { enabled: true }).then_some(())
     });
+
+    assert_eq!(core.setting(String::from("android.ui")), None);
+    core.set_setting(
+        String::from("android.ui"),
+        String::from(r#"{"theme": "Dark", "locale": "it"}"#),
+    );
+    core.set_setting(String::from("android.ui.broken"), String::from("{"));
+    let stored: serde_json::Value =
+        serde_json::from_str(&core.setting(String::from("android.ui")).unwrap()).unwrap();
+    assert_eq!(stored, serde_json::json!({"theme": "Dark", "locale": "it"}));
+    assert_eq!(core.setting(String::from("android.ui.broken")), None);
 }
 
 #[test]
 fn library_changes_come_one_at_a_time() {
     let (events, receiver) = flume::unbounded();
     let pending = Arc::new(AtomicBool::new(false));
-    let bridge = KotlinBridge::new(events, Library::default(), pending.clone());
+    let read = Arc::new(AtomicU64::new(0));
+    let bridge = KotlinBridge::new(events, Library::default(), pending.clone(), read.clone());
+    let data = tempfile::tempdir().unwrap();
     let core = Core {
         writer: EventWriter::channel().0,
         events: receiver,
         library: Library::default(),
         library_changed: pending,
+        scan_read: read.clone(),
+        storage: Arc::new(JsonFileStorage::open(settings_path(data.path()))),
     };
 
     bridge.library_changed();
     bridge.library_changed();
     assert_eq!(core.events.len(), 1, "a burst queues a single change");
 
+    read.store(7, Ordering::Release);
     let first = core.events.try_recv().unwrap();
-    assert!(matches!(core.taken(first), CoreEvent::LibraryChanged));
+    assert!(
+        matches!(core.taken(first), CoreEvent::LibraryChanged { read: 7 }),
+        "the count is the one when Kotlin takes the change"
+    );
     bridge.library_changed();
     assert_eq!(
         core.events.len(),

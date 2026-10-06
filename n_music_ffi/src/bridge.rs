@@ -15,7 +15,7 @@ use n_music_core::queue::{ItemId, LoopStatus};
 use n_music_core::settings::OutputDevice;
 use n_music_core::source::Locator;
 use std::any::Any;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Something the core announced. Each variant follows the event message of the same name in
@@ -62,7 +62,11 @@ pub enum CoreEvent {
     },
     /// The library's tracks or names changed: query again. Bursts while a scan reads tracks
     /// come as one until Kotlin takes it.
-    LibraryChanged,
+    LibraryChanged {
+        /// The tracks the running scan read since its last `ScanProgress`, as of when Kotlin
+        /// took this.
+        read: u64,
+    },
     ScanProgress {
         libraries: Vec<Locator>,
         found: u64,
@@ -90,6 +94,8 @@ pub struct KotlinBridge {
     library: Library,
     /// A [`CoreEvent::LibraryChanged`] is queued and Kotlin has not taken it yet.
     library_changed: Arc<AtomicBool>,
+    /// See [`CoreEvent::LibraryChanged`].
+    scan_read: Arc<AtomicU64>,
 }
 
 impl KotlinBridge {
@@ -97,11 +103,13 @@ impl KotlinBridge {
         events: flume::Sender<CoreEvent>,
         library: Library,
         library_changed: Arc<AtomicBool>,
+        scan_read: Arc<AtomicU64>,
     ) -> Self {
         Self {
             events,
             library,
             library_changed,
+            scan_read,
         }
     }
 
@@ -112,7 +120,8 @@ impl KotlinBridge {
 
     pub(crate) fn library_changed(&self) {
         if !self.library_changed.swap(true, Ordering::AcqRel) {
-            self.send(CoreEvent::LibraryChanged);
+            // `read` is filled in when Kotlin takes it.
+            self.send(CoreEvent::LibraryChanged { read: 0 });
         }
     }
 }
@@ -242,6 +251,7 @@ impl Handle<TracksEnumerated> for KotlinBridge {
 
 impl Handle<TrackMetadataLoaded> for KotlinBridge {
     fn handle(&mut self, _: &TrackMetadataLoaded, _: &Ctx, _: &mut Outbox) {
+        self.scan_read.fetch_add(1, Ordering::AcqRel);
         self.library_changed();
     }
 }
@@ -254,6 +264,8 @@ impl Handle<LibraryRenamed> for KotlinBridge {
 
 impl Handle<ScanProgress> for KotlinBridge {
     fn handle(&mut self, msg: &ScanProgress, _: &Ctx, _: &mut Outbox) {
+        // `pending` counts what is left to read from here.
+        self.scan_read.store(0, Ordering::Release);
         self.send(CoreEvent::ScanProgress {
             libraries: msg.libraries.clone(),
             found: msg.found as u64,

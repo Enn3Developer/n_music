@@ -18,12 +18,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -44,8 +45,18 @@ data class Position(
     val at: Long = SystemClock.elapsedRealtime(),
 )
 
-/** A scan in progress: the tracks it listed and how many of those it still reads. */
-data class Scan(val found: ULong, val pending: ULong)
+/**
+ * A scan in progress: the tracks it listed, how many of those it still had to read then, and how
+ * many it read since.
+ */
+private data class Scan(val found: ULong, val pending: ULong, val read: ULong = 0u) {
+    val progress: Float
+        get() = if (found == 0uL) {
+            0f
+        } else {
+            ((found - pending + read).toFloat() / found.toFloat()).coerceIn(0f, 1f)
+        }
+}
 
 /**
  * The core for the whole process. One loop reads [Core.nextEvent] into flows, a flow for each
@@ -74,20 +85,22 @@ object CoreRepository {
     private val _shuffle = MutableStateFlow(false)
     val shuffle: StateFlow<Boolean> = _shuffle.asStateFlow()
 
-    /** The whole library, in the order the scan lists it; `null` until first read. */
-    private val _tracks = MutableStateFlow<List<TrackRow>?>(null)
-    val tracks: StateFlow<List<TrackRow>?> = _tracks.asStateFlow()
+    /** The whole library, in the order the scan lists it. */
+    private val _tracks = MutableStateFlow<List<TrackRow>>(emptyList())
 
-    private val _scan = MutableStateFlow<Scan?>(null)
-    val scan: StateFlow<Scan?> = _scan.asStateFlow()
+    /**
+     * The library in play order, as the Slint app listed it: the session's tracks first, each
+     * once, then the tracks it does not have, in library order.
+     */
+    val rows: StateFlow<List<TrackRow>> = combine(_tracks, _queue, ::playOrder)
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    /** The library folders; `null` until the core reports them. */
-    private val _roots = MutableStateFlow<List<Locator>?>(null)
-    val roots: StateFlow<List<Locator>?> = _roots.asStateFlow()
+    private val scan = MutableStateFlow<Scan?>(null)
 
-    /** One-off messages for a snackbar. */
-    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val notices: SharedFlow<String> = _notices.asSharedFlow()
+    /** How far the running scan is, from 0 to 1; 0 while none runs. */
+    val scanProgress: StateFlow<Float> = scan
+        .map { it?.progress ?: 0f }
+        .stateIn(scope, SharingStarted.Eagerly, 0f)
 
     private val libraryChanged = Channel<Unit>(Channel.CONFLATED)
     private val seekRequests = AtomicLong()
@@ -118,6 +131,11 @@ object CoreRepository {
         return request
     }
 
+    /** The settings section [key] as JSON, from the core's settings file. */
+    fun setting(key: String): String? = core.setting(key)
+
+    fun setSetting(key: String, json: String) = core.setSetting(key, json)
+
     private suspend fun readEvents() {
         while (true) {
             when (val event = core.nextEvent() ?: break) {
@@ -132,11 +150,12 @@ object CoreRepository {
                 is CoreEvent.QueueChanged -> _queue.value = event.entries
                 is CoreEvent.LoopStatusChanged -> _loopStatus.value = event.status
                 is CoreEvent.ShuffleChanged -> _shuffle.value = event.enabled
-                is CoreEvent.LibraryChanged -> libraryChanged.trySend(Unit)
-                is CoreEvent.ScanProgress -> _scan.value =
+                is CoreEvent.LibraryChanged -> {
+                    scan.value = scan.value?.copy(read = event.read)
+                    libraryChanged.trySend(Unit)
+                }
+                is CoreEvent.ScanProgress -> scan.value =
                     if (event.libraries.isEmpty()) null else Scan(event.found, event.pending)
-                is CoreEvent.LibraryRootsChanged -> _roots.value = event.roots
-                is CoreEvent.PlaylistRejected -> _notices.emit(event.reason)
                 else -> {}
             }
         }
@@ -153,6 +172,20 @@ object CoreRepository {
             }
             delay(1000)
         }
+    }
+
+    private fun playOrder(tracks: List<TrackRow>, queue: List<QueueRow>): List<TrackRow> {
+        if (queue.isEmpty()) return tracks
+        val byKey = tracks.associateBy { it.locator.key }
+        val placed = HashSet<String>(queue.size)
+        val rows = ArrayList<TrackRow>(tracks.size)
+        for (entry in queue) {
+            val key = entry.track.locator.key
+            val track = byKey[key] ?: continue
+            if (placed.add(key)) rows += track
+        }
+        tracks.filterTo(rows) { it.locator.key !in placed }
+        return rows
     }
 }
 

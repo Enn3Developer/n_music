@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">N Music</string>
+    <!-- Media notification buttons and the control panel's repeat button. -->
     <string name="repeat_off">Repeat off</string>
     <string name="repeat_all">Repeat all</string>
     <string name="repeat_one">Repeat one</string>
     <string name="shuffle_on">Shuffle on</string>
     <string name="shuffle_off">Shuffle off</string>
+    <!-- Labels for screen readers, in English like in the Slint app. The interface's own texts
+         come from the translations in assets/lang. -->
     <string name="play">Play</string>
     <string name="pause">Pause</string>
-    <string name="next">Next</string>
-    <string name="previous">Previous</string>
-    <string name="pick_folder">Pick a music folder</string>
-    <string name="change_folder">Change folder</string>
-    <string name="empty_library_title">Where is your music?</string>
-    <string name="empty_library_body">Pick the folder with your music. N Music plays the audio files directly inside it.</string>
-    <string name="empty_folder_title">No music here</string>
-    <string name="empty_folder_body">This folder has no audio files directly inside it.</string>
-    <string name="scanning">Reading %1$d of %2$d tracks</string>
+    <string name="previous_track">Previous track</string>
+    <string name="next_track">Next track</string>
+    <string name="playback_position">Playback position</string>
+    <string name="show_playing_track">Show playing track</string>
+    <string name="dismiss_search">Dismiss search keyboard</string>
+    <string name="clear_search">Clear search</string>
+    <string name="back">Back</string>
 </resources>

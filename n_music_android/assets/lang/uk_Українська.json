@@ -1,0 +1,17 @@
+{
+  "settings": "Налаштування",
+  "search": "Пошук...",
+  "theme": "Тема",
+  "window_size": "Зберегти розмір вікна",
+  "music_path": "Шлях до музики",
+  "language": "Мова",
+  "theme_system": "Системна",
+  "theme_light": "Світла",
+  "theme_dark": "Темна",
+  "credits": "Зроблено Enn3DevPlayer та іншими",
+  "license": "Ліцензія",
+  "update_text": "Оновлення",
+  "check_update": "Перевірити наявність оновлень",
+  "update": "Оновити",
+  "rescan": "Пересканувати шлях"
+}

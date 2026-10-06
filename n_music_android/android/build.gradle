@@ -45,6 +45,8 @@ android {
         // Both come from compile_rust.sh: the native core and its UniFFI bindings.
         main.jniLibs.srcDirs = [layout.buildDirectory.dir('rustJniLibs')]
         main.java.srcDirs += [layout.buildDirectory.dir('generated/uniffi')]
+        // The translations, in the format the desktop app shares.
+        main.assets.srcDirs += ['../assets']
     }
 
     buildFeatures {
