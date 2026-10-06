@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">N Music</string>
     <!-- Media notification buttons and the control panel's repeat button. -->
     <string name="repeat_off">Repeat off</string>
     <string name="repeat_all">Repeat all</string>
