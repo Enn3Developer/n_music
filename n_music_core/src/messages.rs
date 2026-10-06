@@ -216,7 +216,8 @@ pub struct StreamCacheChanged {
     pub used: u64,
 }
 
-/// Whether the app is in front; positions are not reported while it is not.
+/// Whether the app is in front. Positions come often enough for a seek bar while it is, and only
+/// as often as the play session is saved while it is not.
 pub struct AppVisibilityChanged(pub bool);
 
 messages!(

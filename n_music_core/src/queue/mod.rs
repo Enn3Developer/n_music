@@ -32,6 +32,11 @@ use store::SessionStore;
 /// While resuming is on, the position is saved this often during playback, for when the app is
 /// killed.
 const SAVE_INTERVAL: f64 = 10.0;
+/// How often positions come while the app shows: often enough for a seek bar.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+/// How often positions come while the app is hidden. Nothing shows them then, but saving the
+/// position needs them: a system that ends the app in the background gives no chance to save.
+const HIDDEN_PROGRESS_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Default, Eq, PartialEq, Debug, Clone, Serialize, Deserialize)]
 /// What happens at the end of the context. Queued tracks play once, where they stand.
@@ -113,7 +118,7 @@ impl QueuePlayer {
             )
         };
         let mut player = Player::new(volume as f32, replay_gain, device);
-        player.set_progress_interval(Some(Duration::from_millis(250)));
+        player.set_progress_interval(Some(PROGRESS_INTERVAL));
         player.set_crossfade(crossfade_duration(crossfade));
 
         let (session, restored, finished) = resume

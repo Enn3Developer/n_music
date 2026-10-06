@@ -1,6 +1,6 @@
 //! What the queue does on commands and library changes.
 
-use super::{LoopStatus, QueuePlayer};
+use super::{LoopStatus, QueuePlayer, HIDDEN_PROGRESS_INTERVAL, PROGRESS_INTERVAL};
 use crate::audio::output_devices;
 use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
@@ -12,7 +12,6 @@ use crate::messages::{
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
-use std::time::Duration;
 
 impl Handle<PlayFrom> for QueuePlayer {
     fn handle(&mut self, msg: &PlayFrom, ctx: &Ctx, out: &mut Outbox) {
@@ -359,8 +358,12 @@ impl Handle<LibraryRootsChanged> for QueuePlayer {
 
 impl Handle<AppVisibilityChanged> for QueuePlayer {
     fn handle(&mut self, msg: &AppVisibilityChanged, _ctx: &Ctx, _out: &mut Outbox) {
-        self.player
-            .set_progress_interval(msg.0.then_some(Duration::from_millis(250)));
+        let interval = if msg.0 {
+            PROGRESS_INTERVAL
+        } else {
+            HIDDEN_PROGRESS_INTERVAL
+        };
+        self.player.set_progress_interval(Some(interval));
     }
 }
 
