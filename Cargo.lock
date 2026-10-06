@@ -2534,6 +2534,7 @@ version = "2.0.0-alpha.14"
 dependencies = [
  "flume",
  "jni",
+ "libc",
  "log",
  "n_event_bus",
  "n_music_core",

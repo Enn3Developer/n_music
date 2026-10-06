@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,8 +37,12 @@ import com.google.common.util.concurrent.ListenableFuture
 class MainActivity : ComponentActivity() {
     private var controller: ListenableFuture<MediaController>? = null
 
-    private val pickFolder =
+    /** The folder picker is open: another tap does not open a second one. */
+    private var picking = false
+
+    private val folderPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            picking = false
             if (uri != null) useFolder(uri)
         }
 
@@ -58,20 +63,25 @@ class MainActivity : ComponentActivity() {
             NMusicTheme(ui.theme) {
                 CompositionLocalProvider(LocalStrings provides strings) {
                     var settings by rememberSaveable { mutableStateOf(false) }
+                    // Keeps the search and where the list was while Settings shows.
+                    val screens = rememberSaveableStateHolder()
                     if (settings) {
                         SettingsScreen(
                             onBack = { settings = false },
-                            onPickFolder = { pickFolder.launch(null) },
+                            onPickFolder = ::pickFolder,
                             onOpenLink = ::openLink,
                         )
                     } else {
-                        AppScreen(onSettings = { settings = true })
+                        screens.SaveableStateProvider("main") {
+                            AppScreen(onSettings = { settings = true })
+                        }
                     }
                 }
             }
         }
-        // The media notification needs it from Android 13.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        // Asked at launch, as the Slint app did, not again when the activity is recreated.
+        if (savedInstanceState == null &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
@@ -91,6 +101,16 @@ class MainActivity : ComponentActivity() {
         controller?.let(MediaController::releaseFuture)
         controller = null
         super.onStop()
+    }
+
+    private fun pickFolder() {
+        if (picking) return
+        try {
+            folderPicker.launch(null)
+            picking = true
+        } catch (error: ActivityNotFoundException) {
+            Log.w("n_music", "Nothing can pick a folder", error)
+        }
     }
 
     private fun openLink(link: String) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -38,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,6 +71,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
@@ -211,7 +214,9 @@ private object Covers {
 @Composable
 fun Cover(path: String?, size: Dp, modifier: Modifier = Modifier) {
     val pixels = with(LocalDensity.current) { size.roundToPx() }
+    // The state outlives a change of path: the old cover goes as soon as the path changes.
     val bitmap by produceState(path?.let(Covers::cached), path) {
+        value = path?.let(Covers::cached)
         if (path != null && value == null) value = Covers.load(path, pixels)
     }
     Box(
@@ -357,7 +362,8 @@ fun ComboBox(
 
 /**
  * The Slint app's scrollbar for a list of [itemHeight] rows: a thumb on a track that parts
- * around it, which can be dragged.
+ * around it, which can be dragged. As there, it takes touches 32dp in from the edge while the
+ * list scrolls.
  */
 @Composable
 fun ListScrollbar(
@@ -368,18 +374,28 @@ fun ListScrollbar(
 ) {
     val colors = MaterialTheme.colorScheme
     val count by rememberUpdatedState(itemCount)
-    Canvas(
-        modifier
-            .width(12.dp)
-            .pointerInput(state) {
-                detectVerticalDragGestures { change, dragAmount ->
-                    change.consume()
-                    val metrics = ScrollMetrics(state, count, itemHeight.toPx(), size.height.toFloat(), this)
-                    if (metrics.maximum > 0f && metrics.travel > 0f) {
-                        state.dispatchRawDelta(dragAmount * metrics.maximum / metrics.travel)
-                    }
+    val scope = rememberCoroutineScope()
+    val scrolls = state.canScrollForward || state.canScrollBackward
+    val drag = if (scrolls) {
+        Modifier.pointerInput(state) {
+            detectVerticalDragGestures(
+                // A fling would go on moving the list under the thumb.
+                onDragStart = { scope.launch { state.stopScroll() } },
+            ) { change, dragAmount ->
+                change.consume()
+                val metrics = ScrollMetrics(state, count, itemHeight.toPx(), size.height.toFloat(), this)
+                if (metrics.maximum > 0f && metrics.travel > 0f) {
+                    state.dispatchRawDelta(dragAmount * metrics.maximum / metrics.travel)
                 }
             }
+        }
+    } else {
+        Modifier
+    }
+    Canvas(
+        modifier
+            .width(32.dp)
+            .then(drag)
     ) {
         val metrics = ScrollMetrics(state, itemCount, itemHeight.toPx(), size.height, this)
         if (metrics.maximum <= 0f) return@Canvas

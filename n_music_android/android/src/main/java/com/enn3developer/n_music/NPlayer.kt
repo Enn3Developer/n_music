@@ -51,6 +51,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
             .addAll(
                 Player.COMMAND_PLAY_PAUSE,
                 Player.COMMAND_PREPARE,
+                Player.COMMAND_STOP,
                 Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
                 Player.COMMAND_SEEK_TO_MEDIA_ITEM,
                 Player.COMMAND_SEEK_BACK,
@@ -64,6 +65,9 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
                 Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
                 Player.COMMAND_GET_METADATA,
                 Player.COMMAND_GET_TIMELINE,
+                // Without it, release() does nothing and the player keeps its focus request,
+                // receiver and collectors after the service is gone.
+                Player.COMMAND_RELEASE,
             )
             .build()
 
@@ -93,21 +97,40 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         context,
         Looper.getMainLooper(),
         Looper.getMainLooper(),
-        { CoreRepository.send(Command.Pause) },
+        {
+            // Unplugged during a call, it stays paused after the call too.
+            resumeOnFocusGain = false
+            CoreRepository.send(Command.Pause)
+        },
         Clock.DEFAULT,
     )
     private val wakeLock = WakeLockManager(context, Looper.getMainLooper(), Clock.DEFAULT)
 
     private var playing = false
+        set(value) {
+            field = value
+            noisy.setEnabled(value || resumeOnFocusGain)
+        }
 
-    /** Paused for a passing focus loss, like a call or a navigation prompt: play after it. */
+    /**
+     * Paused for a passing focus loss, like a call or a navigation prompt: play after it. Until
+     * then unplugging the headphones still counts.
+     */
     private var resumeOnFocusGain = false
+        set(value) {
+            field = value
+            noisy.setEnabled(playing || value)
+        }
     private var queue: List<QueueRow> = emptyList()
     private var current: Current? = null
     private var playlist: ImmutableList<MediaItemData> = EMPTY
     private var currentIndex = 0
 
-    /** The core reported a play session: Media3 may show it. */
+    /**
+     * Playback was asked for or ran: Media3 shows the session and its notification. Before, and
+     * after the notification was dismissed, the player is idle and shows nothing, as in the
+     * Slint app.
+     */
     private var ready = false
     private var repeatMode = Player.REPEAT_MODE_ALL
     private var shuffleModeEnabled = false
@@ -174,18 +197,16 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         if (playing) {
             ready = true
             // Playback starts from the app, the notification or a headset alike: take focus
-            // whichever way it started.
-            when (focus.updateAudioFocus(true, Player.STATE_READY)) {
-                AudioFocusManager.PLAYER_COMMAND_DO_NOT_PLAY -> CoreRepository.send(Command.Pause)
-                AudioFocusManager.PLAYER_COMMAND_WAIT_FOR_CALLBACK -> {
-                    resumeOnFocusGain = true
-                    CoreRepository.send(Command.Pause)
-                }
-
-                else -> resumeOnFocusGain = false
+            // whichever way it started. Asking once the core plays also gives Media3 the time
+            // to start the service in the foreground first: from Android 15, an app in the
+            // background gets focus only then.
+            val command = focus.updateAudioFocus(true, Player.STATE_READY)
+            if (command == AudioFocusManager.PLAYER_COMMAND_DO_NOT_PLAY) {
+                CoreRepository.send(Command.Pause)
+            } else {
+                resumeOnFocusGain = false
             }
         }
-        noisy.setEnabled(playing)
         wakeLock.setStayAwake(playing)
         invalidateState()
     }
@@ -217,7 +238,8 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         } else {
             ImmutableList.copyOf(queue.map { item(it.item, it.track, it.track.length) })
         }
-        if (queue.isNotEmpty()) ready = true
+        // Nothing is left to show.
+        if (queue.isEmpty() && !playing) ready = false
         updateCurrent()
     }
 
@@ -308,24 +330,33 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        resumeOnFocusGain = false
         if (!playWhenReady) {
-            resumeOnFocusGain = false
             CoreRepository.send(Command.Pause)
             return confirmed { !CoreRepository.playing.value }
         }
-        when (focus.updateAudioFocus(true, Player.STATE_READY)) {
-            AudioFocusManager.PLAYER_COMMAND_PLAY_WHEN_READY -> {
-                resumeOnFocusGain = false
-                CoreRepository.send(Command.Play)
-                return confirmed { CoreRepository.playing.value }
-            }
+        // Focus comes once the core plays, in onPlaying. Until then Media3 shows the play it
+        // expects, which puts the service in the foreground: a headset's Play started it as a
+        // foreground service, and Android ends the app when it does not get there in time.
+        ready = true
+        CoreRepository.send(Command.Play)
+        return confirmed { CoreRepository.playing.value }
+    }
 
-            AudioFocusManager.PLAYER_COMMAND_WAIT_FOR_CALLBACK -> resumeOnFocusGain = true
-        }
+    // Media3 prepares an idle player before a play from a headset or the notification.
+    override fun handlePrepare(): ListenableFuture<*> {
+        ready = true
         return Futures.immediateVoidFuture()
     }
 
-    override fun handlePrepare(): ListenableFuture<*> = Futures.immediateVoidFuture()
+    // Dismissing the notification stops: pause, and show nothing until playback starts again.
+    override fun handleStop(): ListenableFuture<*> {
+        resumeOnFocusGain = false
+        ready = false
+        focus.updateAudioFocus(false, Player.STATE_IDLE)
+        CoreRepository.send(Command.Pause)
+        return confirmed { !CoreRepository.playing.value }
+    }
 
     override fun handleSeek(
         mediaItemIndex: Int,
@@ -336,17 +367,18 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         val before = CoreRepository.current.value
         val changesItem = when (seekCommand) {
             // Media3 guesses the neighbour in the list, but repeat, up next and the end of the
-            // queue decide otherwise: the core reports where it went.
+            // queue decide otherwise: the core reports where it went. The guess still tells a
+            // move from a restart, which keeps the item.
             Player.COMMAND_SEEK_TO_NEXT,
             Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
                 CoreRepository.send(Command.PlayNext)
-                true
+                mediaItemIndex != currentIndex
             }
 
             Player.COMMAND_SEEK_TO_PREVIOUS,
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
                 CoreRepository.send(Command.PlayPrevious)
-                true
+                mediaItemIndex != currentIndex
             }
 
             Player.COMMAND_SEEK_TO_MEDIA_ITEM -> {

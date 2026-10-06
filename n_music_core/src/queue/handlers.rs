@@ -112,6 +112,9 @@ impl Handle<TogglePause> for QueuePlayer {
             } else {
                 self.player.pause();
             }
+        } else if self.play_when_listed {
+            // Pauses the Play still waiting for the library.
+            self.play_when_listed = false;
         } else {
             self.resume(ctx, out);
         }
@@ -120,6 +123,7 @@ impl Handle<TogglePause> for QueuePlayer {
 
 impl Handle<Pause> for QueuePlayer {
     fn handle(&mut self, _msg: &Pause, _ctx: &Ctx, _out: &mut Outbox) {
+        self.play_when_listed = false;
         self.player.pause();
     }
 }
@@ -293,6 +297,7 @@ impl Handle<TracksEnumerated> for QueuePlayer {
             self.announce(out);
             self.report(out);
         }
+        self.library_known(ctx, out);
     }
 }
 
@@ -336,9 +341,14 @@ impl Handle<SetCrossfade> for QueuePlayer {
 
 impl Handle<ScanFinished> for QueuePlayer {
     fn handle(&mut self, msg: &ScanFinished, ctx: &Ctx, out: &mut Outbox) {
-        if !ctx.shutting_down && msg.complete {
+        if ctx.shutting_down {
+            return;
+        }
+        if msg.complete {
             self.reconcile(out);
         }
+        // A scan that listed nothing still ends the wait.
+        self.library_known(ctx, out);
     }
 }
 
@@ -349,9 +359,16 @@ impl Handle<LibraryRootsChanged> for QueuePlayer {
             .iter()
             .any(|library| !msg.0.contains(library));
         self.libraries = msg.0.clone();
+        if ctx.shutting_down {
+            return;
+        }
         // The library took the tracks of the removed folders out already.
-        if removed && !ctx.shutting_down {
+        if removed {
             self.reconcile(out);
+        }
+        // Without folders, no scan comes to list any.
+        if msg.0.is_empty() {
+            self.library_known(ctx, out);
         }
     }
 }

@@ -43,6 +43,12 @@ fn reports_a_scanned_folder_and_answers_queries() {
     let cache = tempfile::tempdir().unwrap();
     let music = tempfile::tempdir().unwrap();
     write_wav(&music.path().join("silence.wav"));
+    // No libraries to start with, rather than the default one in the home folder.
+    std::fs::write(
+        settings_path(data.path()),
+        r#"{"core.library": {"libraries": []}}"#,
+    )
+    .unwrap();
     let core = Core::launch(data.path(), cache.path());
 
     let root = Locator::Local(music.path().to_string_lossy().into_owned());
@@ -103,7 +109,7 @@ fn library_changes_come_one_at_a_time() {
     let core = Core {
         writer: EventWriter::channel().0,
         events: receiver,
-        library: Library::default(),
+        library: Arc::new(OnceLock::new()),
         library_changed: pending,
         scan_read: read.clone(),
         storage: Arc::new(JsonFileStorage::open(settings_path(data.path()))),
@@ -125,4 +131,27 @@ fn library_changes_come_one_at_a_time() {
         1,
         "a change after Kotlin took the last one is announced again"
     );
+}
+
+#[test]
+fn plays_once_listed_when_play_comes_first() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let music = tempfile::tempdir().unwrap();
+    write_wav(&music.path().join("silence.wav"));
+    let root = Locator::Local(music.path().to_string_lossy().into_owned());
+    std::fs::write(
+        settings_path(data.path()),
+        serde_json::json!({ "core.library": { "libraries": [root] } }).to_string(),
+    )
+    .unwrap();
+    let core = Core::launch(data.path(), cache.path());
+
+    // As a headset's Play right after launch, before the scan listed the library.
+    core.send(Command::Play);
+    let title = wait_for(&core, |event| match event {
+        CoreEvent::TrackChanged { track, .. } => Some(track.title.clone()),
+        _ => None,
+    });
+    assert_eq!(title, "silence");
 }

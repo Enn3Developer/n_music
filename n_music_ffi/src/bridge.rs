@@ -63,14 +63,16 @@ pub enum CoreEvent {
     /// The library's tracks or names changed: query again. Bursts while a scan reads tracks
     /// come as one until Kotlin takes it.
     LibraryChanged {
-        /// The tracks the running scan read since its last `ScanProgress`, as of when Kotlin
-        /// took this.
+        /// The tracks scans read since launch, as of when Kotlin took this. Less the `read` of
+        /// the last `ScanProgress`, what the running scan read since that report.
         read: u64,
     },
     ScanProgress {
         libraries: Vec<Locator>,
         found: u64,
         pending: u64,
+        /// The tracks scans read since launch, as of this report.
+        read: u64,
     },
     ScanFinished {
         libraries: Vec<Locator>,
@@ -264,12 +266,14 @@ impl Handle<LibraryRenamed> for KotlinBridge {
 
 impl Handle<ScanProgress> for KotlinBridge {
     fn handle(&mut self, msg: &ScanProgress, _: &Ctx, _: &mut Outbox) {
-        // `pending` counts what is left to read from here.
-        self.scan_read.store(0, Ordering::Release);
+        // `pending` counts what is left to read from here. The count goes on rather than
+        // starting over, so a `LibraryChanged` Kotlin takes after this but queued before it
+        // cannot count against the new report.
         self.send(CoreEvent::ScanProgress {
             libraries: msg.libraries.clone(),
             found: msg.found as u64,
             pending: msg.pending as u64,
+            read: self.scan_read.load(Ordering::Acquire),
         });
     }
 }

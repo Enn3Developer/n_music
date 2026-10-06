@@ -65,7 +65,7 @@ impl QueuePlayer {
     fn advanced(&mut self, item: ItemId, length: f64, out: &mut Outbox) {
         // The previous track was heard to its end, or fades out from here: it was played, even
         // when no position past its middle was reported (a fade may start right there, and
-        // positions are not reported while the app cannot be seen).
+        // positions come only every few seconds while the app cannot be seen).
         self.time.position = self.time.position.max(self.time.length);
         self.count_play(out);
         self.session.arrive(item);

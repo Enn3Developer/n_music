@@ -77,6 +77,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // NPlayer is idle before anything plays and after the notification was dismissed:
+        // nothing to show then.
+        setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_NEVER)
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this).build().apply {
                 setSmallIcon(R.drawable.ic_launcher_monochrome)

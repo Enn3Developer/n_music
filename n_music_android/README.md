@@ -43,10 +43,11 @@ desktop app's format, and keys a translation lacks show in English.
 
 ## How Kotlin reaches the core
 
-- `n_music_ffi` exports the core with UniFFI. `Core.start` runs the core services on their own
-  bus thread, `Core.send` emits the message a `Command` stands for, and `Core.nextEvent` suspends
-  until the core announces something. `tracks` and `count` read the library directly, off the
-  bus, like the desktop's worker.
+- `n_music_ffi` exports the core with UniFFI. `Core.start` reads the settings and starts the core
+  services on their own bus thread, which opens the library database and the saved session, so
+  the main thread does not wait for them. `Core.send` emits the message a `Command` stands for,
+  and `Core.nextEvent` suspends until the core announces something. `tracks` and `count` read the
+  library directly, off the bus, like the desktop's worker.
 - A `KotlinBridge` subscriber copies each event into a `CoreEvent` and queues it, so the bus
   thread never waits on Kotlin. A scan reports every track it reads; the bridge folds those into
   one `LibraryChanged` until Kotlin takes it.
@@ -57,6 +58,12 @@ desktop app's format, and keys a translation lacks show in English.
   state. The Compose screens collect those flows, and so does `NPlayer`.
 - `NPlayer` is a Media3 `SimpleBasePlayer` that mirrors the core for the media session. It
   never decodes audio.
+- If the bus thread panics, the core ends the process, and `CoreRepository` does the same if
+  `nextEvent` ever returns nothing. Screens and a notification stuck on a core that is gone, with
+  the wake lock held, are worse than Android starting the app again.
+- Rust's stdout and stderr show in logcat under the tag `RustStdoutStderr`, as they did in the
+  Slint app: a copy of every log line, and panic messages. The log files stay in
+  `<external files>/config`.
 
 ## Background playback
 
@@ -70,7 +77,9 @@ lived and died with the activity.
 What keeps the process alive is `PlaybackService`, a Media3 `MediaSessionService`:
 
 - Media3 runs it in the foreground, with the media notification, while `NPlayer` reports
-  playing.
+  playing. The notification shows from the first play on, as in the Slint app. When the user
+  dismisses it, `NPlayer` reports idle, and the notification stays away until playback starts
+  again.
 - After a pause it stays in the foreground for 10 more minutes, so the notification or a headset
   can resume playback without running into Android's limits on starting a foreground service
   from the background. `setForegroundServiceTimeoutMs` changes that window. Media3 does this
@@ -88,9 +97,12 @@ made public:
 - `AudioFocusManager` takes audio focus whenever playback starts, from the app, the notification
   or a headset. It pauses on a permanent loss, and pauses and then resumes around a passing one
   like a call. When another app only asks to duck, like a navigation prompt, Android lowers the
-  volume by itself, so the core's volume, which is the user's setting, never changes.
-- `AudioBecomingNoisyManager` pauses when headphones are unplugged. Without it the core would
-  follow the device change and carry on through the speaker.
+  volume by itself, so the core's volume, which is the user's setting, never changes. `NPlayer`
+  asks once the core plays rather than before: by then Media3 has put the service in the
+  foreground, which Android 15 requires of an app in the background before it grants focus.
+- `AudioBecomingNoisyManager` pauses when headphones are unplugged, also while paused for a call,
+  so the music does not come back on the speaker after it. Without it the core would follow the
+  device change and carry on through the speaker.
 
 ### Suspend
 
@@ -120,19 +132,22 @@ reports positions every 5 seconds: no screen shows them, but the save needs them
 session resumes within about 10 seconds of where it was.
 
 A headset or the notification can start playback with no process running. `MediaButtonReceiver`
-starts `PlaybackService`, the play press reaches `NPlayer`, and the core resumes its saved
-session, or plays the whole library when nothing was chosen yet. Media3 only calls
-`onPlaybackResumption` to start playback when the player is empty and accepts new media items,
-which `NPlayer` never does, so its implementation only describes the session to whoever asks.
+starts `PlaybackService` as a foreground service, and the play press reaches `NPlayer`, which
+leaves idle right away: Media3 then puts the service in the foreground, which Android requires
+within seconds. The core resumes its saved session, or plays the whole library when nothing was
+chosen yet; a Play that comes before the startup scan listed the library waits for the listing.
+Media3 only calls `onPlaybackResumption` to start playback when the player is empty and accepts
+new media items, which `NPlayer` never does, so its implementation only describes the session to
+whoever asks.
 
 ### Not done yet
 
 - Resume is off by default in the core's settings, and this app has no settings screen yet. The
   core also has no event that reports the setting, which a toggle would need.
 - From Android 15 an audio focus request fails unless the app is on top or runs a foreground
-  service. Playback from the app is on top. Playback from a headset with the app in the
-  background asks for focus while Media3 brings the service to the foreground, and whether
-  Android accepts it at that moment still has to be checked on a device.
+  service. Playback from the app is on top. Playback from a headset or the notification with
+  the app in the background asks for focus once the core plays, after Media3 started the
+  foreground service. That Android grants it then still has to be checked on a device.
 - Android's resumption card after a reboot needs a `MediaLibraryService`. Android 15 also
   forbids starting a `mediaPlayback` foreground service from `BOOT_COMPLETED`, so that card is
   the only way back after a reboot.

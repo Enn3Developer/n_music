@@ -23,6 +23,7 @@
             android:name=".MainActivity"
             android:label="N Player"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask"
             android:exported="true">
             <intent-filter>

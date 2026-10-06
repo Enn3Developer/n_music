@@ -9,14 +9,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,6 +52,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -61,7 +66,6 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.TrackRow
-import com.enn3developer.n_music.key
 import kotlinx.coroutines.launch
 
 /** The height of a track row, which scrolling to the playing track counts on. */
@@ -81,7 +85,7 @@ fun AppScreen(onSettings: () -> Unit) {
     val density = LocalDensity.current
 
     // Searching keeps where the list was, and clearing the search goes back there.
-    var saved by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var saved by rememberSaveable { mutableStateOf<Pair<Int, Int>?>(null) }
     val query = search.lowercase()
     val shown = remember(rows, query) {
         if (query.isEmpty()) {
@@ -98,10 +102,20 @@ fun AppScreen(onSettings: () -> Unit) {
             saved = null
         }
     }
-    val playing = current?.track?.locator
+    // Before anything plays, the first track is the one shown, as in the Slint app.
+    val playing = (current?.track ?: rows.firstOrNull())?.locator
+
+    // The keyboard covers the bottom of the screen: the list's end scrolls above it.
+    var belowList by remember { mutableIntStateOf(0) }
+    val keyboard = WindowInsets.ime.getBottom(density)
+    val aboveKeyboard = with(density) { (keyboard - belowList).coerceAtLeast(0).toDp() }
 
     Surface(color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+        ) {
             TopPanel(
                 search = search,
                 onSearch = {
@@ -109,6 +123,8 @@ fun AppScreen(onSettings: () -> Unit) {
                         saved = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
                     }
                     search = it
+                    // The results start at the top.
+                    if (it.isNotEmpty()) scope.launch { listState.scrollToItem(0) }
                 },
                 onShowPlaying = {
                     val row = shown.indexOfFirst { it.locator == playing }
@@ -123,10 +139,12 @@ fun AppScreen(onSettings: () -> Unit) {
             Box(Modifier.weight(1f)) {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(end = 12.dp),
+                    contentPadding = PaddingValues(end = 12.dp, bottom = aboveKeyboard),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(shown, key = { it.locator.key }) { track ->
+                    // By position, not by track: when the play order changes, the list stays
+                    // where it was, as the Slint app's did, rather than following a track.
+                    items(shown) { track ->
                         TrackItem(track, playing = track.locator == playing) {
                             // Plays the whole library from this track.
                             CoreRepository.send(Command.PlayFrom(CoreRepository.library, track.locator))
@@ -143,7 +161,10 @@ fun AppScreen(onSettings: () -> Unit) {
                 )
             }
             // Before anything plays, the panel shows the first track, as in the Slint app.
-            ControlPanel(current?.track ?: rows.firstOrNull())
+            ControlPanel(
+                current?.track ?: rows.firstOrNull(),
+                Modifier.onSizeChanged { belowList = it.height },
+            )
         }
     }
 }
@@ -159,7 +180,7 @@ private fun TopPanel(
     val progress by CoreRepository.scanProgress.collectAsStateWithLifecycle()
     Column(
         Modifier
-            .windowInsetsPadding(WindowInsets.statusBars)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -233,7 +254,7 @@ private fun TrackItem(track: TrackRow, playing: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ControlPanel(track: TrackRow?) {
+private fun ControlPanel(track: TrackRow?, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val playing by CoreRepository.playing.collectAsStateWithLifecycle()
     val loopStatus by CoreRepository.loopStatus.collectAsStateWithLifecycle()
@@ -243,6 +264,7 @@ private fun ControlPanel(track: TrackRow?) {
     Surface(
         color = colors.surfaceContainer,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        modifier = modifier,
     ) {
         Column(
             Modifier

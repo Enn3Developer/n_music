@@ -94,6 +94,11 @@ pub struct QueuePlayer {
     announced: bool,
     /// The position last saved.
     saved_position: f64,
+    /// The library was listed since launch, or there is nothing to list: Play has the library
+    /// to go on.
+    library_known: bool,
+    /// Play came before that: it plays once the library is listed.
+    play_when_listed: bool,
 }
 
 impl QueuePlayer {
@@ -152,6 +157,8 @@ impl QueuePlayer {
             restored,
             announced: false,
             saved_position: 0.0,
+            library_known: false,
+            play_when_listed: false,
         }
     }
 
@@ -247,6 +254,7 @@ impl QueuePlayer {
     }
 
     fn start(&mut self, task: PlaybackTask, ctx: &Ctx, out: &mut Outbox) {
+        self.play_when_listed = false;
         self.loaded = false;
         self.set_playing(false, out);
         self.position(TrackTime::default(), true, out);
@@ -301,6 +309,12 @@ impl QueuePlayer {
         if let (Some(position), Some(item)) = (self.restored, current) {
             self.jump(item, position, false, ctx, out);
         } else if self.session.context().is_none() {
+            if !self.library_known {
+                // Right after launch, a headset's Play can come before the scan listed the
+                // library.
+                self.play_when_listed = true;
+                return;
+            }
             self.play_from(&Query::library(), None, ctx, out);
         } else if self.finished {
             if let Some(item) = self.session.restart(self.shuffle) {
@@ -330,6 +344,14 @@ impl QueuePlayer {
                 self.update_next();
                 self.sync(out);
             }
+        }
+    }
+
+    /// The library is known from now on: plays if Play came before.
+    fn library_known(&mut self, ctx: &Ctx, out: &mut Outbox) {
+        self.library_known = true;
+        if std::mem::take(&mut self.play_when_listed) {
+            self.resume(ctx, out);
         }
     }
 

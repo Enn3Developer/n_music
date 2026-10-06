@@ -46,15 +46,21 @@ data class Position(
 )
 
 /**
- * A scan in progress: the tracks it listed, how many of those it still had to read then, and how
- * many it read since.
+ * A scan in progress: the tracks it listed and how many of those it still had to read, as of the
+ * last report, when scans had read [base] tracks since launch; [read] is that count now.
  */
-private data class Scan(val found: ULong, val pending: ULong, val read: ULong = 0u) {
+private data class Scan(
+    val found: ULong,
+    val pending: ULong,
+    val base: ULong,
+    val read: ULong = base,
+) {
     val progress: Float
         get() = if (found == 0uL) {
             0f
         } else {
-            ((found - pending + read).toFloat() / found.toFloat()).coerceIn(0f, 1f)
+            val since = if (read > base) read - base else 0uL
+            ((found - pending + since).toFloat() / found.toFloat()).coerceIn(0f, 1f)
         }
 }
 
@@ -138,7 +144,10 @@ object CoreRepository {
 
     private suspend fun readEvents() {
         while (true) {
-            when (val event = core.nextEvent() ?: break) {
+            // The core never stops on its own, and it ends the process when its bus fails.
+            // Going on without it would leave every screen and the notification stuck: end the
+            // process here too.
+            when (val event = core.nextEvent() ?: error("The core stopped")) {
                 is CoreEvent.PlaybackChanged -> _playing.value = event.playing
                 is CoreEvent.TrackChanged -> _current.value = Current(event.item, event.track)
                 is CoreEvent.PositionChanged -> _position.value = Position(
@@ -154,8 +163,11 @@ object CoreRepository {
                     scan.value = scan.value?.copy(read = event.read)
                     libraryChanged.trySend(Unit)
                 }
-                is CoreEvent.ScanProgress -> scan.value =
-                    if (event.libraries.isEmpty()) null else Scan(event.found, event.pending)
+                is CoreEvent.ScanProgress -> scan.value = if (event.libraries.isEmpty()) {
+                    null
+                } else {
+                    Scan(event.found, event.pending, event.read)
+                }
                 else -> {}
             }
         }
