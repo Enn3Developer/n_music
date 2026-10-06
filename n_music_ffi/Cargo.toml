@@ -1,0 +1,25 @@
+[package]
+name = "n_music_ffi"
+version.workspace = true
+edition = "2021"
+authors = ["Enn3Developer <arturpeshko39@gmail.com>"]
+license = "GPL-3.0-only"
+description = "Kotlin bindings of the N Music core, for the Android app"
+repository = "https://github.com/Enn3Developer/n_music"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+n_music_core = { path = "../n_music_core" }
+n_event_bus = { path = "../n_event_bus" }
+uniffi = { version = "0.32", default-features = false }
+flume = "0.12"
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3.20"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
+ndk-context = "0.1"

@@ -1,0 +1,8 @@
+[bindings.kotlin]
+package_name = "com.enn3developer.n_music.core"
+cdylib_name = "n_music_ffi"
+# Frees Rust objects with the platform cleaner where it works, JNA's elsewhere.
+android = true
+kotlin_target_version = "2.2.21"
+# Read-only records, which Compose can treat as stable.
+generate_immutable_records = true

@@ -1,193 +1,69 @@
 package com.enn3developer.n_music
 
-import android.Manifest.permission.POST_NOTIFICATIONS
-import android.app.NativeActivity
-import android.content.Context
+import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
-import androidx.annotation.OptIn
-import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.core.view.WindowCompat
-import androidx.media3.common.util.UnstableApi
-import java.io.File
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.enn3developer.n_music.core.Command
+import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.ui.NMusicApp
+import com.enn3developer.n_music.ui.NMusicTheme
+import com.google.common.util.concurrent.ListenableFuture
 
-@OptIn(UnstableApi::class)
-class MainActivity : NativeActivity() {
-    companion object {
-        init {
-            // Load the native library.
-            System.loadLibrary("n_music_android")
+class MainActivity : ComponentActivity() {
+    private var controller: ListenableFuture<MediaController>? = null
+
+    private val pickFolder =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) useFolder(uri)
         }
 
-        const val NOTIFICATION_NAME_SERVICE = "NPlayer"
-        const val ASK_DIRECTORY = 0
-        const val REQUEST_PERMISSION_CODE = 1
-
-        @JvmStatic external fun mediaPause()
-        @JvmStatic external fun mediaPlay()
-        @JvmStatic external fun mediaPlayNext()
-        @JvmStatic external fun mediaPlayPrevious()
-        @JvmStatic external fun mediaSeekTo(index: Int, position: Double)
-        @JvmStatic external fun mediaSeek(seek: Double)
-        @JvmStatic external fun mediaRepeatMode(mode: Int)
-        @JvmStatic external fun mediaShuffleMode(enabled: Boolean)
-        @JvmStatic external fun outputDeviceChanged()
-    }
-
-    // Called when app is open first time
-    private external fun start(activity: MainActivity)
-
-    private external fun gotDirectory(directory: String)
-    private external fun visibilityChanged(visible: Boolean)
-    // The folder picker is open: another request is ignored.
-    private var pickingDirectory = false
-    private var theme: Int = 0 // App theme: 0 = System, 1 = Light, 2 = Dark
-
-    // The picked folder is read through the Storage Access Framework, which needs no runtime
-    // permission.
-    @Suppress("unused")
-    private fun askDirectory() {
-        runOnUiThread {
-            if (pickingDirectory) return@runOnUiThread
-            pickingDirectory = true
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), ASK_DIRECTORY)
-        }
-    }
-
-    @Suppress("unused")
-    private fun openLink(link: String) {
-        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
-        startActivity(browserIntent)
-    }
-
-    @Suppress("unused")
-    private fun set_theme(value: Int) {
-        theme = value
-        updateStatusBarAppearance()
-    }
-
-    private fun updateStatusBarAppearance() {
-        runOnUiThread {
-            val window = this.window
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-
-            val isLight = when (theme) {
-                1 -> true
-                2 -> false
-                else -> {
-                    val currentNightMode =
-                        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-                    currentNightMode == Configuration.UI_MODE_NIGHT_NO
-                }
-            }
-
-            window.statusBarColor = if (isLight) Color.WHITE else Color.BLACK
-
-            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = isLight
-        }
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        updateStatusBarAppearance()
-    }
-
-    // It's the playback shown in the notification
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    @Suppress("unused")
-    private fun createNotification() {
-        runOnUiThread {
-            if (!checkPermissions()) {
-                requestPermissions()
-            }
-        }
-        startService(Intent(this, PlaybackService::class.java))
-    }
-
-    @Suppress("unused")
-    private fun changePlaybackState(playing: Boolean, position: Double) {
-        PlaybackController.updatePlayback(playing, (position * 1000.0).toLong())
-    }
-
-    @Suppress("unused")
-    private fun changeNotification(
-        title: String,
-        artists: String,
-        coverPath: String,
-        songLength: Double,
-    ) {
-        val artwork = if (coverPath.isNotEmpty()) {
-            runCatching { File(coverPath).readBytes() }
-                .onFailure { Log.w("n_music", "Could not read notification cover $coverPath", it) }
-                .getOrNull()
-        } else {
-            null
-        }
-        PlaybackController.updateMetadata(title, artists, artwork, (songLength * 1000.0).toLong())
-    }
-
-    @Suppress("unused")
-    private fun changeRepeatMode(mode: Int) {
-        PlaybackController.setRepeatMode(mode)
-    }
-
-    @Suppress("unused")
-    private fun changeShuffleMode(enabled: Boolean) {
-        PlaybackController.setShuffleMode(enabled)
-    }
-
-    @Suppress("unused")
-    private fun changeTrack(index: Int) {
-        PlaybackController.updateTrack(index)
-    }
-
-    @Suppress("unused")
-    private fun changeQueue(names: String, current: Int) {
-        PlaybackController.setQueue(
-            if (names.isEmpty()) emptyList() else names.split('\u001f'),
-            current,
-        )
-    }
+    private val askNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        start(this)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        visibilityChanged(true)
-    }
-
-    override fun onPause() {
-        visibilityChanged(false)
-        super.onPause()
-    }
-
-    // `uri` is null when the pick was cancelled.
-    private fun finishDirectory(uri: String?) {
-        pickingDirectory = false
-        uri?.let { gotDirectory(it) }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != ASK_DIRECTORY) return
-        val uri = data?.data
-        if (resultCode != RESULT_OK || uri == null) {
-            finishDirectory(null)
-            return
+        setContent {
+            NMusicTheme {
+                NMusicApp(onPickFolder = { pickFolder.launch(null) })
+            }
         }
-        val resolver = applicationContext.contentResolver
+        // The media notification needs it from Android 13.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // A connected controller keeps PlaybackService running while the app shows, so playback
+        // started here gets its notification and foreground service right away.
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controller = MediaController.Builder(this, token).buildAsync()
+    }
+
+    override fun onStop() {
+        controller?.let(MediaController::releaseFuture)
+        controller = null
+        super.onStop()
+    }
+
+    private fun useFolder(uri: Uri) {
+        val resolver = contentResolver
         resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         // Only the current library folder needs access; persisted grants are capped per app.
         for (permission in resolver.persistedUriPermissions) {
@@ -198,39 +74,9 @@ class MainActivity : NativeActivity() {
                 )
             }
         }
-        finishDirectory(uri.toString())
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            REQUEST_PERMISSION_CODE -> if (grantResults.isNotEmpty()) {
-                val message = if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    "Permission granted"
-                } else {
-                    "Permission denied"
-                }
-                Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    @Suppress("unused")
-    fun checkPermissions(): Boolean {
-        val grantNotification =
-            ContextCompat.checkSelfPermission(applicationContext, POST_NOTIFICATIONS)
-        return grantNotification == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun requestPermissions() {
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(POST_NOTIFICATIONS),
-            REQUEST_PERMISSION_CODE,
+        // Picking a folder replaces the libraries until there is a screen to manage several.
+        CoreRepository.send(
+            Command.SetLibraryRoots(listOf(Locator.DocumentTree(uri.toString())))
         )
     }
 }

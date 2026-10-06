@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "n_music_core",
     "n_music_desktop",
-    "n_music_android",
+    "n_music_ffi",
+    "n_music_ffi/bindgen",
     "n_event_bus",
     "n_music_media_notification",
 ]
@@ -31,3 +32,8 @@ opt-level = 3
 
 [profile.release.build-override]
 opt-level = 3
+
+# UniFFI reads the Kotlin bindings' metadata from the library's symbols. Gradle strips the
+# library when it packages the app.
+[profile.release.package.n_music_ffi]
+strip = false

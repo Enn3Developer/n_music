@@ -9,20 +9,32 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.Player
+import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.ConnectionResult
+import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import com.enn3developer.n_music.core.Command
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
-@UnstableApi
+/**
+ * Keeps playback going in the background: Media3 runs this service in the foreground, with the
+ * media notification, while [NPlayer] plays, and for ten minutes after a pause so playback can
+ * resume from the notification or a headset without hitting background start restrictions.
+ *
+ * The core itself lives in the process, started by [NMusicApplication]; this service only
+ * mirrors it for the system.
+ */
+@OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
+    private var player: NPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
     private val toggleRepeatCommand = SessionCommand(
         "com.enn3developer.n_music.TOGGLE_REPEAT",
@@ -32,25 +44,27 @@ class PlaybackService : MediaSessionService() {
         "com.enn3developer.n_music.TOGGLE_SHUFFLE",
         Bundle.EMPTY,
     )
-    private val updateModeLayout = Runnable {
+    private val updateModeButtons = Runnable {
         val session = mediaSession ?: return@Runnable
-        session.setCustomLayout(modeButtons(session.player))
+        session.setMediaButtonPreferences(modeButtons(session.player))
     }
     private val modeListener = object : Player.Listener {
         // Let Media3 dispatch the new player state before publishing the matching buttons.
         override fun onRepeatModeChanged(repeatMode: Int) {
-            handler.removeCallbacks(updateModeLayout)
-            handler.post(updateModeLayout)
+            handler.removeCallbacks(updateModeButtons)
+            handler.post(updateModeButtons)
         }
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
-            handler.removeCallbacks(updateModeLayout)
-            handler.post(updateModeLayout)
+            handler.removeCallbacks(updateModeButtons)
+            handler.post(updateModeButtons)
         }
     }
     private var audioManager: AudioManager? = null
     private var outputDeviceIds = emptySet<Int>()
-    private val notifyOutputDeviceChanged = Runnable { MainActivity.outputDeviceChanged() }
+    private val notifyOutputDeviceChanged = Runnable {
+        CoreRepository.send(Command.OutputDeviceChanged)
+    }
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             updateOutputDevices()
@@ -74,12 +88,13 @@ class PlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val player: Player = PlaybackController.player()
+        val player = NPlayer(this)
+        this.player = player
         val session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
             // Repeat and shuffle capabilities alone do not create buttons in Android's media
             // controls.
-            .setCustomLayout(modeButtons(player))
+            .setMediaButtonPreferences(modeButtons(player))
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
                     session: MediaSession,
@@ -116,6 +131,20 @@ class PlaybackService : MediaSessionService() {
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
+
+                // Media3 only asks when a controller plays an empty player that takes new items,
+                // which NPlayer never is: a play press reaches it and the core resumes its own
+                // saved session. The answer describes that session for anyone who asks anyway.
+                override fun onPlaybackResumption(
+                    mediaSession: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    isForPlayback: Boolean,
+                ): ListenableFuture<MediaItemsWithStartPosition> {
+                    val (items, index, positionMs) = player.resumptionItems()
+                    return Futures.immediateFuture(
+                        MediaItemsWithStartPosition(items, index, positionMs)
+                    )
+                }
             })
             .build()
         mediaSession = session
@@ -141,6 +170,7 @@ class PlaybackService : MediaSessionService() {
         )
             .setSessionCommand(toggleShuffleCommand)
             .setDisplayName(getString(if (enabled) R.string.shuffle_on else R.string.shuffle_off))
+            .setSlots(CommandButton.SLOT_OVERFLOW)
             .build()
 
     private fun repeatButton(repeatMode: Int): CommandButton {
@@ -152,6 +182,7 @@ class PlaybackService : MediaSessionService() {
         return CommandButton.Builder(icon)
             .setSessionCommand(toggleRepeatCommand)
             .setDisplayName(getString(name))
+            .setSlots(CommandButton.SLOT_OVERFLOW)
             .build()
     }
 
@@ -168,12 +199,14 @@ class PlaybackService : MediaSessionService() {
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         audioManager = null
         handler.removeCallbacks(notifyOutputDeviceChanged)
-        handler.removeCallbacks(updateModeLayout)
+        handler.removeCallbacks(updateModeButtons)
         mediaSession?.let { session ->
             session.player.removeListener(modeListener)
             removeSession(session)
             session.release()
         }
+        player?.release()
+        player = null
         mediaSession = null
         super.onDestroy()
     }

@@ -3,6 +3,10 @@ package com.enn3developer.n_music
 import android.app.Application
 import android.os.Build
 import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import com.enn3developer.n_music.core.Command
 import java.io.File
 
 class NMusicApplication : Application() {
@@ -26,5 +30,25 @@ class NMusicApplication : Application() {
                 else error.printStackTrace()
             }
         }
+
+        // Every process start runs this, whether for the UI, the playback service or a media
+        // button, so the core is there for whichever comes first and lives as long as the
+        // process.
+        NativeLibrary.init(this)
+        CoreRepository.start(this)
+        // Hidden until an activity starts: a process started for a headset button has none.
+        CoreRepository.send(Command.AppVisibilityChanged(false))
+
+        // Visibility is the process's, not an activity's: rotating or switching activities is
+        // not leaving the app.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                CoreRepository.send(Command.AppVisibilityChanged(true))
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                CoreRepository.send(Command.AppVisibilityChanged(false))
+            }
+        })
     }
 }
