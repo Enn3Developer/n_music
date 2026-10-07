@@ -71,10 +71,11 @@ stage_windows() {
   mkdir -p "$pack_dir"
   cp "$binary" "$pack_dir/$executable"
   cp LICENSE "$pack_dir/LICENSE"
-  # Velopack's installer brings the Visual C++ runtime, which Qt needs as well.
+  # Velopack's installer brings the Visual C++ runtime, which Qt needs as well. The skipped
+  # plugins are the QML debugger, touch input over TUIO and network status.
   "$QT_ROOT_DIR/bin/windeployqt.exe" --release --qmldir n_music_desktop/qml --no-translations \
     --no-compiler-runtime --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw \
-    "$pack_dir/$executable"
+    --skip-plugin-types qmltooling,generic,networkinformation "$pack_dir/$executable"
   launcher="$pack_dir/$executable"
 }
 
@@ -95,9 +96,16 @@ stage_macos() {
     --icon "$stage/NMusic.icns" --bundleId com.enn3developer.n-music \
     --outputDir "$stage" --yes --skip-updates
   cp LICENSE "$pack_dir/Contents/Resources/LICENSE"
-  # Copying Qt's frameworks into the bundle breaks Qt's own signatures, and Apple silicon runs
-  # no code with a broken one, so macdeployqt signs the bundle again, ad hoc.
-  "$QT_ROOT_DIR/bin/macdeployqt" "$pack_dir" -qmldir=n_music_desktop/qml -codesign=-
+  "$QT_ROOT_DIR/bin/macdeployqt" "$pack_dir" -qmldir=n_music_desktop/qml
+  python3 .github/scripts/trim-qt-macos.py "$pack_dir" "$QT_ROOT_DIR" n_music_desktop/qml
+  # Deploying and trimming Qt's binaries breaks Qt's own signatures, and Apple silicon runs no
+  # code with a broken one. Sign everything again, ad hoc, the nested code before the bundle.
+  find "$pack_dir/Contents/PlugIns" -type f -exec codesign --force --sign - {} +
+  for framework in "$pack_dir"/Contents/Frameworks/*.framework; do
+    codesign --force --sign - "$framework"
+  done
+  codesign --force --sign - "$pack_dir"
+  codesign --verify --deep --strict "$pack_dir"
   launcher="$pack_dir/Contents/MacOS/$executable"
 }
 
