@@ -53,6 +53,8 @@ jobs:
           PY
 
   package:
+    # The name the job had before the Qt columns joined the matrix.
+    name: package (${{ matrix.runner }}, ${{ matrix.target }}, ${{ matrix.runtime }})
     needs: plan
     timeout-minutes: 60
     env:
