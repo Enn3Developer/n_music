@@ -19,3 +19,16 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# UniFFI's Kotlin bindings call the native core through JNA, which finds their classes and
+# methods by name.
+-keep class com.sun.jna.** { *; }
+-keep class * extends com.sun.jna.** { *; }
+-keep class com.enn3developer.n_music.core.** { *; }
+# JNA's desktop code refers to AWT, which Android lacks.
+-dontwarn java.awt.**
+
+# Shrink, but keep class and method names and line numbers, so crash logs read as they are
+# without a mapping file. Renaming would save about 0.4 MB more.
+-dontobfuscate
+-keepattributes SourceFile,LineNumberTable
