@@ -127,7 +127,7 @@ jobs:
         run: command -v zstd || brew install zstd
       - name: Restore Qt
         id: qt-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/qt
           key: qt-${{ env.QT_VERSION }}-${{ matrix.qt-arch }}-${{ matrix.qt-archives }}
