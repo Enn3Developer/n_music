@@ -55,6 +55,9 @@ jobs:
   package:
     needs: plan
     timeout-minutes: 60
+    env:
+      # The QML interface needs Qt 6.8 or newer: PathRectangle came in 6.8.
+      QT_VERSION: 6.8.3
     strategy:
       fail-fast: false
       matrix:
@@ -62,12 +65,24 @@ jobs:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             runtime: linux-x64
+            qt-host: linux
+            qt-arch: linux_gcc_64
+            qt-dir: gcc_64
+            qt-archives: icu qtbase qtdeclarative qtwayland
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
             runtime: win-x64
+            qt-host: windows
+            qt-arch: win64_msvc2022_64
+            qt-dir: msvc2022_64
+            qt-archives: qtbase qtdeclarative
           - runner: macos-14
             target: aarch64-apple-darwin
             runtime: osx-arm64
+            qt-host: mac
+            qt-arch: clang_64
+            qt-dir: macos
+            qt-archives: qtbase qtdeclarative
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -91,39 +106,82 @@ jobs:
           rustup target add "$TARGET"
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-qt${{ env.QT_VERSION }}
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang mold cmake pkg-config nasm \
-            libasound2-dev libfontconfig1-dev libfreetype6-dev \
-            libwayland-dev libxkbcommon-dev libx11-dev libx11-xcb-dev \
-            libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev \
-            libgl1-mesa-dev libfuse2
+          # Build tools, ALSA, the OpenGL Qt links to, vpk's AppImage and delta tools, and the
+          # X11 and Wayland libraries of Qt's platform plugins, which the AppImage carries.
+          sudo apt-get install -y clang mold cmake pkg-config nasm libasound2-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libfuse2 squashfs-tools zstd \
+            libxkbcommon-x11-0 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
+            libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        # vpk builds delta packages with zstd.
+        run: command -v zstd || brew install zstd
+      - name: Restore Qt
+        id: qt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/qt
+          key: qt-${{ env.QT_VERSION }}-${{ matrix.qt-arch }}-${{ matrix.qt-archives }}
+      - name: Install Qt
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        env:
+          QT_HOST: ${{ matrix.qt-host }}
+          QT_ARCH: ${{ matrix.qt-arch }}
+          QT_ARCHIVES: ${{ matrix.qt-archives }}
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall==3.3.0
+          read -ra archives <<< "$QT_ARCHIVES"
+          python -m aqt install-qt "$QT_HOST" desktop "$QT_VERSION" "$QT_ARCH" \
+            --outputdir "$RUNNER_TEMP/qt" --archives "${archives[@]}"
+      - name: Use Qt
+        env:
+          QT_DIR: ${{ matrix.qt-dir }}
+        run: |
+          qt="$RUNNER_TEMP/qt/$QT_VERSION/$QT_DIR"
+          exe=
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            qt=$(cygpath -m "$qt")
+            exe=.exe
+          fi
+          "$qt/bin/qmake$exe" -query QT_VERSION
+          # cxx-qt builds against the Qt that QMAKE belongs to.
+          {
+            echo "QT_ROOT_DIR=$qt"
+            echo "QMAKE=$qt/bin/qmake$exe"
+          } >> "$GITHUB_ENV"
       - name: Build app
         env:
           TARGET: ${{ matrix.target }}
         run: cargo build --locked --release --package n_music_desktop --bin n_music_desktop --target "$TARGET"
+      - name: Install Velopack
+        run: dotnet tool restore
+      - name: Stage app with its Qt runtime
+        id: stage
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: bash .github/scripts/package-desktop.sh stage "$RUNTIME"
       - name: Check installer hooks without starting the UI
         timeout-minutes: 1
         env:
-          TARGET: ${{ matrix.target }}
+          LAUNCHER: ${{ steps.stage.outputs.launcher }}
           RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          executable="target/$TARGET/release/n_music_desktop"
-          if [[ "$RUNNER_OS" == Windows ]]; then
-            executable="$executable.exe"
-          fi
           for hook in install updated obsolete uninstall; do
-            "$executable" "--veloapp-$hook" "$RELEASE_VERSION"
+            "$LAUNCHER" "--veloapp-$hook" "$RELEASE_VERSION"
           done
-      - name: Install Velopack
-        run: dotnet tool restore
       - name: Package app
         env:
           RUNTIME: ${{ matrix.runtime }}
-        run: bash scripts/package-release.sh "$RUNTIME"
+          # Reads the previous release, to build a delta package from it.
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/package-desktop.sh pack "$RUNTIME"
       - name: Check packaged Linux startup
         if: runner.os == 'Linux'
         timeout-minutes: 1
