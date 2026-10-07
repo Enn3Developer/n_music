@@ -64,7 +64,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             runtime: linux-x64
             qt-host: linux
@@ -116,7 +116,7 @@ jobs:
           # Build tools, ALSA, the OpenGL Qt links to, vpk's AppImage and delta tools, and the
           # X11 and Wayland libraries of Qt's platform plugins, which the AppImage carries.
           sudo apt-get install -y clang mold cmake pkg-config nasm libasound2-dev \
-            libgl1-mesa-dev libegl1-mesa-dev libfuse2 squashfs-tools zstd \
+            libgl1-mesa-dev libegl1-mesa-dev libfuse2t64 squashfs-tools zstd \
             libxkbcommon-x11-0 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
             libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libwayland-client0 \
@@ -195,6 +195,16 @@ jobs:
           cd target/velopack-smoke
           "${images[0]}" --appimage-extract > /dev/null
           ./squashfs-root/AppRun --veloapp-install "$RELEASE_VERSION"
+          # Start the interface too: with no display and no GPU, it should load its QML and keep
+          # running. The build's Qt lends the offscreen platform the AppImage does not carry.
+          status=0
+          QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$QT_ROOT_DIR/plugins/platforms" \
+            QT_QUICK_BACKEND=software timeout 15 ./squashfs-root/AppRun > interface.log 2>&1 || status=$?
+          cat interface.log
+          if [[ $status -ne 124 ]] || grep -q 'failed to load component' interface.log; then
+            echo "The interface did not start (exit status $status)" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: velopack-${{ matrix.runtime }}
