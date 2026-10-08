@@ -1,12 +1,12 @@
 //! Receives what the core reports on the bus and keeps the [`hub`] up to date.
 
-use crate::hub::{hub, Changed, PlaylistSummary, StreamCache};
+use crate::hub::{hub, Changed, PlaylistSummary, StreamCache, Telegram, TelegramChats};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::messages::{
     LibraryRenamed, LibraryRootsChanged, LoopStatusChanged, OutputDevices, PlaybackChanged,
     PlaylistRejected, PlaylistsChanged, PositionChanged, QueueChanged, ScanFinished, ScanProgress,
-    ShuffleChanged, StreamCacheChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed,
-    TracksEnumerated, VolumeChanged,
+    ShuffleChanged, StreamCacheChanged, TelegramChatsFound, TelegramStatusChanged, TrackChanged,
+    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -39,6 +39,32 @@ impl Subscriber for Listener {
         reg.on::<PlaylistRejected>();
         reg.on::<StreamCacheChanged>();
         reg.on::<OutputDevices>();
+        reg.on::<TelegramStatusChanged>();
+        reg.on::<TelegramChatsFound>();
+    }
+}
+
+impl Handle<TelegramStatusChanged> for Listener {
+    fn handle(&mut self, msg: &TelegramStatusChanged, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::TELEGRAM, |state| {
+            state.telegram = Some(Telegram {
+                status: msg.status.clone(),
+                busy: msg.busy,
+                error: msg.error.clone(),
+            });
+        });
+    }
+}
+
+impl Handle<TelegramChatsFound> for Listener {
+    fn handle(&mut self, msg: &TelegramChatsFound, _ctx: &Ctx, _out: &mut Outbox) {
+        hub().update(Changed::TELEGRAM, |state| {
+            state.telegram_chats = Some(Arc::new(TelegramChats {
+                query: msg.query.clone(),
+                chats: msg.chats.clone(),
+                error: msg.error.clone(),
+            }));
+        });
     }
 }
 

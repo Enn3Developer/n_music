@@ -2,8 +2,8 @@ pragma Singleton
 import QtQuick
 import NMusic
 
-// The kinds of sources a library can have. The core reads local folders and web playlists so
-// far: the others are `later`.
+// The kinds of sources a library can have. The core reads local folders, web playlists and
+// Telegram chats, the last in builds that sign in to Telegram: the others are `later`.
 QtObject {
     readonly property var all: [
         {
@@ -21,6 +21,14 @@ QtObject {
             detail: Tr.t.source_web_detail,
             icon: "link",
             later: false
+        },
+        {
+            value: "telegram",
+            name: Tr.t.source_telegram,
+            group: Tr.t.telegram_chats,
+            detail: Tr.t.source_telegram_detail,
+            icon: "send",
+            later: !Telegram.available
         },
         {
             value: "spotify",
@@ -57,8 +65,11 @@ QtObject {
         return all.find(kind => kind.value === value)?.icon ?? "folder";
     }
 
-    /// The kind of the source at `location`: `web` for an http or https address, else `folder`.
+    /// The kind of the source at `location`: `web` for an http or https address, `telegram` for
+    /// a Telegram chat, else `folder`.
     function of(location: string): string {
-        return /^https?:\/\//i.test(location) ? "web" : "folder";
+        if (/^https?:\/\//i.test(location))
+            return "web";
+        return /^telegram:-?\d+$/.test(location) ? "telegram" : "folder";
     }
 }

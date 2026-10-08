@@ -5,6 +5,7 @@ use crate::listener::Listener;
 use n_event_bus::{App, EventWriter, JobControl, Message, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::settings::SettingsStorage;
+use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
 use n_music_core::source::{LocalProvider, Providers, WebProvider};
 use n_music_media_notification::MediaNotification;
 use std::path::Path;
@@ -34,9 +35,12 @@ impl Bus {
         let (writer, rx) = EventWriter::channel();
         let _ = WRITER.set(writer.clone());
         let mut app = App::new(JobControl::new(writer.clone()));
-        let providers = Providers::default()
+        let mut providers = Providers::default()
             .with_local(LocalProvider)
             .with_web(WebProvider::default());
+        if let Some(account) = telegram(data_dir) {
+            providers = providers.with_telegram(account);
+        }
         let engine = Engine::start(&mut app, &writer, storage, providers, data_dir, cache_dir);
         hub::init(engine.library());
         // After the core services, so the library is up to date when the interface hears.
@@ -64,6 +68,22 @@ impl Bus {
         self.writer.shutdown();
         if self.thread.join().is_err() {
             log::error!("Event bus thread panicked");
+        }
+    }
+}
+
+/// The Telegram account kept in `data_dir`, when the build has N Music's API credentials:
+/// `N_MUSIC_TELEGRAM_API_ID` and `N_MUSIC_TELEGRAM_API_HASH`, from my.telegram.org.
+fn telegram(data_dir: &Path) -> Option<Arc<TelegramAccount>> {
+    let credentials = TelegramCredentials::new(
+        option_env!("N_MUSIC_TELEGRAM_API_ID"),
+        option_env!("N_MUSIC_TELEGRAM_API_HASH"),
+    )?;
+    match TelegramAccount::open(data_dir, credentials) {
+        Ok(account) => Some(Arc::new(account)),
+        Err(error) => {
+            log::error!("Could not open the Telegram session: {error}");
+            None
         }
     }
 }

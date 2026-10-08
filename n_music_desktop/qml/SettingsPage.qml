@@ -13,10 +13,15 @@ Item {
 
     signal navigate(string page)
 
+    /// The sections; Telegram only in builds that sign in to it.
     readonly property var sections: [
         {
             value: "playback",
             label: Tr.t.playback
+        },
+        {
+            value: "telegram",
+            label: Tr.t.telegram
         },
         {
             value: "appearance",
@@ -30,7 +35,7 @@ Item {
             value: "about",
             label: Tr.t.about
         }
-    ]
+    ].filter(section => section.value !== "telegram" || Telegram.available)
     /// Too narrow for the sections beside the settings: they line up above them instead.
     readonly property bool stacked: width < 880
     /// The section in view as the page scrolls.

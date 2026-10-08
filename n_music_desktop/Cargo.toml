@@ -14,7 +14,7 @@ path = "src/main.rs"
 cxx-qt-build = "0.10"
 
 [dependencies]
-n_music_core = { path = "../n_music_core" }
+n_music_core = { path = "../n_music_core", features = ["telegram"] }
 n_event_bus = { path = "../n_event_bus" }
 bitflags = "2"
 log = "0.4"

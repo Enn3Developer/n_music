@@ -28,8 +28,8 @@ Rectangle {
                 }));
     }
 
-    /// Adds the source at `location`, a folder or a web playlist, unless it is there, named
-    /// `displayName` unless that is empty.
+    /// Adds the source at `location`, a folder, a web playlist or a Telegram chat, unless it is
+    /// there, named `displayName` unless that is empty.
     function add(location: string, displayName: string) {
         if (location === "" || added.some(source => source.location === location))
             return;
@@ -142,6 +142,8 @@ Rectangle {
                                 picker.open();
                             else if (modelData.value === "web")
                                 webPrompt.ask("");
+                            else if (modelData.value === "telegram")
+                                telegramPicker.open();
                         }
 
                         background: Rectangle {
@@ -347,5 +349,11 @@ Rectangle {
     WebSourceDialog {
         id: webPrompt
         onChosen: (address, name) => page.add(address, name)
+    }
+
+    TelegramSourceDialog {
+        id: telegramPicker
+        taken: page.added.map(source => source.location)
+        onChosen: (location, name) => page.add(location, name)
     }
 }

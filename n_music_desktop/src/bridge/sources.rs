@@ -28,7 +28,8 @@ pub mod qobject {
         #[qproperty(bool, loaded)]
         /// No sources were ever chosen, so the app asks for them before anything else.
         #[qproperty(bool, first_run)]
-        /// Tracks streamed from web playlists are cached on disk as they play, see `changeCache`.
+        /// Tracks streamed from web playlists and Telegram chats are cached on disk as they
+        /// play, see `changeCache`.
         #[qproperty(bool, cache_enabled)]
         /// The most the cached tracks may take, in bytes.
         #[qproperty(f64, cache_limit)]
@@ -44,6 +45,10 @@ pub mod qobject {
         /// is blank, and scans it.
         #[qinvokable]
         fn add_web(self: &Sources, address: &QString, name: &QString);
+        /// Adds the Telegram chat at `location`, as `Telegram.chats` writes it, called `name`
+        /// unless that is blank, and scans it.
+        #[qinvokable]
+        fn add_telegram(self: &Sources, location: &QString, name: &QString);
         /// The playlist address typed in `text` as the library writes it, `https://` when it
         /// names no scheme; empty when it is not an `http` or `https` address.
         #[qinvokable]
@@ -73,9 +78,9 @@ pub mod qobject {
         /// the cache.
         #[qinvokable]
         fn reload(self: &Sources, location: &QString);
-        /// Makes the sources at `locations`, folders and web playlists as `items` writes them,
-        /// the library's and scans them, ending the first run. Each is called the name at the
-        /// same place in `names`, unless that is blank.
+        /// Makes the sources at `locations`, folders, web playlists and Telegram chats as
+        /// `items` writes them, the library's and scans them, ending the first run. Each is
+        /// called the name at the same place in `names`, unless that is blank.
         #[qinvokable]
         fn set_sources(self: Pin<&mut Sources>, locations: &QStringList, names: &QStringList);
         /// Caches streamed tracks on disk as they play, or (`enabled` false) deletes them, and
@@ -243,6 +248,12 @@ impl qobject::Sources {
 
     fn add_web(&self, address: &QString, name: &QString) {
         if let Some(root) = Locator::web(&address.to_string()) {
+            add(root, &name.to_string());
+        }
+    }
+
+    fn add_telegram(&self, location: &QString, name: &QString) {
+        if let Some(root) = Locator::telegram(&location.to_string()) {
             add(root, &name.to_string());
         }
     }

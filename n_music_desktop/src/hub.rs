@@ -11,6 +11,7 @@ use n_music_core::library::catalog::Library;
 use n_music_core::library::query::PlaylistId;
 use n_music_core::queue::{ItemId, LoopStatus, QueueEntry};
 use n_music_core::settings::OutputDevice;
+use n_music_core::source::telegram::{TelegramChatInfo, TelegramError, TelegramStatus};
 use n_music_core::source::Locator;
 use n_music_core::{Track, TrackTime};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -52,6 +53,8 @@ bitflags! {
         const CACHE = 1 << 15;
         /// The output devices there are.
         const DEVICES = 1 << 16;
+        /// Where signing in to Telegram is, or the Telegram chats found.
+        const TELEGRAM = 1 << 17;
     }
 }
 
@@ -92,6 +95,28 @@ pub struct State {
     pub cache: Option<StreamCache>,
     /// The output devices as the core last listed them; `None` before it did.
     pub output_devices: Option<Arc<Vec<OutputDevice>>>,
+    /// Where signing in to Telegram is; `None` while the core did not tell, as in a build
+    /// without Telegram.
+    pub telegram: Option<Telegram>,
+    /// The chats the last search for Telegram chats found.
+    pub telegram_chats: Option<Arc<TelegramChats>>,
+}
+
+/// Where signing in to Telegram is.
+#[derive(Clone)]
+pub struct Telegram {
+    pub status: TelegramStatus,
+    /// A step runs.
+    pub busy: bool,
+    /// Why the last step failed.
+    pub error: Option<TelegramError>,
+}
+
+/// The Telegram chats found for `query`, or why none were.
+pub struct TelegramChats {
+    pub query: String,
+    pub chats: Vec<TelegramChatInfo>,
+    pub error: Option<TelegramError>,
 }
 
 /// The stream cache's settings, and what its copies take; in bytes.

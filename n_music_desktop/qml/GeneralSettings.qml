@@ -4,7 +4,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// Settings › Playback, Appearance, Updates and About, one under the other.
+// Settings › Playback, Telegram, Appearance, Updates and About, one under the other; Telegram
+// in builds that sign in to it.
 ColumnLayout {
     id: settings
 
@@ -12,6 +13,7 @@ ColumnLayout {
     function sectionY(name: string): real {
         const section = ({
                 playback: playback,
+                telegram: telegram,
                 appearance: appearance,
                 updates: updates,
                 about: about
@@ -163,6 +165,54 @@ ColumnLayout {
                     onActivated: value => Sources.changeCache(true, Number(value))
                 }
             }
+        }
+    }
+
+    ColumnLayout {
+        id: telegram
+        Layout.fillWidth: true
+        visible: Telegram.available
+        spacing: 12
+
+        Heading {
+            text: Tr.t.telegram
+        }
+        SettingsGroup {
+            Layout.fillWidth: true
+
+            SettingRow {
+                id: account
+
+                readonly property bool signedIn: Telegram.status === "signedIn"
+
+                title: signedIn ? Tr.t.telegram_signed_in_as.arg(Telegram.account) : Tr.t.telegram_signed_out
+                description: Tr.t.telegram_account_hint
+
+                PillButton {
+                    small: true
+                    enabled: !Telegram.busy
+                    text: account.signedIn ? Tr.t.telegram_sign_out : Tr.t.telegram_sign_in_action
+                    onClicked: {
+                        if (account.signedIn)
+                            signOut.open();
+                        else
+                            signIn.open();
+                    }
+                }
+            }
+        }
+
+        TelegramSourceDialog {
+            id: signIn
+            signInOnly: true
+        }
+        PromptDialog {
+            id: signOut
+            title: Tr.t.telegram_sign_out_title
+            message: Tr.t.telegram_sign_out_message
+            confirmText: Tr.t.telegram_sign_out
+            danger: true
+            onConfirmed: Telegram.signOut()
         }
     }
 

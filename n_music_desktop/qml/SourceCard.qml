@@ -19,8 +19,11 @@ AbstractButton {
 
     /// What is wrong with it or happening to it; empty while it is up to date.
     readonly property string status: {
-        if (!source.available)
-            return source.kind === "web" ? Tr.t.source_unreachable : Tr.t.source_missing;
+        if (!source.available) {
+            if (source.kind === "telegram" && Telegram.status !== "signedIn")
+                return Tr.t.source_signed_out;
+            return source.kind === "folder" ? Tr.t.source_missing : Tr.t.source_unreachable;
+        }
         return source.updating ? Tr.t.source_updating : "";
     }
 

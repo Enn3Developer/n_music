@@ -3,8 +3,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// Adds a source: a menu of the kinds there are, then a folder picker or a prompt for a
-// playlist's address.
+// Adds a source: a menu of the kinds there are, then a folder picker, a prompt for a
+// playlist's address or a Telegram chat picker.
 AbstractButton {
     id: button
 
@@ -80,6 +80,8 @@ AbstractButton {
                         picker.open();
                     else if (modelData.value === "web")
                         webPrompt.ask("");
+                    else if (modelData.value === "telegram")
+                        telegramPicker.open();
                 }
             }
             onObjectAdded: (index, entry) => kinds.insertItem(index, entry)
@@ -97,5 +99,11 @@ AbstractButton {
     WebSourceDialog {
         id: webPrompt
         onChosen: (address, name) => Sources.addWeb(address, name)
+    }
+
+    TelegramSourceDialog {
+        id: telegramPicker
+        taken: Sources.items.map(source => source.location)
+        onChosen: (location, name) => Sources.addTelegram(location, name)
     }
 }

@@ -71,6 +71,7 @@ const QML: &[&str] = &[
     "qml/TrackMenu.qml",
     "qml/TrackRow.qml",
     "qml/TrackTable.qml",
+    "qml/TelegramSourceDialog.qml",
     "qml/WebSourceDialog.qml",
     "qml/TracksPage.qml",
 ];
@@ -101,6 +102,7 @@ const BRIDGES: &[&str] = &[
     "src/bridge/queue.rs",
     "src/bridge/scan.rs",
     "src/bridge/sources.rs",
+    "src/bridge/telegram.rs",
     "src/bridge/tracks.rs",
     "src/bridge/translations.rs",
     "src/bridge/updates.rs",

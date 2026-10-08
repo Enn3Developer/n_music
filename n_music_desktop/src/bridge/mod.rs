@@ -10,6 +10,7 @@ pub mod playlists;
 pub mod queue;
 pub mod scan;
 pub mod sources;
+pub mod telegram;
 pub mod tracks;
 pub mod translations;
 pub mod updates;
