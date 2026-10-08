@@ -4,7 +4,7 @@ import NMusic
 
 // An item of the queue: cover, title and artist, length; queued ones can be taken out, the
 // current one shows it plays. It and those still to play can be picked up with the mouse and
-// dragged to another place.
+// dragged to another place, which a grip before them shows.
 Rectangle {
     id: row
 
@@ -32,7 +32,8 @@ Rectangle {
 
     /// Smaller covers and tighter rows, from the settings.
     readonly property bool dense: AppState.compactRows
-    readonly property bool movable: section === "next"
+    /// One dragged among those played stays held.
+    readonly property bool movable: section === "next" || dragged
 
     implicitHeight: dense ? 42 : 54
     radius: 8
@@ -87,9 +88,21 @@ Rectangle {
         onDoubleClicked: row.activated()
     }
 
+    Icon {
+        x: 4
+        anchors.verticalCenter: parent.verticalCenter
+        visible: row.movable
+        name: "grip"
+        size: 16
+        color: row.dragged || mouse.containsMouse ? Theme.text2 : Theme.text3
+
+        HoverHandler {
+            cursorShape: row.dragged ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        }
+    }
     Cover {
         id: art
-        x: 8
+        x: 24
         anchors.verticalCenter: parent.verticalCenter
         size: row.dense ? 32 : 40
         path: row.cover

@@ -186,8 +186,9 @@ impl Session {
     }
 
     /// Moves `item`, one still to play, to play right before `before`, another one still to
-    /// play, or (`None`) after all of them; the others keep their order. `before` playing now,
-    /// it plays first.
+    /// play, or (`None`) after all of them; the others keep their order. `before` playing now or
+    /// played, it goes right before it among those played, counting as played: a queued item
+    /// joins the context there.
     pub fn move_upcoming(&mut self, item: ItemId, before: Option<ItemId>) {
         let mut upcoming = self.upcoming();
         let Some(from) = upcoming
@@ -204,8 +205,12 @@ impl Session {
                 .position(|&entry| self.upcoming_id(entry) == before)
             {
                 Some(to) => to,
-                None if self.current().is_some_and(|current| current.id == before) => 0,
-                None => return,
+                None => {
+                    if let Some(slot) = self.played_slot(before) {
+                        self.move_to_played(moved, slot);
+                    }
+                    return;
+                }
             },
         };
         if to == from {
@@ -213,6 +218,74 @@ impl Session {
         }
         upcoming.insert(to, moved);
         self.set_upcoming(&upcoming);
+    }
+
+    /// The slot an item moved right before `before`, the current item or one that played, takes
+    /// among those played: `before`'s own, or after them all for a queued item playing now.
+    fn played_slot(&self, before: ItemId) -> Option<usize> {
+        let split = self.split();
+        if self.current == Some(Current::Detour)
+            && self
+                .detour
+                .as_ref()
+                .is_some_and(|detour| detour.id == before)
+        {
+            return Some(split);
+        }
+        let position = self.items.iter().position(|item| item.id == before)?;
+        let slot = self.order.slot_of[position];
+        (slot < split).then_some(slot)
+    }
+
+    /// Moves `moved`, an item still to play, to `slot`, at most the first slot still to play: it
+    /// counts as played, and the current item stays current. A queued item joins the context,
+    /// before the item it now plays before in the context's own order too.
+    fn move_to_played(&mut self, moved: Upcoming, slot: usize) {
+        match moved {
+            Upcoming::Context(position) => {
+                let from = self.order.slot_of[position];
+                // Those from `slot` to its own move one slot on: the queued items keep their
+                // places among the items still to play.
+                for queued in &mut self.queued {
+                    if queued.before <= from {
+                        queued.before += 1;
+                    }
+                }
+                self.order.order.remove(from);
+                self.order.order.insert(slot, position);
+            }
+            Upcoming::Queued(index) => {
+                let item = self.queued.remove(index).item;
+                let position = self
+                    .order
+                    .order
+                    .get(slot)
+                    .copied()
+                    .unwrap_or(self.items.len());
+                self.items.insert(position, item);
+                for other in &mut self.order.order {
+                    if *other >= position {
+                        *other += 1;
+                    }
+                }
+                self.order.order.insert(slot, position);
+                // The slots still to play all move one slot on.
+                for queued in &mut self.queued {
+                    queued.before += 1;
+                }
+                // The rounds made before go without it.
+                self.clear_rounds();
+            }
+        }
+        self.order.reindex();
+        // The cursor follows its item, or starts the context with this one.
+        if self.started {
+            self.order.cursor += 1;
+        } else {
+            self.order.cursor = slot;
+            self.started = true;
+        }
+        self.changed = true;
     }
 
     /// Moves the current item to play right before `before`, an item still to play or one that
@@ -769,5 +842,155 @@ impl PlayOrder {
             remapped.cursor = remapped.slot_of[current];
         }
         remapped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TrackInfo;
+    use std::sync::Arc;
+
+    /// A session over the tracks named `0` to `len - 1`, in their order, not started.
+    fn session(len: usize) -> Session {
+        let tracks: Vec<Track> = (0..len)
+            .map(|index| Arc::new(TrackInfo::placeholder(Locator::Local(index.to_string()))))
+            .collect();
+        let mut session = Session::default();
+        session.replace_context(Query::library(), &tracks, None, false);
+        session
+    }
+
+    fn id(session: &Session, name: &str) -> ItemId {
+        session
+            .entries()
+            .into_iter()
+            .find(|entry| entry.locator == Locator::Local(name.to_string()))
+            .map(|entry| entry.item)
+            .unwrap()
+    }
+
+    fn enqueue(session: &mut Session, names: &[&str]) {
+        let tracks = names
+            .iter()
+            .map(|name| (Locator::Local(name.to_string()), None));
+        session.enqueue(tracks, false);
+    }
+
+    /// The entries by name in play order, the current one in brackets.
+    fn layout(session: &Session) -> String {
+        let current = session.current().map(|item| item.id);
+        session
+            .entries()
+            .into_iter()
+            .map(|entry| {
+                let Locator::Local(name) = entry.locator else {
+                    unreachable!()
+                };
+                if Some(entry.item) == current {
+                    format!("[{name}]")
+                } else {
+                    name
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn next(session: &mut Session) -> String {
+        let next = session.next(&LoopStatus::Off, false, true).unwrap();
+        let entries = session.entries();
+        let entry = entries.iter().find(|entry| entry.item == next).unwrap();
+        let Locator::Local(name) = &entry.locator else {
+            unreachable!()
+        };
+        name.clone()
+    }
+
+    #[test]
+    fn moves_upcoming_among_those_still_to_play() {
+        let mut session = session(6);
+        session.arrive(id(&session, "2"));
+        session.move_upcoming(id(&session, "5"), Some(id(&session, "3")));
+        assert_eq!(layout(&session), "0 1 [2] 5 3 4");
+        session.move_upcoming(id(&session, "5"), None);
+        assert_eq!(layout(&session), "0 1 [2] 3 4 5");
+    }
+
+    #[test]
+    fn moves_upcoming_context_item_among_those_played() {
+        let mut session = session(6);
+        session.arrive(id(&session, "2"));
+        session.move_upcoming(id(&session, "4"), Some(id(&session, "1")));
+        assert_eq!(layout(&session), "0 4 1 [2] 3 5");
+        assert_eq!(next(&mut session), "3");
+
+        // Right before the current item, it played last.
+        session.move_upcoming(id(&session, "3"), Some(id(&session, "2")));
+        assert_eq!(layout(&session), "0 4 1 3 [2] 5");
+        assert_eq!(next(&mut session), "5");
+        let previous = session.previous(&LoopStatus::Off);
+        assert_eq!(previous, Some(id(&session, "3")));
+    }
+
+    #[test]
+    fn keeps_queued_items_in_place_when_moving_among_those_played() {
+        let mut session = session(6);
+        session.arrive(id(&session, "2"));
+        enqueue(&mut session, &["a", "b"]);
+        session.move_upcoming(id(&session, "b"), Some(id(&session, "4")));
+        assert_eq!(layout(&session), "0 1 [2] a 3 b 4 5");
+        session.move_upcoming(id(&session, "4"), Some(id(&session, "0")));
+        assert_eq!(layout(&session), "4 0 1 [2] a 3 b 5");
+        session.move_upcoming(id(&session, "3"), Some(id(&session, "2")));
+        assert_eq!(layout(&session), "4 0 1 3 [2] a b 5");
+    }
+
+    #[test]
+    fn moves_queued_item_into_the_context_among_those_played() {
+        let mut session = session(4);
+        session.arrive(id(&session, "1"));
+        enqueue(&mut session, &["a", "b"]);
+        session.move_upcoming(id(&session, "b"), Some(id(&session, "1")));
+        assert_eq!(layout(&session), "0 b [1] a 2 3");
+        let queued: Vec<bool> = session.entries().iter().map(|entry| entry.queued).collect();
+        assert_eq!(queued, [false, false, false, true, false, false]);
+        assert_eq!(next(&mut session), "a");
+        // It keeps its place in the context's own order.
+        session.set_shuffle(false);
+        assert_eq!(layout(&session), "0 b [1] a 2 3");
+
+        // Right before a queued item playing now, it played last.
+        session.arrive(id(&session, "a"));
+        enqueue(&mut session, &["c"]);
+        assert_eq!(layout(&session), "0 b 1 [a] c 2 3");
+        session.move_upcoming(id(&session, "c"), Some(id(&session, "a")));
+        assert_eq!(layout(&session), "0 b 1 c [a] 2 3");
+        assert_eq!(next(&mut session), "2");
+    }
+
+    #[test]
+    fn moves_upcoming_context_item_among_those_played_before_a_queued_item() {
+        let mut session = session(5);
+        session.arrive(id(&session, "1"));
+        enqueue(&mut session, &["a"]);
+        session.arrive(id(&session, "a"));
+        assert_eq!(layout(&session), "0 1 [a] 2 3 4");
+        session.move_upcoming(id(&session, "3"), Some(id(&session, "a")));
+        assert_eq!(layout(&session), "0 1 3 [a] 2 4");
+        assert_eq!(next(&mut session), "2");
+        session.move_upcoming(id(&session, "4"), Some(id(&session, "1")));
+        assert_eq!(layout(&session), "0 4 1 3 [a] 2");
+    }
+
+    #[test]
+    fn starts_the_context_with_an_item_moved_before_the_first_queued_one() {
+        let mut session = session(4);
+        enqueue(&mut session, &["a"]);
+        session.arrive(id(&session, "a"));
+        assert_eq!(layout(&session), "[a] 0 1 2 3");
+        session.move_upcoming(id(&session, "2"), Some(id(&session, "a")));
+        assert_eq!(layout(&session), "2 [a] 0 1 3");
+        assert_eq!(next(&mut session), "0");
     }
 }

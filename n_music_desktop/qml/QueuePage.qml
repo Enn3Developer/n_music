@@ -3,7 +3,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// The play session: the current track and how playback ends beside what plays next.
+// The play session: the current track and how playback ends beside what played and what plays
+// next.
 Item {
     id: page
 
@@ -28,6 +29,8 @@ Item {
     property real stride: 0
     /// The held row eases into its place once let go.
     property bool settling: false
+    /// The view showed the current track once the rows came.
+    property bool placed: false
     /// Pixels a second the list scrolls by while the pointer carries a row near its top or bottom.
     readonly property real scrollSpeed: {
         if (!dragging)
@@ -47,50 +50,24 @@ Item {
         grip = offset;
         pointer = sceneY;
         stride = row.height + list.spacing;
-        if (row.current && !queue.showHistory && queue.historyCount > 0)
-            openHistory(row);
         queue.startDrag(row.index);
         follow();
     }
 
-    // Lists the history above the current row, `row`, which stays where it shows. Rows coming in
-    // above the first one in sight leave it in place, but among those in sight they push the rest
-    // down, and the view lets go of rows pushed out of sight: the last played comes in first, right
-    // above the row, and the others above that one once it is out of sight.
-    function openHistory(row: QueueRow) {
-        const shown = row.y - list.contentY;
-        queue.revealHistory(1);
-        list.forceLayout();
-        const last = list.itemAtIndex(row.index - 1);
-        if (last !== null)
-            list.contentY = last.y + last.height;
-        queue.showHistory = true;
-        list.forceLayout();
-        list.contentY = row.y - shown;
-    }
-
-    // Keeps the held row under the pointer, anywhere for the current one, among the rows still to
-    // play for the others, and moves it to the place it shows over. Places count from the held
-    // row's own: the view shifts its rows as it scrolls far, so places measured before go stale.
+    // Keeps the held row under the pointer, anywhere in the list, and moves it to the place it
+    // shows over. Places count from the held row's own: the view shifts its rows as it scrolls
+    // far, so places measured before go stale.
     function follow() {
         if (!dragging || held === null)
             return;
         // Past the edges the list scrolls instead.
         const top = Math.max(0, Math.min(list.height, list.mapFromItem(null, 0, pointer).y)) + list.contentY - grip;
-        const first = held.y + ((held.current ? 0 : list.count - queue.leftCount) - held.index) * stride;
+        const first = held.y - held.index * stride;
         const last = held.y + (list.count - 1 - held.index) * stride;
         heldTop = Math.max(first, Math.min(last, top));
         // The view lets go of a row moved to a place out of sight.
         const shown = Math.max(list.contentY, Math.min(list.contentY + list.height - held.height, heldTop));
-        let to = held.index + Math.round((shown - held.y) / stride);
-        // A place counts from the heading over its row, which the current one takes along: the
-        // row whose place it takes must show.
-        while (to < held.index) {
-            const taken = list.itemAtIndex(to);
-            if (taken !== null && taken.y + taken.height > list.contentY)
-                break;
-            ++to;
-        }
+        const to = held.index + Math.round((shown - held.y) / stride);
         if (to !== held.index) {
             queue.dragTo(to);
             // Lays the move out now, for the held row's place to count from.
@@ -108,20 +85,44 @@ Item {
         settling = false;
     }
 
+    // Scrolls the current track to the top, the history above it.
+    function scrollToCurrent() {
+        placed = list.count > 0;
+        if (queue.historyCount > 0)
+            list.positionViewAtIndex(queue.historyCount, ListView.Beginning);
+        else
+            list.positionViewAtBeginning();
+    }
+
+    onVisibleChanged: {
+        if (visible)
+            scrollToCurrent();
+    }
+
     QueueList {
         id: queue
+        showHistory: true
         showCurrent: true
         moving: displaced.running
+    }
+
+    // The rows come once the session is read, the first ones from the current track.
+    Connections {
+        target: list
+        enabled: !page.placed
+
+        function onCountChanged() {
+            Qt.callLater(page.scrollToCurrent);
+        }
     }
 
     // Scrolls the list under a row carried near its edges.
     FrameAnimation {
         id: scroller
-        running: page.scrollSpeed < 0 ? !list.atYBeginning : page.scrollSpeed > 0 && list.contentY < list.lastY
+        running: page.scrollSpeed < 0 ? !list.atYBeginning : page.scrollSpeed > 0 && !list.atYEnd
         onTriggered: {
             const top = list.originY - list.topMargin;
-            // Past the last row only as far as the view was already.
-            const bottom = Math.max(top, list.lastY, list.contentY);
+            const bottom = Math.max(top, list.originY + list.contentHeight + list.bottomMargin - list.height);
             list.contentY = Math.max(top, Math.min(bottom, list.contentY + page.scrollSpeed * scroller.frameTime));
         }
     }
@@ -264,29 +265,70 @@ Item {
         }
     }
 
-    FlatButton {
-        id: history
-        parent: Shell.narrow && list.headerItem ? list.headerItem : page
-        x: Shell.narrow ? 0 : list.x
-        y: Shell.narrow ? now.y + now.height + 24 : 28
-        visible: queue.historyCount > 0
-        filled: true
-        iconName: queue.showHistory ? "chevron-down" : "chevron-right"
-        text: Tr.t.history_played.arg(Format.number(queue.historyCount))
-        onClicked: queue.showHistory = !queue.showHistory
+    // What the session plays from and what to do with it, the actions under it when both do not
+    // fit side by side.
+    Item {
+        id: origin
+
+        readonly property bool wraps: playingFrom.implicitWidth + 12 + actions.width > width
+
+        x: list.x
+        y: Shell.narrow ? bar.height + 12 : 28
+        width: list.width
+        height: wraps ? playingFrom.height + 6 + actions.height : actions.height
+        visible: list.count > 0
+
+        Label {
+            id: playingFrom
+            anchors.left: parent.left
+            anchors.right: origin.wraps ? parent.right : actions.left
+            anchors.rightMargin: origin.wraps ? 0 : 12
+            y: origin.wraps ? 0 : (actions.height - height) / 2
+            text: Tr.t.playing_from.arg(page.contextDescription)
+            elide: Text.ElideRight
+            color: Theme.text2
+            font.pixelSize: 13
+        }
+        Row {
+            id: actions
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            spacing: 14
+
+            FlatButton {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: queue.upNextCount > 0
+                text: Tr.t.clear_queued
+                onClicked: queue.clearUpNext()
+            }
+            AbstractButton {
+                id: link
+                anchors.verticalCenter: parent.verticalCenter
+                height: 32
+                hoverEnabled: true
+                text: Tr.t.open_in_library
+                onClicked: page.navigate(queue.contextPage)
+
+                background: null
+                contentItem: Label {
+                    text: link.text
+                    verticalAlignment: Text.AlignVCenter
+                    color: link.hovered ? Theme.text : Theme.text2
+                    font.pixelSize: 13
+                    font.underline: true
+                }
+            }
+        }
     }
 
     ListView {
         id: list
         x: Shell.narrow ? 16 : 28 + page.nowWidth + 32
-        y: Shell.narrow ? bar.height : history.visible ? history.y + history.height + 16 : 0
+        y: origin.y + origin.height + 12
         width: Shell.narrow ? page.width - 32 : page.width - x - 28
         height: parent.height - y
-        topMargin: history.visible || Shell.narrow ? 0 : 28
         header: Shell.narrow ? nowHolder : null
-        // While a row is held the view keeps its place past the last row, where history opening
-        // above it would have it move.
-        bottomMargin: page.dragging ? Math.max(endMargin, height) : endMargin
+        bottomMargin: 24
         clip: true
         spacing: 6
         model: queue
@@ -297,40 +339,8 @@ Item {
         displayMarginEnd: page.dragging ? 2 * page.stride : 0
         boundsBehavior: Flickable.StopAtBounds
         Accessible.name: Tr.t.queue
-
-        readonly property real endMargin: 24
-        /// The view's place with the last row at its bottom.
-        readonly property real lastY: Math.max(originY - topMargin, originY + contentHeight + endMargin - height)
-        /// How far the rows are scrolled from their top, margin included; kept while the margin
-        /// changes.
-        property real scrolled: 0
-        /// The margin above the rows, as last seen.
-        property real seenTopMargin: 0
-
-        function trackScroll() {
-            // Flickable moves the rows into new bounds before telling of a new margin.
-            if (topMargin === seenTopMargin)
-                scrolled = contentY - originY + topMargin;
-        }
-
-        Component.onCompleted: {
-            seenTopMargin = topMargin;
-            trackScroll();
-        }
-        onOriginYChanged: trackScroll()
-        onContentYChanged: {
-            trackScroll();
-            // Scrolling happens in the view's layout too, where its model must not change.
-            Qt.callLater(page.follow);
-        }
-        // The margin comes and goes with the history button: the rows keep their place under it.
-        onTopMarginChanged: {
-            seenTopMargin = topMargin;
-            contentY = originY - topMargin + scrolled;
-        }
-
-        section.property: "section"
-        section.delegate: SectionHeader {}
+        // Scrolling happens in the view's layout too, where its model must not change.
+        onContentYChanged: Qt.callLater(page.follow)
 
         delegate: QueueRow {
             id: entry
@@ -364,15 +374,6 @@ Item {
                 }
             }
         }
-        // Back to the last row's place gently once the row is let go.
-        Behavior on bottomMargin {
-            enabled: list.bottomMargin > list.endMargin
-
-            NumberAnimation {
-                duration: 250
-                easing.type: Easing.OutCubic
-            }
-        }
         // Rows make way for the one dragged over them.
         moveDisplaced: Transition {
             id: displaced
@@ -397,7 +398,7 @@ Item {
         onTriggered: page.navigate("tracks")
     }
 
-    // Holds what plays now and the history button in narrow windows.
+    // Holds what plays now in narrow windows.
     Component {
         id: nowHolder
 
@@ -406,87 +407,13 @@ Item {
             property real seen: height
 
             width: list.width
-            height: now.y + now.height + 24 + (history.visible ? history.height + 16 : 0)
+            height: now.y + now.height + 24
             // The view keeps its position as this grows above the tracks, which would scroll
             // this out of view while it shows.
             onHeightChanged: {
                 if (list.contentY < 0)
                     list.contentY -= height - seen;
                 seen = height;
-            }
-        }
-    }
-
-    // ListView shows section headers itself, so history's empty one hides its content.
-    component SectionHeader: Item {
-        id: header
-
-        required property string section
-        /// Apart from the history shown above. Outside the column, whose size follows later: the
-        /// rows under it move at once when the history opens.
-        readonly property real gap: queue.showHistory && queue.historyCount > 0 ? 16 : 0
-
-        width: list.width
-        height: content.visible ? gap + content.implicitHeight : 0
-
-        Column {
-            id: content
-            y: header.gap
-            width: parent.width
-            visible: header.section === "next"
-            bottomPadding: 6
-            spacing: 6
-
-            Item {
-                width: parent.width
-                height: 32
-
-                Label {
-                    anchors.left: parent.left
-                    anchors.right: actions.left
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: Tr.t.up_next
-                    elide: Text.ElideRight
-                    color: Theme.text
-                    font.pixelSize: 18
-                    font.weight: Font.Bold
-                }
-                Row {
-                    id: actions
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 14
-
-                    FlatButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: queue.upNextCount > 0
-                        text: Tr.t.clear_queued
-                        onClicked: queue.clearUpNext()
-                    }
-                    AbstractButton {
-                        id: link
-                        anchors.verticalCenter: parent.verticalCenter
-                        hoverEnabled: true
-                        text: Tr.t.open_in_library
-                        onClicked: page.navigate(queue.contextPage)
-
-                        background: null
-                        contentItem: Label {
-                            text: link.text
-                            color: link.hovered ? Theme.text : Theme.text2
-                            font.pixelSize: 13
-                            font.underline: true
-                        }
-                    }
-                }
-            }
-            Label {
-                width: parent.width
-                text: Tr.t.playing_from.arg(page.contextDescription)
-                elide: Text.ElideRight
-                color: Theme.text2
-                font.pixelSize: 13
             }
         }
     }

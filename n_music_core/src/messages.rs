@@ -29,8 +29,9 @@ pub struct RemoveQueued(pub ItemId);
 pub struct ClearQueued;
 /// Moves an item still to play to play right before `before`, another one still to play, or
 /// (`None`) after all of them; the others keep their order. Queued items and the context's go
-/// anywhere among each other. A move of the context's is kept for the rounds after, until
-/// shuffle changes.
+/// anywhere among each other. `before` playing now or played, it goes right before it among those
+/// played and counts as played: a queued item joins the context there. A move of the context's is
+/// kept for the rounds after, until shuffle changes.
 pub struct MoveUpcoming {
     pub item: ItemId,
     pub before: Option<ItemId>,
