@@ -12,6 +12,8 @@
       <sourceFolder url="file://$MODULE_DIR$/n_music_desktop/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/n_music_core/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/n_music_media_notification/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/n_music_ffi/bindgen/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/n_music_ffi/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_audio/target" />
       <excludeFolder url="file://$MODULE_DIR$/n_player/target" />
