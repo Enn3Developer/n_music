@@ -308,8 +308,11 @@ impl Catalog {
 /// The text a [`Filter::Folder`] prefix is matched against.
 fn location(locator: &Locator) -> &str {
     match locator {
-        Locator::Local(path) | Locator::DocumentTree(path) | Locator::Web(path) => path,
-        Locator::Document { uri, .. } => uri,
+        Locator::Local(path)
+        | Locator::DocumentTree(path)
+        | Locator::Web(path)
+        | Locator::TelegramChat(path) => path,
+        Locator::Document { uri, .. } | Locator::TelegramAudio { uri, .. } => uri,
     }
 }
 

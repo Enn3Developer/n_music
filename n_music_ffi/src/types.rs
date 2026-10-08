@@ -26,6 +26,8 @@ pub enum Locator {
     DocumentTree(String),
     Document { uri: String, name: String },
     Web(String),
+    TelegramChat(String),
+    TelegramAudio { uri: String, name: String },
 }
 
 #[uniffi::remote(Enum)]

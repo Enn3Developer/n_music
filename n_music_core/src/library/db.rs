@@ -32,6 +32,8 @@ const KIND_DOCUMENT: i64 = 1;
 const KIND_WEB: i64 = 2;
 /// Only of libraries.
 const KIND_TREE: i64 = 3;
+/// A chat on Telegram as a library, an audio file sent in one as a track.
+const KIND_TELEGRAM: i64 = 4;
 
 /// A track as last scanned.
 pub struct StoredTrack {
@@ -557,13 +559,14 @@ fn linked(conn: &Connection, id: i64) -> Result<HashMap<String, (i64, Option<Str
     rows.collect()
 }
 
-/// `None` for a document, which is no library.
+/// `None` for a document or a Telegram audio file, which are no libraries.
 fn encode_library(library: &Locator) -> Option<(i64, &str)> {
     match library {
         Locator::Local(path) => Some((KIND_LOCAL, path)),
         Locator::Web(address) => Some((KIND_WEB, address)),
         Locator::DocumentTree(uri) => Some((KIND_TREE, uri)),
-        Locator::Document { .. } => None,
+        Locator::TelegramChat(uri) => Some((KIND_TELEGRAM, uri)),
+        Locator::Document { .. } | Locator::TelegramAudio { .. } => None,
     }
 }
 
@@ -572,16 +575,19 @@ fn decode_library(kind: i64, location: String) -> Option<Locator> {
         KIND_LOCAL => Some(Locator::Local(location)),
         KIND_WEB => Some(Locator::Web(location)),
         KIND_TREE => Some(Locator::DocumentTree(location)),
+        KIND_TELEGRAM => Some(Locator::TelegramChat(location)),
         _ => None,
     }
 }
 
+/// `None` for a document tree or a Telegram chat, which are no tracks.
 pub(super) fn encode_locator(locator: &Locator) -> Option<(i64, &str, Option<&str>)> {
     match locator {
         Locator::Local(path) => Some((KIND_LOCAL, path, None)),
         Locator::Document { uri, name } => Some((KIND_DOCUMENT, uri, Some(name))),
         Locator::Web(address) => Some((KIND_WEB, address, None)),
-        Locator::DocumentTree(_) => None,
+        Locator::TelegramAudio { uri, name } => Some((KIND_TELEGRAM, uri, Some(name))),
+        Locator::DocumentTree(_) | Locator::TelegramChat(_) => None,
     }
 }
 
@@ -593,6 +599,10 @@ pub(super) fn decode_locator(kind: i64, location: String, name: Option<String>) 
             name: name.unwrap_or_default(),
         }),
         KIND_WEB => Some(Locator::Web(location)),
+        KIND_TELEGRAM => Some(Locator::TelegramAudio {
+            uri: location,
+            name: name.unwrap_or_default(),
+        }),
         _ => None,
     }
 }
@@ -698,5 +708,40 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM track_artists", [], |row| row.get(0))
             .unwrap();
         assert_eq!(artists, 1);
+    }
+
+    #[test]
+    fn telegram_tracks_and_libraries_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = open(dir.path());
+        let chat = Locator::telegram_chat(-1001234567890);
+        let audio = Locator::telegram_audio(-1001234567890, 42, "Song.flac".into());
+        let mut track = TrackInfo::placeholder(audio.clone());
+        track.title = "Song".into();
+        db.save(&[ScannedTrack {
+            locator: &audio,
+            version: 3,
+            info: Some(&track),
+        }])
+        .unwrap();
+        db.link(
+            &[LibraryTracks {
+                library: &chat,
+                tracks: vec![&audio],
+                reachable: true,
+            }],
+            || vec![chat.clone()],
+        )
+        .unwrap();
+        db.name_library(&chat, Some("Music")).unwrap();
+        drop(db);
+
+        let db = open(dir.path());
+        assert_eq!(db.tracks().unwrap()[&audio].info.as_ref(), Some(&track));
+        assert_eq!(
+            db.library_tracks(std::slice::from_ref(&chat)).unwrap()[&chat],
+            [audio]
+        );
+        assert_eq!(db.library_names().unwrap()[&chat], "Music");
     }
 }

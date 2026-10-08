@@ -2,10 +2,12 @@
 //!
 //! A [`Locator`] identifies a track independently of how it is stored, and a [`StreamProvider`]
 //! turns locators into readable streams. Everything that reads audio goes through a provider,
-//! so new backends (Android documents, HTTP, ...) only have to implement [`StreamProvider`].
+//! so new backends (Android documents, HTTP, Telegram, ...) only have to implement
+//! [`StreamProvider`].
 
 pub(crate) mod cache;
 mod local;
+mod telegram;
 mod web;
 
 pub use local::LocalProvider;
@@ -34,6 +36,13 @@ pub enum Locator {
     /// An `http` or `https` address: an M3U or PLS playlist as a library root, a file as a
     /// track.
     Web(String),
+    /// A chat on Telegram as a library root, `telegram:<chat id>`: a channel, a group or Saved
+    /// Messages. The audio files sent in it are its tracks.
+    TelegramChat(String),
+    /// An audio file sent in a chat on Telegram, `telegram:<chat id>/<message id>`. Like a
+    /// [`Locator::Document`], its file name is kept alongside: it gives the format and stands in
+    /// for a missing title.
+    TelegramAudio { uri: String, name: String },
 }
 
 impl Locator {
@@ -43,10 +52,44 @@ impl Locator {
         web::normalize(address).map(Locator::Web)
     }
 
+    /// The [`Locator::TelegramChat`] of the chat `chat`, by its Bot API style id.
+    pub fn telegram_chat(chat: i64) -> Self {
+        Locator::TelegramChat(telegram::chat_uri(chat))
+    }
+
+    /// The [`Locator::TelegramAudio`] of the file sent as `message` in `chat`, named `name`.
+    pub fn telegram_audio(chat: i64, message: i32, name: String) -> Self {
+        Locator::TelegramAudio {
+            uri: telegram::audio_uri(chat, message),
+            name,
+        }
+    }
+
+    /// A [`Locator::TelegramChat`] for `location` when it is the text of one, written the way
+    /// [`Locator::telegram_chat`] writes it.
+    pub fn telegram(location: &str) -> Option<Self> {
+        match telegram::parse(location.trim()) {
+            Some((chat, None)) => Some(Locator::telegram_chat(chat)),
+            _ => None,
+        }
+    }
+
+    /// The chat of a [`Locator::TelegramChat`] or [`Locator::TelegramAudio`], and the message
+    /// the latter was sent as.
+    pub fn telegram_ids(&self) -> Option<(i64, Option<i32>)> {
+        match self {
+            Locator::TelegramChat(uri) | Locator::TelegramAudio { uri, .. } => telegram::parse(uri),
+            _ => None,
+        }
+    }
+
     /// Streamed from elsewhere rather than read on this device: the stream cache keeps copies
     /// of these.
     pub fn is_remote(&self) -> bool {
-        matches!(self, Locator::Web(_))
+        matches!(
+            self,
+            Locator::Web(_) | Locator::TelegramChat(_) | Locator::TelegramAudio { .. }
+        )
     }
 
     /// Lower-case file extension, used as a format hint and for tag readers.
@@ -69,8 +112,12 @@ impl Locator {
 
     fn file_name(&self) -> Cow<'_, str> {
         match self {
-            Locator::Local(path) | Locator::DocumentTree(path) => Cow::Borrowed(path),
-            Locator::Document { name, .. } => Cow::Borrowed(name),
+            Locator::Local(path) | Locator::DocumentTree(path) | Locator::TelegramChat(path) => {
+                Cow::Borrowed(path)
+            }
+            Locator::Document { name, .. } | Locator::TelegramAudio { name, .. } => {
+                Cow::Borrowed(name)
+            }
             Locator::Web(address) => Cow::Owned(web::file_name(address)),
         }
     }
@@ -79,10 +126,11 @@ impl Locator {
 impl Display for Locator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Locator::Local(text) | Locator::DocumentTree(text) | Locator::Web(text) => {
-                f.write_str(text)
-            }
-            Locator::Document { uri, .. } => f.write_str(uri),
+            Locator::Local(text)
+            | Locator::DocumentTree(text)
+            | Locator::Web(text)
+            | Locator::TelegramChat(text) => f.write_str(text),
+            Locator::Document { uri, .. } | Locator::TelegramAudio { uri, .. } => f.write_str(uri),
         }
     }
 }
@@ -121,6 +169,7 @@ pub struct Providers {
     local: Option<Arc<dyn StreamProvider>>,
     documents: Option<Arc<dyn StreamProvider>>,
     web: Option<Arc<dyn StreamProvider>>,
+    telegram: Option<Arc<dyn StreamProvider>>,
     cache: Option<Arc<StreamCache>>,
 }
 
@@ -171,6 +220,7 @@ impl Providers {
             Locator::Local(_) => &self.local,
             Locator::DocumentTree(_) | Locator::Document { .. } => &self.documents,
             Locator::Web(_) => &self.web,
+            Locator::TelegramChat(_) | Locator::TelegramAudio { .. } => &self.telegram,
         };
         provider.as_ref().ok_or_else(|| {
             io::Error::new(

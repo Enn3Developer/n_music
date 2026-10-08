@@ -208,4 +208,6 @@ val Locator.key: String
         is Locator.DocumentTree -> v1
         is Locator.Document -> uri
         is Locator.Web -> v1
+        is Locator.TelegramChat -> v1
+        is Locator.TelegramAudio -> uri
     }

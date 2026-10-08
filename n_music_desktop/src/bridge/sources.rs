@@ -19,10 +19,10 @@ pub mod qobject {
         /// The sources in the order added, as `{ name, displayName, defaultName, kind, location,
         /// tracks, cover, available, updating }`: `name` is what it is called, its `displayName`
         /// when it was given one (empty otherwise), else its `defaultName`, its folder's or
-        /// playlist's; `kind` is `folder` or `web`, `tracks` how many tracks of the library it
-        /// listed, `cover` the cover of one of them or empty, `available` false when the folder
-        /// is gone or the playlist could not be reached, and `updating` true while it is scanned
-        /// or waits for a scan.
+        /// playlist's; `kind` is `folder`, `web` or `telegram`, `tracks` how many tracks of the
+        /// library it listed, `cover` the cover of one of them or empty, `available` false when
+        /// the folder is gone or the playlist or chat could not be reached, and `updating` true
+        /// while it is scanned or waits for a scan.
         #[qproperty(QVariant, items)]
         /// The library reported its sources: `items` lists them.
         #[qproperty(bool, loaded)]
@@ -385,19 +385,24 @@ fn scan(location: &str, check_cache: bool) {
     }
 }
 
-/// The source at `location`, as `Sources.items` writes it: a web playlist or a folder.
+/// The source at `location`, as `Sources.items` writes it: a web playlist, a Telegram chat or
+/// a folder.
 pub fn locator(location: &str) -> Locator {
-    match Locator::web(location) {
-        Some(_) => Locator::Web(location.to_string()),
-        None => Locator::Local(location.to_string()),
+    if Locator::web(location).is_some() {
+        Locator::Web(location.to_string())
+    } else if let Some(chat) = Locator::telegram(location) {
+        chat
+    } else {
+        Locator::Local(location.to_string())
     }
 }
 
 /// What the source at `location` is called without a name of its own: its folder's name, or
-/// its playlist's.
+/// its playlist's. A Telegram chat is named after its title when added.
 fn default_name(location: &str) -> String {
     match locator(location) {
         root @ Locator::Web(_) => root.display_name(),
+        Locator::TelegramChat(_) => String::from("Telegram"),
         _ => Path::new(location).file_name().map_or_else(
             || location.to_string(),
             |name| name.to_string_lossy().into_owned(),
@@ -425,6 +430,10 @@ fn describe(catalog: &Catalog, root: &Locator, updating: bool) -> Source {
         // Unknown before its first listing.
         Locator::Web(_) => (
             "web",
+            catalog.listed(root).is_none_or(|listed| listed.reachable),
+        ),
+        Locator::TelegramChat(_) | Locator::TelegramAudio { .. } => (
+            "telegram",
             catalog.listed(root).is_none_or(|listed| listed.reachable),
         ),
         // Android's documents do not come up on the desktop.

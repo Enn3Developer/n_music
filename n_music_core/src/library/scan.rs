@@ -375,10 +375,10 @@ impl Loading<'_> {
                 self.writer
                     .emit_tagged(self.tag, ScanEvent::Loaded(track.clone()));
             }
-            // A file on the web that could not be read may be back later: it is not stored as
+            // A remote track that could not be read may be back later: it is not stored as
             // unreadable.
-            let web = matches!(entry.locator, Locator::Web(_));
-            let version = entry.version.filter(|_| track.is_some() || !web);
+            let remote = entry.locator.is_remote();
+            let version = entry.version.filter(|_| track.is_some() || !remote);
             if tx.send((entry.locator, version, track)).is_err() {
                 break;
             }
