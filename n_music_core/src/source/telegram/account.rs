@@ -9,6 +9,8 @@ use crate::source::Locator;
 use grammers_client::client::{LoginToken, PasswordToken};
 use grammers_client::peer::{Peer, User};
 use grammers_client::sender::{ConnectionParams, SenderPool};
+use grammers_client::session::types::{PeerId, PeerRef};
+use grammers_client::session::Session;
 use grammers_client::{Client, InvocationError, SignInError};
 use std::future::Future;
 use std::io;
@@ -265,6 +267,61 @@ impl TelegramAccount {
             }
             Ok(chats)
         })
+        .inspect(|chats| self.remember_usernames(chats))
+    }
+
+    /// Keeps the usernames of the public chats among `chats`, to find them again later.
+    fn remember_usernames(&self, chats: &[TelegramChatInfo]) {
+        for chat in chats {
+            let id = chat.locator.telegram_ids().map(|(id, _)| id);
+            if let (Some(id), Some(username)) = (id, &chat.username) {
+                if let Err(error) = self.store.set_username(id, username) {
+                    log::warn!("Could not keep the username of a Telegram chat: {error}");
+                }
+            }
+        }
+    }
+
+    /// The reference Telegram asks for to reach the chat `chat`, from the session; one the
+    /// session does not know is looked up by its username, or among the account's chats.
+    pub(super) fn peer(&self, chat: i64) -> Result<PeerRef, TelegramError> {
+        if !self.is_signed_in() {
+            return Err(TelegramError::SignedOut);
+        }
+        let id = PeerId::from_bot_api_dialog_id(chat)
+            .ok_or_else(|| TelegramError::Failed(format!("{chat} is not a Telegram chat")))?;
+        let known = |store: &SessionStore| {
+            self.runtime
+                .block_on(store.peer_ref(id))
+                .map_err(|error| TelegramError::Failed(error.to_string()))
+        };
+        if let Some(peer) = known(&self.store)? {
+            return Ok(peer);
+        }
+        // Listing the chats, or looking a public one up by its username, puts it in the session.
+        let username = self
+            .store
+            .username(chat)
+            .map_err(|error| TelegramError::Failed(error.to_string()))?;
+        let client = self.client();
+        self.block_on(TIMEOUT, async {
+            if let Some(username) = username {
+                match client.resolve_username(&username).await {
+                    Ok(Some(peer)) if peer.id() == id => return Ok(()),
+                    Ok(_) => {}
+                    Err(error) if error.is("USERNAME_INVALID") => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            let mut dialogs = client.iter_dialogs();
+            while let Some(dialog) = dialogs.next().await? {
+                if dialog.peer_id() == id {
+                    return Ok(());
+                }
+            }
+            Ok(())
+        })?;
+        known(&self.store)?.ok_or(TelegramError::NotFound)
     }
 
     /// The client, connected when it was not.

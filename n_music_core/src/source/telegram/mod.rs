@@ -10,12 +10,18 @@
 #[cfg(feature = "telegram")]
 mod account;
 #[cfg(feature = "telegram")]
+mod chunks;
+#[cfg(feature = "telegram")]
+mod provider;
+#[cfg(feature = "telegram")]
 pub(crate) mod service;
 #[cfg(feature = "telegram")]
 mod session;
 
 #[cfg(feature = "telegram")]
 pub use account::{TelegramAccount, TelegramCredentials};
+#[cfg(feature = "telegram")]
+pub(crate) use provider::TelegramProvider;
 
 use super::Locator;
 use std::fmt::{self, Display, Formatter};

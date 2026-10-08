@@ -24,6 +24,14 @@ use std::sync::Arc;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::io::MediaSource;
 
+/// Extensions of audio files, taken for audio whatever their MIME type says: Android derives MIME
+/// types from extensions and does not know every audio container, and reports Ogg as
+/// `application/ogg`; Telegram sends files with what their sender's system said.
+pub const AUDIO_EXTENSIONS: &[&str] = &[
+    "aac", "aif", "aiff", "caf", "dca", "flac", "m4a", "mka", "mp3", "oga", "ogg", "opus", "wav",
+    "webm",
+];
+
 /// Identity of a track (or of a library root) across the whole app.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Locator {
@@ -200,6 +208,7 @@ impl Providers {
     /// `account`, which the engine signs in and out of on the bus.
     #[cfg(feature = "telegram")]
     pub fn with_telegram(mut self, account: Arc<telegram::TelegramAccount>) -> Self {
+        self.telegram = Some(Arc::new(telegram::TelegramProvider::new(account.clone())));
         self.telegram_account = Some(account);
         self
     }

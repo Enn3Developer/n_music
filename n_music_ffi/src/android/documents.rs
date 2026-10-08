@@ -4,19 +4,15 @@
 
 use jni::objects::{Global, JObject, JString};
 use jni::{jni_sig, jni_str, Env, JavaVM};
-use n_music_core::source::{version_stamp, Locator, OpenedStream, StreamProvider, TrackEntry};
+use n_music_core::source::{
+    version_stamp, Locator, OpenedStream, StreamProvider, TrackEntry, AUDIO_EXTENSIONS,
+};
 use std::fs::File;
 use std::io;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::sync::Arc;
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
-/// Android derives MIME types from extensions and does not know every audio container
-/// (or reports Ogg as `application/ogg`), so these are accepted regardless of MIME type.
-const AUDIO_EXTENSIONS: &[&str] = &[
-    "aac", "aif", "aiff", "caf", "dca", "flac", "m4a", "mka", "mp3", "oga", "ogg", "opus", "wav",
-    "webm",
-];
 
 /// `DocumentsContract.Document` columns read for each child, in cursor order.
 const COLUMNS: [&str; 5] = [

@@ -2,6 +2,9 @@
 //! Telegram's data centers, the access hashes of the chats met, which Telegram asks for to reach
 //! a chat by its id, and the signed-in account's name. Whoever has the file is signed in.
 //!
+//! It also keeps the usernames of the public chats met, after signing out too: a public channel
+//! the account never joined is not among its chats, and is found again by its username.
+//!
 //! Updates are never asked for, so their state is only kept in memory.
 
 use grammers_client::session::types::{
@@ -31,6 +34,8 @@ const SCHEMA: &str = "
     CREATE TABLE peer_info (peer_id INTEGER NOT NULL PRIMARY KEY, hash INTEGER, subtype INTEGER);
     -- The signed-in account: one row while signed in.
     CREATE TABLE account (id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0), name TEXT NOT NULL);
+    -- Public chats by Bot API style id, with their username.
+    CREATE TABLE username (peer_id INTEGER NOT NULL PRIMARY KEY, username TEXT NOT NULL);
 ";
 
 /// Bits of `peer_info.subtype`, as grammers' own SQLite session writes them.
@@ -168,7 +173,29 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Forgets everything: the account, the keys and the chats met.
+    /// Remembers that the public chat `chat` goes by `username`.
+    pub(crate) fn set_username(&self, chat: i64, username: &str) -> Result<()> {
+        self.db().execute(
+            "INSERT OR REPLACE INTO username (peer_id, username) VALUES (?1, ?2)",
+            params![chat, username],
+        )?;
+        Ok(())
+    }
+
+    /// The username the public chat `chat` went by when last met.
+    pub(crate) fn username(&self, chat: i64) -> Result<Option<String>> {
+        Ok(self
+            .db()
+            .query_row(
+                "SELECT username FROM username WHERE peer_id = ?1",
+                [chat],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Forgets the account, the keys and the access hashes of the chats met; not the usernames
+    /// of public chats.
     pub(crate) fn clear(&self) -> Result<()> {
         self.db().execute_batch(
             "DELETE FROM account; DELETE FROM peer_info; DELETE FROM dc_option; \
@@ -441,10 +468,16 @@ mod tests {
             assert_eq!(session.peer(me.id()).await.unwrap(), Some(me));
             let reference = session.peer_ref(channel.id()).await.unwrap().unwrap();
             assert_eq!(reference.auth.hash(), 99);
-            assert_eq!(session.peer(channel.id()).await.unwrap(), Some(channel));
+            assert_eq!(
+                session.peer(channel.id()).await.unwrap(),
+                Some(channel.clone())
+            );
         });
 
+        let chat = channel.id().bot_api_dialog_id_unchecked();
+        session.set_username(chat, "music").unwrap();
         session.clear().unwrap();
+        assert_eq!(session.username(chat).unwrap().as_deref(), Some("music"));
         assert_eq!(session.account().unwrap(), None);
         assert_eq!(session.home_dc_id().unwrap(), default_home);
         assert_eq!(session.dc_option(9).unwrap(), None);
