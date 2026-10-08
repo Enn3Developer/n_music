@@ -54,15 +54,15 @@ Item {
         follow();
     }
 
-    // Keeps the held row under the pointer, anywhere for the current one, among the rows still to
-    // play for the others, and moves it to the place it shows over. Places count from the held
-    // row's own: the view shifts its rows as it scrolls far, so places measured before go stale.
+    // Keeps the held row under the pointer, anywhere in the list, and moves it to the place it
+    // shows over. Places count from the held row's own: the view shifts its rows as it scrolls
+    // far, so places measured before go stale.
     function follow() {
         if (!dragging || held === null)
             return;
         // Past the edges the list scrolls instead.
         const top = Math.max(0, Math.min(list.height, list.mapFromItem(null, 0, pointer).y)) + list.contentY - grip;
-        const first = held.y + ((held.current ? 0 : list.count - queue.leftCount) - held.index) * stride;
+        const first = held.y - held.index * stride;
         const last = held.y + (list.count - 1 - held.index) * stride;
         heldTop = Math.max(first, Math.min(last, top));
         // The view lets go of a row moved to a place out of sight.

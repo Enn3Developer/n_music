@@ -107,8 +107,8 @@ pub mod qobject {
         /// place. Session updates wait until the drag ends, so no row moves under the pointer.
         #[qinvokable]
         fn start_drag(self: Pin<&mut QueueList>, row: i32);
-        /// Moves the dragged item to `row` in this list alone: the current one anywhere, one
-        /// still to play among the others.
+        /// Moves the dragged item to `row` in this list alone: anywhere, one still to play
+        /// counting as played above the current one.
         #[qinvokable]
         fn drag_to(self: Pin<&mut QueueList>, row: i32);
         /// Ends the drag: the dragged item plays where it was dropped when `keep`, or goes back
@@ -193,6 +193,8 @@ struct Drag {
     /// Its row when picked up.
     from: usize,
     current: bool,
+    /// Queued with `Enqueue`: among those played, it joins the context.
+    queued: bool,
     /// The rows played before the current item when picked up, the first ones.
     played: usize,
 }
@@ -488,7 +490,7 @@ impl qobject::QueueList {
         let Some(found) = self.row(row).filter(|found| found.section == Section::Next) else {
             return;
         };
-        let (item, from, current) = (found.item, row as usize, found.current);
+        let (item, from, current, queued) = (found.item, row as usize, found.current, found.queued);
         let played = self
             .rows
             .iter()
@@ -498,6 +500,7 @@ impl qobject::QueueList {
             item,
             from,
             current,
+            queued,
             played,
         });
     }
@@ -506,6 +509,7 @@ impl qobject::QueueList {
         let Some(&Drag {
             item,
             current,
+            queued,
             played,
             ..
         }) = self.drag.as_ref()
@@ -515,7 +519,8 @@ impl qobject::QueueList {
         let Some(from) = self.rows.iter().position(|row| row.item == item) else {
             return;
         };
-        let first = if current {
+        // Those still to play go among those played too, above the current item.
+        let first = if current || self.rows.iter().any(|row| row.current) {
             0
         } else {
             self.rows
@@ -530,6 +535,8 @@ impl qobject::QueueList {
         self.as_mut().move_row(from, to);
         if current {
             self.split_at_current(from, to, played);
+        } else {
+            self.section_dragged(to, queued);
         }
     }
 
@@ -555,6 +562,8 @@ impl qobject::QueueList {
                     self.as_mut().move_row(at, drag.from);
                     if drag.current {
                         self.as_mut().split_at_current(at, drag.from, drag.played);
+                    } else {
+                        self.as_mut().section_dragged(drag.from, drag.queued);
                     }
                 }
                 if self.missed {
@@ -602,13 +611,39 @@ impl qobject::QueueList {
             }
         }
         if let Some((first, last)) = changed {
-            let root = QModelIndex::default();
-            let top_left = self.index(clamp(first), 0, &root);
-            let bottom_right = self.index(clamp(last), 0, &root);
-            let mut roles = QList::default();
-            roles.append(SECTION);
-            self.as_mut().data_changed(&top_left, &bottom_right, &roles);
+            self.rows_changed(first, last, &[SECTION]);
         }
+    }
+
+    /// Sections the dragged item at `at`, one still to play, by where it stands: above the
+    /// current item it counts as played, and one `queued` joins the context.
+    fn section_dragged(mut self: Pin<&mut Self>, at: usize, queued: bool) {
+        let section = match self.rows.iter().position(|row| row.current) {
+            Some(current) if at < current => Section::History,
+            _ => Section::Next,
+        };
+        let queued = queued && section == Section::Next;
+        if self.rows[at].section != section || self.rows[at].queued != queued {
+            {
+                let mut list = self.as_mut().rust_mut();
+                list.rows[at].section = section;
+                list.rows[at].queued = queued;
+            }
+            self.rows_changed(at, at, &[SECTION, QUEUED]);
+        }
+    }
+
+    /// Tells the view `roles` of the rows from `first` to `last` changed.
+    fn rows_changed(mut self: Pin<&mut Self>, first: usize, last: usize, roles: &[i32]) {
+        let root = QModelIndex::default();
+        let top_left = self.index(clamp(first), 0, &root);
+        let bottom_right = self.index(clamp(last), 0, &root);
+        let mut changed = QList::default();
+        for &role in roles {
+            changed.append(role);
+        }
+        self.as_mut()
+            .data_changed(&top_left, &bottom_right, &changed);
     }
 }
 

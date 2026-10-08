@@ -32,7 +32,8 @@ Rectangle {
 
     /// Smaller covers and tighter rows, from the settings.
     readonly property bool dense: AppState.compactRows
-    readonly property bool movable: section === "next"
+    /// One dragged among those played stays held.
+    readonly property bool movable: section === "next" || dragged
 
     implicitHeight: dense ? 42 : 54
     radius: 8
