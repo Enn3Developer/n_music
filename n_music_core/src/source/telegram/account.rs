@@ -339,7 +339,9 @@ impl TelegramAccount {
         future: impl Future<Output = Result<T, TelegramError>>,
     ) -> Result<T, TelegramError> {
         let run = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            self.runtime.block_on(tokio::time::timeout(timeout, future))
+            // The timer is made in the runtime, which keeps it.
+            self.runtime
+                .block_on(async { tokio::time::timeout(timeout, future).await })
         }));
         match run {
             Ok(Ok(result)) => result,
@@ -514,6 +516,29 @@ mod tests {
         );
         assert_eq!(phone_number("(555) 0132"), None);
         assert_eq!(phone_number("+1 234 567 890 123 456"), None);
+    }
+
+    #[test]
+    fn requests_run_on_the_runtime_until_their_time_is_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let credentials = TelegramCredentials::new(Some("1"), Some("hash")).unwrap();
+        let account = TelegramAccount::open(dir.path(), credentials).unwrap();
+        let answered = account.block_on(Duration::from_secs(5), async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok(7)
+        });
+        assert_eq!(answered, Ok(7));
+        let never = account.block_on(
+            Duration::from_millis(20),
+            std::future::pending::<Result<(), _>>(),
+        );
+        assert!(matches!(never, Err(TelegramError::Offline(_))));
+        let panicked = account.block_on(Duration::from_secs(5), async {
+            panic!("grammers failed");
+            #[allow(unreachable_code)]
+            Ok(())
+        });
+        assert!(matches!(panicked, Err(TelegramError::Failed(_))));
     }
 
     #[test]
