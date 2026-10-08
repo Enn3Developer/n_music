@@ -1,419 +1,46 @@
-//! A file on the web, read while a thread downloads it ahead of reading: the decoder shares its
-//! thread with the playback controls, so it must not wait on the network.
+//! A file on the web, read while a thread downloads it ahead of reading. Where the server
+//! answers range requests, a jump costs a request; elsewhere the file comes in one piece, and
+//! jumping back downloads it again.
 
 use super::failed;
-use std::collections::VecDeque;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::mem;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
-use symphonia::core::io::MediaSource;
+use crate::source::ahead::{Part, Remote, RemoteFile, MIN_AHEAD, RETRIES};
+use std::io;
+use std::time::Duration;
 use ureq::http::{Response, StatusCode};
 use ureq::{Agent, Body};
 
-/// How far ahead of reading the download goes, at least and at most: in between, as much as
-/// reading read since it last jumped. Reading tags then fetches little, and playing keeps
-/// seconds of audio at hand.
-const MIN_AHEAD: u64 = 256 * 1024;
-const MAX_AHEAD: u64 = 8 * 1024 * 1024;
-/// How far ahead the download goes right after reading jumps, then twice what reading read
-/// until that reaches `MIN_AHEAD`: seeking jumps around, reading a few KiB at each stop before
-/// it lands.
-const JUMP_AHEAD: u64 = 64 * 1024;
-/// Reading this soon after opening is taken for reading tags, however far it goes: the download
-/// keeps only `MIN_AHEAD` ahead.
-const SETTLING: Duration = Duration::from_secs(1);
-/// Kept behind reading, for the short seeks back of probing a format.
-const BEHIND: u64 = 256 * 1024;
-/// Read from the network at a time.
-const CHUNK: usize = 64 * 1024;
-/// When reading jumps away from a response with this much left at most, the rest still comes,
-/// for the window reading left: a connection is used again only once its response was read to
-/// the end, and a new one costs round trips of handshakes.
-const DRAIN: u64 = 64 * 1024;
-/// Reading gives up when the download did not move for this long.
-const STALL: Duration = Duration::from_secs(20);
 /// A request for part of the file has this long to bring it.
 const PART_TIMEOUT: Duration = Duration::from_secs(120);
-/// The waits before trying again after the download failed, one per attempt.
-const RETRIES: [Duration; 3] = [
-    Duration::from_millis(250),
-    Duration::from_secs(1),
-    Duration::from_secs(3),
-];
 
-/// A file on the web as a [`MediaSource`]. Where the server answers range requests, a jump
-/// costs a request; elsewhere the file comes in one piece, and jumping back downloads it again.
-pub(super) struct WebFile {
-    shared: Arc<Shared>,
-    /// Where reading is.
-    position: u64,
-    /// The file's size, when the server tells.
-    len: Option<u64>,
+/// Opens the file at `address`, once the server answered.
+pub(super) fn open(agent: Agent, address: &str) -> io::Result<RemoteFile> {
+    let response = first_response(&agent, address)?;
+    let (ranges, len) = if response.status() == StatusCode::PARTIAL_CONTENT {
+        let (_, len) = content_range(&response)
+            .filter(|&(start, _)| start == 0)
+            .ok_or_else(|| other_part(address))?;
+        (true, Some(len))
+    } else {
+        (false, response.body().content_length())
+    };
+    let remote = Http {
+        agent,
+        address: address.to_string(),
+        ranges,
+    };
+    RemoteFile::open(remote, part(response), ranges, len, "web download")
+}
+
+/// The file at an address, a part at a time.
+struct Http {
+    agent: Agent,
+    address: String,
     /// The server answers range requests.
     ranges: bool,
 }
 
-struct Shared {
-    state: Mutex<State>,
-    /// Notified on new data, on reading moving, and on closing.
-    changed: Condvar,
-}
-
-/// Downloaded bytes, from `start`.
-#[derive(Default)]
-struct Window {
-    data: VecDeque<u8>,
-    start: u64,
-}
-
-struct State {
-    opened: Instant,
-    /// Where the download goes on.
-    window: Window,
-    /// The window reading left when it last jumped, for jumping back: probing a format reads
-    /// the start, looks at the end, then reads on from the start.
-    parked: Window,
-    /// Where reading is.
-    position: u64,
-    /// How much reading read since it last jumped.
-    read: u64,
-    /// Counts the jumps of reading to where the download cannot get by going on.
-    jumps: u64,
-    /// Without ranges, the download reached the end of the file.
-    complete: bool,
-    /// Why the download stopped, for reading to tell.
-    error: Option<(io::ErrorKind, String)>,
-    /// The file was dropped.
-    closed: bool,
-}
-
-impl Shared {
-    fn lock(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap()
-    }
-}
-
-impl Window {
-    fn at(start: u64) -> Self {
-        Self {
-            data: VecDeque::new(),
-            start,
-        }
-    }
-
-    fn end(&self) -> u64 {
-        self.start + self.data.len() as u64
-    }
-
-    /// Reading at `position` can use it, now or once it goes on.
-    fn reaches(&self, position: u64) -> bool {
-        self.start <= position && position <= self.end()
-    }
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            opened: Instant::now(),
-            window: Window::default(),
-            parked: Window::default(),
-            position: 0,
-            read: 0,
-            jumps: 0,
-            complete: false,
-            error: None,
-            closed: false,
-        }
-    }
-
-    /// How far ahead of reading the download goes.
-    fn ahead(&self) -> u64 {
-        if self.jumps > 0 && self.read < MIN_AHEAD / 2 {
-            return (2 * self.read).max(JUMP_AHEAD);
-        }
-        if self.opened.elapsed() < SETTLING {
-            return MIN_AHEAD;
-        }
-        self.read.clamp(MIN_AHEAD, MAX_AHEAD)
-    }
-
-    /// Drops what is too far behind reading.
-    fn trim(&mut self) {
-        let keep = self.position.saturating_sub(BEHIND);
-        let window = &mut self.window;
-        if keep > window.start {
-            let dropped = (keep - window.start).min(window.data.len() as u64);
-            window.data.drain(..dropped as usize);
-            window.start += dropped;
-        }
-    }
-
-    /// Reading jumped to `to`, where the download cannot get by going on. With ranges, the
-    /// download goes on from the window parked there or starts there, parking the one left;
-    /// without, it starts over from the start of the file.
-    fn jump(&mut self, to: u64, ranges: bool) {
-        self.jumps += 1;
-        self.read = 0;
-        if !ranges {
-            self.restart();
-            return;
-        }
-        self.error = None;
-        let window = if self.parked.reaches(to) {
-            mem::take(&mut self.parked)
-        } else {
-            Window::at(to)
-        };
-        let left = mem::replace(&mut self.window, window);
-        if !left.data.is_empty() {
-            self.parked = left;
-        }
-    }
-
-    /// Without ranges: empties the download, to get the file again from the start.
-    fn restart(&mut self) {
-        self.window = Window::default();
-        self.complete = false;
-        self.error = None;
-    }
-}
-
-impl WebFile {
-    /// Opens the file at `address`, once the server answered.
-    pub(super) fn open(agent: Agent, address: &str) -> io::Result<Self> {
-        let response = first_response(&agent, address)?;
-        let (ranges, len) = if response.status() == StatusCode::PARTIAL_CONTENT {
-            let (_, len) = content_range(&response)
-                .filter(|&(start, _)| start == 0)
-                .ok_or_else(|| other_part(address))?;
-            (true, Some(len))
-        } else {
-            (false, response.body().content_length())
-        };
-        let shared = Arc::new(Shared {
-            state: Mutex::new(State::new()),
-            changed: Condvar::new(),
-        });
-        let download = Download {
-            shared: shared.clone(),
-            agent,
-            address: address.to_string(),
-            len,
-            ranges,
-        };
-        let expected = if ranges {
-            len.map(|len| len.min(MIN_AHEAD))
-        } else {
-            len
-        };
-        std::thread::Builder::new()
-            .name("web download".to_string())
-            .spawn(move || download.run(response, expected))?;
-        let file = Self {
-            shared,
-            position: 0,
-            len,
-            ranges,
-        };
-        // Probing a format may look at the end first: the start is then parked, not dropped.
-        let first = expected.map_or(MIN_AHEAD, |expected| expected.min(MIN_AHEAD));
-        if first > 0 {
-            drop(wait_for(&file.shared, first - 1)?);
-        }
-        Ok(file)
-    }
-}
-
-impl Read for WebFile {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if buf.is_empty() || self.len.is_some_and(|len| self.position >= len) {
-            return Ok(0);
-        }
-        let mut state = wait_for(&self.shared, self.position)?;
-        let window = &state.window;
-        if self.position >= window.end() {
-            return Ok(0);
-        }
-        let count = copy(&window.data, (self.position - window.start) as usize, buf);
-        self.position += count as u64;
-        state.position = self.position;
-        state.read += count as u64;
-        state.trim();
-        self.shared.changed.notify_all();
-        Ok(count)
-    }
-}
-
-/// Waits until the download has the byte at `position`, or reached the end of the file before
-/// it; fails when the download did, or stalled.
-fn wait_for(shared: &Shared, position: u64) -> io::Result<MutexGuard<'_, State>> {
-    let mut state = shared.lock();
-    let mut moved = (state.window.end(), Instant::now());
-    loop {
-        let window = &state.window;
-        if window.start <= position && position < window.end() {
-            return Ok(state);
-        }
-        if state.complete && position >= window.end() {
-            return Ok(state);
-        }
-        if let Some((kind, message)) = &state.error {
-            return Err(io::Error::new(*kind, message.clone()));
-        }
-        if window.end() != moved.0 {
-            moved = (window.end(), Instant::now());
-        }
-        let left = STALL.saturating_sub(moved.1.elapsed());
-        if left.is_zero() {
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("The download stalled for {}s", STALL.as_secs()),
-            ));
-        }
-        state = shared.changed.wait_timeout(state, left).unwrap().0;
-    }
-}
-
-impl Seek for WebFile {
-    fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
-        let target = match to {
-            SeekFrom::Start(offset) => Some(offset),
-            SeekFrom::Current(offset) => self.position.checked_add_signed(offset),
-            SeekFrom::End(offset) => {
-                let len = self.len.ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::Unsupported, "The file's size is unknown")
-                })?;
-                len.checked_add_signed(offset)
-            }
-        }
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Seek before the start"))?;
-        if target != self.position {
-            let mut state = self.shared.lock();
-            // A little past the download, waiting is quicker than asking again; without ranges,
-            // the download only goes forward.
-            let window = &state.window;
-            let near =
-                window.start <= target && (!self.ranges || target <= window.end() + CHUNK as u64);
-            if !near {
-                state.jump(target, self.ranges);
-            }
-            self.position = target;
-            state.position = target;
-            self.shared.changed.notify_all();
-        }
-        Ok(target)
-    }
-}
-
-impl MediaSource for WebFile {
-    fn is_seekable(&self) -> bool {
-        self.ranges
-    }
-
-    fn byte_len(&self) -> Option<u64> {
-        self.len
-    }
-}
-
-impl Drop for WebFile {
-    fn drop(&mut self) {
-        self.shared.lock().closed = true;
-        self.shared.changed.notify_all();
-    }
-}
-
-/// Fills a [`WebFile`] ahead of where it is read, until it is dropped.
-struct Download {
-    shared: Arc<Shared>,
-    agent: Agent,
-    address: String,
-    len: Option<u64>,
-    ranges: bool,
-}
-
-impl Download {
-    /// Reads `first`, the response to the opening request, which brings the file up to
-    /// `expected`, then asks for more as reading goes.
-    fn run(self, first: Response<Body>, expected: Option<u64>) {
-        let mut pending = Some((first, 0, expected));
-        let mut jumps = 0;
-        let mut failures = 0;
-        loop {
-            let (response, from, expected) = match pending.take() {
-                Some(pending) => pending,
-                None => {
-                    let before = jumps;
-                    let Some((from, to)) = self.wanted(&mut jumps) else {
-                        return;
-                    };
-                    if jumps != before {
-                        failures = 0;
-                    }
-                    match self.request(from, to) {
-                        Ok(response) => (response, from, to.or(self.len)),
-                        Err(error) => {
-                            if !self.retry(error, &mut failures, jumps) {
-                                return;
-                            }
-                            continue;
-                        }
-                    }
-                }
-            };
-            match self.receive(response, from, expected, jumps) {
-                Ok(()) => failures = 0,
-                Err(error) => {
-                    let error = io::Error::new(
-                        error.kind(),
-                        format!("Could not download {}: {error}", self.address),
-                    );
-                    if !self.retry(error, &mut failures, jumps) {
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Waits until more of the file is wanted, and tells which part: from where, and up to
-    /// where when not to its end. `None` once the file is dropped.
-    fn wanted(&self, jumps: &mut u64) -> Option<(u64, Option<u64>)> {
-        let mut state = self.shared.lock();
-        loop {
-            if state.closed {
-                return None;
-            }
-            *jumps = state.jumps;
-            if state.error.is_none() {
-                if !self.ranges {
-                    // Asked once the last response is over, or when starting over.
-                    if !state.complete {
-                        return Some((0, None));
-                    }
-                } else {
-                    let len = self.len.unwrap_or(u64::MAX);
-                    let end = state.window.end();
-                    let ahead = state.ahead();
-                    if end < len && end < state.position + ahead / 2 {
-                        let to = (state.position + ahead).max(end + CHUNK as u64);
-                        // Less than a request left at the end comes too, not on a round trip of
-                        // its own.
-                        let to = if to.saturating_add(CHUNK as u64) >= len {
-                            len
-                        } else {
-                            to
-                        };
-                        return Some((end, Some(to)));
-                    }
-                }
-            }
-            state = self.shared.changed.wait(state).unwrap();
-        }
-    }
-
-    /// Asks for the part from `from`, up to `to` when not to the end.
-    fn request(&self, from: u64, to: Option<u64>) -> io::Result<Response<Body>> {
+impl Remote for Http {
+    fn part(&self, from: u64, to: Option<u64>) -> io::Result<Part> {
         let response = request(&self.agent, &self.address, from, to, true)
             .map_err(|error| failed(&self.address, error))?;
         if self.ranges
@@ -422,109 +49,20 @@ impl Download {
         {
             return Err(other_part(&self.address));
         }
-        Ok(response)
+        Ok(part(response))
     }
 
-    /// Adds the body of `response`, which brings the file from `at` up to `expected`, to the
-    /// download; without ranges, as fast as reading goes. Stops early when the file is dropped,
-    /// or when reading jumps with more than `DRAIN` of the body left.
-    fn receive(
-        &self,
-        response: Response<Body>,
-        mut at: u64,
-        expected: Option<u64>,
-        jumps: u64,
-    ) -> io::Result<()> {
-        let body_end = response.body().content_length().map(|len| at + len);
-        let mut body = response.into_body().into_reader();
-        let mut chunk = vec![0; CHUNK];
-        loop {
-            let read = match body.read(&mut chunk) {
-                Ok(read) => read,
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(error),
-            };
-            let mut state = self.shared.lock();
-            if state.closed {
-                return Ok(());
-            }
-            let data = &chunk[..read];
-            if state.jumps != jumps {
-                // Reading jumped away: what little is left still comes, for the window it left.
-                let parked = &mut state.parked;
-                if parked.end() == at && !parked.data.is_empty() {
-                    parked.data.extend(data);
-                }
-                at += read as u64;
-                let left = body_end.map_or(u64::MAX, |end| end.saturating_sub(at));
-                if read == 0 || left > DRAIN {
-                    return Ok(());
-                }
-                continue;
-            }
-            if read == 0 {
-                if expected.is_some_and(|expected| state.window.end() < expected) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
-                        "the response ended early",
-                    ));
-                }
-                if !self.ranges {
-                    state.complete = true;
-                    self.shared.changed.notify_all();
-                }
-                return Ok(());
-            }
-            state.window.data.extend(data);
-            at += read as u64;
-            state.trim();
-            self.shared.changed.notify_all();
-            if !self.ranges {
-                while !state.closed
-                    && state.jumps == jumps
-                    && state.window.end() >= state.position + state.ahead()
-                {
-                    state = self.shared.changed.wait(state).unwrap();
-                }
-            }
-        }
+    fn name(&self) -> &str {
+        &self.address
     }
+}
 
-    /// After `error`, waits to try again, or gives up and leaves the error for reading, until
-    /// it jumps. Returns `false` once the file is dropped.
-    fn retry(&self, error: io::Error, failures: &mut usize, jumps: u64) -> bool {
-        let mut state = self.shared.lock();
-        if state.closed || state.jumps != jumps {
-            return !state.closed;
-        }
-        let retriable = !matches!(
-            error.kind(),
-            io::ErrorKind::NotFound
-                | io::ErrorKind::PermissionDenied
-                | io::ErrorKind::InvalidInput
-                | io::ErrorKind::InvalidData
-        );
-        let Some(&wait) = RETRIES.get(*failures).filter(|_| retriable) else {
-            log::debug!("Giving up downloading {}: {error}", self.address);
-            state.error = Some((error.kind(), error.to_string()));
-            self.shared.changed.notify_all();
-            return true;
-        };
-        *failures += 1;
-        log::debug!("Downloading {} again in {wait:?}: {error}", self.address);
-        let until = Instant::now() + wait;
-        while !state.closed && state.jumps == jumps {
-            let left = until.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                break;
-            }
-            state = self.shared.changed.wait_timeout(state, left).unwrap().0;
-        }
-        // Without ranges, it can only start over.
-        if !self.ranges && state.jumps == jumps {
-            state.restart();
-        }
-        !state.closed
+/// What `response` brings.
+fn part(response: Response<Body>) -> Part {
+    let len = response.body().content_length();
+    Part {
+        body: Box::new(response.into_body().into_reader()),
+        len,
     }
 }
 
@@ -597,24 +135,98 @@ fn other_part(address: &str) -> io::Error {
     )
 }
 
-/// Copies `data` from `offset` into `buf`, as much as fits; returns how much.
-fn copy(data: &VecDeque<u8>, offset: usize, buf: &mut [u8]) -> usize {
-    let (front, back) = data.as_slices();
-    let mut copied = 0;
-    let mut skip = offset;
-    for part in [front, back] {
-        if skip >= part.len() {
-            skip -= part.len();
-            continue;
-        }
-        let part = &part[skip..];
-        skip = 0;
-        let count = part.len().min(buf.len() - copied);
-        buf[copied..copied + count].copy_from_slice(&part[..count]);
-        copied += count;
-        if copied == buf.len() {
-            break;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+    use std::net::TcpListener;
+    use std::sync::Arc;
+    use symphonia::core::io::MediaSource;
+
+    /// Serves `data` on a local port until the test ends, answering range requests when
+    /// `ranges`. Returns its address.
+    fn serve(data: Arc<Vec<u8>>, ranges: bool) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}/song.flac", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else {
+                    return;
+                };
+                let mut range = None;
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    let lower = line.to_ascii_lowercase();
+                    if let Some(value) = lower.strip_prefix("range: bytes=") {
+                        let (from, to) = value.trim().split_once('-').unwrap();
+                        let from: usize = from.parse().unwrap();
+                        let to = to.parse::<usize>().map_or(data.len(), |to| to + 1);
+                        range = Some((from, to.min(data.len())));
+                    }
+                }
+                let head = match range.filter(|_| ranges) {
+                    Some((from, to)) => format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\n\
+                         Content-Range: bytes {from}-{}/{}\r\nConnection: close\r\n\r\n",
+                        to - from,
+                        to - 1,
+                        data.len()
+                    ),
+                    None => format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len()
+                    ),
+                };
+                let (from, to) = range.filter(|_| ranges).unwrap_or((0, data.len()));
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&data[from..to]);
+            }
+        });
+        address
+    }
+
+    fn agent() -> Agent {
+        Agent::config_builder().proxy(None).build().into()
+    }
+
+    #[test]
+    fn reads_and_seeks_with_and_without_ranges() {
+        let data: Arc<Vec<u8>> =
+            Arc::new((0..1_500_000).map(|index| (index % 253) as u8).collect());
+        for ranges in [true, false] {
+            let address = serve(data.clone(), ranges);
+            let mut file = open(agent(), &address).unwrap();
+            assert_eq!(file.byte_len(), Some(data.len() as u64));
+            assert_eq!(file.is_seekable(), ranges);
+            file.seek(SeekFrom::Start(1_200_000)).unwrap();
+            let mut buf = [0; 100];
+            file.read_exact(&mut buf).unwrap();
+            assert_eq!(buf, data[1_200_000..1_200_100], "ranges: {ranges}");
+            file.seek(SeekFrom::Start(0)).unwrap();
+            let mut all = vec![];
+            file.read_to_end(&mut all).unwrap();
+            assert_eq!(all, *data, "ranges: {ranges}");
         }
     }
-    copied
+
+    #[test]
+    fn a_missing_file_is_not_found() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}/gone.mp3", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let mut request = [0; 1024];
+                let _ = stream.read(&mut request);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+        let error = open(agent(), &address).err().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    }
 }

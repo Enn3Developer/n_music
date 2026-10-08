@@ -5,7 +5,6 @@ mod file;
 mod playlist;
 
 use super::{Locator, OpenedStream, StreamProvider, TrackEntry};
-use file::WebFile;
 use percent_encoding::percent_decode_str;
 use std::io;
 use std::time::Duration;
@@ -42,7 +41,7 @@ impl StreamProvider for WebProvider {
             return Err(unsupported(locator));
         };
         Ok(OpenedStream {
-            source: Box::new(WebFile::open(self.agent.clone(), address)?),
+            source: Box::new(file::open(self.agent.clone(), address)?),
             extension: locator.extension(),
         })
     }

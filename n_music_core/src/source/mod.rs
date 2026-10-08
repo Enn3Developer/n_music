@@ -5,6 +5,7 @@
 //! so new backends (Android documents, HTTP, Telegram, ...) only have to implement
 //! [`StreamProvider`].
 
+mod ahead;
 pub(crate) mod cache;
 mod local;
 pub mod telegram;
