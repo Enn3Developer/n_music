@@ -161,6 +161,10 @@ jobs:
       - name: Build app
         env:
           TARGET: ${{ matrix.target }}
+          # N Music's Telegram API credentials, from my.telegram.org. Without them, as in pull
+          # requests from forks, the app leaves Telegram out.
+          N_MUSIC_TELEGRAM_API_ID: ${{ secrets.N_MUSIC_TELEGRAM_API_ID }}
+          N_MUSIC_TELEGRAM_API_HASH: ${{ secrets.N_MUSIC_TELEGRAM_API_HASH }}
         run: cargo build --locked --release --package n_music_desktop --bin n_music_desktop --target "$TARGET"
       - name: Install Velopack
         run: dotnet tool restore

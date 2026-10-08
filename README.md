@@ -7,6 +7,7 @@ Cross-platform music player written in Rust + Slint
 ## Features
 
 - Cover art
+- Music from local folders, plus web playlists and Telegram chats on desktop
 - Supports media control on all platforms (Windows, Mac, Linux and Android)
 - Extremely fast and resource efficient
 - Locale support
@@ -37,6 +38,19 @@ Build in release mode:
 ```shell
 cargo build --release --package n_music_desktop
 ```
+
+### Telegram
+
+Signing in to Telegram needs N Music's API credentials when building. Register an app at
+[my.telegram.org](https://my.telegram.org) and pass its id and hash:
+
+```shell
+N_MUSIC_TELEGRAM_API_ID=12345 N_MUSIC_TELEGRAM_API_HASH=0123456789abcdef \
+  cargo run --package n_music_desktop
+```
+
+Without them, the app builds and runs as before, with the Telegram source turned off. Release
+builds take them from the `N_MUSIC_TELEGRAM_API_ID` and `N_MUSIC_TELEGRAM_API_HASH` secrets.
 
 ### Translations
 
