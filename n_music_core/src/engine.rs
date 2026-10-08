@@ -18,10 +18,11 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Registers the library, the player and the stream cache on `app`, then queues the
-    /// startup messages: the playback state (volume, loop, shuffle), the stream cache's and a
-    /// scan, which also reports the library folders and the playlists. They are handled once
-    /// the loop runs, so subscribers registered after this still get them.
+    /// Registers the library, the player and the stream cache on `app`, and the Telegram
+    /// account's sign in when `providers` have one, then queues the startup messages: the
+    /// playback state (volume, loop, shuffle), the stream cache's, where signing in to Telegram
+    /// is and a scan, which also reports the library folders and the playlists. They are handled
+    /// once the loop runs, so subscribers registered after this still get them.
     ///
     /// `data_dir` keeps what the user creates (the library database); `cache_dir` what can be
     /// rebuilt or downloaded again (covers, copies of streamed tracks).
@@ -43,6 +44,8 @@ impl Engine {
             library.clone(),
             writer.clone(),
         ));
+        #[cfg(feature = "telegram")]
+        let telegram = providers.telegram_account().cloned();
         let providers = Arc::new(providers.with_cache(cache.clone()));
         let service = LibraryService::new(
             providers.clone(),
@@ -59,6 +62,13 @@ impl Engine {
             library: None,
             check_cache: true,
         });
+        #[cfg(feature = "telegram")]
+        if let Some(account) = telegram {
+            use crate::source::telegram::service::{TelegramService, VerifyTelegram};
+            writer.emit(TelegramService::status(&account));
+            writer.emit(VerifyTelegram);
+            app.register_subscriber(TelegramService::new(account, libraries.clone()));
+        }
         app.register_subscriber(service);
         app.register_subscriber(player);
         app.register_subscriber(StreamCacheService::new(cache, library.clone(), libraries));

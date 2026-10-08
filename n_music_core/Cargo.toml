@@ -11,6 +11,10 @@ repository = "https://github.com/Enn3Developer/n_music"
 [lib]
 crate-type = ["lib"]
 
+[features]
+# Telegram chats as libraries, signed in to through grammers.
+telegram = ["dep:grammers-client", "dep:tokio", "dep:glass_pumpkin"]
+
 [dependencies]
 symphonia = { version = "0.6.1", features = ["all"] }
 symphonia-core = "0.6.1"
@@ -38,6 +42,12 @@ rubato = "5"
 ureq = "3.4"
 url = "2.5"
 percent-encoding = "2.3"
+# Telegram's client. The session is kept with rusqlite: grammers' own storage would bring a
+# second SQLite.
+grammers-client = { version = "0.10", default-features = false, optional = true }
+tokio = { version = "1.52", features = ["rt-multi-thread", "time"], optional = true }
+# Only pinned: grammers-crypto 0.10 asks for 2.0.0-rc0 and does not build with 2.0.0-rc1.
+glass_pumpkin = { version = "=2.0.0-rc0", optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"

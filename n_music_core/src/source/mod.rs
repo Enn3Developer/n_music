@@ -7,7 +7,7 @@
 
 pub(crate) mod cache;
 mod local;
-mod telegram;
+pub mod telegram;
 mod web;
 
 pub use local::LocalProvider;
@@ -170,6 +170,9 @@ pub struct Providers {
     documents: Option<Arc<dyn StreamProvider>>,
     web: Option<Arc<dyn StreamProvider>>,
     telegram: Option<Arc<dyn StreamProvider>>,
+    /// Signed in and out on the bus by the engine.
+    #[cfg(feature = "telegram")]
+    telegram_account: Option<Arc<telegram::TelegramAccount>>,
     cache: Option<Arc<StreamCache>>,
 }
 
@@ -190,6 +193,20 @@ impl Providers {
     pub fn with_web(mut self, provider: impl StreamProvider + 'static) -> Self {
         self.web = Some(Arc::new(provider));
         self
+    }
+
+    /// Serves [`Locator::TelegramChat`] and [`Locator::TelegramAudio`] from the chats of
+    /// `account`, which the engine signs in and out of on the bus.
+    #[cfg(feature = "telegram")]
+    pub fn with_telegram(mut self, account: Arc<telegram::TelegramAccount>) -> Self {
+        self.telegram_account = Some(account);
+        self
+    }
+
+    /// The Telegram account, when there is one.
+    #[cfg(feature = "telegram")]
+    pub(crate) fn telegram_account(&self) -> Option<&Arc<telegram::TelegramAccount>> {
+        self.telegram_account.as_ref()
     }
 
     /// Keeps copies of remote tracks in `cache`.

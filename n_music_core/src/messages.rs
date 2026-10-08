@@ -2,6 +2,7 @@ use crate::library::query::{Filter, PlaylistId, Query, SortKey};
 use crate::library::track::ReplayGainMode;
 use crate::queue::{ItemId, LoopStatus, QueueEntry};
 use crate::settings::OutputDevice;
+use crate::source::telegram::{TelegramChatInfo, TelegramError, TelegramStatus};
 use crate::source::Locator;
 use crate::{Track, TrackTime};
 use n_event_bus::Message;
@@ -220,10 +221,48 @@ pub struct StreamCacheChanged {
 /// as often as the play session is saved while it is not.
 pub struct AppVisibilityChanged(pub bool);
 
+/// Asks Telegram to send a code to sign in with to `phone`, in the Telegram app or by SMS.
+pub struct TelegramSignIn {
+    pub phone: String,
+}
+/// Signs in to Telegram with the code it sent.
+pub struct TelegramCode(pub String);
+/// Signs in to Telegram with the account's password, once the code asked for it.
+pub struct TelegramPassword(pub String);
+/// Signs out of Telegram, or stops signing in.
+pub struct TelegramSignOut;
+/// Where signing in to Telegram is: at startup, and as each step starts and ends.
+pub struct TelegramStatusChanged {
+    pub status: TelegramStatus,
+    /// A step runs: the next one waits for it to end.
+    pub busy: bool,
+    /// Why the step that ended failed.
+    pub error: Option<TelegramError>,
+}
+/// Looks for Telegram chats to add as libraries: those of the account with `query` in their
+/// name, and the public one `query` names as `@name` or a `t.me` link. An empty query lists the
+/// account's chats.
+pub struct FindTelegramChats {
+    pub query: String,
+}
+/// The chats [`FindTelegramChats`] found for `query`, or why it found none.
+pub struct TelegramChatsFound {
+    pub query: String,
+    pub chats: Vec<TelegramChatInfo>,
+    pub error: Option<TelegramError>,
+}
+
 messages!(
     SetStreamCache,
     StreamCacheChanged,
     AppVisibilityChanged,
+    TelegramSignIn,
+    TelegramCode,
+    TelegramPassword,
+    TelegramSignOut,
+    TelegramStatusChanged,
+    FindTelegramChats,
+    TelegramChatsFound,
     PlayFrom,
     Enqueue,
     RemoveQueued,
