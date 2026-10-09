@@ -35,7 +35,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerState
@@ -105,6 +107,7 @@ import com.enn3developer.n_music.ui.components.AlbumItem
 import com.enn3developer.n_music.ui.components.AlbumTile
 import com.enn3developer.n_music.ui.components.ArtistItem
 import com.enn3developer.n_music.ui.components.ArtistTile
+import com.enn3developer.n_music.ui.components.FastScroller
 import com.enn3developer.n_music.ui.components.GenreItem
 import com.enn3developer.n_music.ui.components.GenreTile
 import com.enn3developer.n_music.ui.components.NIcon
@@ -118,6 +121,8 @@ import com.enn3developer.n_music.ui.components.TrackTile
 import com.enn3developer.n_music.ui.components.ViewSwitch
 import com.enn3developer.n_music.ui.components.WavyProgress
 import com.enn3developer.n_music.ui.components.inert
+import com.enn3developer.n_music.ui.components.rememberScrolled
+import com.enn3developer.n_music.ui.components.sectionLetter
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
@@ -243,6 +248,15 @@ fun LibraryPage() {
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
                         onSort = { app.show(Sheet.Sort(LibraryTab.ALBUMS)) },
+                        key = { "${it.name}\u0000${it.artist}" },
+                        section = { album ->
+                            when (order) {
+                                GroupOrder.ARTIST -> sectionLetter(album.artist)
+                                GroupOrder.NAME -> sectionLetter(album.name)
+                                GroupOrder.NEWEST, GroupOrder.OLDEST -> album.year?.toString() ?: "#"
+                                GroupOrder.MOST_TRACKS -> null
+                            }
+                        },
                         item = { album -> AlbumItem(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
                         tile = { album -> AlbumTile(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
                     )
@@ -262,6 +276,8 @@ fun LibraryPage() {
                         rowGap = 16.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
                         onSort = { app.show(Sheet.Sort(LibraryTab.ARTISTS)) },
+                        key = { it.name.toString() },
+                        section = { artist -> if (order == GroupOrder.NAME) sectionLetter(artist.name) else null },
                         item = { artist -> ArtistItem(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
                         tile = { artist -> ArtistTile(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
                     )
@@ -281,6 +297,8 @@ fun LibraryPage() {
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
                         onSort = { app.show(Sheet.Sort(LibraryTab.GENRES)) },
+                        key = { it.name.toString() },
+                        section = { genre -> if (order == GroupOrder.NAME) sectionLetter(genre.name) else null },
                         item = { genre -> GenreItem(genre, { showGenre(genre) }) },
                         tile = { genre -> GenreTile(genre, { showGenre(genre) }) },
                     )
@@ -497,39 +515,56 @@ fun TracksTab(
             }
         }
         val rows = tracks.orEmpty()
-        if (view == ViewMode.LIST) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
-                items(rows, key = { it.locator.key }) { track ->
-                    TrackItem(
-                        track,
-                        state(track),
-                        onClick = { press(track) },
-                        onLongClick = { hold(track) },
-                        onMore = { onMore(track) },
-                        compact = compact,
-                    )
+        val section = { index: Int -> rows.getOrNull(index)?.let { trackSection(it, order.sort) } }
+        Box(Modifier.fillMaxSize()) {
+            if (view == ViewMode.LIST) {
+                val list = rememberLazyListState()
+                LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(bottom = bottom)) {
+                    items(rows, key = { it.locator.key }) { track ->
+                        TrackItem(
+                            track,
+                            state(track),
+                            onClick = { press(track) },
+                            onLongClick = { hold(track) },
+                            onMore = { onMore(track) },
+                            compact = compact,
+                        )
+                    }
                 }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(104.dp),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottom),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(rows, key = { it.locator.key }) { track ->
-                    TrackTile(
-                        track,
-                        state(track),
-                        onClick = { press(track) },
-                        onLongClick = { hold(track) },
-                        onMore = { onMore(track) },
-                    )
+                FastScroller(rememberScrolled(list), section, bottom = bottom + 16.dp)
+            } else {
+                val grid = rememberLazyGridState()
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(104.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    state = grid,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottom),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    items(rows, key = { it.locator.key }) { track ->
+                        TrackTile(
+                            track,
+                            state(track),
+                            onClick = { press(track) },
+                            onLongClick = { hold(track) },
+                            onMore = { onMore(track) },
+                        )
+                    }
                 }
+                FastScroller(rememberScrolled(grid), section, bottom = bottom + 16.dp)
             }
         }
     }
+}
+
+/** What a track files under in a list sorted by [sort]: a letter, a year; nothing for the rest. */
+fun trackSection(track: TrackRow, sort: TrackSort): String? = when (sort) {
+    TrackSort.ARTIST_ALBUM -> sectionLetter(track.artist)
+    TrackSort.TITLE -> sectionLetter(track.title)
+    TrackSort.ALBUM -> sectionLetter(track.album)
+    TrackSort.YEAR -> track.year?.toString() ?: "#"
+    else -> null
 }
 
 /**
@@ -546,11 +581,14 @@ fun <T> GroupTab(
     rowGap: Dp,
     onToggleView: (ViewMode) -> Unit,
     onSort: () -> Unit,
+    key: (T) -> Any,
+    section: (T) -> String?,
     item: @Composable (T) -> Unit,
     tile: @Composable (T) -> Unit,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val rows = items.orEmpty()
+    val sectionAt = { index: Int -> rows.getOrNull(index)?.let(section) }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.padding(start = 6.dp, end = 16.dp, top = 8.dp),
@@ -569,19 +607,26 @@ fun <T> GroupTab(
                 Text(count(rows.size), style = text(13, tabular = true), color = colors.onSurfaceVariant)
             }
         }
-        if (view == ViewMode.LIST) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = bottom)) {
-                items(rows) { item(it) }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minTile),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(rowGap),
-            ) {
-                items(rows) { tile(it) }
+        Box(Modifier.fillMaxSize()) {
+            if (view == ViewMode.LIST) {
+                val list = rememberLazyListState()
+                LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(top = 6.dp, bottom = bottom)) {
+                    items(rows, key = key) { item(it) }
+                }
+                FastScroller(rememberScrolled(list), sectionAt, bottom = bottom + 16.dp)
+            } else {
+                val grid = rememberLazyGridState()
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minTile),
+                    modifier = Modifier.fillMaxSize(),
+                    state = grid,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(rowGap),
+                ) {
+                    items(rows, key = key) { tile(it) }
+                }
+                FastScroller(rememberScrolled(grid), sectionAt, bottom = bottom + 16.dp)
             }
         }
     }
