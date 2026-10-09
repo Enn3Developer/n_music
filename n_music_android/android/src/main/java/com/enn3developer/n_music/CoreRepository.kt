@@ -169,6 +169,11 @@ object CoreRepository {
     /** How many tracks the whole library has and how long they play. */
     val library: StateFlow<Summary> = _library.asStateFlow()
 
+    private val _ready = MutableStateFlow(false)
+
+    /** The library's lists and summary were read once since the core started. */
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
     private val _facets = MutableStateFlow(Facets(emptyList(), emptyList(), null, null))
 
     /** The genres, formats and years the filters offer. */
@@ -378,6 +383,7 @@ object CoreRepository {
         _sources.value = core.sources(roots.orEmpty())
         _library.value = core.summary(Filter.All(emptyList()))
         _facets.value = core.facets()
+        _ready.value = true
     }
 }
 

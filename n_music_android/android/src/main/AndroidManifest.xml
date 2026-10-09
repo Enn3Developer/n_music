@@ -74,6 +74,28 @@
                 android:resource="@xml/shared_files" />
         </provider>
         <receiver
+            android:name=".widget.PlayerWidget"
+            android:exported="false"
+            android:label="@string/widget_player">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_player_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.ShuffleWidget"
+            android:exported="false"
+            android:label="@string/widget_shuffle">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_shuffle_info" />
+        </receiver>
+        <receiver
             android:name="androidx.media3.session.MediaButtonReceiver"
             android:exported="true">
             <intent-filter>

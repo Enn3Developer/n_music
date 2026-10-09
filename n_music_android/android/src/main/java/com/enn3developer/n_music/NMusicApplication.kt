@@ -1,15 +1,23 @@
 package com.enn3developer.n_music
 
 import android.app.Application
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.enn3developer.n_music.core.Command
+import com.enn3developer.n_music.widget.Widgets
 import java.io.File
 
 class NMusicApplication : Application() {
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // The widgets' covers take the theme's colours, and their size the orientation's.
+        Widgets.refresh(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
         val reportFile = File(getExternalFilesDir(null) ?: filesDir, "config/n_music_panic.log")
@@ -39,6 +47,7 @@ class NMusicApplication : Application() {
         UiPreferences.load()
         PlayingFrom.load()
         SleepTimer.recover()
+        Widgets.start(this)
         // Hidden until an activity starts: a process started for a headset button has none.
         CoreRepository.send(Command.AppVisibilityChanged(false))
 

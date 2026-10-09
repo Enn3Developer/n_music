@@ -528,19 +528,15 @@ fun AlbumTrackItem(
         if (length.isNotEmpty()) {
             Text(length, style = text(13, tabular = true), color = colors.onSurfaceVariant)
         }
-        if (onMore == null) {
-            Spacer(Modifier.width(44.dp))
-        } else {
-            NIconButton(
-                NIcons.More,
-                stringResource(R.string.more_for, track.title),
-                onMore,
-                size = 48.dp,
-                iconSize = 20.dp,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.width(44.dp),
-            )
-        }
+        NIconButton(
+            NIcons.More,
+            stringResource(R.string.more_for, track.title),
+            onMore,
+            size = 48.dp,
+            iconSize = 20.dp,
+            tint = colors.onSurfaceVariant,
+            modifier = Modifier.width(44.dp),
+        )
     }
 }
 

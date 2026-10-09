@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's Next, for the player widget. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@color/widget_on"
+        android:pathData="M5 6.1v11.8a1 1 0 0 0 1.55.83l8.4-5.9a1 1 0 0 0 0-1.66l-8.4-5.9A1 1 0 0 0 5 6.1zM17 5.5a1 1 0 0 1 1-1h.5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H18a1 1 0 0 1-1-1z" />
+</vector>

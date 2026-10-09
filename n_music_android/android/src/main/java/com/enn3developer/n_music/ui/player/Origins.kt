@@ -1,11 +1,14 @@
 package com.enn3developer.n_music.ui.player
 
+import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.core.PlaylistRow
+import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.ui.AppController
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
@@ -15,16 +18,20 @@ import com.enn3developer.n_music.ui.Page
 fun originName(origin: Origin?): String? {
     val playlists by CoreRepository.playlists.collectAsStateWithLifecycle()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
-    return when (origin) {
+    return originName(origin, LocalResources.current, playlists, sources)
+}
+
+/** [originName] outside Compose, naming playlists and sources from [playlists] and [sources]. */
+fun originName(origin: Origin?, resources: Resources, playlists: List<PlaylistRow>, sources: List<SourceRow>): String? =
+    when (origin) {
         null -> null
-        Origin.Library -> stringResource(R.string.nav_library)
-        is Origin.Search -> stringResource(R.string.origin_search, origin.text)
-        is Origin.Album -> origin.name ?: stringResource(R.string.no_album)
-        is Origin.Artist -> origin.name ?: stringResource(R.string.no_artist)
+        Origin.Library -> resources.getString(R.string.nav_library)
+        is Origin.Search -> resources.getString(R.string.origin_search, origin.text)
+        is Origin.Album -> origin.name ?: resources.getString(R.string.no_album)
+        is Origin.Artist -> origin.name ?: resources.getString(R.string.no_artist)
         is Origin.Playlist -> playlists.find { it.id == origin.id }?.name
         is Origin.Source -> sources.find { it.root == origin.root }?.name
     }
-}
 
 /** Opens the page of what plays, closing the player. */
 fun AppController.openOrigin(origin: Origin) = when (origin) {

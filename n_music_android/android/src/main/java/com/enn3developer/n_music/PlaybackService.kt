@@ -2,6 +2,7 @@ package com.enn3developer.n_music
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -10,6 +11,10 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.Player
 import androidx.annotation.OptIn
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -20,6 +25,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.enn3developer.n_music.core.Command
+import com.enn3developer.n_music.widget.Widgets
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
@@ -65,6 +71,28 @@ class PlaybackService : MediaSessionService() {
     private val notifyOutputDeviceChanged = Runnable {
         CoreRepository.send(Command.OutputDeviceChanged)
     }
+
+    /**
+     * A widget started the service in the foreground, which Android ends the app for unless the
+     * service gets there in time. Media3 does while playback runs; paused, the notification goes
+     * to the foreground once; with nothing to show, a placeholder comes and goes.
+     */
+    private val foregroundCheck = Runnable {
+        val session = mediaSession ?: return@Runnable
+        val player = session.player
+        when {
+            player.isPlaying -> {}
+            player.playbackState != Player.STATE_IDLE && !player.currentTimeline.isEmpty -> {
+                onUpdateNotification(session, true)
+                handler.postDelayed(settleNotification, FOREGROUND_SETTLE_MS)
+            }
+            else -> showPlaceholder()
+        }
+    }
+
+    /** Back to what playback asks for, once Android has seen the notification in the foreground. */
+    private val settleNotification = Runnable { triggerNotificationUpdate() }
+
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             updateOutputDevices()
@@ -82,7 +110,7 @@ class PlaybackService : MediaSessionService() {
         setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_NEVER)
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this).build().apply {
-                setSmallIcon(R.drawable.ic_launcher_monochrome)
+                setSmallIcon(R.drawable.ic_notification)
             }
         )
         val sessionActivity = PendingIntent.getActivity(
@@ -164,8 +192,41 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.getBooleanExtra(Widgets.EXTRA_WIDGET, false) == true) {
+            if (intent.getBooleanExtra(Widgets.EXTRA_SHUFFLE_ALL, false)) Widgets.shuffleEverything()
+            handler.removeCallbacks(foregroundCheck)
+            handler.postDelayed(foregroundCheck, FOREGROUND_CHECK_MS)
+        }
+        // The key itself goes to the session, as a headset's does.
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun showPlaceholder() {
+        val channel = DefaultMediaNotificationProvider.DEFAULT_CHANNEL_ID
+        val notifications = NotificationManagerCompat.from(this)
+        notifications.createNotificationChannel(
+            NotificationChannelCompat.Builder(channel, NotificationManagerCompat.IMPORTANCE_LOW)
+                .setName(getString(androidx.media3.session.R.string.default_notification_channel_name))
+                .build()
+        )
+        val notification = NotificationCompat.Builder(this, channel)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.app_name))
+            .setSilent(true)
+            .build()
+        ServiceCompat.startForeground(
+            this,
+            PLACEHOLDER_NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+        )
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    }
+
+    // Android's players put the first on the left and the second on the right.
     private fun modeButtons(player: Player): List<CommandButton> =
-        listOf(repeatButton(player.repeatMode), shuffleButton(player.shuffleModeEnabled))
+        listOf(shuffleButton(player.shuffleModeEnabled), repeatButton(player.repeatMode))
 
     private fun shuffleButton(enabled: Boolean): CommandButton =
         CommandButton.Builder(
@@ -203,6 +264,8 @@ class PlaybackService : MediaSessionService() {
         audioManager = null
         handler.removeCallbacks(notifyOutputDeviceChanged)
         handler.removeCallbacks(updateModeButtons)
+        handler.removeCallbacks(foregroundCheck)
+        handler.removeCallbacks(settleNotification)
         mediaSession?.let { session ->
             session.player.removeListener(modeListener)
             removeSession(session)
@@ -212,5 +275,14 @@ class PlaybackService : MediaSessionService() {
         player = null
         mediaSession = null
         super.onDestroy()
+    }
+
+    private companion object {
+        /** How long a widget's start waits for playback before checking the foreground. */
+        const val FOREGROUND_CHECK_MS = 2_000L
+        const val FOREGROUND_SETTLE_MS = 1_000L
+
+        /** Apart from Media3's own notification. */
+        const val PLACEHOLDER_NOTIFICATION_ID = 2_001
     }
 }

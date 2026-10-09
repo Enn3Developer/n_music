@@ -1,6 +1,7 @@
 package com.enn3developer.n_music.ui.theme
 
 import android.app.Activity
+import android.content.Context
 import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -31,18 +32,19 @@ fun rememberColors(theme: Theme, accent: Accent): NColors {
         Theme.DARK -> true
     }
     val context = LocalContext.current
-    return remember(dark, accent, context) {
-        when {
-            accent == Accent.WALLPAPER && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                dynamicColors(
-                    if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
-                    dark,
-                )
+    return remember(dark, accent, context) { colorsFor(context, accent, dark) }
+}
 
-            dark -> darkColors(accent)
-            else -> lightColors(accent)
-        }
-    }
+/** The colours of [accent] in the [dark] or light theme, for code outside Compose too. */
+fun colorsFor(context: Context, accent: Accent, dark: Boolean): NColors = when {
+    accent == Accent.WALLPAPER && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+        dynamicColors(
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context),
+            dark,
+        )
+
+    dark -> darkColors(accent)
+    else -> lightColors(accent)
 }
 
 /**

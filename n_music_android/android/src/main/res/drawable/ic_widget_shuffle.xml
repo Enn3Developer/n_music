@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's Shuffle, for the Shuffle everything widget. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M3 7h3c2.2 0 3.4 1.2 4.5 3l3 4.5c1.1 1.8 2.3 3 4.5 3h3M18 14.5l3 3-3 3M3 17.5h3c1.4 0 2.4-.5 3.2-1.4M14.8 8.4c.8-.9 1.8-1.4 3.2-1.4h3M18 4l3 3-3 3"
+        android:strokeWidth="1.9"
+        android:strokeColor="@color/widget_on_pill"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

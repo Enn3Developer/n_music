@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="background">#F6F7F9</color>
+    <!-- The widgets before their first update, and in the widget picker: Amber. -->
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_on">#15171A</color>
+    <color name="widget_on_variant">#4D5560</color>
+    <color name="widget_accent">#8F5100</color>
+    <color name="widget_pill">#F0A13A</color>
+    <color name="widget_on_pill">#1A1206</color>
 </resources>
