@@ -60,6 +60,63 @@
     <string name="sort_shortest_first">Shortest first</string>
     <string name="sort_longest_first">Longest first</string>
 
+    <!-- Filters -->
+    <string name="filters">Filters</string>
+    <plurals name="filters_active">
+        <item quantity="one">Filters, %1$d active</item>
+        <item quantity="other">Filters, %1$d active</item>
+    </plurals>
+    <string name="clear_all">Clear all</string>
+    <string name="filters_hint">A track has to match every section you set. Where you can pick several, any of them counts.</string>
+    <string name="filter_genre">Genre</string>
+    <string name="filter_year">Year</string>
+    <string name="filter_plays">Plays</string>
+    <string name="filter_last_played">Last played</string>
+    <string name="filter_format">Format</string>
+    <string name="filter_source">Source</string>
+    <string name="filter_artist">Artist</string>
+    <!-- The parts of the filters as "Change the %s filter" names them. -->
+    <string name="filter_genre_named">genre</string>
+    <string name="filter_year_named">year</string>
+    <string name="filter_plays_named">plays</string>
+    <string name="filter_last_played_named">last played</string>
+    <string name="filter_format_named">format</string>
+    <string name="filter_source_named">source</string>
+    <string name="filter_artist_named">artist</string>
+    <string name="change_filter">Change the %1$s filter</string>
+    <string name="clear_filter">Clear the %1$s filter</string>
+    <string name="see_all">See all %1$s</string>
+    <string name="any_year">Any year</string>
+    <string name="years_range">%1$d–%2$d</string>
+    <string name="years_from">From %1$d</string>
+    <string name="years_to">Until %1$d</string>
+    <string name="pick_one">pick one</string>
+    <string name="plays_never">Never played</string>
+    <string name="plays_at_least">%1$d+</string>
+    <plurals name="plays_at_least_chip">
+        <item quantity="one">%1$d+ plays</item>
+        <item quantity="other">%1$d+ plays</item>
+    </plurals>
+    <string name="played_past_week">Past week</string>
+    <string name="played_past_month">Past month</string>
+    <string name="played_past_year">Past year</string>
+    <string name="played_not_in_month">Not in a month</string>
+    <string name="played_not_in_year">Not in a year</string>
+    <string name="any_artist">Any artist</string>
+    <string name="no_genre_short">No genre</string>
+    <string name="more_values">%1$s +%2$d</string>
+    <string name="search_genres">Search genres</string>
+    <string name="search_artists">Search artists</string>
+    <string name="clear_search">Clear search</string>
+    <string name="show_tracks_counting">Show tracks</string>
+    <plurals name="show_tracks">
+        <item quantity="one">Show %1$s track</item>
+        <item quantity="other">Show %1$s tracks</item>
+    </plurals>
+    <string name="play_count">Play %1$s</string>
+    <string name="play_matching">Play the %1$s matching tracks</string>
+    <string name="shuffle_matching">Shuffle the %1$s matching tracks</string>
+
     <!-- The first scan -->
     <string name="building_library">Building your library</string>
     <string name="building_library_hint">Every track found is listed already and can play now. Titles and covers fill in as they’re read.</string>

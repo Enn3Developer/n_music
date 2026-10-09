@@ -54,6 +54,7 @@ import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.library.LibraryPage
+import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NMotion
@@ -86,6 +87,8 @@ private class Controller(override val navigator: Navigator) : AppController {
     override fun openPlayer() {
         playerOpen = true
     }
+
+    override var filters by mutableStateOf(TrackFilters())
 
     override var sheet by mutableStateOf<Sheet?>(null)
         private set

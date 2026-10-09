@@ -32,13 +32,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
@@ -177,7 +181,13 @@ fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifie
     ) {
         NIcon(NIcons.Sort, size = 18.dp, tint = colors.primary)
         Box(Modifier.width(6.dp))
-        Text(label, style = text(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            label,
+            style = text(14, FontWeight.Bold),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
         Box(Modifier.width(6.dp))
         NIcon(NIcons.Collapse, size = 18.dp, tint = colors.onSurfaceVariant)
     }
@@ -225,5 +235,173 @@ fun ViewSwitch(mode: ViewMode, onToggle: () -> Unit, modifier: Modifier = Modifi
                 NIcon(NIcons.GridView, size = 18.dp, tint = gridInk)
             }
         }
+    }
+}
+
+/** A text button in the primary colour: Clear all, See all, Undo. */
+@Composable
+fun TextAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color = colors.primary,
+    height: Dp = 40.dp,
+    textStyle: TextStyle = text(14, FontWeight.Bold),
+    padding: PaddingValues = PaddingValues(horizontal = 12.dp),
+    trailing: ImageVector? = null,
+) {
+    ButtonSurface(
+        onClick = onClick,
+        shape = RoundedCornerShape(height / 2),
+        container = Color.Transparent,
+        content = color,
+        modifier = modifier.height(height),
+        padding = padding,
+    ) {
+        Text(text, style = textStyle, maxLines = 1)
+        if (trailing != null) NIcon(trailing, size = 18.dp, modifier = Modifier.padding(start = 2.dp))
+    }
+}
+
+/**
+ * A chip: outlined, or filled in the secondary container once [selected], when a check comes
+ * in front of its label if [check] says so. [trailing] adds the chevron of a chip that opens a
+ * picker.
+ */
+@Composable
+fun NChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    check: Boolean = true,
+    leading: ImageVector? = null,
+    leadingTint: Color? = null,
+    trailing: ImageVector? = null,
+    bold: Boolean = false,
+    role: Role = Role.Checkbox,
+) {
+    val container by animateColorAsState(
+        if (selected) colors.secondaryContainer else Color.Transparent,
+        NMotion.effectsFast(),
+        label = "chip",
+    )
+    val ink = if (selected) colors.onSecondaryContainer else colors.onSurface
+    val icon = leading ?: if (selected && check) NIcons.Check else null
+    ButtonSurface(
+        onClick = onClick,
+        shape = NShapes.chip,
+        container = container,
+        content = ink,
+        border = if (selected) null else BorderStroke(1.dp, colors.outlineVariant),
+        modifier = modifier
+            .height(32.dp)
+            .semantics {
+                this.role = role
+                this.selected = selected
+            },
+        padding = PaddingValues(
+            start = if (icon != null) 8.dp else 12.dp,
+            end = if (trailing != null) 6.dp else 12.dp,
+        ),
+    ) {
+        if (icon != null) {
+            NIcon(icon, size = 18.dp, tint = leadingTint ?: ink)
+            Box(Modifier.width(6.dp))
+        }
+        Text(
+            label,
+            style = text(14, if (bold || (selected && leading == null && trailing != null)) FontWeight.Bold else FontWeight.SemiBold),
+            maxLines = 1,
+        )
+        if (trailing != null) {
+            Box(Modifier.width(2.dp))
+            NIcon(trailing, size = 18.dp, tint = if (selected) ink else colors.onSurfaceVariant)
+        }
+    }
+}
+
+/** An active filter: its label opens its picker, the cross clears it. */
+@Composable
+fun ActiveChip(
+    label: String,
+    onOpen: () -> Unit,
+    onClear: () -> Unit,
+    openDescription: String,
+    clearDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .height(32.dp)
+            .clip(NShapes.chip)
+            .background(colors.secondaryContainer),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides colors.onSecondaryContainer) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .clickable(role = Role.Button, onClick = onOpen)
+                    .semantics { contentDescription = openDescription }
+                    .padding(start = 12.dp, end = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, style = text(14, FontWeight.Bold), maxLines = 1)
+            }
+            NIconButton(
+                NIcons.Close,
+                clearDescription,
+                onClear,
+                size = 32.dp,
+                iconSize = 16.dp,
+            )
+        }
+    }
+}
+
+/** How a [PillButton] fills. */
+enum class PillStyle { FILLED, TONAL, OUTLINED, TEXT, ERROR }
+
+/**
+ * A fully rounded button: filled in the primary container, tonal in the secondary one, outlined
+ * or text only.
+ */
+@Composable
+fun PillButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    style: PillStyle = PillStyle.FILLED,
+    height: Dp = 48.dp,
+    icon: ImageVector? = null,
+    iconSize: Dp = 18.dp,
+    textStyle: TextStyle = text(15, FontWeight.Bold),
+    padding: PaddingValues = PaddingValues(horizontal = 24.dp),
+    enabled: Boolean = true,
+    outline: Color = colors.outline,
+) {
+    val (container, ink) = when (style) {
+        PillStyle.FILLED -> colors.primaryContainer to colors.onPrimaryContainer
+        PillStyle.TONAL -> colors.secondaryContainer to colors.onSecondaryContainer
+        PillStyle.OUTLINED -> Color.Transparent to colors.onSurface
+        PillStyle.TEXT -> Color.Transparent to colors.primary
+        PillStyle.ERROR -> colors.error to colors.background
+    }
+    ButtonSurface(
+        onClick = onClick,
+        shape = RoundedCornerShape(height / 2),
+        container = container,
+        content = ink,
+        modifier = modifier.height(height),
+        border = if (style == PillStyle.OUTLINED) BorderStroke(1.dp, outline) else null,
+        enabled = enabled,
+        padding = padding,
+    ) {
+        if (icon != null) {
+            NIcon(icon, size = iconSize)
+            Box(Modifier.width(8.dp))
+        }
+        Text(text, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

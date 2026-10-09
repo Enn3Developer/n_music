@@ -6,6 +6,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
+import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
 
 /** Where what plays came from, for the player's "Playing from". */
@@ -34,6 +35,9 @@ interface AppController {
     fun play(query: Query, origin: Origin, start: Locator? = null, shuffle: Boolean? = null)
 
     fun openPlayer()
+
+    /** The filters on the library's tracks. */
+    var filters: TrackFilters
 
     /** The sheet over the app, while one shows. */
     val sheet: Sheet?

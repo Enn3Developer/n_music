@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -77,6 +76,8 @@ import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.GenreRow
+import com.enn3developer.n_music.core.defaultSourceName
+import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
@@ -144,6 +145,14 @@ fun LibraryPage() {
     val library by CoreRepository.library.collectAsStateWithLifecycle()
     val building by CoreRepository.building.collectAsStateWithLifecycle()
     val nowPlaying = rememberNowPlaying()
+    val sources by CoreRepository.sources.collectAsStateWithLifecycle()
+    val sourceName: (Locator) -> String = { root -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
+    val scope = rememberCoroutineScope()
+    // A genre shows as the tracks filtered to it.
+    fun showGenre(genre: GenreRow) {
+        app.filters = TrackFilters(genres = listOf(genre.name.orEmpty()))
+        scope.launch { pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce()) }
+    }
     Column(Modifier.fillMaxSize()) {
         SearchHeader(onSearch = { app.open(Page.Search) }, onSettings = { app.open(Page.Settings) })
         LibraryTabs(pager)
@@ -156,11 +165,16 @@ fun LibraryPage() {
             when (LibraryTab.entries[page]) {
                 LibraryTab.TRACKS -> {
                     val order = TrackOrder.parse(ui.sorts["tracks"], TrackOrder(TrackSort.ARTIST_ALBUM))
-                    val query = Query(Filter.All(emptyList()), order.keys())
+                    val filters = app.filters
+                    val query = Query(filters.filter(), order.keys())
                     val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
                     TracksTab(
                         tracks = tracks,
-                        total = library.tracks.toLong(),
+                        total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
+                        filters = filters,
+                        sourceName = sourceName,
+                        onFilter = { app.show(Sheet.Filters(it)) },
+                        onClearFilter = { app.filters = app.filters.clear(it) },
                         view = ui.view(LibraryTab.TRACKS),
                         order = order,
                         nowPlaying = nowPlaying,
@@ -227,8 +241,8 @@ fun LibraryPage() {
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
                         onSort = { app.show(Sheet.Sort(LibraryTab.GENRES)) },
-                        item = { genre -> GenreItem(genre, {}) },
-                        tile = { genre -> GenreTile(genre, {}) },
+                        item = { genre -> GenreItem(genre, { showGenre(genre) }) },
+                        tile = { genre -> GenreTile(genre, { showGenre(genre) }) },
                     )
                 }
             }
@@ -358,6 +372,10 @@ private fun PagerState.distanceTo(index: Int): Float = abs(position - index).coe
 fun TracksTab(
     tracks: List<TrackRow>?,
     total: Long,
+    filters: TrackFilters,
+    sourceName: (Locator) -> String,
+    onFilter: (FilterField?) -> Unit,
+    onClearFilter: (FilterField) -> Unit,
     view: ViewMode,
     order: TrackOrder,
     nowPlaying: NowPlaying,
@@ -379,24 +397,29 @@ fun TracksTab(
         ) {
             building?.let { BuildingCard(it, onScan, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) }
         }
+        FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
         Row(
             Modifier.padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SortControl(stringResource(order.sort.label), onSort)
-            ViewSwitch(
-                view,
-                { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) },
-                Modifier.padding(start = 6.dp),
-            )
-            Spacer(Modifier.weight(1f))
+            // The sort's name gives way first when the row runs short.
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                SortControl(stringResource(order.sort.label), onSort, Modifier.weight(1f, fill = false))
+                ViewSwitch(
+                    view,
+                    { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) },
+                    Modifier.padding(start = 6.dp, end = 2.dp),
+                )
+            }
             val count = formatCount(total)
+            val filtered = filters.active.isNotEmpty()
             PlayShuffle(
                 onPlay = { onPlayAll(false) },
                 onShuffle = { onPlayAll(true) },
                 large = false,
-                playDescription = stringResource(R.string.play_all, count),
-                shuffleDescription = stringResource(R.string.shuffle_all, count),
+                playLabel = if (filtered) stringResource(R.string.play_count, count) else stringResource(R.string.play),
+                playDescription = stringResource(if (filtered) R.string.play_matching else R.string.play_all, count),
+                shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
             )
         }
         val rows = tracks.orEmpty()
@@ -460,9 +483,14 @@ fun <T> GroupTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SortControl(sortLabel, onSort)
-            ViewSwitch(view, { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) })
-            Spacer(Modifier.weight(1f))
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                SortControl(sortLabel, onSort, Modifier.weight(1f, fill = false))
+                ViewSwitch(
+                    view,
+                    { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) },
+                    Modifier.padding(start = 8.dp),
+                )
+            }
             if (items != null) {
                 Text(count(rows.size), style = text(13, tabular = true), color = colors.onSurfaceVariant)
             }

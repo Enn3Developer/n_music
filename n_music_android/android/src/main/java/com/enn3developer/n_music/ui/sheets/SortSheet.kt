@@ -1,21 +1,15 @@
 package com.enn3developer.n_music.ui.sheets
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -36,12 +29,12 @@ import com.enn3developer.n_music.LibraryTab
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.ui.components.NIcon
+import com.enn3developer.n_music.ui.components.RadioMark
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.library.GroupOrder
 import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.theme.NIcons
-import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -121,30 +114,6 @@ private fun SortOption(label: String, chosen: Boolean, onClick: () -> Unit, trai
             )
         }
         trailing()
-    }
-}
-
-/** A radio button's ring, with its dot while [on]. */
-@Composable
-fun RadioMark(on: Boolean, modifier: Modifier = Modifier) {
-    val ring by animateColorAsState(
-        if (on) colors.primary else colors.onSurfaceVariant,
-        NMotion.effectsFast(),
-        label = "ring",
-    )
-    val dot by animateFloatAsState(if (on) 1f else 0f, NMotion.spatialFast(), label = "dot")
-    Box(
-        modifier
-            .size(20.dp)
-            .border(2.dp, ring, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier
-                .size(10.dp)
-                .scale(dot)
-                .background(colors.primary, CircleShape)
-        )
     }
 }
 
