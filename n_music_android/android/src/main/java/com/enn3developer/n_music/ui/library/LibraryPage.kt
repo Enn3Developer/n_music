@@ -1,10 +1,19 @@
 package com.enn3developer.n_music.ui.library
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +47,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -53,9 +63,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -63,6 +76,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,15 +90,16 @@ import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.GenreRow
-import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.core.TrackRow
+import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
+import com.enn3developer.n_music.ui.Selection
 import com.enn3developer.n_music.ui.bottomPadding
 import com.enn3developer.n_music.ui.components.AlbumItem
 import com.enn3developer.n_music.ui.components.AlbumTile
@@ -95,12 +110,14 @@ import com.enn3developer.n_music.ui.components.GenreTile
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.PlayShuffle
+import com.enn3developer.n_music.ui.components.SelectionBar
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.TrackTile
 import com.enn3developer.n_music.ui.components.ViewSwitch
 import com.enn3developer.n_music.ui.components.WavyProgress
+import com.enn3developer.n_music.ui.components.inert
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
@@ -108,6 +125,7 @@ import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -153,21 +171,41 @@ fun LibraryPage() {
         app.filters = TrackFilters(genres = listOf(genre.name.orEmpty()))
         scope.launch { pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce()) }
     }
+    val order = TrackOrder.parse(ui.sorts["tracks"], TrackOrder(TrackSort.ARTIST_ALBUM))
+    val filters = app.filters
+    val query = Query(filters.filter(), order.keys())
+    val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
+    val selection = app.selection
+    BackHandler(selection != null) { app.endSelection() }
+    // Selecting belongs to the Tracks tab.
+    LaunchedEffect(pager.currentPage) { app.endSelection() }
     Column(Modifier.fillMaxSize()) {
-        SearchHeader(onSearch = { app.open(Page.Search) }, onSettings = { app.open(Page.Settings) })
+        AnimatedContent(
+            selection != null,
+            transitionSpec = { barSwap(targetState) },
+            label = "header",
+        ) { selecting ->
+            if (selecting) {
+                SelectionBar(
+                    count = selection?.count ?: 0,
+                    total = tracks.orEmpty().size,
+                    onClose = app::endSelection,
+                    onSelectAll = { selection?.addAll(tracks.orEmpty().map { it.locator }) },
+                )
+            } else {
+                SearchHeader(onSearch = { app.open(Page.Search) }, onSettings = { app.open(Page.Settings) })
+            }
+        }
         LibraryTabs(pager)
         HorizontalPager(
             state = pager,
             modifier = Modifier.weight(1f),
             key = { it },
+            userScrollEnabled = selection == null,
             flingBehavior = PagerDefaults.flingBehavior(pager, snapAnimationSpec = NMotion.noBounce()),
         ) { page ->
             when (LibraryTab.entries[page]) {
                 LibraryTab.TRACKS -> {
-                    val order = TrackOrder.parse(ui.sorts["tracks"], TrackOrder(TrackSort.ARTIST_ALBUM))
-                    val filters = app.filters
-                    val query = Query(filters.filter(), order.keys())
-                    val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
                     TracksTab(
                         tracks = tracks,
                         total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
@@ -181,6 +219,8 @@ fun LibraryPage() {
                         building = scan?.takeIf { building },
                         compact = ui.compactRows,
                         onToggleView = { UiPreferences.setView(LibraryTab.TRACKS, it) },
+                        selection = selection,
+                        onSelect = { track -> app.select(track.locator) },
                         onPlay = { track -> app.play(query, Origin.Library, track.locator) },
                         onPlayAll = { shuffle -> app.play(query, Origin.Library, shuffle = shuffle) },
                         onMore = {},
@@ -248,6 +288,22 @@ fun LibraryPage() {
             }
         }
     }
+}
+
+/**
+ * The search field giving way to the selection bar, or back: the old one leaves first, the new
+ * one follows 90 ms later, and both drift 8 dp the way the change goes.
+ */
+private fun AnimatedContentTransitionScope<Boolean>.barSwap(selecting: Boolean): ContentTransform {
+    val drift = if (selecting) 1 else -1
+    val lead = NMotion.STAGGER_MS
+    return (
+        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead + 90)) { -drift * it / 9 } +
+            fadeIn(NMotion.effectsDefault<Float>().delayed(lead + 90))
+        ).togetherWith(
+        slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { drift * it / 9 } +
+            fadeOut(NMotion.effectsFast<Float>().delayed(lead))
+    ) using SizeTransform(clip = false)
 }
 
 /** The library's search field, which opens Search, with Settings at its end. */
@@ -382,6 +438,8 @@ fun TracksTab(
     building: ScanState?,
     compact: Boolean,
     onToggleView: (ViewMode) -> Unit,
+    selection: Selection?,
+    onSelect: (TrackRow) -> Unit,
     onPlay: (TrackRow) -> Unit,
     onPlayAll: (shuffle: Boolean) -> Unit,
     onMore: (TrackRow) -> Unit,
@@ -389,6 +447,16 @@ fun TracksTab(
     onScan: () -> Unit,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val haptics = LocalHapticFeedback.current
+    val selecting = selection != null
+    // While selecting, the filters and what plays dim and stop answering.
+    val dim by animateFloatAsState(if (selecting) 0.38f else 1f, NMotion.effectsDefault(), label = "dim")
+    fun press(track: TrackRow) = if (selecting) onSelect(track) else onPlay(track)
+    fun hold(track: TrackRow) {
+        if (!selecting) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        onSelect(track)
+    }
+    fun state(track: TrackRow) = nowPlaying.state(track).copy(selected = selection?.contains(track.locator) == true)
     Column(Modifier.fillMaxSize()) {
         AnimatedVisibility(
             building != null,
@@ -397,30 +465,36 @@ fun TracksTab(
         ) {
             building?.let { BuildingCard(it, onScan, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) }
         }
-        FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
-        Row(
-            Modifier.padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier
+                .graphicsLayer { alpha = dim }
+                .then(if (selecting) Modifier.inert() else Modifier)
         ) {
-            // The sort's name gives way first when the row runs short.
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                SortControl(stringResource(order.sort.label), onSort, Modifier.weight(1f, fill = false))
-                ViewSwitch(
-                    view,
-                    { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) },
-                    Modifier.padding(start = 6.dp, end = 2.dp),
+            FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
+            Row(
+                Modifier.padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // The sort's name gives way first when the row runs short.
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    SortControl(stringResource(order.sort.label), onSort, Modifier.weight(1f, fill = false))
+                    ViewSwitch(
+                        view,
+                        { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) },
+                        Modifier.padding(start = 6.dp, end = 2.dp),
+                    )
+                }
+                val count = formatCount(total)
+                val filtered = filters.active.isNotEmpty()
+                PlayShuffle(
+                    onPlay = { onPlayAll(false) },
+                    onShuffle = { onPlayAll(true) },
+                    large = false,
+                    playLabel = if (filtered) stringResource(R.string.play_count, count) else stringResource(R.string.play),
+                    playDescription = stringResource(if (filtered) R.string.play_matching else R.string.play_all, count),
+                    shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
                 )
             }
-            val count = formatCount(total)
-            val filtered = filters.active.isNotEmpty()
-            PlayShuffle(
-                onPlay = { onPlayAll(false) },
-                onShuffle = { onPlayAll(true) },
-                large = false,
-                playLabel = if (filtered) stringResource(R.string.play_count, count) else stringResource(R.string.play),
-                playDescription = stringResource(if (filtered) R.string.play_matching else R.string.play_all, count),
-                shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
-            )
         }
         val rows = tracks.orEmpty()
         if (view == ViewMode.LIST) {
@@ -428,9 +502,9 @@ fun TracksTab(
                 items(rows, key = { it.locator.key }) { track ->
                     TrackItem(
                         track,
-                        nowPlaying.state(track),
-                        onClick = { onPlay(track) },
-                        onLongClick = null,
+                        state(track),
+                        onClick = { press(track) },
+                        onLongClick = { hold(track) },
                         onMore = { onMore(track) },
                         compact = compact,
                     )
@@ -447,9 +521,9 @@ fun TracksTab(
                 items(rows, key = { it.locator.key }) { track ->
                     TrackTile(
                         track,
-                        nowPlaying.state(track),
-                        onClick = { onPlay(track) },
-                        onLongClick = null,
+                        state(track),
+                        onClick = { press(track) },
+                        onLongClick = { hold(track) },
                         onMore = { onMore(track) },
                     )
                 }

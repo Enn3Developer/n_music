@@ -1,0 +1,184 @@
+package com.enn3developer.n_music.ui.components
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ui.formatCount
+import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.ui.theme.NMotion
+import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
+import com.enn3developer.n_music.ui.theme.text
+
+/**
+ * The bar standing in for a page's search field while selecting: Stop selecting, how many are
+ * picked, and Select all, which picks the [total] tracks of the list.
+ */
+@Composable
+fun SelectionBar(count: Int, total: Int, onClose: () -> Unit, onSelectAll: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(colors.secondaryContainer, RoundedCornerShape(28.dp))
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides colors.onSecondaryContainer) {
+                NIconButton(NIcons.Close, stringResource(R.string.stop_selecting), onClose)
+                RollingText(
+                    pluralStringResource(R.plurals.selected_count, count, formatCount(count)),
+                    count,
+                    text(18, FontWeight.Bold, tabular = true),
+                    colors.onSecondaryContainer,
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp),
+                )
+                NIconButton(NIcons.SelectAll, stringResource(R.string.select_all, formatCount(total)), onSelectAll)
+            }
+        }
+    }
+}
+
+/**
+ * [value] as text whose characters roll as it changes: up while [order] grows, down while it
+ * shrinks. Characters that stay the same hold still.
+ */
+@Composable
+fun RollingText(value: String, order: Int, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    // The last order seen, kept outside snapshots: reading it decides a roll's direction once.
+    val last = remember { intArrayOf(order) }
+    val up = order >= last[0]
+    last[0] = order
+    Row(modifier) {
+        value.forEachIndexed { index, character ->
+            AnimatedContent(
+                character,
+                transitionSpec = { roll(up) },
+                label = "roll$index",
+            ) { shown ->
+                Text(shown.toString(), style = style, color = color, maxLines = 1)
+            }
+        }
+    }
+}
+
+private fun roll(up: Boolean): ContentTransform {
+    val sign = if (up) 1 else -1
+    return ContentTransform(
+        slideInVertically(NMotion.spatialDefault()) { sign * it } + fadeIn(NMotion.effectsDefault()),
+        slideOutVertically(NMotion.spatialDefault()) { -sign * it } + fadeOut(NMotion.effectsFast()),
+        sizeTransform = SizeTransform(clip = true),
+    )
+}
+
+/**
+ * What can be done with the picked tracks, in place of the mini player: Play next, Add to queue
+ * and Add to playlist. The pressed one widens as the others give way, and once it is let go the
+ * others leave before it does.
+ */
+@Composable
+fun AnimatedVisibilityScope.SelectionActions(
+    count: Int,
+    onPlayNext: () -> Unit,
+    onQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var pressed by remember { mutableIntStateOf(-1) }
+    val description = pluralStringResource(R.plurals.act_on, count, formatCount(count))
+    PressGroup(3, modifier.semantics { contentDescription = description }) { index, interaction, weight ->
+        val (label, action) = when (index) {
+            0 -> stringResource(R.string.play_next) to onPlayNext
+            1 -> stringResource(R.string.add_to_queue) to onQueue
+            else -> stringResource(R.string.add_to_playlist) to onAddToPlaylist
+        }
+        val shape = RoundedCornerShape(24.dp)
+        // The rest leave first; the pressed one follows them out.
+        val lag = if (index == pressed) NMotion.STAGGER_MS else 0L
+        ActionButton(
+            label,
+            interaction,
+            onClick = {
+                pressed = index
+                action()
+            },
+            filled = index == 0,
+            modifier = weight
+                .animateEnterExit(
+                    // They come in once the mini player has left.
+                    enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
+                        fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
+                    exit = slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lag)) { it } +
+                        fadeOut(NMotion.effectsFast<Float>().delayed(lag)),
+                )
+                .height(48.dp)
+                .floating(shape),
+        )
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    interaction: MutableInteractionSource,
+    onClick: () -> Unit,
+    filled: Boolean,
+    modifier: Modifier,
+) {
+    ButtonSurface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        container = if (filled) colors.primaryContainer else colors.secondaryContainer,
+        content = if (filled) colors.onPrimaryContainer else colors.onSecondaryContainer,
+        modifier = modifier,
+        interactionSource = interaction,
+        padding = PaddingValues(horizontal = 12.dp),
+    ) {
+        Text(label, style = text(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}

@@ -2,11 +2,13 @@ package com.enn3developer.n_music.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -403,5 +405,26 @@ fun PillButton(
             Box(Modifier.width(8.dp))
         }
         Text(text, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Buttons sharing a row, each widening by 15% while pressed as the others make room, as in
+ * Material's button groups.
+ */
+@Composable
+fun PressGroup(
+    count: Int,
+    modifier: Modifier = Modifier,
+    gap: Dp = 8.dp,
+    item: @Composable RowScope.(index: Int, interaction: MutableInteractionSource, weight: Modifier) -> Unit,
+) {
+    val sources = remember(count) { List(count) { MutableInteractionSource() } }
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap)) {
+        for (index in 0 until count) {
+            val pressed by sources[index].collectIsPressedAsState()
+            val weight by animateFloatAsState(if (pressed) 1.15f else 1f, NMotion.spatialFast(), label = "press")
+            item(index, sources[index], Modifier.weight(weight))
+        }
     }
 }

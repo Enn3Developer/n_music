@@ -6,8 +6,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
+import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
+import kotlinx.coroutines.CoroutineScope
 
 /** Where what plays came from, for the player's "Playing from". */
 sealed interface Origin {
@@ -46,6 +48,32 @@ interface AppController {
     fun show(sheet: Sheet)
 
     fun closeSheet()
+
+    /** The dialog over the app, while one shows. */
+    val dialog: AppDialog?
+
+    fun show(dialog: AppDialog)
+
+    fun closeDialog()
+
+    /** The tracks picked while selecting; `null` while not selecting. */
+    val selection: Selection?
+
+    /** Starts selecting with [track], or while selecting, picks it or lets it go. */
+    fun select(track: Locator)
+
+    fun endSelection()
+
+    /** The message over the mini player, numbered so the same one twice shows twice. */
+    val snack: Pair<Long, Snack>?
+
+    fun snack(snack: Snack)
+
+    /** Lets go of snack [id], unless another has replaced it. */
+    fun dismissSnack(id: Long)
+
+    /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
+    val scope: CoroutineScope
 }
 
 val LocalApp = staticCompositionLocalOf<AppController> { error("No app") }

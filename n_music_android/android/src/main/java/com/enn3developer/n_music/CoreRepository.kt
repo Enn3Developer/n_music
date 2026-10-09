@@ -274,6 +274,14 @@ object CoreRepository {
 
     fun missingTracks(root: Locator): List<TrackRow> = core.missingTracks(root)
 
+    /** Adds to playlist [id] those of [tracks] it lacks, off the main thread; returns them. */
+    suspend fun addToPlaylist(id: PlaylistId, tracks: List<Locator>): List<Locator> = withContext(Dispatchers.IO) {
+        val held = core.tracks(Query(Filter.Playlist(id), emptyList()), 0u, UInt.MAX_VALUE).mapTo(HashSet()) { it.locator }
+        val missing = tracks.filter { it !in held }
+        if (missing.isNotEmpty()) core.send(Command.AddToPlaylist(id, missing))
+        missing
+    }
+
     private suspend fun readEvents() {
         while (true) {
             // The core never stops on its own, and it ends the process when its bus fails.

@@ -1,7 +1,10 @@
 package com.enn3developer.n_music.ui.theme
 
+import androidx.compose.animation.core.AnimationVector
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import kotlin.math.exp
 import kotlin.math.sqrt
@@ -75,4 +78,35 @@ object NMotion {
 
     /** When several things change at once, the rest follow the leader this far apart. */
     const val STAGGER_MS = 50L
+}
+
+/** This spec, started [millis] late: how a follower trails its leader in a staggered move. */
+fun <T> FiniteAnimationSpec<T>.delayed(millis: Long): FiniteAnimationSpec<T> =
+    if (millis <= 0) this else Delayed(this, millis * 1_000_000)
+
+private class Delayed<T>(val spec: FiniteAnimationSpec<T>, val delayNanos: Long) : FiniteAnimationSpec<T> {
+    override fun <V : AnimationVector> vectorize(converter: TwoWayConverter<T, V>): VectorizedFiniteAnimationSpec<V> =
+        DelayedVectorized(spec.vectorize(converter), delayNanos)
+}
+
+private class DelayedVectorized<V : AnimationVector>(
+    val spec: VectorizedFiniteAnimationSpec<V>,
+    val delayNanos: Long,
+) : VectorizedFiniteAnimationSpec<V> {
+    override fun getValueFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
+        if (playTimeNanos < delayNanos) {
+            initialValue
+        } else {
+            spec.getValueFromNanos(playTimeNanos - delayNanos, initialValue, targetValue, initialVelocity)
+        }
+
+    override fun getVelocityFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
+        if (playTimeNanos < delayNanos) {
+            initialVelocity
+        } else {
+            spec.getVelocityFromNanos(playTimeNanos - delayNanos, initialValue, targetValue, initialVelocity)
+        }
+
+    override fun getDurationNanos(initialValue: V, targetValue: V, initialVelocity: V): Long =
+        delayNanos + spec.getDurationNanos(initialValue, targetValue, initialVelocity)
 }

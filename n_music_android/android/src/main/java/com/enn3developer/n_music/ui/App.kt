@@ -1,9 +1,13 @@
 package com.enn3developer.n_music.ui
 
+import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -22,44 +26,53 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
-import androidx.compose.ui.res.stringResource
-import com.enn3developer.n_music.R
-import com.enn3developer.n_music.ui.components.NIconButton
-import com.enn3developer.n_music.ui.theme.NIcons
-import com.enn3developer.n_music.ui.theme.NType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.components.BottomFade
 import com.enn3developer.n_music.ui.components.MiniPlayer
+import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NavBar
 import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
+import com.enn3developer.n_music.ui.components.SelectionActions
+import com.enn3developer.n_music.ui.components.SnackbarHost
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
+import com.enn3developer.n_music.ui.dialogs.AppDialog
+import com.enn3developer.n_music.ui.dialogs.DialogHost
 import com.enn3developer.n_music.ui.library.LibraryPage
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
+import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NTheme
+import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
+import kotlinx.coroutines.CoroutineScope
 
 /** What the app needs from its activity: Android's pickers and browser. */
 interface AppHost {
@@ -70,7 +83,7 @@ interface AppHost {
 }
 
 /** The app's controller: navigation, and playing what a page asks for. */
-private class Controller(override val navigator: Navigator) : AppController {
+private class Controller(override val navigator: Navigator, override val scope: CoroutineScope) : AppController {
     var playerOpen by mutableStateOf(false)
 
     override fun open(page: Page) = navigator.open(page)
@@ -100,6 +113,48 @@ private class Controller(override val navigator: Navigator) : AppController {
     override fun closeSheet() {
         sheet = null
     }
+
+    override var dialog by mutableStateOf<AppDialog?>(null)
+        private set
+
+    override fun show(dialog: AppDialog) {
+        this.dialog = dialog
+    }
+
+    override fun closeDialog() {
+        dialog = null
+    }
+
+    override var selection by mutableStateOf<Selection?>(null)
+        private set
+
+    override fun select(track: Locator) {
+        val selection = selection
+        if (selection == null) {
+            this.selection = Selection(track)
+        } else {
+            selection.toggle(track)
+            // Letting go of the last one ends selecting.
+            if (selection.count == 0) this.selection = null
+        }
+    }
+
+    override fun endSelection() {
+        selection = null
+    }
+
+    private var snacks = 0L
+
+    override var snack by mutableStateOf<Pair<Long, Snack>?>(null)
+        private set
+
+    override fun snack(snack: Snack) {
+        this.snack = ++snacks to snack
+    }
+
+    override fun dismissSnack(id: Long) {
+        if (snack?.first == id) snack = null
+    }
 }
 
 /** Playback's controls, sent to the core. */
@@ -119,15 +174,18 @@ fun NMusicApp(host: AppHost) {
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     NTheme(ui.theme, ui.accent) {
         val navigator = rememberNavigator()
-        val controller = remember(navigator) { Controller(navigator) }
+        val scope = rememberCoroutineScope()
+        val controller = remember(navigator) { Controller(navigator, scope) }
         BackHandler(navigator.canGoBack) { navigator.back() }
         CompositionLocalProvider(LocalApp provides controller) {
             Box(Modifier.fillMaxSize()) {
-                // Under a sheet, only the sheet is there for accessibility services.
-                Box(if (controller.sheet != null) Modifier.clearAndSetSemantics {} else Modifier) {
+                // Under a sheet or a dialog, only it is there for accessibility services.
+                val covered = controller.sheet != null || controller.dialog != null
+                Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
                     PhoneLayout(navigator)
                 }
                 SheetHost(controller.sheet, controller::closeSheet)
+                DialogHost(controller.dialog, controller::closeDialog)
             }
         }
     }
@@ -144,13 +202,18 @@ private fun PhoneLayout(navigator: Navigator) {
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
     val seconds = rememberPlaybackSeconds(position, playing)
     val app = LocalApp.current
+    val resources = LocalResources.current
 
     val page = navigator.current.page
     val navigation = page.navigation
-    val miniPlayer = page.miniPlayer && current != null
+    val selection = app.selection
+    // Selecting belongs to a page: another page, or another tab, ends it.
+    LaunchedEffect(navigator.tab, navigator.current.id) { app.endSelection() }
+    val actions = selection != null && navigation
+    val miniPlayer = page.miniPlayer && current != null && selection == null
     val navInset = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val bottomSpace = (if (navigation) 64.dp + navInset else navInset) +
-        (if (miniPlayer) 64.dp + 8.dp else 0.dp)
+        (if (miniPlayer || actions) 64.dp + 8.dp else 0.dp)
 
     Box(
         Modifier
@@ -161,17 +224,49 @@ private fun PhoneLayout(navigator: Navigator) {
             PageHost(navigator)
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            AnimatedVisibility(
-                miniPlayer,
-                enter = slideInVertically(NMotion.spatialDefault()) { it } + fadeIn(NMotion.effectsDefault()),
-                exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
-            ) {
-                Box {
+            Box(Modifier.fillMaxWidth()) {
+                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                androidx.compose.animation.AnimatedVisibility(
+                    miniPlayer || actions,
+                    Modifier.align(Alignment.BottomCenter),
+                    enter = fadeIn(NMotion.effectsDefault()),
+                    exit = fadeOut(NMotion.effectsFast()),
+                ) {
                     BottomFade(
-                        if (navigation) 100.dp else 120.dp,
-                        Modifier.align(Alignment.BottomCenter),
-                        solidFrom = if (navigation) 0.72f else 0.45f,
+                        when {
+                            actions -> 110.dp
+                            navigation -> 100.dp
+                            else -> 120.dp
+                        },
+                        solidFrom = when {
+                            actions -> 0.70f
+                            navigation -> 0.72f
+                            else -> 0.45f
+                        },
                     )
+                }
+                // Behind the mini player, so a snackbar rises out from under it.
+                val snackBottom by animateDpAsState(
+                    (if (miniPlayer) 72.dp else 0.dp) + 8.dp + (if (navigation) 0.dp else navInset),
+                    NMotion.spatialDefault(),
+                    label = "snack",
+                )
+                SnackbarHost(
+                    app.snack,
+                    app::dismissSnack,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = snackBottom),
+                )
+                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                androidx.compose.animation.AnimatedVisibility(
+                    miniPlayer,
+                    Modifier.align(Alignment.BottomCenter),
+                    // Back from selecting, it waits for the actions to leave.
+                    enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
+                        fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
+                    exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
+                ) {
                     MiniPlayer(
                         ui = PlaybackUi(current?.track, playing, shuffle, loop),
                         progress = {
@@ -181,11 +276,32 @@ private fun PhoneLayout(navigator: Navigator) {
                         buttons = ui.miniButtons,
                         actions = CorePlayback,
                         onOpen = app::openPlayer,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(
+                        modifier = Modifier.padding(
                             start = 8.dp,
                             end = 8.dp,
                             bottom = if (navigation) 8.dp else 8.dp + navInset,
                         ),
+                    )
+                }
+                // The selection's actions outlive it while they leave.
+                val acting = remember { arrayOfNulls<Selection>(1) }
+                if (selection != null) acting[0] = selection
+                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                androidx.compose.animation.AnimatedVisibility(
+                    actions,
+                    Modifier.align(Alignment.BottomCenter),
+                    enter = EnterTransition.None,
+                    exit = ExitTransition.None,
+                ) {
+                    val picked = acting[0]
+                    SelectionActions(
+                        count = picked?.count ?: 0,
+                        onPlayNext = { picked?.let { queue(app, resources, it, next = true) } },
+                        onQueue = { picked?.let { queue(app, resources, it, next = false) } },
+                        onAddToPlaylist = { picked?.let { app.show(Sheet.AddToPlaylist(it.tracks)) } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
                     )
                 }
             }
@@ -198,6 +314,25 @@ private fun PhoneLayout(navigator: Navigator) {
             }
         }
     }
+}
+
+/** Queues what [selection] holds, ends selecting and offers to undo it. */
+private fun queue(app: AppController, resources: Resources, selection: Selection, next: Boolean) {
+    val tracks = selection.tracks
+    val undo = enqueue(tracks, next)
+    app.endSelection()
+    val count = tracks.size
+    app.snack(
+        Snack(
+            resources.getQuantityString(
+                if (next) R.plurals.queued_next else R.plurals.queued,
+                quantity(count),
+                formatCount(count),
+            ),
+            resources.getString(R.string.undo),
+            undo,
+        )
+    )
 }
 
 /**

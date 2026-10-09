@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.LibraryTab
+import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -23,6 +24,9 @@ sealed interface Sheet {
 
     /** The filters on the library's tracks, opened at [focus]. */
     data class Filters(val focus: FilterField? = null) : Sheet
+
+    /** Adds [tracks] to a playlist, or takes them out of one that has them all. */
+    data class AddToPlaylist(val tracks: List<Locator>) : Sheet
 }
 
 /**
@@ -43,6 +47,7 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
             when (sheet) {
                 is Sheet.Sort -> SortSheet(sheet.list, open, dismiss, gone)
                 is Sheet.Filters -> FilterSheet(sheet.focus, open, dismiss, gone)
+                is Sheet.AddToPlaylist -> AddToPlaylistSheet(sheet.tracks, open, dismiss, gone)
             }
         }
     }

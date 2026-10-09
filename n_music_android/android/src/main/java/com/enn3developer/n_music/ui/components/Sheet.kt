@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.theme.NMotion
@@ -71,7 +72,7 @@ private const val VISIBLE = 0.001f
  * [open], and leaves once [open] turns off, then calls [onGone]. Dragging the handle or the
  * [header] down moves it with the finger; a flick, or a drag past a third of it, asks to close it
  * through [onDismissRequest], as the scrim and back do. A [tall] sheet reaches up to just under
- * the status bar.
+ * the status bar; a short one leaves [end] under its content, above the gesture area.
  */
 @Composable
 fun SheetFrame(
@@ -81,6 +82,7 @@ fun SheetFrame(
     onGone: () -> Unit,
     modifier: Modifier = Modifier,
     tall: Boolean = false,
+    end: Dp = 12.dp,
     header: @Composable ColumnScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -219,7 +221,7 @@ fun SheetFrame(
             Column(
                 if (tall) Modifier.weight(1f) else Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
             ) { content() }
-            if (!tall) Spacer(Modifier.height(12.dp))
+            if (!tall) Spacer(Modifier.height(end))
             // The keyboard lifts the sheet's bottom, or shortens a tall sheet's content.
             Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars.union(WindowInsets.ime)))
             Spacer(Modifier.height(Overhang))
