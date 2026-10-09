@@ -26,9 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -72,7 +70,6 @@ import com.enn3developer.n_music.ui.components.FabItem
 import com.enn3developer.n_music.ui.components.ExtendedFab
 import com.enn3developer.n_music.ui.components.FabMenu
 import com.enn3developer.n_music.ui.components.MiniPlayer
-import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NavBar
 import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
@@ -91,6 +88,8 @@ import com.enn3developer.n_music.ui.player.PlayerHost
 import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.playlists.PlaylistPage
 import com.enn3developer.n_music.ui.playlists.PlaylistsPage
+import com.enn3developer.n_music.ui.settings.LicencePage
+import com.enn3developer.n_music.ui.settings.SettingsPage
 import com.enn3developer.n_music.ui.sources.SourcePage
 import com.enn3developer.n_music.ui.sources.SourcesPage
 import com.enn3developer.n_music.ui.sources.WelcomePage
@@ -99,7 +98,6 @@ import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NTheme
-import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import kotlinx.coroutines.CoroutineScope
@@ -116,6 +114,12 @@ interface AppHost {
 
     /** Opens Android's output switcher, to play on another speaker or headphones. */
     fun openOutputSwitcher()
+
+    /** Offers the logs to the apps that take text, for a bug report. */
+    fun shareLogs()
+
+    /** Opens Android's screen for the app's language; `false` where there is none. */
+    fun openLanguageSettings(): Boolean
 }
 
 /** The app's controller: navigation, and playing what a page asks for. */
@@ -238,6 +242,14 @@ private class Controller(
 
     override fun releaseFolder(root: Locator) {
         if (root is Locator.DocumentTree) host.releaseFolder(root.v1.toUri())
+    }
+
+    override fun openLink(url: String) = host.openLink(url)
+
+    override fun shareLogs() = host.shareLogs()
+
+    override fun openLanguage() {
+        if (!host.openLanguageSettings()) show(Sheet.Language)
     }
 }
 
@@ -591,21 +603,7 @@ private fun PageContent(page: Page) {
         is Page.Playlist -> PlaylistPage(page)
         Page.Sources -> SourcesPage()
         is Page.Source -> SourcePage(page)
-        else -> ComingPage(page)
-    }
-}
-
-/** A page the app does not draw yet: its name and the way back. */
-@Composable
-private fun ComingPage(page: Page) {
-    val app = LocalApp.current
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(4.dp)) {
-        NIconButton(NIcons.Back, stringResource(R.string.back), app::back)
-        Text(
-            page::class.simpleName.orEmpty(),
-            style = NType.headline,
-            color = colors.onSurface,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
+        Page.Settings -> SettingsPage()
+        Page.Licence -> LicencePage()
     }
 }

@@ -15,6 +15,7 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.library.SortedList
+import com.enn3developer.n_music.ui.settings.LanguageSheet
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -49,6 +50,9 @@ sealed interface Sheet {
 
     /** The kinds of source the library can get. */
     data object AddSource : Sheet
+
+    /** The app's language, where Android has no screen for it. */
+    data object Language : Sheet
 }
 
 /**
@@ -76,6 +80,7 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
                 is Sheet.SmartPlaylist -> SmartPlaylistSheet(sheet.id, sheet.focus, sheet.start, open, dismiss, gone)
                 is Sheet.PlaylistSort -> PlaylistSortSheet(sheet.id, open, dismiss, gone)
                 Sheet.AddSource -> AddSourceSheet(open, dismiss, gone)
+                Sheet.Language -> LanguageSheet(open, dismiss, gone)
             }
         }
     }

@@ -16,12 +16,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.enn3developer.n_music.ui.AppHost
 import com.enn3developer.n_music.ui.NMusicApp
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 
 /**
  * The app's one activity. An AppCompat one, so the per-app language Android keeps from
@@ -90,6 +97,60 @@ class MainActivity : AppCompatActivity(), AppHost {
         } catch (error: SecurityException) {
             // Already let go of, or never kept.
             Log.w("n_music", "Could not release $folder", error)
+        }
+    }
+
+    /**
+     * Gathers N Music's logs, its crash reports too, into one file, oldest first, and offers it
+     * to the apps that take text, for a bug report.
+     */
+    override fun shareLogs() {
+        lifecycleScope.launch {
+            val gathered = withContext(Dispatchers.IO) { gatherLogs() } ?: return@launch
+            val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.files", gathered)
+            val send = Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.app_name) + " " + BuildConfig.VERSION_NAME)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                startActivity(Intent.createChooser(send, getString(R.string.share_logs)))
+            } catch (error: ActivityNotFoundException) {
+                Log.w("n_music", "Nothing can take the logs", error)
+            }
+        }
+    }
+
+    private fun gatherLogs(): File? = try {
+        val logs = CoreRepository.dataDir
+            .listFiles { file -> file.name.startsWith("n_music") && file.name.endsWith(".log") }
+            .orEmpty()
+            // Rotated logs, then the current one, then the crash reports.
+            .sortedWith(compareBy({ "panic" in it.name }, { "CURRENT" in it.name }, { it.name }))
+        val gathered = File(cacheDir, "logs").apply { mkdirs() }.resolve("n_music_logs.txt")
+        gathered.bufferedWriter().use { writer ->
+            writer.appendLine("${getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}; Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}); ${Build.MANUFACTURER} ${Build.MODEL}")
+            for (log in logs) {
+                writer.appendLine()
+                writer.appendLine("=== ${log.name} ===")
+                log.bufferedReader().use { it.copyTo(writer) }
+            }
+        }
+        gathered
+    } catch (error: IOException) {
+        Log.e("n_music", "Could not gather the logs", error)
+        null
+    }
+
+    /** Android's own screen for the app's language, from Android 13. */
+    override fun openLanguageSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        return try {
+            startActivity(Intent(Settings.ACTION_APP_LOCALE_SETTINGS, Uri.fromParts("package", packageName, null)))
+            true
+        } catch (error: ActivityNotFoundException) {
+            Log.w("n_music", "No language settings for the app", error)
+            false
         }
     }
 

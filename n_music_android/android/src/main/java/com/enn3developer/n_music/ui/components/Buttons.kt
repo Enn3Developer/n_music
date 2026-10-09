@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -487,4 +489,28 @@ fun <T> Segmented(
             }
         }
     }
+}
+
+/** A switch as the design draws it: a check on its thumb while on. */
+@Composable
+fun NSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        thumbContent = if (checked) {
+            { NIcon(NIcons.CheckBold, size = 16.dp, tint = colors.primary) }
+        } else {
+            null
+        },
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = colors.onPrimary,
+            checkedTrackColor = colors.primary,
+            checkedBorderColor = colors.primary,
+            checkedIconColor = colors.primary,
+            uncheckedThumbColor = colors.outline,
+            uncheckedTrackColor = colors.surfaceHighest,
+            uncheckedBorderColor = colors.outline,
+        ),
+    )
 }

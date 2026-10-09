@@ -29,6 +29,7 @@
         tools:targetApi="tiramisu"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.NMusic">
         <meta-data
             android:name="com.enn3developer.monochrome_icon"
@@ -53,6 +54,25 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+        <!-- Keeps the language picked in N Music on Android 11 and 12, as Android does from 13. -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+        <!-- Hands the gathered logs to the app they are shared with. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
         <receiver
             android:name="androidx.media3.session.MediaButtonReceiver"
             android:exported="true">

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -21,6 +22,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -40,9 +42,12 @@ fun NMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable 
     )
 }
 
-/** An item of a menu: its icon and label; [danger] for one that deletes or removes. */
+/**
+ * An item of a menu: its icon and label; [danger] for one that deletes or removes. Without an
+ * icon, [checked] puts a check in its place on the one picked.
+ */
 @Composable
-fun MenuItem(label: String, icon: ImageVector, onClick: () -> Unit, danger: Boolean = false) {
+fun MenuItem(label: String, icon: ImageVector?, onClick: () -> Unit, danger: Boolean = false, checked: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -52,7 +57,11 @@ fun MenuItem(label: String, icon: ImageVector, onClick: () -> Unit, danger: Bool
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        NIcon(icon, size = 20.dp, tint = if (danger) colors.error else colors.onSurfaceVariant)
+        when {
+            icon != null -> NIcon(icon, size = 20.dp, tint = if (danger) colors.error else colors.onSurfaceVariant)
+            checked -> NIcon(NIcons.Check, size = 20.dp, tint = colors.primary)
+            else -> Box(Modifier.size(20.dp))
+        }
         Text(
             label,
             style = text(15, if (danger) FontWeight.SemiBold else FontWeight.Medium),

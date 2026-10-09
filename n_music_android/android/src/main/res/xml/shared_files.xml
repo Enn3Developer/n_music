@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What N Music hands other apps: the logs it gathers for a bug report. -->
+<paths>
+    <cache-path name="logs" path="logs/" />
+</paths>

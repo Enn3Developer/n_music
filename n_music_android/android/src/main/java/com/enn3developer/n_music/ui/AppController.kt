@@ -100,6 +100,15 @@ interface AppController {
     /** Lets go of [root]'s folder: Android stops keeping it readable for the app. */
     fun releaseFolder(root: Locator)
 
+    /** Opens [url] in the browser. */
+    fun openLink(url: String)
+
+    /** Offers the logs to the apps that take text, for a bug report. */
+    fun shareLogs()
+
+    /** Picks the app's language: Android's own screen for it, or N Music's where there is none. */
+    fun openLanguage()
+
     /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
     val scope: CoroutineScope
 }
