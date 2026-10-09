@@ -25,13 +25,13 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.enn3developer.n_music.LibraryTab
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.RadioMark
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.library.GroupOrder
+import com.enn3developer.n_music.ui.library.SortedList
 import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -39,25 +39,17 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
 /**
- * How one of the library's lists is sorted: a radio for each way. Picking one sorts the list and
- * closes the sheet; the chosen one of the tracks' carries its direction, which flips in place.
+ * How one of the lists is sorted: a radio for each way. Picking one sorts the list and closes the
+ * sheet; the chosen way of a list of tracks carries its direction, which flips in place.
  */
 @Composable
-fun SortSheet(list: LibraryTab, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
+fun SortSheet(list: SortedList, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
-    val title = stringResource(
-        when (list) {
-            LibraryTab.TRACKS -> R.string.sort_tracks
-            LibraryTab.ALBUMS -> R.string.sort_albums
-            LibraryTab.ARTISTS -> R.string.sort_artists
-            LibraryTab.GENRES -> R.string.sort_genres
-        }
-    )
-    val stored = ui.sorts[list.stored]
+    val title = stringResource(list.title)
     SheetFrame(open, title, onDismissRequest, onGone, header = { SheetTitle(title) }) {
         Column(Modifier.selectableGroup()) {
-            if (list == LibraryTab.TRACKS) {
-                val order = TrackOrder.parse(stored, TrackOrder(TrackSort.ARTIST_ALBUM))
+            if (list.ofTracks) {
+                val order = list.trackOrder(ui.sorts)
                 for (sort in TrackSort.library) {
                     val chosen = order.sort == sort
                     SortOption(stringResource(sort.label), chosen, onClick = {
@@ -72,9 +64,8 @@ fun SortSheet(list: LibraryTab, open: Boolean, onDismissRequest: () -> Unit, onG
                     }
                 }
             } else {
-                val albums = list == LibraryTab.ALBUMS
-                val order = GroupOrder.parse(stored, if (albums) GroupOrder.ARTIST else GroupOrder.NAME)
-                for (option in if (albums) GroupOrder.albums else GroupOrder.others) {
+                val order = list.groupOrder(ui.sorts)
+                for (option in if (list == SortedList.ALBUMS) GroupOrder.albums else GroupOrder.others) {
                     val chosen = order == option
                     SortOption(stringResource(option.label), chosen, onClick = {
                         if (!chosen) UiPreferences.setSort(list.stored, option.stored)

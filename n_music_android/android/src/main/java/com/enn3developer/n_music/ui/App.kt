@@ -62,6 +62,8 @@ import com.enn3developer.n_music.ui.components.SnackbarHost
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.dialogs.DialogHost
+import com.enn3developer.n_music.ui.library.AlbumPage
+import com.enn3developer.n_music.ui.library.ArtistPage
 import com.enn3developer.n_music.ui.library.LibraryPage
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
@@ -382,6 +384,8 @@ private fun PageHost(navigator: Navigator) {
 private fun PageContent(page: Page) {
     when (page) {
         Page.Library -> LibraryPage()
+        is Page.Album -> AlbumPage(page)
+        is Page.Artist -> ArtistPage(page)
         else -> ComingPage(page)
     }
 }

@@ -117,6 +117,17 @@
     <string name="play_matching">Play the %1$s matching tracks</string>
     <string name="shuffle_matching">Shuffle the %1$s matching tracks</string>
 
+    <!-- Album and artist pages, and a track's actions -->
+    <string name="album_kind">Album</string>
+    <string name="artist_kind">Artist</string>
+    <string name="disc">Disc %1$d</string>
+    <string name="disc_unknown">Other tracks</string>
+    <string name="go_to_album">Go to album</string>
+    <string name="go_to_artist">Go to artist</string>
+    <string name="track_plays_next">%1$s plays next</string>
+    <string name="track_queued">Added %1$s to the queue</string>
+    <string name="played_times">Played %1$d× · %2$s</string>
+
     <!-- Selecting -->
     <string name="stop_selecting">Stop selecting</string>
     <string name="select_all">Select all %1$s tracks</string>
@@ -183,6 +194,25 @@
     <plurals name="genres_count">
         <item quantity="one">%1$s genre</item>
         <item quantity="other">%1$s genres</item>
+    </plurals>
+
+    <!-- Durations: "52 min", "3 h 52 min", "8 days 2 h" -->
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours">%1$d h %2$d min</string>
+    <string name="duration_hours_only">%1$d h</string>
+    <plurals name="duration_days">
+        <item quantity="one">%1$d day %2$d h</item>
+        <item quantity="other">%1$d days %2$d h</item>
+    </plurals>
+    <plurals name="plays_count">
+        <item quantity="one">%1$s play</item>
+        <item quantity="other">%1$s plays</item>
+    </plurals>
+    <string name="when_today">today</string>
+    <string name="when_yesterday">yesterday</string>
+    <plurals name="when_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
     </plurals>
 
     <!-- Mini player and playback -->

@@ -47,11 +47,15 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
 
-/** How a track shows in lists: playing, picked while selecting, or neither. */
+/**
+ * How a track shows in lists: playing, picked while selecting, [held] while its ⋮ sheet is
+ * open, or none of them.
+ */
 data class TrackState(
     val current: Boolean = false,
     val playing: Boolean = false,
     val selected: Boolean = false,
+    val held: Boolean = false,
 )
 
 /** The line under a track's title: its artists and album, or a stand-in while it isn't read. */
@@ -82,7 +86,7 @@ fun TrackItem(
 ) {
     val background by animateColorAsState(
         when {
-            state.selected -> colors.surfaceHigh
+            state.selected || state.held -> colors.surfaceHigh
             state.current -> colors.tint
             else -> Color.Transparent
         },
@@ -451,6 +455,117 @@ fun GenreTile(genre: GenreRow, onClick: () -> Unit, modifier: Modifier = Modifie
             tracksCount(genre.tracks),
             style = text(13, tabular = true),
             color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(top = 1.dp),
+        )
+    }
+}
+
+/**
+ * A track's row on its album's page: its number, or the moving bars while it plays, then its
+ * title and length.
+ */
+@Composable
+fun AlbumTrackItem(
+    track: TrackRow,
+    state: TrackState,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background by animateColorAsState(
+        when {
+            state.selected || state.held -> colors.surfaceHigh
+            state.current -> colors.tint
+            else -> Color.Transparent
+        },
+        NMotion.effectsDefault(),
+        label = "row",
+    )
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(background)
+            .tappable(onClick, onLongClick)
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+            when {
+                state.selected -> NIcon(NIcons.CheckBold, size = 20.dp, tint = colors.primary)
+                state.current -> PlayingBars(color = colors.primary, animate = state.playing)
+                else -> Text(
+                    track.trackNumber?.toString().orEmpty(),
+                    style = text(14, tabular = true),
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            track.title,
+            style = text(16, FontWeight.Medium),
+            color = if (state.current) colors.primary else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        val length = formatLength(track.length)
+        if (length.isNotEmpty()) {
+            Text(length, style = text(13, tabular = true), color = colors.onSurfaceVariant)
+        }
+        NIconButton(
+            NIcons.More,
+            stringResource(R.string.more_for, track.title),
+            onMore,
+            size = 48.dp,
+            iconSize = 20.dp,
+            tint = colors.onSurfaceVariant,
+            modifier = Modifier.width(44.dp),
+        )
+    }
+}
+
+/** An album on its artist's page: a 124 dp tile with its year and how many tracks it has. */
+@Composable
+fun SmallAlbumTile(
+    album: AlbumRow,
+    current: Boolean,
+    playing: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.width(124.dp).tappable(onClick)) {
+        Box(Modifier.size(124.dp)) {
+            Cover(album.cover, Modifier.fillMaxSize(), shape = RoundedCornerShape(16.dp))
+            if (current) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .height(24.dp)
+                        .background(colors.primaryContainer, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlayingBars(color = colors.onPrimaryContainer, height = 12.dp, animate = playing)
+                }
+            }
+        }
+        Text(
+            albumName(album),
+            style = text(14, FontWeight.Bold),
+            color = colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text(
+            dotted(album.year?.toString(), tracksCount(album.tracks)),
+            style = text(12, tabular = true),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
             modifier = Modifier.padding(top = 1.dp),
         )
     }

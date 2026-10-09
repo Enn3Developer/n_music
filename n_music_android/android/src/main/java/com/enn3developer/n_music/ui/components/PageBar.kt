@@ -1,0 +1,50 @@
+package com.enn3developer.n_music.ui.components
+
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.ui.theme.colors
+
+/** A page's bar under the status bar: Back, and the page's [actions] at its end. */
+@Composable
+fun PageBar(onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        modifier
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .fillMaxWidth()
+            .height(64.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NIconButton(NIcons.Back, stringResource(R.string.back), onBack, tint = colors.onSurface)
+        Spacer(Modifier.weight(1f))
+        actions()
+    }
+}
+
+/**
+ * Takes [top] and [bottom] less room than it draws over, as negative margins do: a link keeps a
+ * large touch area without pushing the text around it away.
+ */
+fun Modifier.margins(top: Dp = 0.dp, bottom: Dp = 0.dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val above = top.roundToPx()
+    layout(placeable.width, placeable.height - above - bottom.roundToPx()) {
+        placeable.place(0, -above)
+    }
+}

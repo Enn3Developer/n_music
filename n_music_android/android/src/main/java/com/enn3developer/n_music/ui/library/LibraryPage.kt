@@ -2,18 +2,12 @@ package com.enn3developer.n_music.ui.library
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,7 +72,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,6 +107,7 @@ import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
+import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.TrackState
@@ -130,7 +124,6 @@ import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
-import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -176,7 +169,7 @@ fun LibraryPage() {
         app.filters = TrackFilters(genres = listOf(genre.name.orEmpty()))
         scope.launch { pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce()) }
     }
-    val order = TrackOrder.parse(ui.sorts["tracks"], TrackOrder(TrackSort.ARTIST_ALBUM))
+    val order = SortedList.TRACKS.trackOrder(ui.sorts)
     val filters = app.filters
     val query = Query(filters.filter(), order.keys())
     val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
@@ -228,14 +221,15 @@ fun LibraryPage() {
                         onSelect = { track -> app.select(track.locator) },
                         onPlay = { track -> app.play(query, Origin.Library, track.locator) },
                         onPlayAll = { shuffle -> app.play(query, Origin.Library, shuffle = shuffle) },
-                        onMore = {},
-                        onSort = { app.show(Sheet.Sort(LibraryTab.TRACKS)) },
+                        onMore = { track -> app.show(Sheet.TrackActions(track.locator)) },
+                        onSort = { app.show(Sheet.Sort(SortedList.TRACKS)) },
                         onScan = { app.open(Page.Sources) },
+                        held = (app.sheet as? Sheet.TrackActions)?.track,
                     )
                 }
 
                 LibraryTab.ALBUMS -> {
-                    val order = GroupOrder.parse(ui.sorts["albums"], GroupOrder.ARTIST)
+                    val order = SortedList.ALBUMS.groupOrder(ui.sorts)
                     val albums = rememberLibrary<List<AlbumRow>?>(null, order) {
                         CoreRepository.albums(Filter.All(emptyList()), "", order.sort)
                     }
@@ -247,7 +241,7 @@ fun LibraryPage() {
                         minTile = 160.dp,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
-                        onSort = { app.show(Sheet.Sort(LibraryTab.ALBUMS)) },
+                        onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
                         key = { "${it.name}\u0000${it.artist}" },
                         section = { album ->
                             when (order) {
@@ -263,7 +257,7 @@ fun LibraryPage() {
                 }
 
                 LibraryTab.ARTISTS -> {
-                    val order = GroupOrder.parse(ui.sorts["artists"], GroupOrder.NAME)
+                    val order = SortedList.ARTISTS.groupOrder(ui.sorts)
                     val artists = rememberLibrary<List<ArtistRow>?>(null, order) {
                         CoreRepository.artists(Filter.All(emptyList()), "", order.sort)
                     }
@@ -275,7 +269,7 @@ fun LibraryPage() {
                         minTile = 104.dp,
                         rowGap = 16.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
-                        onSort = { app.show(Sheet.Sort(LibraryTab.ARTISTS)) },
+                        onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
                         key = { it.name.toString() },
                         section = { artist -> if (order == GroupOrder.NAME) sectionLetter(artist.name) else null },
                         item = { artist -> ArtistItem(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
@@ -284,7 +278,7 @@ fun LibraryPage() {
                 }
 
                 LibraryTab.GENRES -> {
-                    val order = GroupOrder.parse(ui.sorts["genres"], GroupOrder.NAME)
+                    val order = SortedList.GENRES.groupOrder(ui.sorts)
                     val genres = rememberLibrary<List<GenreRow>?>(null, order) {
                         CoreRepository.genres(Filter.All(emptyList()), "", order.sort)
                     }
@@ -296,7 +290,7 @@ fun LibraryPage() {
                         minTile = 160.dp,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
-                        onSort = { app.show(Sheet.Sort(LibraryTab.GENRES)) },
+                        onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
                         key = { it.name.toString() },
                         section = { genre -> if (order == GroupOrder.NAME) sectionLetter(genre.name) else null },
                         item = { genre -> GenreItem(genre, { showGenre(genre) }) },
@@ -306,22 +300,6 @@ fun LibraryPage() {
             }
         }
     }
-}
-
-/**
- * The search field giving way to the selection bar, or back: the old one leaves first, the new
- * one follows 90 ms later, and both drift 8 dp the way the change goes.
- */
-private fun AnimatedContentTransitionScope<Boolean>.barSwap(selecting: Boolean): ContentTransform {
-    val drift = if (selecting) 1 else -1
-    val lead = NMotion.STAGGER_MS
-    return (
-        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead + 90)) { -drift * it / 9 } +
-            fadeIn(NMotion.effectsDefault<Float>().delayed(lead + 90))
-        ).togetherWith(
-        slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { drift * it / 9 } +
-            fadeOut(NMotion.effectsFast<Float>().delayed(lead))
-    ) using SizeTransform(clip = false)
 }
 
 /** The library's search field, which opens Search, with Settings at its end. */
@@ -463,6 +441,7 @@ fun TracksTab(
     onMore: (TrackRow) -> Unit,
     onSort: () -> Unit,
     onScan: () -> Unit,
+    held: Locator? = null,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val haptics = LocalHapticFeedback.current
@@ -474,7 +453,8 @@ fun TracksTab(
         if (!selecting) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         onSelect(track)
     }
-    fun state(track: TrackRow) = nowPlaying.state(track).copy(selected = selection?.contains(track.locator) == true)
+    fun state(track: TrackRow) =
+        nowPlaying.state(track).copy(selected = selection?.contains(track.locator) == true, held = track.locator == held)
     Column(Modifier.fillMaxSize()) {
         AnimatedVisibility(
             building != null,

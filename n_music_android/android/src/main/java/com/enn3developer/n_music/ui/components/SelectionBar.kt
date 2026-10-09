@@ -1,6 +1,8 @@
 package com.enn3developer.n_music.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
@@ -181,4 +183,20 @@ private fun ActionButton(
     ) {
         Text(label, style = text(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/**
+ * A page's bar giving way to the selection bar, or back: the old one leaves first, the new
+ * one follows 90 ms later, and both drift 8 dp the way the change goes.
+ */
+fun AnimatedContentTransitionScope<Boolean>.barSwap(selecting: Boolean): ContentTransform {
+    val drift = if (selecting) 1 else -1
+    val lead = NMotion.STAGGER_MS
+    return (
+        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead + 90)) { -drift * it / 9 } +
+            fadeIn(NMotion.effectsDefault<Float>().delayed(lead + 90))
+        ).togetherWith(
+        slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { drift * it / 9 } +
+            fadeOut(NMotion.effectsFast<Float>().delayed(lead))
+    ) using SizeTransform(clip = false)
 }

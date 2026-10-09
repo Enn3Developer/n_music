@@ -99,3 +99,26 @@ enum class GroupOrder(val stored: String, @param:StringRes val label: Int, val s
         fun parse(text: String?, default: GroupOrder) = entries.find { it.stored == text } ?: default
     }
 }
+
+/** A list someone can sort, and the key its sort is kept under in the preferences. */
+enum class SortedList(val stored: String, @param:StringRes val title: Int) {
+    TRACKS("tracks", R.string.sort_tracks),
+    ALBUMS("albums", R.string.sort_albums),
+    ARTISTS("artists", R.string.sort_artists),
+    GENRES("genres", R.string.sort_genres),
+
+    /** An artist's tracks, the most played first unless chosen otherwise. */
+    ARTIST_TRACKS("artist", R.string.sort_tracks);
+
+    /** Its tracks' order in [sorts]; only for lists of tracks. */
+    fun trackOrder(sorts: Map<String, String>): TrackOrder = TrackOrder.parse(
+        sorts[stored],
+        TrackOrder(if (this == ARTIST_TRACKS) TrackSort.MOST_PLAYED else TrackSort.ARTIST_ALBUM),
+    )
+
+    /** Its order in [sorts]; only for albums, artists and genres. */
+    fun groupOrder(sorts: Map<String, String>): GroupOrder =
+        GroupOrder.parse(sorts[stored], if (this == ALBUMS) GroupOrder.ARTIST else GroupOrder.NAME)
+
+    val ofTracks: Boolean get() = this == TRACKS || this == ARTIST_TRACKS
+}
