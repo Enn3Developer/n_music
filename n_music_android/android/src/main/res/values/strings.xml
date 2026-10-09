@@ -303,6 +303,127 @@
     <string name="sleep_stops_at_track_end">Sleep timer: stops at the end of this track</string>
     <string name="sleep_stops_at_queue_end">Sleep timer: stops at the end of the queue</string>
 
+    <!-- Playlists -->
+    <string name="playlists_title">Playlists</string>
+    <plurals name="playlists_count">
+        <item quantity="one">%1$s playlist</item>
+        <item quantity="other">%1$s playlists</item>
+    </plurals>
+    <string name="playlists_smart_count">%1$s smart</string>
+    <string name="playlist_smart_line">Smart · %1$s</string>
+    <string name="playlist_changed">changed %1$s</string>
+    <string name="playlist_kind">Playlist</string>
+    <string name="smart_playlist_kind">Smart playlist</string>
+    <string name="smart_updates">updates as you listen</string>
+    <string name="new_smart_playlist">New smart playlist</string>
+    <string name="edit_smart_rules">Edit rules</string>
+    <string name="new_playlist_menu">New playlist or smart playlist</string>
+    <string name="close_menu">Close menu</string>
+    <string name="rename_playlist">Rename playlist</string>
+    <string name="more_playlist_actions">More playlist actions</string>
+    <string name="delete_playlist">Delete playlist</string>
+    <string name="delete_playlist_title">Delete “%1$s”?</string>
+    <string name="delete_playlist_hint">Its tracks stay in your library.</string>
+    <string name="deleted_playlist">Deleted %1$s</string>
+    <string name="playlist_rejected">Couldn’t save that playlist</string>
+    <string name="rename">Rename</string>
+    <string name="name">Name</string>
+    <string name="remove">Remove</string>
+    <string name="remove_from_playlist">Remove from playlist</string>
+    <string name="removed_track">Removed %1$s</string>
+    <plurals name="edit_rules">
+        <item quantity="one">Edit rules, %1$d active</item>
+        <item quantity="other">Edit rules, %1$d active</item>
+    </plurals>
+    <string name="smart_playlist_hint">It fills itself with every track that matches, and keeps up as you listen. A track has to match every section you set.</string>
+    <plurals name="save_tracks">
+        <item quantity="one">Save · %1$s track</item>
+        <item quantity="other">Save · %1$s tracks</item>
+    </plurals>
+    <string name="save_counting">Save</string>
+    <string name="done">Done</string>
+    <string name="save_smart_playlist">Save as smart playlist</string>
+    <string name="rules_match_all">Tracks that match all of these</string>
+    <string name="rules_match_any">Tracks that match any of these</string>
+    <string name="rules_locked">These rules use options like “is not”, so only N Music on a computer can change them.</string>
+    <string name="playlists_empty">No playlists yet</string>
+    <string name="playlists_empty_hint">Make one with the button below, or add tracks to a new one from the library.</string>
+    <string name="playlist_no_tracks">No tracks yet</string>
+    <string name="playlist_made">made %1$s</string>
+    <string name="playlist_empty">This playlist is empty</string>
+    <string name="playlist_empty_hint">Add tracks from the library. Long-press to pick several, then tap Add to playlist.</string>
+    <string name="go_to_library">Go to the library</string>
+    <string name="smart_empty">No tracks match yet</string>
+    <string name="smart_empty_hint">It fills up as tracks match its rules.</string>
+
+    <!-- A smart playlist's rules in words -->
+    <string name="rule_and">" and "</string>
+    <string name="rule_or">" or "</string>
+    <string name="rule_or_value">" or "</string>
+    <string name="rule_genre_is">Genre is %1$s</string>
+    <string name="rule_genre_is_not">Genre isn’t %1$s</string>
+    <string name="rule_artist_is">Artist is %1$s</string>
+    <string name="rule_artist_is_not">Artist isn’t %1$s</string>
+    <string name="rule_album_artist_is">Album artist is %1$s</string>
+    <string name="rule_album_artist_is_not">Album artist isn’t %1$s</string>
+    <string name="rule_album_is">Album is %1$s</string>
+    <string name="rule_album_is_not">Album isn’t %1$s</string>
+    <string name="rule_format_is">Format is %1$s</string>
+    <string name="rule_format_is_not">Format isn’t %1$s</string>
+    <string name="rule_no_genre">Has no genre</string>
+    <string name="rule_no_artist">Has no artist</string>
+    <string name="rule_no_album">Has no album</string>
+    <string name="rule_has_genre">Has a genre</string>
+    <string name="rule_has_artist">Has an artist</string>
+    <string name="rule_has_album">Has an album</string>
+    <string name="rule_year_exactly">From %1$d</string>
+    <string name="rule_years_between">From %1$d to %2$d</string>
+    <string name="rule_years_from">From %1$d or later</string>
+    <string name="rule_years_to">From %1$d or earlier</string>
+    <string name="rule_search">Matches “%1$s”</string>
+    <string name="rule_folder">In the folder %1$s</string>
+    <string name="rule_source">From %1$s</string>
+    <string name="rule_source_not">Not from %1$s</string>
+    <string name="rule_playlist">In %1$s</string>
+    <string name="rule_playlist_not">Not in %1$s</string>
+    <string name="rule_deleted_playlist">a deleted playlist</string>
+    <string name="rule_not">Not: %1$s</string>
+    <plurals name="rule_played_exactly">
+        <item quantity="one">Played once</item>
+        <item quantity="other">Played %1$d times</item>
+    </plurals>
+    <plurals name="rule_played_between">
+        <item quantity="one">Played %1$d to %2$d time</item>
+        <item quantity="other">Played %1$d to %2$d times</item>
+    </plurals>
+    <plurals name="rule_played_at_least">
+        <item quantity="one">Played once or more</item>
+        <item quantity="other">Played %1$d times or more</item>
+    </plurals>
+    <plurals name="rule_played_at_most">
+        <item quantity="one">Played once at most</item>
+        <item quantity="other">Played %1$d times at most</item>
+    </plurals>
+    <string name="rule_any_plays">Played any number of times</string>
+    <string name="rule_played_within">Played in the last %1$s</string>
+    <string name="rule_not_played_within">Not played in the last %1$s</string>
+    <plurals name="rule_years">
+        <item quantity="one">year</item>
+        <item quantity="other">%1$d years</item>
+    </plurals>
+    <plurals name="rule_months">
+        <item quantity="one">month</item>
+        <item quantity="other">%1$d months</item>
+    </plurals>
+    <plurals name="rule_weeks">
+        <item quantity="one">week</item>
+        <item quantity="other">%1$d weeks</item>
+    </plurals>
+    <plurals name="rule_days">
+        <item quantity="one">day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+
     <!-- The queue -->
     <string name="queue">Queue</string>
     <string name="clear_queued">Clear queued</string>

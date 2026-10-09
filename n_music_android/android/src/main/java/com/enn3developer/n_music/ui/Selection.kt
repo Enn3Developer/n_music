@@ -25,5 +25,13 @@ class Selection(first: Locator) {
     }
 }
 
-/** A short message over the mini player, with an action like Undo. */
-data class Snack(val message: String, val action: String? = null, val onAction: (() -> Unit)? = null)
+/**
+ * A short message over the mini player, with an action like Undo. [onGone] runs when it goes
+ * away without its action: it timed out, another took its place, or the app left the screen.
+ */
+data class Snack(
+    val message: String,
+    val action: String? = null,
+    val onAction: (() -> Unit)? = null,
+    val onGone: (() -> Unit)? = null,
+)

@@ -36,10 +36,15 @@ import kotlinx.coroutines.delay
 /**
  * The latest [snack], numbered so the same message twice shows twice. It rises from behind what
  * is under it, stays a few seconds, longer with an action or a screen reader on, then
- * [onTimeout] lets it go.
+ * [onTimeout] lets it go. [onAction] runs its action.
  */
 @Composable
-fun SnackbarHost(snack: Pair<Long, Snack>?, onTimeout: (Long) -> Unit, modifier: Modifier = Modifier) {
+fun SnackbarHost(
+    snack: Pair<Long, Snack>?,
+    onTimeout: (Long) -> Unit,
+    onAction: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val accessibility = LocalAccessibilityManager.current
     LaunchedEffect(snack?.first) {
         val (id, shown) = snack ?: return@LaunchedEffect
@@ -68,10 +73,7 @@ fun SnackbarHost(snack: Pair<Long, Snack>?, onTimeout: (Long) -> Unit, modifier:
     ) { shown ->
         if (shown != null) {
             val (id, message) = shown
-            Snackbar(message) {
-                message.onAction?.invoke()
-                onTimeout(id)
-            }
+            Snackbar(message) { onAction(id) }
         }
     }
 }

@@ -25,8 +25,11 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
+import com.enn3developer.n_music.core.Command
+import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.RadioMark
 import com.enn3developer.n_music.ui.components.SheetFrame
@@ -34,6 +37,8 @@ import com.enn3developer.n_music.ui.library.GroupOrder
 import com.enn3developer.n_music.ui.library.SortedList
 import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
+import com.enn3developer.n_music.ui.playlists.playlistOrder
+import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -71,6 +76,38 @@ fun SortSheet(list: SortedList, open: Boolean, onDismissRequest: () -> Unit, onG
                         if (!chosen) UiPreferences.setSort(list.stored, option.stored)
                         onDismissRequest()
                     })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * How playlist [id]'s tracks are sorted, kept with the playlist: by when they were added too,
+ * for a plain one. Picking a way sorts it and closes the sheet; the chosen way's direction flips
+ * in place.
+ */
+@Composable
+fun PlaylistSortSheet(id: Long, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
+    val playlist = rememberLibrary<PlaylistRow?>(null, id) { CoreRepository.playlist(id) }
+    val title = stringResource(R.string.sort_tracks)
+    SheetFrame(open, title, onDismissRequest, onGone, header = { SheetTitle(title) }) {
+        if (playlist == null) return@SheetFrame
+        val order = playlistOrder(playlist)
+        fun sortBy(chosen: TrackOrder) = CoreRepository.send(Command.SetPlaylistSort(id, chosen.keys(id)))
+        Column(Modifier.selectableGroup()) {
+            val options = if (playlist.rule == null) listOf(TrackSort.ADDED) + TrackSort.library else TrackSort.library
+            for (sort in options) {
+                val chosen = order.sort == sort
+                SortOption(stringResource(sort.label), chosen, onClick = {
+                    if (!chosen) sortBy(TrackOrder(sort))
+                    onDismissRequest()
+                }) {
+                    if (chosen) {
+                        ReverseButton(stringResource(if (order.reversed) sort.backward else sort.forward)) {
+                            sortBy(order.copy(reversed = !order.reversed))
+                        }
+                    }
                 }
             }
         }

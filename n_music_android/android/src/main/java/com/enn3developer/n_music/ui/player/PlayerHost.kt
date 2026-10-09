@@ -423,6 +423,7 @@ fun PlayerHost(transition: PlayerTransition) {
         miniButtons = settings.miniButtons,
         snack = app.snack,
         onSnackTimeout = app::dismissSnack,
+        onSnackAction = app::snackAction,
     )
 }
 
@@ -442,6 +443,7 @@ fun PlayerOverlay(
     miniButtons: List<MiniButton>,
     snack: Pair<Long, Snack>?,
     onSnackTimeout: (Long) -> Unit,
+    onSnackAction: (Long) -> Unit,
 ) {
     val track = ui.track
     val density = LocalDensity.current
@@ -613,6 +615,7 @@ fun PlayerOverlay(
         SnackbarHost(
             if (transition.isOpen) snack else null,
             onSnackTimeout,
+            onSnackAction,
             Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = with(density) { navInset.toDp() } + 52.dp + 8.dp),

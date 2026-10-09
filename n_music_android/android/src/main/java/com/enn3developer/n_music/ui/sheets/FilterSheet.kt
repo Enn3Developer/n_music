@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.ArtistRow
+import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Facet
 import com.enn3developer.n_music.core.Facets
 import com.enn3developer.n_music.core.Filter
@@ -65,10 +67,12 @@ import com.enn3developer.n_music.core.GroupSort
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.ui.LocalApp
+import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.components.CheckMark
 import com.enn3developer.n_music.ui.components.NChip
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
+import com.enn3developer.n_music.ui.components.OutlinedField
 import com.enn3developer.n_music.ui.components.PillButton
 import com.enn3developer.n_music.ui.components.RadioMark
 import com.enn3developer.n_music.ui.components.SearchField
@@ -79,12 +83,16 @@ import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.library.PlayedFilter
 import com.enn3developer.n_music.ui.library.PlaysFilter
 import com.enn3developer.n_music.ui.library.TrackFilters
+import com.enn3developer.n_music.ui.library.TrackOrder
+import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.library.formatName
 import com.enn3developer.n_music.ui.library.genreLabel
 import com.enn3developer.n_music.ui.library.playsChoice
 import com.enn3developer.n_music.ui.library.yearsLabel
+import com.enn3developer.n_music.ui.playlists.rulesOf
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
+import com.enn3developer.n_music.ui.rememberLibraryRead
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
@@ -93,6 +101,8 @@ import com.enn3developer.n_music.ui.tracksCount
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
 /** How many genres show as chips before See all. */
@@ -100,7 +110,8 @@ private const val GENRE_CHIPS = 9
 
 /**
  * The tracks' filters, a part to a section. Changes stay in the sheet until Show applies them;
- * [focus] scrolls to its part when the sheet opens, or opens the artist picker.
+ * [focus] scrolls to its part when the sheet opens, or opens the artist picker. Save as smart
+ * playlist starts one with them.
  */
 @Composable
 fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
@@ -114,6 +125,7 @@ fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit
         count = { CoreRepository.summary(it.filter()).tracks },
         artists = { CoreRepository.artists(Filter.All(emptyList()), it, GroupSort.NAME) },
         onApply = { app.filters = it },
+        onSaveSmart = { app.show(Sheet.SmartPlaylist(null, null, it)) },
         focus = focus,
         open = open,
         onDismissRequest = onDismissRequest,
@@ -124,7 +136,8 @@ fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit
 /**
  * The filter sheet over [filters], offering what [facets] and [sources] hold. [count] reads how
  * many tracks a set of filters keeps and [artists] the artists matching a search, both off the
- * main thread; [onApply] takes the filters Show applies.
+ * main thread; [onApply] takes the filters Show applies, [onSaveSmart] those to start a smart
+ * playlist with.
  */
 @Composable
 fun FilterSheet(
@@ -134,15 +147,209 @@ fun FilterSheet(
     count: (TrackFilters) -> UInt,
     artists: (String) -> List<ArtistRow>,
     onApply: (TrackFilters) -> Unit,
+    onSaveSmart: (TrackFilters) -> Unit,
     focus: FilterField?,
     open: Boolean,
     onDismissRequest: () -> Unit,
     onGone: () -> Unit,
 ) {
+    RulesSheet(
+        title = stringResource(R.string.filters),
+        filters = filters,
+        facets = facets,
+        sources = sources,
+        count = count,
+        artists = artists,
+        focus = focus,
+        open = open,
+        onDismissRequest = onDismissRequest,
+        onGone = onGone,
+        intro = {
+            Text(
+                stringResource(R.string.filters_hint),
+                style = text(13, lineHeight = 18.sp),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp),
+            )
+        },
+    ) { draft, matching ->
+        TextAction(
+            stringResource(R.string.save_smart_playlist),
+            {
+                onDismissRequest()
+                onSaveSmart(draft)
+            },
+            height = 44.dp,
+        )
+        Spacer(Modifier.weight(1f))
+        PillButton(
+            if (matching == null) {
+                stringResource(R.string.show_tracks_counting)
+            } else {
+                pluralStringResource(R.plurals.show_tracks, quantity(matching.toLong()), formatCount(matching))
+            },
+            onClick = {
+                onApply(draft)
+                onDismissRequest()
+            },
+            padding = PaddingValues(horizontal = 22.dp),
+            enabled = matching != 0u,
+        )
+    }
+}
+
+/**
+ * A smart playlist's rules: a new one's, starting from [start], under a field for its name, or
+ * playlist [id]'s as they are. Saving makes the new one and opens it, or sets the rules.
+ */
+@Composable
+fun SmartPlaylistSheet(
+    id: Long?,
+    focus: FilterField?,
+    start: TrackFilters?,
+    open: Boolean,
+    onDismissRequest: () -> Unit,
+    onGone: () -> Unit,
+) {
+    val app = LocalApp.current
+    val facets by CoreRepository.facets.collectAsStateWithLifecycle()
+    val sources by CoreRepository.sources.collectAsStateWithLifecycle()
+    val read = id?.let { rememberLibraryRead(it) { CoreRepository.playlist(it) } }
+    val playlist = read?.value
+    if (id != null) {
+        // The sheet waits for the rules it opens on, and closes if the playlist went meanwhile.
+        if (read == null) return
+        if (playlist == null) {
+            LaunchedEffect(Unit) {
+                onDismissRequest()
+                onGone()
+            }
+            return
+        }
+    }
+    SmartPlaylistSheet(
+        rules = playlist?.rule?.let(::rulesOf) ?: start ?: TrackFilters(),
+        named = playlist == null,
+        facets = facets,
+        sources = sources,
+        count = { CoreRepository.summary(it.filter()).tracks },
+        artists = { CoreRepository.artists(Filter.All(emptyList()), it, GroupSort.NAME) },
+        onSave = { name, rules ->
+            if (playlist != null) {
+                CoreRepository.send(Command.SetPlaylistRule(playlist.id, rules.filter()))
+            } else {
+                val made = System.currentTimeMillis() / 1000
+                CoreRepository.send(
+                    Command.CreatePlaylist(name, rules.filter(), TrackOrder(TrackSort.MOST_PLAYED).keys(), emptyList())
+                )
+                // Opens it once the core lists it.
+                app.scope.launch {
+                    val created = withTimeoutOrNull(5_000) {
+                        CoreRepository.playlists.first { list -> list.any { it.name == name && it.created >= made - 1 } }
+                    }
+                    created?.filter { it.name == name }?.maxByOrNull { it.created }?.let { app.open(Page.Playlist(it.id)) }
+                }
+            }
+        },
+        focus = focus,
+        open = open,
+        onDismissRequest = onDismissRequest,
+        onGone = onGone,
+    )
+}
+
+/**
+ * The smart playlist sheet itself over [rules]: with a field for its name and Save with how many
+ * tracks match while [named], for a new one, else Done for the rules of one there is. Save waits
+ * for a name.
+ */
+@Composable
+fun SmartPlaylistSheet(
+    rules: TrackFilters,
+    named: Boolean,
+    facets: Facets,
+    sources: List<SourceRow>,
+    count: (TrackFilters) -> UInt,
+    artists: (String) -> List<ArtistRow>,
+    onSave: (name: String, rules: TrackFilters) -> Unit,
+    focus: FilterField?,
+    open: Boolean,
+    onDismissRequest: () -> Unit,
+    onGone: () -> Unit,
+    name: String = "",
+) {
+    var chosen by rememberSaveable { mutableStateOf(name) }
+    RulesSheet(
+        title = stringResource(if (named) R.string.new_smart_playlist else R.string.edit_smart_rules),
+        filters = rules,
+        facets = facets,
+        sources = sources,
+        count = count,
+        artists = artists,
+        focus = focus,
+        open = open,
+        onDismissRequest = onDismissRequest,
+        onGone = onGone,
+        intro = {
+            if (named) {
+                OutlinedField(
+                    chosen,
+                    { chosen = it },
+                    stringResource(R.string.name),
+                    Modifier.padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 2.dp),
+                    fill = colors.surfaceLow,
+                    focus = focus == null,
+                )
+            }
+            Text(
+                stringResource(R.string.smart_playlist_hint),
+                style = text(13, lineHeight = 18.sp),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (named) 6.dp else 2.dp),
+            )
+        },
+    ) { draft, matching ->
+        TextAction(stringResource(R.string.cancel), onDismissRequest, height = 44.dp)
+        Spacer(Modifier.weight(1f))
+        PillButton(
+            when {
+                !named -> stringResource(R.string.done)
+                matching == null -> stringResource(R.string.save_counting)
+                else -> pluralStringResource(R.plurals.save_tracks, quantity(matching.toLong()), formatCount(matching))
+            },
+            onClick = {
+                onSave(chosen.trim(), draft)
+                onDismissRequest()
+            },
+            padding = PaddingValues(horizontal = 22.dp),
+            enabled = !named || chosen.isNotBlank(),
+        )
+    }
+}
+
+/**
+ * Filter sections over a draft of [filters], for the library's filters and smart playlists'
+ * rules alike: [intro] under the title, and [footer] given the draft and how many tracks it
+ * keeps once counted.
+ */
+@Composable
+private fun RulesSheet(
+    title: String,
+    filters: TrackFilters,
+    facets: Facets,
+    sources: List<SourceRow>,
+    count: (TrackFilters) -> UInt,
+    artists: (String) -> List<ArtistRow>,
+    focus: FilterField?,
+    open: Boolean,
+    onDismissRequest: () -> Unit,
+    onGone: () -> Unit,
+    intro: @Composable ColumnScope.() -> Unit,
+    footer: @Composable RowScope.(draft: TrackFilters, matching: UInt?) -> Unit,
+) {
     var draft by remember { mutableStateOf(filters) }
     var picker by remember { mutableStateOf(focus?.takeIf { it == FilterField.ARTIST }) }
     val matching = rememberLibrary<UInt?>(null, draft) { count(draft) }
-    val title = stringResource(R.string.filters)
     BackHandler(open && picker != null) { picker = null }
     SheetFrame(
         open, title, onDismissRequest, onGone,
@@ -162,12 +369,7 @@ fun FilterSheet(
                 )
                 TextAction(stringResource(R.string.clear_all), { draft = TrackFilters() })
             }
-            Text(
-                stringResource(R.string.filters_hint),
-                style = text(13, lineHeight = 18.sp),
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp),
-            )
+            intro()
         },
     ) {
         AnimatedContent(
@@ -212,22 +414,9 @@ fun FilterSheet(
                 .topLine()
                 .padding(start = 12.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val count = matching
-            PillButton(
-                if (count == null) {
-                    stringResource(R.string.show_tracks_counting)
-                } else {
-                    pluralStringResource(R.plurals.show_tracks, quantity(count.toLong()), formatCount(count))
-                },
-                onClick = {
-                    onApply(draft)
-                    onDismissRequest()
-                },
-                padding = PaddingValues(horizontal = 22.dp),
-                enabled = count != 0u,
-            )
+            footer(draft, matching)
         }
     }
 }

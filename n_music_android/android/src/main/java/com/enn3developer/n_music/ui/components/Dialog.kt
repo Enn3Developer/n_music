@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
@@ -142,8 +143,8 @@ fun DialogConfirm(label: String, onClick: () -> Unit, enabled: Boolean = true, d
 
 /**
  * A text field outlined as the design draws it: its label sits on the outline, which thickens in
- * the primary colour while the field has focus; [helper] explains it underneath. [focus] takes
- * the focus, and with it the keyboard, as it first shows.
+ * the primary colour while the field has focus, on [fill], the colour around it; [helper]
+ * explains it underneath. [focus] takes the focus, and with it the keyboard, as it first shows.
  */
 @Composable
 fun OutlinedField(
@@ -151,6 +152,7 @@ fun OutlinedField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    fill: Color = colors.surfaceHigh,
     helper: String? = null,
     focus: Boolean = false,
     imeAction: ImeAction = ImeAction.Done,
@@ -188,14 +190,14 @@ fun OutlinedField(
                     .focusRequester(requester)
                     .onFocusChanged { focused = it.isFocused },
             )
-            // Drawn after the outline, the label covers it with the dialog's colour, as if cut out.
+            // Drawn after the outline, the label covers it with the colour around, as if cut out.
             Text(
                 label,
                 style = text(12, FontWeight.SemiBold),
                 color = if (focused) colors.primary else colors.onSurfaceVariant,
                 modifier = Modifier
                     .offset(x = 10.dp, y = (-8).dp)
-                    .background(colors.surfaceHigh)
+                    .background(fill)
                     .padding(horizontal = 4.dp),
             )
         }

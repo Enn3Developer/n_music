@@ -82,10 +82,17 @@ interface AppController {
     /** The message over the mini player, numbered so the same one twice shows twice. */
     val snack: Pair<Long, Snack>?
 
+    /** Shows [snack]; the one it replaces is gone. */
     fun snack(snack: Snack)
 
     /** Lets go of snack [id], unless another has replaced it. */
     fun dismissSnack(id: Long)
+
+    /** Runs the action of snack [id], unless another has replaced it, and lets it go. */
+    fun snackAction(id: Long)
+
+    /** Removals waiting on their snackbar, and the lists they leave out of. */
+    val removals: Removals
 
     /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
     val scope: CoroutineScope

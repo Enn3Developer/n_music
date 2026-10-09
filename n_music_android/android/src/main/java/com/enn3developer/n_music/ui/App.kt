@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -43,12 +44,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.PlayingFrom
@@ -59,6 +63,8 @@ import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.components.BottomFade
+import com.enn3developer.n_music.ui.components.FabItem
+import com.enn3developer.n_music.ui.components.FabMenu
 import com.enn3developer.n_music.ui.components.MiniPlayer
 import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NavBar
@@ -77,6 +83,8 @@ import com.enn3developer.n_music.ui.library.SearchPage
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.player.PlayerHost
 import com.enn3developer.n_music.ui.player.PlayerTransition
+import com.enn3developer.n_music.ui.playlists.PlaylistPage
+import com.enn3developer.n_music.ui.playlists.PlaylistsPage
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -192,12 +200,26 @@ private class Controller(
         private set
 
     override fun snack(snack: Snack) {
+        val replaced = this.snack?.second
         this.snack = ++snacks to snack
+        replaced?.onGone?.invoke()
     }
 
     override fun dismissSnack(id: Long) {
-        if (snack?.first == id) snack = null
+        val (shown, gone) = snack ?: return
+        if (shown != id) return
+        snack = null
+        gone.onGone?.invoke()
     }
+
+    override fun snackAction(id: Long) {
+        val (shown, acted) = snack ?: return
+        if (shown != id) return
+        snack = null
+        acted.onAction?.invoke()
+    }
+
+    override val removals = Removals()
 }
 
 /** Playback's controls, sent to the core; the app opens the output and the sleep timer. */
@@ -220,6 +242,16 @@ fun NMusicApp(host: AppHost) {
         val scope = rememberCoroutineScope()
         val controller = remember(navigator, host) { Controller(navigator, scope, host) }
         BackHandler(navigator.canGoBack) { navigator.back() }
+        // Leaving the screen lets the snackbar go, and sends what it held back.
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+            controller.snack?.let { controller.dismissSnack(it.first) }
+        }
+        val resources = LocalResources.current
+        LaunchedEffect(controller) {
+            CoreRepository.rejections.collect {
+                controller.snack(Snack(resources.getString(R.string.playlist_rejected)))
+            }
+        }
         CompositionLocalProvider(LocalApp provides controller) {
             Box(Modifier.fillMaxSize()) {
                 // Accessibility services see only the top layer: a sheet or a dialog over
@@ -267,16 +299,29 @@ private fun PhoneLayout(navigator: Navigator) {
     }
     val bottomSpace = (if (navigation) 64.dp + navInset else navInset) +
         (if (miniPlayer || actions) 64.dp + 8.dp else 0.dp)
+    // Playlists' button for a new one, plain or smart; open, its scrim covers all the rest.
+    val onPlaylists = page == Page.Playlists
+    var newOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(onPlaylists) { if (!onPlaylists) newOpen = false }
+    val covered = if (newOpen && onPlaylists) Modifier.clearAndSetSemantics {} else Modifier
+    var snackHeight by remember { mutableStateOf(0.dp) }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(colors.background)
     ) {
-        CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
-            PageHost(navigator)
+        Box(covered) {
+            CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
+                PageHost(navigator)
+            }
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .then(covered)
+        ) {
             Box(Modifier.fillMaxWidth()) {
                 // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
                 androidx.compose.animation.AnimatedVisibility(
@@ -307,9 +352,11 @@ private fun PhoneLayout(navigator: Navigator) {
                 SnackbarHost(
                     if (app.player.isOpen) null else app.snack,
                     app::dismissSnack,
+                    app::snackAction,
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = snackBottom),
+                        .padding(bottom = snackBottom)
+                        .onSizeChanged { snackHeight = with(density) { it.height.toDp() } },
                 )
                 // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
                 androidx.compose.animation.AnimatedVisibility(
@@ -375,6 +422,29 @@ private fun PhoneLayout(navigator: Navigator) {
                 )
             }
         }
+        // A snackbar pushes it up.
+        val fabBottom by animateDpAsState(
+            bottomSpace + 16.dp + if (snackHeight > 0.dp) snackHeight + 8.dp else 0.dp,
+            NMotion.spatialDefault(),
+            label = "fab",
+        )
+        FabMenu(
+            visible = onPlaylists,
+            open = newOpen && onPlaylists,
+            onOpenChange = { newOpen = it },
+            description = stringResource(R.string.new_playlist_menu),
+            items = listOf(
+                FabItem(NIcons.Playlist, stringResource(R.string.new_playlist)) {
+                    app.show(AppDialog.NewPlaylist(emptyList()))
+                },
+                // The library's filters carry over.
+                FabItem(NIcons.Filter, stringResource(R.string.new_smart_playlist)) {
+                    app.show(Sheet.SmartPlaylist(null, start = app.filters))
+                },
+            ),
+            bottom = fabBottom,
+            modifier = Modifier.graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
+        )
     }
 }
 
@@ -447,6 +517,8 @@ private fun PageContent(page: Page) {
         is Page.Album -> AlbumPage(page)
         is Page.Artist -> ArtistPage(page)
         Page.Search -> SearchPage()
+        Page.Playlists -> PlaylistsPage()
+        is Page.Playlist -> PlaylistPage(page)
         else -> ComingPage(page)
     }
 }

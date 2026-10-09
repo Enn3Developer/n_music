@@ -39,6 +39,7 @@ import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.components.trackLine
 import com.enn3developer.n_music.ui.enqueue
+import com.enn3developer.n_music.ui.removeFromPlaylist
 import com.enn3developer.n_music.ui.formatLength
 import com.enn3developer.n_music.ui.trackFormat
 import com.enn3developer.n_music.ui.formatWhen
@@ -48,11 +49,18 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
 /**
- * What can be done with one track: queue it, add it to a playlist, or go to its album or artist.
- * Its header names it and tells its format, length and plays.
+ * What can be done with one track: queue it, add it to a playlist, or go to its album or artist;
+ * opened on [playlist]'s page, take it out of that playlist. Its header names it and tells its
+ * format, length and plays.
  */
 @Composable
-fun TrackActionsSheet(track: Locator, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
+fun TrackActionsSheet(
+    track: Locator,
+    playlist: Long?,
+    open: Boolean,
+    onDismissRequest: () -> Unit,
+    onGone: () -> Unit,
+) {
     val app = LocalApp.current
     val resources = LocalResources.current
     val row = rememberLibrary<TrackRow?>(null, track) { CoreRepository.track(track) }
@@ -86,6 +94,12 @@ fun TrackActionsSheet(track: Locator, open: Boolean, onDismissRequest: () -> Uni
             onDismissRequest()
             row?.let { app.open(Page.Artist(it.artists.firstOrNull())) }
         },
+        onRemove = playlist?.let { id ->
+            {
+                onDismissRequest()
+                row?.let { app.removeFromPlaylist(id, it, resources) }
+            }
+        },
         open = open,
         onDismissRequest = onDismissRequest,
         onGone = onGone,
@@ -100,7 +114,10 @@ fun albumOf(track: TrackRow): Page.Album =
         Page.Album(track.album, track.albumArtist ?: track.artists.firstOrNull())
     }
 
-/** The sheet itself, for [track] while it is read and [details] once they are. */
+/**
+ * The sheet itself, for [track] while it is read and [details] once they are; [onRemove], when
+ * there is one, takes it out of the playlist it was opened on.
+ */
 @Composable
 fun TrackActionsSheet(
     track: TrackRow?,
@@ -110,6 +127,7 @@ fun TrackActionsSheet(
     onAddToPlaylist: () -> Unit,
     onAlbum: () -> Unit,
     onArtist: () -> Unit,
+    onRemove: (() -> Unit)?,
     open: Boolean,
     onDismissRequest: () -> Unit,
     onGone: () -> Unit,
@@ -169,6 +187,10 @@ fun TrackActionsSheet(
         Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         Action(NIcons.Album, stringResource(R.string.go_to_album), onAlbum)
         Action(NIcons.Artist, stringResource(R.string.go_to_artist), onArtist)
+        if (onRemove != null) {
+            Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Action(NIcons.Remove, stringResource(R.string.remove_from_playlist), onRemove, danger = true)
+        }
     }
 }
 
@@ -193,9 +215,12 @@ private fun Line(modifier: Modifier) {
     )
 }
 
-/** One of the sheet's actions; [opens] marks one that leads to another sheet. */
+/**
+ * One of the sheet's actions; [opens] marks one that leads to another sheet, and [danger] one
+ * that takes something away.
+ */
 @Composable
-private fun Action(icon: ImageVector, label: String, onClick: () -> Unit, opens: Boolean = false) {
+private fun Action(icon: ImageVector, label: String, onClick: () -> Unit, opens: Boolean = false, danger: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -205,8 +230,13 @@ private fun Action(icon: ImageVector, label: String, onClick: () -> Unit, opens:
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        NIcon(icon, tint = colors.onSurfaceVariant)
-        Text(label, style = text(16, FontWeight.Medium), color = colors.onSurface, modifier = Modifier.weight(1f))
+        NIcon(icon, tint = if (danger) colors.error else colors.onSurfaceVariant)
+        Text(
+            label,
+            style = text(16, if (danger) FontWeight.SemiBold else FontWeight.Medium),
+            color = if (danger) colors.error else colors.onSurface,
+            modifier = Modifier.weight(1f),
+        )
         if (opens) NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
     }
 }

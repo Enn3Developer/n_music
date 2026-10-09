@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.ui.library.FilterField
+import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.library.SortedList
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -28,14 +29,23 @@ sealed interface Sheet {
     /** Adds [tracks] to a playlist, or takes them out of one that has them all. */
     data class AddToPlaylist(val tracks: List<Locator>) : Sheet
 
-    /** What can be done with one track. */
-    data class TrackActions(val track: Locator) : Sheet
+    /** What can be done with one track, from [playlist]'s page when it is on one. */
+    data class TrackActions(val track: Locator, val playlist: Long? = null) : Sheet
 
     /** The play session: what played, what plays and what plays next. */
     data object Queue : Sheet
 
     /** When playback fades out and pauses. */
     data object SleepTimer : Sheet
+
+    /**
+     * A smart playlist's rules: playlist [id]'s, opened at [focus], or a new one's, starting
+     * from [start].
+     */
+    data class SmartPlaylist(val id: Long?, val focus: FilterField? = null, val start: TrackFilters? = null) : Sheet
+
+    /** How playlist [id]'s tracks are sorted. */
+    data class PlaylistSort(val id: Long) : Sheet
 }
 
 /**
@@ -57,9 +67,11 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
                 is Sheet.Sort -> SortSheet(sheet.list, open, dismiss, gone)
                 is Sheet.Filters -> FilterSheet(sheet.focus, open, dismiss, gone)
                 is Sheet.AddToPlaylist -> AddToPlaylistSheet(sheet.tracks, open, dismiss, gone)
-                is Sheet.TrackActions -> TrackActionsSheet(sheet.track, open, dismiss, gone)
+                is Sheet.TrackActions -> TrackActionsSheet(sheet.track, sheet.playlist, open, dismiss, gone)
                 Sheet.Queue -> QueueSheet(open, dismiss, gone)
                 Sheet.SleepTimer -> SleepTimerSheet(open, dismiss, gone)
+                is Sheet.SmartPlaylist -> SmartPlaylistSheet(sheet.id, sheet.focus, sheet.start, open, dismiss, gone)
+                is Sheet.PlaylistSort -> PlaylistSortSheet(sheet.id, open, dismiss, gone)
             }
         }
     }

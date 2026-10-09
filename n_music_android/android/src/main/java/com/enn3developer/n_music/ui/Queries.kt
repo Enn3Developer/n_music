@@ -21,3 +21,20 @@ fun <T> rememberLibrary(initial: T, vararg keys: Any?, load: () -> T): T {
     }
     return value
 }
+
+/** A read of the library, and the library's version as it began. */
+data class LibraryRead<T>(val value: T, val version: Long)
+
+/**
+ * [rememberLibrary] with the version each read began at, for lists that leave out what
+ * [Removals] holds; `null` until the first read ends.
+ */
+@Composable
+fun <T> rememberLibraryRead(vararg keys: Any?, load: () -> T): LibraryRead<T>? {
+    val version by CoreRepository.version.collectAsStateWithLifecycle()
+    val read by produceState<LibraryRead<T>?>(null, *keys, version) {
+        val at = version
+        value = LibraryRead(withContext(Dispatchers.IO) { load() }, at)
+    }
+    return read
+}
