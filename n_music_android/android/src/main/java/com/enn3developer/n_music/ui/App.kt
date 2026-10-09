@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
@@ -120,6 +121,10 @@ private class Controller(override val navigator: Navigator, override val scope: 
 
     override fun openPlayer() = player.open()
 
+    override val playback = object : PlaybackActions by CorePlayback {
+        override fun openSleepTimer() = show(Sheet.SleepTimer)
+    }
+
     override var filters by mutableStateOf(TrackFilters())
 
     override var tracksShown by mutableIntStateOf(0)
@@ -186,7 +191,7 @@ private class Controller(override val navigator: Navigator, override val scope: 
     }
 }
 
-/** Playback's controls, sent to the core. */
+/** Playback's controls, sent to the core; the app opens the output and the sleep timer. */
 object CorePlayback : PlaybackActions {
     override fun togglePause() = CoreRepository.send(Command.TogglePause)
     override fun previous() = CoreRepository.send(Command.PlayPrevious)
@@ -233,6 +238,7 @@ private fun PhoneLayout(navigator: Navigator) {
     val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
     val position by CoreRepository.position.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
+    val sleep by SleepTimer.state.collectAsStateWithLifecycle()
     val seconds = rememberPlaybackSeconds(position, playing)
     val app = LocalApp.current
     val resources = LocalResources.current
@@ -306,13 +312,13 @@ private fun PhoneLayout(navigator: Navigator) {
                     exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
                 ) {
                     MiniPlayer(
-                        ui = PlaybackUi(current?.track, playing, shuffle, loop),
+                        ui = PlaybackUi(current?.track, playing, shuffle, loop, sleep != null),
                         progress = {
                             val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
                             if (length > 0) (seconds.value / length).toFloat() else 0f
                         },
                         buttons = ui.miniButtons,
-                        actions = CorePlayback,
+                        actions = app.playback,
                         onOpen = app::openPlayer,
                         pull = pull,
                         modifier = Modifier

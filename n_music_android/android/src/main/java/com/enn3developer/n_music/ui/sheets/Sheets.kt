@@ -33,6 +33,9 @@ sealed interface Sheet {
 
     /** The play session: what played, what plays and what plays next. */
     data object Queue : Sheet
+
+    /** When playback fades out and pauses. */
+    data object SleepTimer : Sheet
 }
 
 /**
@@ -56,6 +59,7 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
                 is Sheet.AddToPlaylist -> AddToPlaylistSheet(sheet.tracks, open, dismiss, gone)
                 is Sheet.TrackActions -> TrackActionsSheet(sheet.track, open, dismiss, gone)
                 Sheet.Queue -> QueueSheet(open, dismiss, gone)
+                Sheet.SleepTimer -> SleepTimerSheet(open, dismiss, gone)
             }
         }
     }

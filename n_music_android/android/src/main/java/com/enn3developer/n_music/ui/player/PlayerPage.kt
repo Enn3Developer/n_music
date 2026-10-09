@@ -130,9 +130,13 @@ data class PlayerUi(
     val next: TrackRow?,
     /** Where it plays: this phone, or the headphones it plays on. */
     val output: String,
-    /** A running sleep timer's time left, as its chip says it; `null` while none runs. */
-    val sleep: String?,
+    /** A running sleep timer, as its chip says it; `null` while none runs. */
+    val sleep: Sleep?,
 )
+
+/** A running sleep timer as the player's chip says it: [label] on it, [description] aloud. */
+@Immutable
+data class Sleep(val label: String, val description: String)
 
 /** The covers' corners on the player. */
 val PlayerCoverShape = RoundedCornerShape(28.dp)
@@ -482,8 +486,10 @@ private fun OutputChip(name: String, onClick: () -> Unit) {
 
 /** The sleep timer: filled with its time left while one runs. */
 @Composable
-private fun SleepChip(left: String?, onClick: () -> Unit) {
+private fun SleepChip(sleep: Sleep?, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
+    val left = sleep?.label
+    val description = sleep?.description ?: stringResource(R.string.sleep_timer)
     Row(
         Modifier
             .height(36.dp)
@@ -496,6 +502,10 @@ private fun SleepChip(left: String?, onClick: () -> Unit) {
                 }
             )
             .tappable(onClick)
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+            }
             .padding(start = 10.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

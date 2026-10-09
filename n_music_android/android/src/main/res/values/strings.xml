@@ -255,6 +255,36 @@
     <string name="queue_end">End of the queue</string>
     <string name="open_queue">Open the queue</string>
 
+    <!-- The sleep timer -->
+    <string name="sleep_fades">Fades out over the last 10 seconds, then pauses.</string>
+    <plurals name="sleep_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <plurals name="sleep_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <string name="sleep_until">until %1$s</string>
+    <string name="sleep_track_end">End of this track</string>
+    <string name="sleep_queue_end">End of the queue</string>
+    <string name="sleep_left">%1$s left</string>
+    <plurals name="sleep_queue_tracks">
+        <item quantity="one">%1$s track, even on repeat</item>
+        <item quantity="other">%1$s tracks, even on repeat</item>
+    </plurals>
+    <string name="sleep_extend">Add 10 min</string>
+    <string name="sleep_off">Turn off</string>
+    <string name="sleep_minutes_left">%1$d min left</string>
+    <string name="sleep_at_track_end">End of track</string>
+    <string name="sleep_at_queue_end">End of queue</string>
+    <plurals name="sleep_stops_in">
+        <item quantity="one">Sleep timer: stops in %1$d minute</item>
+        <item quantity="other">Sleep timer: stops in %1$d minutes</item>
+    </plurals>
+    <string name="sleep_stops_at_track_end">Sleep timer: stops at the end of this track</string>
+    <string name="sleep_stops_at_queue_end">Sleep timer: stops at the end of the queue</string>
+
     <!-- The queue -->
     <string name="queue">Queue</string>
     <string name="clear_queued">Clear queued</string>

@@ -51,6 +51,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.paneTitle
@@ -66,12 +67,13 @@ import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.MiniButton
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.SleepMode
+import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
-import com.enn3developer.n_music.ui.CorePlayback
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Snack
@@ -89,6 +91,7 @@ import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.albumOf
+import com.enn3developer.n_music.ui.sheets.rememberClock
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -382,12 +385,12 @@ fun PlayerHost(transition: PlayerTransition) {
         origin = originName(origin)?.let { dotted(it, if (shuffle) stringResource(R.string.shuffled) else null) },
         next = upNext(queue, current?.item, loop),
         output = stringResource(R.string.this_phone),
-        sleep = null,
+        sleep = sleepLabel(),
     )
     val latestTrack by rememberUpdatedState(track)
     val latestOrigin by rememberUpdatedState(origin)
     val actions = remember(app, transition) {
-        object : PlayerActions, PlaybackActions by CorePlayback {
+        object : PlayerActions, PlaybackActions by app.playback {
             override fun close() = transition.close()
 
             override fun openOrigin() {
@@ -541,9 +544,9 @@ fun PlayerOverlay(
             // What the mini player shows, on the container's top edge until it fades.
             MiniPlayerRow(
                 track = track,
-                ui = PlaybackUi(track, ui.playing, ui.shuffle, ui.loop),
+                ui = PlaybackUi(track, ui.playing, ui.shuffle, ui.loop, ui.sleep != null),
                 buttons = miniButtons,
-                actions = CorePlayback,
+                actions = actions,
                 onOpen = {},
                 showCover = false,
                 modifier = Modifier
@@ -631,6 +634,32 @@ fun PlayerOverlay(
                 transition.open()
                 throw cancelled
             }
+        }
+    }
+}
+
+/** The sleep timer as the player's chip says it, ticking while one runs. */
+@Composable
+private fun sleepLabel(): Sleep? {
+    val state by SleepTimer.state.collectAsStateWithLifecycle()
+    val running = state ?: return null
+    val left = SleepTimer.remaining(running, rememberClock())
+    return when {
+        running.ends == null && running.option == SleepMode.TrackEnd -> Sleep(
+            stringResource(R.string.sleep_at_track_end),
+            stringResource(R.string.sleep_stops_at_track_end),
+        )
+        running.ends == null -> Sleep(
+            stringResource(R.string.sleep_at_queue_end),
+            stringResource(R.string.sleep_stops_at_queue_end),
+        )
+        else -> {
+            // 24:12 left says 24 min, and the last minute still says 1.
+            val minutes = ((left ?: 0L) / 60_000).toInt().coerceAtLeast(1)
+            Sleep(
+                stringResource(R.string.sleep_minutes_left, minutes),
+                pluralStringResource(R.plurals.sleep_stops_in, minutes, minutes),
+            )
         }
     }
 }

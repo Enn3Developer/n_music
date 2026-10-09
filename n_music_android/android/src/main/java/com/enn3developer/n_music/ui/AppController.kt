@@ -7,6 +7,7 @@ import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.dialogs.AppDialog
+import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.sheets.Sheet
@@ -42,6 +43,9 @@ interface AppController {
 
     /** The player's way in and out, which the mini player and the navigation follow. */
     val player: PlayerTransition
+
+    /** Playback's controls, with the output and the sleep timer opening what they open. */
+    val playback: PlaybackActions
 
     /** The filters on the library's tracks. */
     var filters: TrackFilters

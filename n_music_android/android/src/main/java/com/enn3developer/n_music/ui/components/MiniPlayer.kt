@@ -96,8 +96,8 @@ data class PlaybackUi(
     val playing: Boolean = false,
     val shuffle: Boolean = false,
     val loop: LoopStatus = LoopStatus.PLAYLIST,
-    /** A running sleep timer's minutes left; `null` while none runs. */
-    val sleepMinutes: Int? = null,
+    /** A sleep timer runs. */
+    val sleeping: Boolean = false,
 )
 
 /** What the mini player and the player ask of playback. */
@@ -304,7 +304,7 @@ fun MiniPlayerButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackAction
     val on = when (button) {
         MiniButton.SHUFFLE -> ui.shuffle
         MiniButton.REPEAT -> ui.loop != LoopStatus.OFF
-        MiniButton.SLEEP_TIMER -> ui.sleepMinutes != null
+        MiniButton.SLEEP_TIMER -> ui.sleeping
         else -> false
     }
     Box(
