@@ -62,8 +62,8 @@ fun playsCount(count: UInt): String =
     pluralStringResource(R.plurals.plays_count, quantity(count.toLong()), formatCount(count))
 
 /**
- * When something happened, [unixSeconds] ago from now: today, yesterday, 3 days ago, then the
- * date, with the year once it is another year's.
+ * When something happened, [unixSeconds] ago from now: today, yesterday, 3 days ago, last week,
+ * 3 weeks ago, last month, 5 months ago, and past a year, the date.
  */
 @Composable
 fun formatWhen(unixSeconds: Long): String {
@@ -76,10 +76,11 @@ fun formatWhen(unixSeconds: Long): String {
         days <= 0 -> stringResource(R.string.when_today)
         days == 1L -> stringResource(R.string.when_yesterday)
         days < 7 -> pluralStringResource(R.plurals.when_days_ago, days.toInt(), days)
-        else -> {
-            val skeleton = if (day.year == today.year) "MMMd" else "MMMdyyyy"
-            DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale).format(day)
-        }
+        days < 14 -> stringResource(R.string.when_last_week)
+        days < 30 -> pluralStringResource(R.plurals.when_weeks_ago, (days / 7).toInt(), days / 7)
+        days < 60 -> stringResource(R.string.when_last_month)
+        days < 365 -> pluralStringResource(R.plurals.when_months_ago, (days / 30).toInt(), days / 30)
+        else -> DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, "MMMdyyyy"), locale).format(day)
     }
 }
 

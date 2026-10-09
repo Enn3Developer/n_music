@@ -31,12 +31,18 @@ enum class PlaysFilter(val min: UInt?, val max: UInt?) {
 }
 
 /** When a track was last played. */
-enum class PlayedFilter(@param:StringRes val label: Int, val days: Int, val within: Boolean) {
-    PAST_WEEK(R.string.played_past_week, 7, true),
-    PAST_MONTH(R.string.played_past_month, 30, true),
-    PAST_YEAR(R.string.played_past_year, 365, true),
-    NOT_IN_MONTH(R.string.played_not_in_month, 30, false),
-    NOT_IN_YEAR(R.string.played_not_in_year, 365, false),
+enum class PlayedFilter(
+    @param:StringRes val label: Int,
+    /** What its chip says, away from the filters' Last played. */
+    @param:StringRes val chip: Int,
+    val days: Int,
+    val within: Boolean,
+) {
+    PAST_WEEK(R.string.played_past_week, R.string.played_past_week_chip, 7, true),
+    PAST_MONTH(R.string.played_past_month, R.string.played_past_month_chip, 30, true),
+    PAST_YEAR(R.string.played_past_year, R.string.played_past_year_chip, 365, true),
+    NOT_IN_MONTH(R.string.played_not_in_month, R.string.played_not_in_month_chip, 30, false),
+    NOT_IN_YEAR(R.string.played_not_in_year, R.string.played_not_in_year_chip, 365, false),
 }
 
 /**
@@ -144,7 +150,7 @@ fun TrackFilters.label(field: FilterField, sourceName: (Locator) -> String): Str
                 pluralStringResource(R.plurals.plays_at_least_chip, min, min)
             }
         }
-        FilterField.LAST_PLAYED -> stringResource(played!!.label)
+        FilterField.LAST_PLAYED -> stringResource(played!!.chip)
         FilterField.FORMAT -> several(formatName(formats.first()), formats.size)
         FilterField.SOURCE -> several(sourceName(sources.first()), sources.size)
         FilterField.ARTIST -> artist!!

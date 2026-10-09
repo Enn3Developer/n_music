@@ -102,6 +102,11 @@
     <string name="played_past_year">Past year</string>
     <string name="played_not_in_month">Not in a month</string>
     <string name="played_not_in_year">Not in a year</string>
+    <string name="played_past_week_chip">Played past week</string>
+    <string name="played_past_month_chip">Played past month</string>
+    <string name="played_past_year_chip">Played past year</string>
+    <string name="played_not_in_month_chip">Not played in a month</string>
+    <string name="played_not_in_year_chip">Not played in a year</string>
     <string name="any_artist">Any artist</string>
     <string name="no_genre_short">No genre</string>
     <string name="more_values">%1$s +%2$d</string>
@@ -227,6 +232,16 @@
     <plurals name="when_days_ago">
         <item quantity="one">%1$d day ago</item>
         <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <string name="when_last_week">last week</string>
+    <plurals name="when_weeks_ago">
+        <item quantity="one">%1$d week ago</item>
+        <item quantity="other">%1$d weeks ago</item>
+    </plurals>
+    <string name="when_last_month">last month</string>
+    <plurals name="when_months_ago">
+        <item quantity="one">%1$d month ago</item>
+        <item quantity="other">%1$d months ago</item>
     </plurals>
 
     <!-- Mini player and playback -->
