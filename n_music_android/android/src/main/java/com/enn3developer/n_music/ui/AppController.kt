@@ -6,6 +6,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
+import com.enn3developer.n_music.ui.sheets.Sheet
 
 /** Where what plays came from, for the player's "Playing from". */
 sealed interface Origin {
@@ -33,6 +34,14 @@ interface AppController {
     fun play(query: Query, origin: Origin, start: Locator? = null, shuffle: Boolean? = null)
 
     fun openPlayer()
+
+    /** The sheet over the app, while one shows. */
+    val sheet: Sheet?
+
+    /** Shows [sheet] over the app, in place of the one showing. */
+    fun show(sheet: Sheet)
+
+    fun closeSheet()
 }
 
 val LocalApp = staticCompositionLocalOf<AppController> { error("No app") }

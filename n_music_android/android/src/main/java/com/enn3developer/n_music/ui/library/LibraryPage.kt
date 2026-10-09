@@ -103,6 +103,7 @@ import com.enn3developer.n_music.ui.components.WavyProgress
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
+import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
@@ -169,7 +170,7 @@ fun LibraryPage() {
                         onPlay = { track -> app.play(query, Origin.Library, track.locator) },
                         onPlayAll = { shuffle -> app.play(query, Origin.Library, shuffle = shuffle) },
                         onMore = {},
-                        onSort = {},
+                        onSort = { app.show(Sheet.Sort(LibraryTab.TRACKS)) },
                         onScan = { app.open(Page.Sources) },
                     )
                 }
@@ -187,7 +188,7 @@ fun LibraryPage() {
                         minTile = 160.dp,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
-                        onSort = {},
+                        onSort = { app.show(Sheet.Sort(LibraryTab.ALBUMS)) },
                         item = { album -> AlbumItem(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
                         tile = { album -> AlbumTile(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
                     )
@@ -206,7 +207,7 @@ fun LibraryPage() {
                         minTile = 104.dp,
                         rowGap = 16.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
-                        onSort = {},
+                        onSort = { app.show(Sheet.Sort(LibraryTab.ARTISTS)) },
                         item = { artist -> ArtistItem(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
                         tile = { artist -> ArtistTile(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
                     )
@@ -225,7 +226,7 @@ fun LibraryPage() {
                         minTile = 160.dp,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
-                        onSort = {},
+                        onSort = { app.show(Sheet.Sort(LibraryTab.GENRES)) },
                         item = { genre -> GenreItem(genre, {}) },
                         tile = { genre -> GenreTile(genre, {}) },
                     )

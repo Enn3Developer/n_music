@@ -39,6 +39,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
@@ -53,6 +54,8 @@ import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.library.LibraryPage
+import com.enn3developer.n_music.ui.sheets.Sheet
+import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NTheme
 import com.enn3developer.n_music.ui.theme.colors
@@ -83,6 +86,17 @@ private class Controller(override val navigator: Navigator) : AppController {
     override fun openPlayer() {
         playerOpen = true
     }
+
+    override var sheet by mutableStateOf<Sheet?>(null)
+        private set
+
+    override fun show(sheet: Sheet) {
+        this.sheet = sheet
+    }
+
+    override fun closeSheet() {
+        sheet = null
+    }
 }
 
 /** Playback's controls, sent to the core. */
@@ -105,7 +119,13 @@ fun NMusicApp(host: AppHost) {
         val controller = remember(navigator) { Controller(navigator) }
         BackHandler(navigator.canGoBack) { navigator.back() }
         CompositionLocalProvider(LocalApp provides controller) {
-            PhoneLayout(navigator)
+            Box(Modifier.fillMaxSize()) {
+                // Under a sheet, only the sheet is there for accessibility services.
+                Box(if (controller.sheet != null) Modifier.clearAndSetSemantics {} else Modifier) {
+                    PhoneLayout(navigator)
+                }
+                SheetHost(controller.sheet, controller::closeSheet)
+            }
         }
     }
 }

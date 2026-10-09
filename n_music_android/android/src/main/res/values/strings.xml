@@ -8,6 +8,7 @@
     <string name="nav_sources">Sources</string>
     <string name="back">Back</string>
     <string name="settings">Settings</string>
+    <string name="dismiss_sheet">Close sheet</string>
 
     <!-- Library -->
     <string name="search_library">Search your library</string>
@@ -51,6 +52,11 @@
     <string name="sort_fewest_first">Fewest first</string>
     <string name="sort_latest_first">Latest first</string>
     <string name="sort_earliest_first">Earliest first</string>
+    <string name="sort_tracks">Sort tracks</string>
+    <string name="sort_albums">Sort albums</string>
+    <string name="sort_artists">Sort artists</string>
+    <string name="sort_genres">Sort genres</string>
+    <string name="reverse_order">Reverse the order</string>
     <string name="sort_shortest_first">Shortest first</string>
     <string name="sort_longest_first">Longest first</string>
 

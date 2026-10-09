@@ -3,6 +3,8 @@ package com.enn3developer.n_music.ui.theme
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import kotlin.math.exp
+import kotlin.math.sqrt
 
 /**
  * The springs every move and fade runs on: the six of Material 3 Expressive's motion scheme,
@@ -40,6 +42,36 @@ object NMotion {
 
     /** A throw never gets faster than this many times the flick. */
     const val MAX_THROW = 1.3f
+
+    /**
+     * The spring a thrown thing leaves on: [noBounce], made softer where it would speed up past
+     * [MAX_THROW] times the flick, though never so soft that a slow flick takes much over a
+     * second to leave. [distance] is how far it still goes and [velocity] how fast the flick
+     * moved it that way, in the same units.
+     */
+    fun throwing(distance: Float, velocity: Float, visibilityThreshold: Float? = null): FiniteAnimationSpec<Float> {
+        if (distance <= 0f || velocity <= 0f) return noBounce(visibilityThreshold)
+        // A critically damped spring of angular frequency w, starting at the flick's speed,
+        // peaks at (k / w) * e^(w * v / k - 1), with k = w * (w * d - v); past its start only
+        // when k > w * v.
+        fun peak(w: Float): Float {
+            val k = w * (w * distance - velocity)
+            return if (k <= w * velocity) velocity else k / w * exp(w * velocity / k - 1)
+        }
+        val limit = MAX_THROW * velocity
+        var high = sqrt(Spring.StiffnessMediumLow)
+        if (peak(high) <= limit) return noBounce(visibilityThreshold)
+        var low = 0f
+        repeat(24) {
+            val middle = (low + high) / 2
+            if (peak(middle) <= limit) low = middle else high = middle
+        }
+        return spring(
+            Spring.DampingRatioNoBouncy,
+            (low * low).coerceAtLeast(Spring.StiffnessVeryLow),
+            visibilityThreshold,
+        )
+    }
 
     /** When several things change at once, the rest follow the leader this far apart. */
     const val STAGGER_MS = 50L
