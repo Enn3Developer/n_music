@@ -30,6 +30,9 @@ sealed interface Sheet {
 
     /** What can be done with one track. */
     data class TrackActions(val track: Locator) : Sheet
+
+    /** The play session: what played, what plays and what plays next. */
+    data object Queue : Sheet
 }
 
 /**
@@ -52,6 +55,7 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
                 is Sheet.Filters -> FilterSheet(sheet.focus, open, dismiss, gone)
                 is Sheet.AddToPlaylist -> AddToPlaylistSheet(sheet.tracks, open, dismiss, gone)
                 is Sheet.TrackActions -> TrackActionsSheet(sheet.track, open, dismiss, gone)
+                Sheet.Queue -> QueueSheet(open, dismiss, gone)
             }
         }
     }

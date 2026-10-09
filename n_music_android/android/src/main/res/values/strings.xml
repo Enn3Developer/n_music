@@ -255,6 +255,25 @@
     <string name="queue_end">End of the queue</string>
     <string name="open_queue">Open the queue</string>
 
+    <!-- The queue -->
+    <string name="queue">Queue</string>
+    <string name="clear_queued">Clear queued</string>
+    <plurals name="cleared_queued">
+        <item quantity="one">Cleared %1$s queued track</item>
+        <item quantity="other">Cleared %1$s queued tracks</item>
+    </plurals>
+    <string name="queue_playing_from">Playing from %1$s</string>
+    <plurals name="queue_left">
+        <item quantity="one">%1$s left</item>
+        <item quantity="other">%1$s left</item>
+    </plurals>
+    <string name="at_the_end">At the end</string>
+    <string name="end_stop">Stop</string>
+    <string name="queue_played">Played</string>
+    <string name="queue_queued">Queued</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
+
     <!-- Media notification buttons. -->
     <string name="repeat_off">Repeat off</string>
     <string name="repeat_all">Repeat all</string>

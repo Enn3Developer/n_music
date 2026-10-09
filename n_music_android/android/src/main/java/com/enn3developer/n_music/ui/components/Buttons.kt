@@ -428,3 +428,60 @@ fun PressGroup(
         }
     }
 }
+
+/**
+ * Connected buttons picking one of [options], the picked one filled with a check: the end of the
+ * queue, the theme, ReplayGain. [weights] widen the options with longer labels.
+ */
+@Composable
+fun <T> Segmented(
+    options: List<T>,
+    selected: T,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 40.dp,
+    weights: List<Float> = options.map { 1f },
+    textSize: Int = 14,
+    checkSize: Dp = 18.dp,
+) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        options.forEachIndexed { index, option ->
+            val picked = option == selected
+            val outer = height / 2
+            val shape = when (index) {
+                0 -> NShapes.first(outer, 6.dp)
+                options.lastIndex -> NShapes.last(outer, 6.dp)
+                else -> NShapes.middle(6.dp)
+            }
+            val container by animateColorAsState(
+                if (picked) colors.secondaryContainer else colors.surfaceHigh,
+                NMotion.effectsFast(),
+                label = "segment",
+            )
+            val text = label(option)
+            ButtonSurface(
+                onClick = { onSelect(option) },
+                shape = shape,
+                container = container,
+                content = if (picked) colors.onSecondaryContainer else colors.onSurface,
+                role = Role.RadioButton,
+                modifier = Modifier
+                    .weight(weights[index])
+                    .height(height)
+                    .semantics { this.selected = picked },
+            ) {
+                if (picked) {
+                    NIcon(NIcons.Check, size = checkSize)
+                    Box(Modifier.width(if (checkSize < 18.dp) 4.dp else 6.dp))
+                }
+                Text(
+                    text,
+                    style = text(textSize, if (picked) FontWeight.Bold else FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}

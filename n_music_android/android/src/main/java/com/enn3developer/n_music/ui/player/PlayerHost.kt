@@ -71,10 +71,8 @@ import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
-import com.enn3developer.n_music.ui.AppController
 import com.enn3developer.n_music.ui.CorePlayback
 import com.enn3developer.n_music.ui.LocalApp
-import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
@@ -381,7 +379,7 @@ fun PlayerHost(transition: PlayerTransition) {
         playing = playing,
         shuffle = shuffle,
         loop = loop,
-        origin = originLabel(origin, shuffle),
+        origin = originName(origin)?.let { dotted(it, if (shuffle) stringResource(R.string.shuffled) else null) },
         next = upNext(queue, current?.item, loop),
         output = stringResource(R.string.this_phone),
         sleep = null,
@@ -406,7 +404,7 @@ fun PlayerHost(transition: PlayerTransition) {
                 pending.value = CoreRepository.seek(seconds) to seconds
             }
 
-            override fun openQueue() {}
+            override fun openQueue() = app.show(Sheet.Queue)
         }
     }
     val width = LocalWindowInfo.current.containerSize.width
@@ -663,36 +661,9 @@ private class SkipTracker {
     }
 }
 
-/** What "Playing from" says for [origin], shuffled when [shuffle] is on; `null` when not known. */
-@Composable
-private fun originLabel(origin: Origin?, shuffle: Boolean): String? {
-    val playlists by CoreRepository.playlists.collectAsStateWithLifecycle()
-    val sources by CoreRepository.sources.collectAsStateWithLifecycle()
-    val name = when (origin) {
-        null -> null
-        Origin.Library -> stringResource(R.string.nav_library)
-        is Origin.Search -> stringResource(R.string.origin_search, origin.text)
-        is Origin.Album -> origin.name ?: stringResource(R.string.no_album)
-        is Origin.Artist -> origin.name ?: stringResource(R.string.no_artist)
-        is Origin.Playlist -> playlists.find { it.id == origin.id }?.name
-        is Origin.Source -> sources.find { it.root == origin.root }?.name
-    } ?: return null
-    return dotted(name, if (shuffle) stringResource(R.string.shuffled) else null)
-}
-
 /** What plays after [current] in [queue]: the next item, or the first once at its end on repeat. */
 private fun upNext(queue: List<QueueRow>, current: ULong?, loop: LoopStatus): TrackRow? {
     val index = queue.indexOfFirst { it.item == current }
     if (index < 0) return null
     return queue.getOrNull(index + 1)?.track ?: if (loop == LoopStatus.PLAYLIST) queue.firstOrNull()?.track else null
-}
-
-/** Opens the page of what plays, closing the player. */
-fun AppController.openOrigin(origin: Origin) = when (origin) {
-    Origin.Library -> showTracks(filters)
-    is Origin.Search -> open(Page.Search)
-    is Origin.Album -> open(Page.Album(origin.name, origin.artist))
-    is Origin.Artist -> open(Page.Artist(origin.name))
-    is Origin.Playlist -> open(Page.Playlist(origin.id))
-    is Origin.Source -> open(Page.Source(origin.root))
 }
