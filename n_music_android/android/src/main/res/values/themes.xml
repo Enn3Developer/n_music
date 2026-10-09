@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The window behind Compose, so the first frame matches the system theme. -->
-    <style name="Theme.NMusic" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- The window behind Compose, so the first frame has the theme's background. -->
+    <style name="Theme.NMusic" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+    </style>
 </resources>

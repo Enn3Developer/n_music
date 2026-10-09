@@ -9,76 +9,45 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.net.toUri
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.enn3developer.n_music.core.Command
-import com.enn3developer.n_music.core.Locator
-import com.enn3developer.n_music.ui.AppScreen
-import com.enn3developer.n_music.ui.LocalStrings
-import com.enn3developer.n_music.ui.Localizations
-import com.enn3developer.n_music.ui.NMusicTheme
-import com.enn3developer.n_music.ui.SettingsScreen
+import com.enn3developer.n_music.ui.AppHost
+import com.enn3developer.n_music.ui.NMusicApp
 import com.google.common.util.concurrent.ListenableFuture
 
-class MainActivity : ComponentActivity() {
+/**
+ * The app's one activity. An AppCompat one, so the per-app language Android keeps from
+ * Android 13 also applies on Android 11 and 12.
+ */
+class MainActivity : AppCompatActivity(), AppHost {
     private var controller: ListenableFuture<MediaController>? = null
 
-    /** The folder picker is open: another tap does not open a second one. */
-    private var picking = false
+    /** Gets the folder the open picker picks; a tap meanwhile does not open a second one. */
+    private var picked: ((Uri) -> Unit)? = null
 
     private val folderPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            picking = false
-            if (uri != null) useFolder(uri)
+            val onPicked = picked
+            picked = null
+            if (uri != null && onPicked != null) {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                onPicked(uri)
+            }
         }
 
     private val askNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            val message = if (granted) "Permission granted" else "Permission denied"
-            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-        }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent {
-            val ui by UiPreferences.settings.collectAsStateWithLifecycle()
-            val strings = remember(ui.locale) {
-                Localizations.strings(this, Localizations.denominator(ui.locale))
-            }
-            NMusicTheme(ui.theme) {
-                CompositionLocalProvider(LocalStrings provides strings) {
-                    var settings by rememberSaveable { mutableStateOf(false) }
-                    // Keeps the search and where the list was while Settings shows.
-                    val screens = rememberSaveableStateHolder()
-                    if (settings) {
-                        SettingsScreen(
-                            onBack = { settings = false },
-                            onPickFolder = ::pickFolder,
-                            onOpenLink = ::openLink,
-                        )
-                    } else {
-                        screens.SaveableStateProvider("main") {
-                            AppScreen(onSettings = { settings = true })
-                        }
-                    }
-                }
-            }
-        }
+        setContent { NMusicApp(this) }
         // Asked at launch, as the Slint app did, not again when the activity is recreated.
         if (savedInstanceState == null &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -103,39 +72,21 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
-    private fun pickFolder() {
-        if (picking) return
+    override fun pickFolder(onPicked: (Uri) -> Unit) {
+        if (picked != null) return
         try {
             folderPicker.launch(null)
-            picking = true
+            picked = onPicked
         } catch (error: ActivityNotFoundException) {
             Log.w("n_music", "Nothing can pick a folder", error)
         }
     }
 
-    private fun openLink(link: String) {
+    override fun openLink(url: String) {
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (error: ActivityNotFoundException) {
-            Log.w("n_music", "Nothing can open $link", error)
+            Log.w("n_music", "Nothing can open $url", error)
         }
-    }
-
-    private fun useFolder(uri: Uri) {
-        val resolver = contentResolver
-        resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        // Only the current library folder needs access; persisted grants are capped per app.
-        for (permission in resolver.persistedUriPermissions) {
-            if (permission.uri != uri) {
-                resolver.releasePersistableUriPermission(
-                    permission.uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-        }
-        // Picking a folder replaces the libraries until there is a screen to manage several.
-        CoreRepository.send(
-            Command.SetLibraryRoots(listOf(Locator.DocumentTree(uri.toString())))
-        )
     }
 }

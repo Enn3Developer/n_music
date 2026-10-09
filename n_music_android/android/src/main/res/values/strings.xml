@@ -1,20 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Media notification buttons and the control panel's repeat button. -->
+    <string name="app_name">N Music</string>
+
+    <!-- Navigation -->
+    <string name="nav_library">Library</string>
+    <string name="nav_playlists">Playlists</string>
+    <string name="nav_sources">Sources</string>
+    <string name="back">Back</string>
+    <string name="settings">Settings</string>
+
+    <!-- Library -->
+    <string name="search_library">Search your library</string>
+    <string name="tab_tracks">Tracks</string>
+    <string name="tab_albums">Albums</string>
+    <string name="tab_artists">Artists</string>
+    <string name="tab_genres">Genres</string>
+    <string name="list_view">List view. Switch to grid</string>
+    <string name="grid_view">Grid view. Switch to list</string>
+    <string name="play">Play</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="play_all">Play all %1$s tracks</string>
+    <string name="shuffle_all">Shuffle all %1$s tracks</string>
+    <string name="more_for">More for %1$s</string>
+    <string name="unknown_artist">Unknown artist</string>
+    <string name="no_album">Tracks without an album</string>
+    <string name="no_artist">Tracks without an artist</string>
+    <string name="no_genre">Tracks without a genre</string>
+    <string name="playing">Playing</string>
+
+    <!-- Sorting -->
+    <string name="sort_artist_album">Artist, then album</string>
+    <string name="sort_title">Title</string>
+    <string name="sort_album">Album</string>
+    <string name="sort_year">Year</string>
+    <string name="sort_most_played">Most played</string>
+    <string name="sort_recently_played">Recently played</string>
+    <string name="sort_length">Length</string>
+    <string name="sort_location">File location</string>
+    <string name="sort_recently_added">Recently added</string>
+    <string name="sort_album_artist">Album artist</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_newest">Newest</string>
+    <string name="sort_oldest">Oldest</string>
+    <string name="sort_most_tracks">Most tracks</string>
+    <string name="sort_a_to_z">A to Z</string>
+    <string name="sort_z_to_a">Z to A</string>
+    <string name="sort_oldest_first">Oldest first</string>
+    <string name="sort_newest_first">Newest first</string>
+    <string name="sort_most_first">Most first</string>
+    <string name="sort_fewest_first">Fewest first</string>
+    <string name="sort_latest_first">Latest first</string>
+    <string name="sort_earliest_first">Earliest first</string>
+    <string name="sort_shortest_first">Shortest first</string>
+    <string name="sort_longest_first">Longest first</string>
+
+    <!-- The first scan -->
+    <string name="building_library">Building your library</string>
+    <string name="building_library_hint">Every track found is listed already and can play now. Titles and covers fill in as they’re read.</string>
+    <string name="read_of_found">%1$s of %2$s read</string>
+
+    <plurals name="tracks_count">
+        <item quantity="one">%1$s track</item>
+        <item quantity="other">%1$s tracks</item>
+    </plurals>
+    <plurals name="albums_count">
+        <item quantity="one">%1$s album</item>
+        <item quantity="other">%1$s albums</item>
+    </plurals>
+    <plurals name="artists_count">
+        <item quantity="one">%1$s artist</item>
+        <item quantity="other">%1$s artists</item>
+    </plurals>
+    <plurals name="genres_count">
+        <item quantity="one">%1$s genre</item>
+        <item quantity="other">%1$s genres</item>
+    </plurals>
+
+    <!-- Mini player and playback -->
+    <string name="previous">Previous</string>
+    <string name="next">Next</string>
+    <string name="pause">Pause</string>
+    <string name="output">Output</string>
+    <string name="sleep_timer">Sleep timer</string>
+
+    <!-- Media notification buttons. -->
     <string name="repeat_off">Repeat off</string>
     <string name="repeat_all">Repeat all</string>
     <string name="repeat_one">Repeat one</string>
     <string name="shuffle_on">Shuffle on</string>
     <string name="shuffle_off">Shuffle off</string>
-    <!-- Labels for screen readers, in English like in the Slint app. The interface's own texts
-         come from the translations in assets/lang. -->
-    <string name="play">Play</string>
-    <string name="pause">Pause</string>
-    <string name="previous_track">Previous track</string>
-    <string name="next_track">Next track</string>
-    <string name="playback_position">Playback position</string>
-    <string name="show_playing_track">Show playing track</string>
-    <string name="dismiss_search">Dismiss search keyboard</string>
-    <string name="clear_search">Clear search</string>
-    <string name="back">Back</string>
 </resources>

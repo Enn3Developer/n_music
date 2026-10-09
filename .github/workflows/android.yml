@@ -107,8 +107,6 @@ jobs:
       - name: Build APK and app bundle
         working-directory: n_music_android
         env:
-          # The app's assets include a translation with a non-ASCII file name.
-          LANG: C.UTF-8
           REQUIRE_SIGNING: ${{ inputs.sign }}
           ANDROID_KEYSTORE_PATH: ${{ inputs.sign && format('{0}/n-music-upload.jks', runner.temp) || '' }}
           ANDROID_KEYSTORE_PASSWORD: ${{ inputs.sign && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}

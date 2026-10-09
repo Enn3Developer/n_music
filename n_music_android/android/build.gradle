@@ -45,8 +45,6 @@ android {
         // Both come from compile_rust.sh: the native core and its UniFFI bindings.
         main.jniLibs.srcDirs = [layout.buildDirectory.dir('rustJniLibs')]
         main.java.srcDirs += [layout.buildDirectory.dir('generated/uniffi')]
-        // The translations, in the format the desktop app shares.
-        main.assets.srcDirs += ['../assets']
     }
 
     buildFeatures {
@@ -105,6 +103,8 @@ dependencies {
     implementation 'androidx.compose.ui:ui-tooling-preview'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     implementation 'androidx.activity:activity-compose:1.11.0'
+    // The per-app language on Android 11 and 12, which only Android 13 keeps on its own.
+    implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation 'androidx.lifecycle:lifecycle-process:2.9.4'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.9.4'

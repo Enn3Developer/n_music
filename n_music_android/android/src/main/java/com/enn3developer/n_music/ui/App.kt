@@ -1,417 +1,244 @@
 package com.enn3developer.n_music.ui
 
-import androidx.compose.foundation.Canvas
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
+import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ui.components.NIconButton
+import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.ui.theme.NType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
-import com.enn3developer.n_music.R
+import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Command
-import com.enn3developer.n_music.core.LoopStatus
-import com.enn3developer.n_music.core.TrackRow
-import kotlinx.coroutines.launch
+import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.core.Query
+import com.enn3developer.n_music.ui.components.BottomFade
+import com.enn3developer.n_music.ui.components.MiniPlayer
+import com.enn3developer.n_music.ui.components.NavBar
+import com.enn3developer.n_music.ui.components.PlaybackActions
+import com.enn3developer.n_music.ui.components.PlaybackUi
+import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
+import com.enn3developer.n_music.ui.library.LibraryPage
+import com.enn3developer.n_music.ui.theme.NMotion
+import com.enn3developer.n_music.ui.theme.NTheme
+import com.enn3developer.n_music.ui.theme.colors
 
-/** The height of a track row, which scrolling to the playing track counts on. */
-private val ROW_HEIGHT = 84.dp
+/** What the app needs from its activity: Android's pickers and browser. */
+interface AppHost {
+    /** Opens Android's folder picker; [onPicked] gets the folder, readable from then on. */
+    fun pickFolder(onPicked: (Uri) -> Unit)
 
-/**
- * The Slint app's main screen: search, the library in play order, and the control panel. It
- * reads the core's state from [CoreRepository] and sends it commands, nothing more.
- */
+    fun openLink(url: String)
+}
+
+/** The app's controller: navigation, and playing what a page asks for. */
+private class Controller(override val navigator: Navigator) : AppController {
+    var playerOpen by mutableStateOf(false)
+
+    override fun open(page: Page) = navigator.open(page)
+
+    override fun back() {
+        navigator.back()
+    }
+
+    override fun play(query: Query, origin: Origin, start: Locator?, shuffle: Boolean?) {
+        if (shuffle != null) CoreRepository.send(Command.SetShuffle(shuffle))
+        CoreRepository.send(Command.PlayFrom(query, start))
+    }
+
+    override fun openPlayer() {
+        playerOpen = true
+    }
+}
+
+/** Playback's controls, sent to the core. */
+object CorePlayback : PlaybackActions {
+    override fun togglePause() = CoreRepository.send(Command.TogglePause)
+    override fun previous() = CoreRepository.send(Command.PlayPrevious)
+    override fun next() = CoreRepository.send(Command.PlayNext)
+    override fun toggleShuffle() = CoreRepository.send(Command.ToggleShuffle)
+    override fun cycleRepeat() = CoreRepository.send(Command.ToggleRepeat)
+    override fun openOutput() {}
+    override fun openSleepTimer() {}
+}
+
+/** The whole app: its pages, and the mini player and navigation over them. */
 @Composable
-fun AppScreen(onSettings: () -> Unit) {
-    val rows by CoreRepository.rows.collectAsStateWithLifecycle()
+fun NMusicApp(host: AppHost) {
+    val ui by UiPreferences.settings.collectAsStateWithLifecycle()
+    NTheme(ui.theme, ui.accent) {
+        val navigator = rememberNavigator()
+        val controller = remember(navigator) { Controller(navigator) }
+        BackHandler(navigator.canGoBack) { navigator.back() }
+        CompositionLocalProvider(LocalApp provides controller) {
+            PhoneLayout(navigator)
+        }
+    }
+}
+
+@Composable
+private fun PhoneLayout(navigator: Navigator) {
+    val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     val current by CoreRepository.current.collectAsStateWithLifecycle()
-    var search by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-
-    // Searching keeps where the list was, and clearing the search goes back there.
-    var saved by rememberSaveable { mutableStateOf<Pair<Int, Int>?>(null) }
-    val query = search.lowercase()
-    val shown = remember(rows, query) {
-        if (query.isEmpty()) {
-            rows
-        } else {
-            rows.filter {
-                it.title.lowercase().contains(query) || it.artist.lowercase().contains(query)
-            }
-        }
-    }
-    LaunchedEffect(query.isEmpty()) {
-        if (query.isEmpty()) {
-            saved?.let { (index, offset) -> listState.scrollToItem(index, offset) }
-            saved = null
-        }
-    }
-    // Before anything plays, the first track is the one shown, as in the Slint app.
-    val playing = (current?.track ?: rows.firstOrNull())?.locator
-
-    // The keyboard covers the bottom of the screen: the list's end scrolls above it.
-    var belowList by remember { mutableIntStateOf(0) }
-    val keyboard = WindowInsets.ime.getBottom(density)
-    val aboveKeyboard = with(density) { (keyboard - belowList).coerceAtLeast(0).toDp() }
-
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-        ) {
-            TopPanel(
-                search = search,
-                onSearch = {
-                    if (search.isEmpty() && it.isNotEmpty()) {
-                        saved = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-                    }
-                    search = it
-                    // The results start at the top.
-                    if (it.isNotEmpty()) scope.launch { listState.scrollToItem(0) }
-                },
-                onShowPlaying = {
-                    val row = shown.indexOfFirst { it.locator == playing }
-                    if (row >= 0) {
-                        // The row before the playing one peeks in at the top, as in the Slint app.
-                        val offset = if (row > 0) with(density) { 50.dp.roundToPx() } else 0
-                        scope.launch { listState.scrollToItem((row - 1).coerceAtLeast(0), offset) }
-                    }
-                },
-                onSettings = onSettings,
-            )
-            Box(Modifier.weight(1f)) {
-                LazyColumn(
-                    state = listState,
-                    contentPadding = PaddingValues(end = 12.dp, bottom = aboveKeyboard),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    // By position, not by track: when the play order changes, the list stays
-                    // where it was, as the Slint app's did, rather than following a track.
-                    items(shown) { track ->
-                        TrackItem(track, playing = track.locator == playing) {
-                            // Plays the whole library from this track.
-                            CoreRepository.send(Command.PlayFrom(CoreRepository.library, track.locator))
-                        }
-                    }
-                }
-                ListScrollbar(
-                    state = listState,
-                    itemCount = shown.size,
-                    itemHeight = ROW_HEIGHT,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight(),
-                )
-            }
-            // Before anything plays, the panel shows the first track, as in the Slint app.
-            ControlPanel(
-                current?.track ?: rows.firstOrNull(),
-                Modifier.onSizeChanged { belowList = it.height },
-            )
-        }
-    }
-}
-
-@Composable
-private fun TopPanel(
-    search: String,
-    onSearch: (String) -> Unit,
-    onShowPlaying: () -> Unit,
-    onSettings: () -> Unit,
-) {
-    val strings = LocalStrings.current
-    val progress by CoreRepository.scanProgress.collectAsStateWithLifecycle()
-    Column(
-        Modifier
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            Modifier.height(56.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SearchBar(
-                text = search,
-                onTextChange = onSearch,
-                placeholder = strings.search,
-                dismissLabel = stringResource(R.string.dismiss_search),
-                clearLabel = stringResource(R.string.clear_search),
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onShowPlaying) {
-                Icon(
-                    painterResource(R.drawable.ic_down),
-                    stringResource(R.string.show_playing_track),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            FilledIconButton(onClick = onSettings) {
-                Icon(painterResource(R.drawable.ic_settings), strings.settings)
-            }
-        }
-        // A finished scan leaves the bar empty.
-        LinearProgressIndicator(
-            progress = { if (progress >= 1f) 0f else progress },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun TrackItem(track: TrackRow, playing: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val title = if (playing) colors.onSecondaryContainer else colors.onSurface
-    val details = if (playing) colors.onSecondaryContainer else colors.onSurfaceVariant
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(ROW_HEIGHT)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (playing) colors.secondaryContainer else colors.surface)
-            .clickable(onClick = onClick)
-            .padding(start = if (playing) 24.dp else 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Cover(track.cover, 64.dp)
-        Column(Modifier.weight(1f)) {
-            Text(
-                track.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                track.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = details,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Text(formatTime(track.length), style = MaterialTheme.typography.labelMedium, color = details)
-    }
-}
-
-@Composable
-private fun ControlPanel(track: TrackRow?, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
     val playing by CoreRepository.playing.collectAsStateWithLifecycle()
-    val loopStatus by CoreRepository.loopStatus.collectAsStateWithLifecycle()
-    val repeatOne = loopStatus == LoopStatus.FILE
-    // What the slider shows; Previous puts it back to the start straight away.
-    var time by remember { mutableFloatStateOf(0f) }
-    Surface(
-        color = colors.surfaceContainer,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        modifier = modifier,
-    ) {
-        Column(
-            Modifier
-                .navigationBarsPadding()
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ArtistAndTitle(track?.artist ?: "", track?.title ?: "", Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Cover(track?.cover, 72.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PositionRow(track, time = time, onTime = { time = it })
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    ) {
-                        MediaButton(
-                            icon = R.drawable.ic_previous,
-                            label = stringResource(R.string.previous_track),
-                            background = colors.surfaceContainerHighest,
-                            iconColor = colors.onSurface,
-                            onClick = {
-                                CoreRepository.send(Command.PlayPrevious)
-                                time = 0f
-                            },
-                        )
-                        MediaButton(
-                            icon = if (playing) R.drawable.ic_pause else R.drawable.ic_play,
-                            label = stringResource(if (playing) R.string.pause else R.string.play),
-                            background = colors.primaryContainer,
-                            iconColor = colors.onPrimaryContainer,
-                            onClick = { CoreRepository.send(Command.TogglePause) },
-                        )
-                        MediaButton(
-                            icon = R.drawable.ic_next,
-                            label = stringResource(R.string.next_track),
-                            background = colors.surfaceContainerHighest,
-                            iconColor = colors.onSurface,
-                            onClick = { CoreRepository.send(Command.PlayNext) },
-                        )
-                        MediaButton(
-                            icon = if (repeatOne) R.drawable.ic_repeat_on else R.drawable.ic_repeat_off,
-                            label = stringResource(if (repeatOne) R.string.repeat_one else R.string.repeat_all),
-                            background = if (repeatOne) colors.primaryContainer else colors.surfaceContainerHighest,
-                            iconColor = if (repeatOne) colors.onPrimaryContainer else colors.onSurface,
-                            onClick = { CoreRepository.send(Command.ToggleRepeat) },
-                            checked = repeatOne,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The Slint app's slider track: thin, with the played part ending a little before the thumb,
- * rounded where the track starts.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SliderTrack(state: SliderState) {
-    val colors = MaterialTheme.colorScheme
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(4.dp)
-    ) {
-        val range = state.valueRange.endInclusive - state.valueRange.start
-        val fraction = if (range > 0f) {
-            ((state.value - state.valueRange.start) / range).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-        val round = CornerRadius(size.height / 2)
-        drawRoundRect(colors.surfaceContainerHighest, cornerRadius = round)
-        val played = size.width * fraction - 6.dp.toPx()
-        if (played > 0f) {
-            val square = CornerRadius(1.dp.toPx())
-            val path = Path().apply {
-                addRoundRect(
-                    RoundRect(
-                        rect = Rect(0f, 0f, played, size.height),
-                        topLeft = round,
-                        topRight = square,
-                        bottomRight = square,
-                        bottomLeft = round,
-                    )
-                )
-            }
-            drawPath(path, colors.primary)
-        }
-    }
-}
-
-/**
- * The position, the slider and the track's length. While a drag is on, and until the core
- * applied the seek it ends with, positions do not move the slider.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PositionRow(track: TrackRow?, time: Float, onTime: (Float) -> Unit) {
-    val colors = MaterialTheme.colorScheme
+    val shuffle by CoreRepository.shuffle.collectAsStateWithLifecycle()
+    val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
     val position by CoreRepository.position.collectAsStateWithLifecycle()
-    var dragged by remember { mutableStateOf<Float?>(null) }
-    var request by remember { mutableStateOf(0uL) }
-    LaunchedEffect(position) {
-        if (dragged == null && position.seek >= request) onTime(position.position.toFloat())
-    }
-    val maximum = if (position.length > 1.0) position.length.toFloat() else 1f
-    val label = stringResource(R.string.playback_position)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
+    val seconds = rememberPlaybackSeconds(position, playing)
+    val app = LocalApp.current
+
+    val page = navigator.current.page
+    val navigation = page.navigation
+    val miniPlayer = page.miniPlayer && current != null
+    val navInset = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
+    val bottomSpace = (if (navigation) 64.dp + navInset else navInset) +
+        (if (miniPlayer) 64.dp + 8.dp else 0.dp)
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background)
     ) {
-        Text(
-            formatTime(position.position),
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurfaceVariant,
-        )
-        Slider(
-            value = (dragged ?: time).coerceIn(0f, maximum),
-            onValueChange = { dragged = it },
-            onValueChangeFinished = {
-                dragged?.let {
-                    request = CoreRepository.seek(it.toDouble())
-                    onTime(it)
+        CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
+            PageHost(navigator)
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            AnimatedVisibility(
+                miniPlayer,
+                enter = slideInVertically(NMotion.spatialDefault()) { it } + fadeIn(NMotion.effectsDefault()),
+                exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
+            ) {
+                Box {
+                    BottomFade(
+                        if (navigation) 100.dp else 120.dp,
+                        Modifier.align(Alignment.BottomCenter),
+                        solidFrom = if (navigation) 0.72f else 0.45f,
+                    )
+                    MiniPlayer(
+                        ui = PlaybackUi(current?.track, playing, shuffle, loop),
+                        progress = {
+                            val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
+                            if (length > 0) (seconds.value / length).toFloat() else 0f
+                        },
+                        buttons = ui.miniButtons,
+                        actions = CorePlayback,
+                        onOpen = app::openPlayer,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(
+                            start = 8.dp,
+                            end = 8.dp,
+                            bottom = if (navigation) 8.dp else 8.dp + navInset,
+                        ),
+                    )
                 }
-                dragged = null
-            },
-            valueRange = 0f..maximum,
-            thumb = {
-                Box(
-                    Modifier
-                        .size(width = 4.dp, height = 32.dp)
-                        .background(colors.primary, RoundedCornerShape(2.dp))
+            }
+            if (navigation) {
+                NavBar(
+                    selected = navigator.tab,
+                    onSelect = navigator::select,
+                    sourcesBusy = scan != null,
                 )
-            },
-            track = { state -> SliderTrack(state) },
-            modifier = Modifier
-                .weight(1f)
-                .semantics { contentDescription = label },
-        )
+            }
+        }
+    }
+}
+
+/**
+ * The current page. Another tab fades through; a page opened over another slides in from the
+ * end and back out when it closes.
+ */
+@Composable
+private fun PageHost(navigator: Navigator) {
+    val holder = rememberSaveableStateHolder()
+    // Forgets the state of pages that left every stack.
+    LaunchedEffect(navigator) {
+        val seen = mutableSetOf<Long>()
+        snapshotFlow { navigator.liveIds() }.collect { live ->
+            for (id in seen - live) holder.removeState(id)
+            seen.clear()
+            seen.addAll(live)
+        }
+    }
+    AnimatedContent(
+        targetState = navigator.tab to navigator.current,
+        contentKey = { it.second.id },
+        transitionSpec = {
+            val (fromTab, from) = initialState
+            val (toTab, to) = targetState
+            when {
+                fromTab != toTab -> fadeIn(NMotion.effectsDefault()) togetherWith fadeOut(NMotion.effectsFast())
+                to.id > from.id ->
+                    (slideInHorizontally(NMotion.noBounce()) { it / 4 } + fadeIn(NMotion.effectsDefault()))
+                        .togetherWith(slideOutHorizontally(NMotion.noBounce()) { -it / 8 } + fadeOut(NMotion.effectsFast()))
+
+                else ->
+                    (slideInHorizontally(NMotion.noBounce()) { -it / 8 } + fadeIn(NMotion.effectsDefault()))
+                        .togetherWith(slideOutHorizontally(NMotion.noBounce()) { it / 4 } + fadeOut(NMotion.effectsFast()))
+            }
+        },
+        label = "page",
+    ) { (_, entry) ->
+        holder.SaveableStateProvider(entry.id) {
+            Box(Modifier.fillMaxSize().background(colors.background)) {
+                PageContent(entry.page)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageContent(page: Page) {
+    when (page) {
+        Page.Library -> LibraryPage()
+        else -> ComingPage(page)
+    }
+}
+
+/** A page the app does not draw yet: its name and the way back. */
+@Composable
+private fun ComingPage(page: Page) {
+    val app = LocalApp.current
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(4.dp)) {
+        NIconButton(NIcons.Back, stringResource(R.string.back), app::back)
         Text(
-            formatTime(track?.length ?: 0.0),
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurfaceVariant,
+            page::class.simpleName.orEmpty(),
+            style = NType.headline,
+            color = colors.onSurface,
+            modifier = Modifier.padding(horizontal = 12.dp),
         )
     }
 }
