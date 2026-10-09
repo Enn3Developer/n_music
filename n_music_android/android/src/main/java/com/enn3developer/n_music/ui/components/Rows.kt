@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +79,7 @@ fun TrackItem(
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    title: AnnotatedString = AnnotatedString(track.title),
     line: String = trackLine(track),
     trailing: String = formatLength(track.length),
     cover: @Composable (Modifier) -> Unit = { coverModifier ->
@@ -106,7 +108,7 @@ fun TrackItem(
         cover(Modifier)
         Column(Modifier.weight(1f)) {
             Text(
-                track.title,
+                title,
                 style = text(if (compact) 15 else 16, FontWeight.Medium),
                 color = when {
                     state.current -> colors.primary

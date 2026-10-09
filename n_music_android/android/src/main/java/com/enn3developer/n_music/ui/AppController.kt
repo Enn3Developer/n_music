@@ -41,6 +41,12 @@ interface AppController {
     /** The filters on the library's tracks. */
     var filters: TrackFilters
 
+    /** Shows the library's tracks filtered by [filters], on the Library tab's own page. */
+    fun showTracks(filters: TrackFilters)
+
+    /** How many times [showTracks] ran, for the library page to turn to its tracks. */
+    val tracksShown: Int
+
     /** The sheet over the app, while one shows. */
     val sheet: Sheet?
 

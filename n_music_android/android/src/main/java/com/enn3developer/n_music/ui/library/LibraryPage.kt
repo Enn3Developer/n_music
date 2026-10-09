@@ -48,6 +48,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +102,7 @@ import com.enn3developer.n_music.ui.components.AlbumItem
 import com.enn3developer.n_music.ui.components.AlbumTile
 import com.enn3developer.n_music.ui.components.ArtistItem
 import com.enn3developer.n_music.ui.components.ArtistTile
+import com.enn3developer.n_music.ui.components.EmptyState
 import com.enn3developer.n_music.ui.components.FastScroller
 import com.enn3developer.n_music.ui.components.GenreItem
 import com.enn3developer.n_music.ui.components.GenreTile
@@ -109,6 +112,7 @@ import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
+import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.TrackTile
@@ -163,11 +167,15 @@ fun LibraryPage() {
     val nowPlaying = rememberNowPlaying()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
     val sourceName: (Locator) -> String = { root -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
-    val scope = rememberCoroutineScope()
     // A genre shows as the tracks filtered to it.
-    fun showGenre(genre: GenreRow) {
-        app.filters = TrackFilters(genres = listOf(genre.name.orEmpty()))
-        scope.launch { pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce()) }
+    fun showGenre(genre: GenreRow) = app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty())))
+    // Turns to the tracks whenever the app shows them, from this page or another.
+    val shown = rememberSaveable { mutableIntStateOf(app.tracksShown) }
+    LaunchedEffect(app.tracksShown) {
+        if (app.tracksShown != shown.intValue) {
+            shown.intValue = app.tracksShown
+            pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce())
+        }
     }
     val order = SortedList.TRACKS.trackOrder(ui.sorts)
     val filters = app.filters
@@ -223,8 +231,9 @@ fun LibraryPage() {
                         onPlayAll = { shuffle -> app.play(query, Origin.Library, shuffle = shuffle) },
                         onMore = { track -> app.show(Sheet.TrackActions(track.locator)) },
                         onSort = { app.show(Sheet.Sort(SortedList.TRACKS)) },
-                        onScan = { app.open(Page.Sources) },
+                        onScan = { app.navigator.home(Tab.SOURCES) },
                         held = (app.sheet as? Sheet.TrackActions)?.track,
+                        onClearFilters = { app.filters = TrackFilters() },
                     )
                 }
 
@@ -243,6 +252,7 @@ fun LibraryPage() {
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
                         key = { "${it.name}\u0000${it.artist}" },
+                        onEmpty = { app.navigator.home(Tab.SOURCES) },
                         section = { album ->
                             when (order) {
                                 GroupOrder.ARTIST -> sectionLetter(album.artist)
@@ -271,6 +281,7 @@ fun LibraryPage() {
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
                         key = { it.name.toString() },
+                        onEmpty = { app.navigator.home(Tab.SOURCES) },
                         section = { artist -> if (order == GroupOrder.NAME) sectionLetter(artist.name) else null },
                         item = { artist -> ArtistItem(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
                         tile = { artist -> ArtistTile(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
@@ -292,6 +303,7 @@ fun LibraryPage() {
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
                         key = { it.name.toString() },
+                        onEmpty = { app.navigator.home(Tab.SOURCES) },
                         section = { genre -> if (order == GroupOrder.NAME) sectionLetter(genre.name) else null },
                         item = { genre -> GenreItem(genre, { showGenre(genre) }) },
                         tile = { genre -> GenreTile(genre, { showGenre(genre) }) },
@@ -442,6 +454,7 @@ fun TracksTab(
     onSort: () -> Unit,
     onScan: () -> Unit,
     held: Locator? = null,
+    onClearFilters: () -> Unit = {},
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val haptics = LocalHapticFeedback.current
@@ -463,13 +476,26 @@ fun TracksTab(
         ) {
             building?.let { BuildingCard(it, onScan, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) }
         }
+        val filtered = filters.active.isNotEmpty()
+        // Nothing listed once the library is read: none at all, or none the filters keep.
+        val empty = tracks != null && tracks.isEmpty() && building == null
+        if (empty && !filtered) {
+            EmptyState(
+                NIcons.Library,
+                stringResource(R.string.library_empty),
+                stringResource(R.string.library_empty_hint),
+                action = stringResource(R.string.open_sources),
+                onAction = onScan,
+            )
+            return@Column
+        }
         Column(
             Modifier
                 .graphicsLayer { alpha = dim }
                 .then(if (selecting) Modifier.inert() else Modifier)
         ) {
             FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
-            Row(
+            if (!empty) Row(
                 Modifier.padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -483,7 +509,6 @@ fun TracksTab(
                     )
                 }
                 val count = formatCount(total)
-                val filtered = filters.active.isNotEmpty()
                 PlayShuffle(
                     onPlay = { onPlayAll(false) },
                     onShuffle = { onPlayAll(true) },
@@ -493,6 +518,17 @@ fun TracksTab(
                     shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
                 )
             }
+        }
+        if (empty) {
+            EmptyState(
+                NIcons.Filter,
+                stringResource(R.string.filters_nothing),
+                stringResource(R.string.filters_nothing_hint),
+                action = stringResource(R.string.clear_filters),
+                tonal = true,
+                onAction = onClearFilters,
+            )
+            return@Column
         }
         val rows = tracks.orEmpty()
         val section = { index: Int -> rows.getOrNull(index)?.let { trackSection(it, order.sort) } }
@@ -563,12 +599,23 @@ fun <T> GroupTab(
     onSort: () -> Unit,
     key: (T) -> Any,
     section: (T) -> String?,
+    onEmpty: () -> Unit = {},
     item: @Composable (T) -> Unit,
     tile: @Composable (T) -> Unit,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val rows = items.orEmpty()
     val sectionAt = { index: Int -> rows.getOrNull(index)?.let(section) }
+    if (items != null && items.isEmpty()) {
+        EmptyState(
+            NIcons.Library,
+            stringResource(R.string.library_empty),
+            stringResource(R.string.library_empty_hint),
+            action = stringResource(R.string.open_sources),
+            onAction = onEmpty,
+        )
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.padding(start = 6.dp, end = 16.dp, top = 8.dp),

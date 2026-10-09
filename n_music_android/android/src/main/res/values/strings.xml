@@ -128,6 +128,20 @@
     <string name="track_queued">Added %1$s to the queue</string>
     <string name="played_times">Played %1$d× · %2$s</string>
 
+    <!-- Search -->
+    <string name="search_all">All</string>
+    <string name="close_search">Close search</string>
+    <string name="search_nothing">Nothing matches your search</string>
+    <string name="search_nothing_hint">Search looks at titles, artists, albums and genres. Try fewer words.</string>
+
+    <!-- Empty lists -->
+    <string name="library_empty">Your library is empty</string>
+    <string name="library_empty_hint">Add a folder with music or a web playlist in Sources, and its tracks show up here.</string>
+    <string name="open_sources">Open Sources</string>
+    <string name="filters_nothing">No tracks match these filters</string>
+    <string name="filters_nothing_hint">No track matches every filter at once. Remove one to see more.</string>
+    <string name="clear_filters">Clear filters</string>
+
     <!-- Selecting -->
     <string name="stop_selecting">Stop selecting</string>
     <string name="select_all">Select all %1$s tracks</string>

@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,12 +60,14 @@ import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.SelectionActions
 import com.enn3developer.n_music.ui.components.SnackbarHost
+import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.dialogs.DialogHost
 import com.enn3developer.n_music.ui.library.AlbumPage
 import com.enn3developer.n_music.ui.library.ArtistPage
 import com.enn3developer.n_music.ui.library.LibraryPage
+import com.enn3developer.n_music.ui.library.SearchPage
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
@@ -104,6 +107,15 @@ private class Controller(override val navigator: Navigator, override val scope: 
     }
 
     override var filters by mutableStateOf(TrackFilters())
+
+    override var tracksShown by mutableIntStateOf(0)
+        private set
+
+    override fun showTracks(filters: TrackFilters) {
+        this.filters = filters
+        navigator.home(Tab.LIBRARY)
+        tracksShown++
+    }
 
     override var sheet by mutableStateOf<Sheet?>(null)
         private set
@@ -386,6 +398,7 @@ private fun PageContent(page: Page) {
         Page.Library -> LibraryPage()
         is Page.Album -> AlbumPage(page)
         is Page.Artist -> ArtistPage(page)
+        Page.Search -> SearchPage()
         else -> ComingPage(page)
     }
 }

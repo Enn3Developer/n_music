@@ -76,6 +76,13 @@ class Navigator(tab: Tab, saved: Map<Tab, List<Entry>>, private var nextId: Long
         }
     }
 
+    /** Shows [tab] at its own page, whatever it had open. */
+    fun home(tab: Tab) {
+        this.tab = tab
+        val stack = stacks.getValue(tab)
+        while (stack.size > 1) stack.removeAt(stack.lastIndex)
+    }
+
     /** Goes back a page, or to Library from another tab's own page; false when there is none. */
     fun back(): Boolean {
         val stack = stacks.getValue(tab)
