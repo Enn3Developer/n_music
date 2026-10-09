@@ -37,6 +37,7 @@ class NMusicApplication : Application() {
         NativeLibrary.init(this)
         CoreRepository.start(this)
         UiPreferences.load()
+        PlayingFrom.load()
         // Hidden until an activity starts: a process started for a headset button has none.
         CoreRepository.send(Command.AppVisibilityChanged(false))
 

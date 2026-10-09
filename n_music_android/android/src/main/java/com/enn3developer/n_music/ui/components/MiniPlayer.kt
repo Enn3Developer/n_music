@@ -10,11 +10,13 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -41,6 +43,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -106,9 +111,20 @@ interface PlaybackActions {
     fun openSleepTimer()
 }
 
+/** A drag up on the mini player, pulling the player open under the finger. */
+interface PullGesture {
+    fun start()
+
+    /** The finger moved [dy] pixels, up when negative. */
+    fun pull(dy: Float)
+
+    /** The finger let go moving at [velocity] pixels a second, up when negative. */
+    fun end(velocity: Float)
+}
+
 /**
- * The mini player above the navigation: the playing track and its [buttons]. Tapping it or
- * swiping it up opens the player; swiping it sideways skips.
+ * The mini player above the navigation: the playing track and its [buttons]. Tapping it opens
+ * the player and swiping it up pulls the player open through [pull]; swiping it sideways skips.
  */
 @Composable
 fun MiniPlayer(
@@ -118,6 +134,7 @@ fun MiniPlayer(
     actions: PlaybackActions,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    pull: PullGesture? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -127,8 +144,6 @@ fun MiniPlayer(
     var width by remember { mutableIntStateOf(1) }
     // Which way the last skip went, so the new track comes in from the other side.
     var direction by remember { mutableIntStateOf(1) }
-    val line = colors.outlineVariant
-    val fill = colors.primary
     Box(
         modifier
             .fillMaxWidth()
@@ -137,21 +152,7 @@ fun MiniPlayer(
             .clip(shape)
             .background(colors.surfaceHigh)
             .onSizeChanged { width = it.width }
-            .drawBehind {
-                // The progress line along the bottom edge.
-                val inset = 12.dp.toPx()
-                val thickness = 3.dp.toPx()
-                val top = size.height - thickness
-                val width = size.width - 2 * inset
-                val radius = CornerRadius(2.dp.toPx())
-                drawRoundRect(line, Offset(inset, top), Size(width, thickness), radius)
-                drawRoundRect(
-                    fill,
-                    Offset(inset, top),
-                    Size(width * progress().coerceIn(0f, 1f), thickness),
-                    radius,
-                )
-            }
+            .miniProgress(progress)
             .draggable(
                 rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } },
                 Orientation.Horizontal,
@@ -165,66 +166,134 @@ fun MiniPlayer(
                     swipe.animateTo(0f, NMotion.spatialDefault())
                 },
             )
-            .padding(start = 8.dp, end = 4.dp),
+            .then(if (pull != null) Modifier.pullUp(pull) else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AnimatedContent(
-                targetState = track,
-                contentKey = { it.locator },
-                transitionSpec = {
-                    (slideInHorizontally(NMotion.spatialDefault()) { it / 3 * direction } +
-                        fadeIn(NMotion.effectsDefault()))
-                        .togetherWith(
-                            slideOutHorizontally(NMotion.spatialDefault()) { -it / 3 * direction } +
-                                fadeOut(NMotion.effectsFast())
-                        )
-                },
-                label = "track",
-                modifier = Modifier
-                    .weight(1f)
-                    .offset { IntOffset(swipe.value.roundToInt(), 0) },
-            ) { shown ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .tappable(onOpen)
-                        .semantics { contentDescription = shown.title },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Cover(
-                        shown.cover,
-                        Modifier.size(48.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        placeholder = if (shown.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
+        MiniPlayerRow(
+            track = track,
+            ui = ui,
+            buttons = buttons,
+            actions = actions,
+            onOpen = onOpen,
+            direction = { direction },
+            offset = { swipe.value },
+            trailing = trailing,
+        )
+    }
+}
+
+/** The mini player's progress, a line along its bottom edge. */
+@Composable
+fun Modifier.miniProgress(progress: () -> Float): Modifier {
+    val line = colors.outlineVariant
+    val fill = colors.primary
+    return drawBehind {
+        val inset = 12.dp.toPx()
+        val thickness = 3.dp.toPx()
+        val top = size.height - thickness
+        val width = size.width - 2 * inset
+        val radius = CornerRadius(2.dp.toPx())
+        drawRoundRect(line, Offset(inset, top), Size(width, thickness), radius)
+        drawRoundRect(fill, Offset(inset, top), Size(width * progress().coerceIn(0f, 1f), thickness), radius)
+    }
+}
+
+/** Follows a vertical drag on to [pull]. */
+private fun Modifier.pullUp(pull: PullGesture): Modifier = pointerInput(pull) {
+    val tracker = VelocityTracker()
+    detectVerticalDragGestures(
+        onDragStart = {
+            tracker.resetTracking()
+            pull.start()
+        },
+        onDragEnd = { pull.end(tracker.calculateVelocity().y) },
+        onDragCancel = { pull.end(0f) },
+        onVerticalDrag = { change, dy ->
+            tracker.addPointerInputChange(change)
+            change.consume()
+            pull.pull(dy)
+        },
+    )
+}
+
+/**
+ * What the mini player holds: the track with its cover, which [showCover] can leave out, and the
+ * [buttons]. A new track slides in from the side the last skip went, [direction].
+ */
+@Composable
+fun MiniPlayerRow(
+    track: TrackRow,
+    ui: PlaybackUi,
+    buttons: List<MiniButton>,
+    actions: PlaybackActions,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    direction: () -> Int = { 1 },
+    offset: () -> Float = { 0f },
+    showCover: Boolean = true,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(modifier.padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        AnimatedContent(
+            targetState = track,
+            contentKey = { it.locator },
+            transitionSpec = {
+                val way = direction()
+                (slideInHorizontally(NMotion.spatialDefault()) { it / 3 * way } +
+                    fadeIn(NMotion.effectsDefault()))
+                    .togetherWith(
+                        slideOutHorizontally(NMotion.spatialDefault()) { -it / 3 * way } +
+                            fadeOut(NMotion.effectsFast())
                     )
-                    Column(
-                        Modifier
-                            .padding(start = 12.dp)
-                            .weight(1f)
-                    ) {
-                        Text(
-                            shown.title,
-                            style = text(14, FontWeight.Bold),
-                            color = colors.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            shown.artist.ifEmpty { stringResource(R.string.unknown_artist) },
-                            style = text(13),
-                            color = colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 1.dp),
+            },
+            label = "track",
+            modifier = Modifier
+                .weight(1f)
+                .offset { IntOffset(offset().roundToInt(), 0) },
+        ) { shown ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .tappable(onOpen)
+                    .semantics { contentDescription = shown.title },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(48.dp)) {
+                    if (showCover) {
+                        Cover(
+                            shown.cover,
+                            Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(10.dp),
+                            placeholder = if (shown.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
                         )
                     }
                 }
+                Column(
+                    Modifier
+                        .padding(start = 12.dp)
+                        .weight(1f)
+                ) {
+                    Text(
+                        shown.title,
+                        style = text(14, FontWeight.Bold),
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        shown.artist.ifEmpty { stringResource(R.string.unknown_artist) },
+                        style = text(13),
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 1.dp),
+                    )
+                }
             }
-            for (button in buttons) MiniPlayerButton(button, ui, actions)
-            trailing()
         }
+        for (button in buttons) MiniPlayerButton(button, ui, actions)
+        trailing()
     }
 }
 

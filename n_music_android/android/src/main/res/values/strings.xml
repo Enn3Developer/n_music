@@ -235,6 +235,25 @@
     <string name="pause">Pause</string>
     <string name="output">Output</string>
     <string name="sleep_timer">Sleep timer</string>
+    <string name="repeat">Repeat</string>
+    <string name="toggle_on">On</string>
+    <string name="toggle_off">Off</string>
+    <string name="repeat_state_all">All</string>
+    <string name="repeat_state_one">One</string>
+
+    <!-- The player -->
+    <string name="now_playing">Now playing</string>
+    <string name="close_player">Close player</string>
+    <string name="playing_from">Playing from</string>
+    <string name="shuffled">shuffled</string>
+    <string name="origin_search">“%1$s”</string>
+    <string name="played_count">Played %1$d×</string>
+    <string name="position_of">Position %1$s of %2$s</string>
+    <string name="this_phone">This phone</string>
+    <string name="output_named">Output: %1$s</string>
+    <string name="up_next">Up next</string>
+    <string name="queue_end">End of the queue</string>
+    <string name="open_queue">Open the queue</string>
 
     <!-- Media notification buttons. -->
     <string name="repeat_off">Repeat off</string>

@@ -10,18 +10,21 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.ui.theme.colors
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
  * Material 3 Expressive's wavy progress: a wave up to [progress], then a flat track in
  * [trackColor] after a gap, ending in a dot. With [thumb], a bar stands where the wave ends, as
- * the player's position does. [amplitude] flattens the wave, [phase] makes it travel.
+ * the player's position does. [amplitude] flattens the wave, [phase] makes it travel, in
+ * wavelengths, and [taper] eases it in and out over half a wavelength at its ends.
  */
 @Composable
 fun WavyProgress(
@@ -37,6 +40,7 @@ fun WavyProgress(
     phase: () -> Float = { 0f },
     thumb: Boolean = false,
     thumbWidth: Dp = 5.dp,
+    taper: Boolean = false,
 ) {
     val path = remember { Path() }
     Canvas(modifier) {
@@ -52,6 +56,8 @@ fun WavyProgress(
             stopDot = stopDot,
             phase = phase(),
             thumbWidth = if (thumb) thumbWidth.toPx() else 0f,
+            inset = 1.dp.toPx(),
+            taper = taper,
         )
     }
 }
@@ -68,31 +74,48 @@ private fun DrawScope.drawWavy(
     stopDot: Boolean,
     phase: Float,
     thumbWidth: Float,
+    inset: Float,
+    taper: Boolean,
 ) {
     val cap = stroke / 2
     val middle = size.height / 2
     val start = cap
     val end = size.width - cap
-    val at = start + (end - start) * fraction
+    // The thumb keeps clear of the ends by [inset]; the wave and the track keep [gap] from it,
+    // the track's round cap included.
+    val at = if (thumbWidth > 0) {
+        val half = thumbWidth / 2
+        inset + half + (size.width - 2 * (inset + half)) * fraction
+    } else {
+        start + (end - start) * fraction
+    }
     val waveEnd = if (thumbWidth > 0) at - thumbWidth / 2 - gap else at
-    val trackStart = if (thumbWidth > 0) at + thumbWidth / 2 + gap else at + gap + stroke
+    val trackStart = if (thumbWidth > 0) at + thumbWidth / 2 + gap + cap else at + gap + stroke
     if (waveEnd > start) {
         path.reset()
-        path.moveTo(start, middle - amplitude * sin(2 * PI.toFloat() * phase))
+        val ramp = wavelength / 2
+        fun y(x: Float): Float {
+            val envelope = if (taper) {
+                val edge = (minOf(x - start, waveEnd - x) / ramp).coerceIn(0f, 1f)
+                (1 - cos(PI.toFloat() * edge)) / 2
+            } else {
+                1f
+            }
+            return middle - amplitude * envelope * sin(2 * PI.toFloat() * ((x - start) / wavelength - phase))
+        }
+        path.moveTo(start, y(start))
         var x = start
         while (x < waveEnd) {
             x = minOf(x + 1f, waveEnd)
-            val y = middle - amplitude * sin(2 * PI.toFloat() * ((x - start) / wavelength + phase))
-            path.lineTo(x, y)
+            path.lineTo(x, y(x))
         }
-        drawPath(path, color, style = Stroke(width = stroke, cap = StrokeCap.Round))
+        drawPath(path, color, style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
     if (thumbWidth > 0) {
-        val height = size.height
         drawRoundRect(
             color,
             Offset(at - thumbWidth / 2, 0f),
-            Size(thumbWidth, height),
+            Size(thumbWidth, size.height),
             CornerRadius(thumbWidth / 2),
         )
     }

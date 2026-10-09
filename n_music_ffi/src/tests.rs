@@ -136,6 +136,7 @@ fn library_changes_come_one_at_a_time() {
         scan_read: read.clone(),
         storage: Arc::new(JsonFileStorage::open(settings_path(data.path()))),
         paths: LibraryPaths::new(data.path(), data.path()),
+        providers: Providers::default(),
     };
 
     bridge.library_changed();

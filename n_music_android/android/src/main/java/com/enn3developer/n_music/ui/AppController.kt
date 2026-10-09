@@ -8,13 +8,14 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.library.TrackFilters
+import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.sheets.Sheet
 import kotlinx.coroutines.CoroutineScope
 
 /** Where what plays came from, for the player's "Playing from". */
 sealed interface Origin {
     data object Library : Origin
-    data object Search : Origin
+    data class Search(val text: String) : Origin
     data class Album(val name: String?, val artist: String?) : Origin
     data class Artist(val name: String?) : Origin
     data class Playlist(val id: Long) : Origin
@@ -36,7 +37,11 @@ interface AppController {
      */
     fun play(query: Query, origin: Origin, start: Locator? = null, shuffle: Boolean? = null)
 
+    /** Opens the player out of the mini player. */
     fun openPlayer()
+
+    /** The player's way in and out, which the mini player and the navigation follow. */
+    val player: PlayerTransition
 
     /** The filters on the library's tracks. */
     var filters: TrackFilters

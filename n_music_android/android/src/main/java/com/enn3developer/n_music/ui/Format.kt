@@ -6,12 +6,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.core.TrackDetails
+import com.enn3developer.n_music.ui.library.formatName
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /** `seconds` as a track's length: `3:02`, `1:02:44`; empty while unknown. */
 fun formatLength(seconds: Double): String {
@@ -92,6 +95,16 @@ fun tracksCount(count: UInt): String = tracksCount(count.toLong())
 fun quantity(count: Long): Int = count.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
 
 fun quantity(count: Int): Int = count.coerceAtLeast(0)
+
+/** A track's format: FLAC · 96 kHz · 24-bit; `null` before its file was read. */
+fun trackFormat(details: TrackDetails): String? {
+    val rate = details.sampleRate?.let { hertz ->
+        val kilo = hertz.toDouble() / 1000
+        if (kilo % 1.0 == 0.0) "${kilo.toInt()} kHz" else String.format(Locale.getDefault(), "%.1f kHz", kilo)
+    }
+    val bits = details.bitsPerSample?.let { "$it-bit" }
+    return dotted(details.codec?.let(::formatName), rate, bits).ifEmpty { null }
+}
 
 /** [parts] that are there, joined by a middle dot. */
 fun dotted(vararg parts: String?): String = parts.filterNot { it.isNullOrEmpty() }.joinToString(" · ")

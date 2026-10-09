@@ -256,6 +256,9 @@ object CoreRepository {
 
     fun details(locator: Locator): TrackDetails? = core.trackDetails(locator)
 
+    /** The picture in the file of [locator] at its own size, still encoded. It reads the file. */
+    fun coverArt(locator: Locator): ByteArray? = core.coverArt(locator)
+
     fun summary(filter: Filter): Summary = core.summary(filter)
 
     fun albums(filter: Filter, search: String, sort: GroupSort): List<AlbumRow> =

@@ -15,10 +15,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,10 +45,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.text
 
 /** An icon of the design's set at [size], in the content colour unless [tint] says otherwise. */
 @Composable
@@ -184,5 +189,19 @@ fun Modifier.inert(): Modifier = clearAndSetSemantics {}.pointerInput(Unit) {
         while (true) {
             awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
         }
+    }
+}
+
+/** A small fact on a [background] chip, like a track's format or plays. */
+@Composable
+fun InfoChip(label: String, background: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .height(28.dp)
+            .background(background, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = text(12, FontWeight.SemiBold, tabular = true), color = colors.onSurfaceVariant, maxLines = 1)
     }
 }

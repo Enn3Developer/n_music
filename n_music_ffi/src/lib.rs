@@ -24,6 +24,7 @@ use n_event_bus::{App, EventReceiver, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::{Filter, PlaylistId, Query};
+use n_music_core::library::reader::read_info;
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::library::LibraryPaths;
 use n_music_core::settings::{JsonFileStorage, PlaybackSettings, Section, SettingsStorage};
@@ -50,6 +51,8 @@ pub struct Core {
     storage: Arc<JsonFileStorage>,
     /// Where the library database is, to read what the library leaves out.
     paths: LibraryPaths,
+    /// Reads the files of tracks for what the library keeps only small, like their covers.
+    providers: Providers,
 }
 
 /// The playback settings the core keeps and reports no event for.
@@ -142,6 +145,19 @@ impl Core {
         catalog
             .track(&locator)
             .map(|track| TrackDetails::new(track, &catalog))
+    }
+
+    /// The picture embedded in the file of `locator` at its own size, still encoded, for the
+    /// player to show larger than the library's thumbnails. `None` when it has none, or is a
+    /// remote track, which it would download. It reads the file: call it off the main thread.
+    pub fn cover_art(&self, locator: Locator) -> Option<Vec<u8>> {
+        if locator.is_remote() {
+            return None;
+        }
+        read_info(&self.providers, &locator)
+            .inspect_err(|error| log::debug!("Could not read the cover of {locator}: {error}"))
+            .ok()?
+            .1
     }
 
     /// The albums of the tracks `filter` selects whose name or artist contains `search`.
@@ -323,6 +339,7 @@ impl Core {
             scan_read,
             storage,
             paths: LibraryPaths::new(data_dir, cache_dir),
+            providers: providers(),
         }
     }
 }

@@ -158,7 +158,7 @@ fun SearchPage() {
         results = results,
         nowPlaying = rememberNowPlaying(),
         onBack = app::back,
-        onTrack = { app.play(searchQuery(search), Origin.Search, it.locator) },
+        onTrack = { app.play(searchQuery(search), Origin.Search(search), it.locator) },
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
         onAlbum = { app.open(Page.Album(it.name, it.artist)) },
         onArtist = { app.open(Page.Artist(it.name)) },

@@ -34,19 +34,18 @@ import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
+import com.enn3developer.n_music.ui.components.InfoChip
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.components.trackLine
-import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.enqueue
 import com.enn3developer.n_music.ui.formatLength
+import com.enn3developer.n_music.ui.trackFormat
 import com.enn3developer.n_music.ui.formatWhen
-import com.enn3developer.n_music.ui.library.formatName
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
-import java.util.Locale
 
 /**
  * What can be done with one track: queue it, add it to a playlist, or go to its album or artist.
@@ -157,9 +156,9 @@ fun TrackActionsSheet(
                     .padding(horizontal = 24.dp, vertical = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                details?.let { formatLabel(it) }?.let { InfoChip(it) }
-                track?.let { formatLength(it.length) }?.takeIf { it.isNotEmpty() }?.let { InfoChip(it) }
-                details?.let { InfoChip(playedLabel(it)) }
+                details?.let { trackFormat(it) }?.let { InfoChip(it, colors.surfaceHigh) }
+                track?.let { formatLength(it.length) }?.takeIf { it.isNotEmpty() }?.let { InfoChip(it, colors.surfaceHigh) }
+                details?.let { InfoChip(playedLabel(it), colors.surfaceHigh) }
             }
         },
     ) {
@@ -173,16 +172,6 @@ fun TrackActionsSheet(
     }
 }
 
-/** A track's format: FLAC · 96 kHz · 24-bit. */
-private fun formatLabel(details: TrackDetails): String? {
-    val rate = details.sampleRate?.let { hertz ->
-        val kilo = hertz.toDouble() / 1000
-        if (kilo % 1.0 == 0.0) "${kilo.toInt()} kHz" else String.format(Locale.getDefault(), "%.1f kHz", kilo)
-    }
-    val bits = details.bitsPerSample?.let { "$it-bit" }
-    return dotted(details.codec?.let(::formatName), rate, bits).ifEmpty { null }
-}
-
 /** Played 3× · yesterday, or Never played. */
 @Composable
 private fun playedLabel(details: TrackDetails): String {
@@ -191,19 +180,6 @@ private fun playedLabel(details: TrackDetails): String {
         stringResource(R.string.plays_never)
     } else {
         stringResource(R.string.played_times, details.plays.toInt(), formatWhen(last))
-    }
-}
-
-@Composable
-private fun InfoChip(label: String) {
-    Box(
-        Modifier
-            .height(28.dp)
-            .background(colors.surfaceHigh, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = text(12, FontWeight.SemiBold, tabular = true), color = colors.onSurfaceVariant, maxLines = 1)
     }
 }
 

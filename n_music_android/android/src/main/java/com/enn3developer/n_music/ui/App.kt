@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Command
@@ -69,6 +74,8 @@ import com.enn3developer.n_music.ui.library.ArtistPage
 import com.enn3developer.n_music.ui.library.LibraryPage
 import com.enn3developer.n_music.ui.library.SearchPage
 import com.enn3developer.n_music.ui.library.TrackFilters
+import com.enn3developer.n_music.ui.player.PlayerHost
+import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -89,22 +96,29 @@ interface AppHost {
 
 /** The app's controller: navigation, and playing what a page asks for. */
 private class Controller(override val navigator: Navigator, override val scope: CoroutineScope) : AppController {
-    var playerOpen by mutableStateOf(false)
+    override val player = PlayerTransition(scope)
 
-    override fun open(page: Page) = navigator.open(page)
+    /** Going to a page closes the player, which shows over every page. */
+    private fun leavePlayer() {
+        if (player.isOpen) player.close()
+    }
+
+    override fun open(page: Page) {
+        leavePlayer()
+        navigator.open(page)
+    }
 
     override fun back() {
         navigator.back()
     }
 
     override fun play(query: Query, origin: Origin, start: Locator?, shuffle: Boolean?) {
+        PlayingFrom.set(origin)
         if (shuffle != null) CoreRepository.send(Command.SetShuffle(shuffle))
         CoreRepository.send(Command.PlayFrom(query, start))
     }
 
-    override fun openPlayer() {
-        playerOpen = true
-    }
+    override fun openPlayer() = player.open()
 
     override var filters by mutableStateOf(TrackFilters())
 
@@ -112,6 +126,7 @@ private class Controller(override val navigator: Navigator, override val scope: 
         private set
 
     override fun showTracks(filters: TrackFilters) {
+        leavePlayer()
         this.filters = filters
         navigator.home(Tab.LIBRARY)
         tracksShown++
@@ -193,10 +208,14 @@ fun NMusicApp(host: AppHost) {
         BackHandler(navigator.canGoBack) { navigator.back() }
         CompositionLocalProvider(LocalApp provides controller) {
             Box(Modifier.fillMaxSize()) {
-                // Under a sheet or a dialog, only it is there for accessibility services.
+                // Accessibility services see only the top layer: a sheet or a dialog over
+                // everything, else the open player over the app.
                 val covered = controller.sheet != null || controller.dialog != null
-                Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
+                Box(if (covered || controller.player.isOpen) Modifier.clearAndSetSemantics {} else Modifier) {
                     PhoneLayout(navigator)
+                }
+                Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
+                    PlayerHost(controller.player)
                 }
                 SheetHost(controller.sheet, controller::closeSheet)
                 DialogHost(controller.dialog, controller::closeDialog)
@@ -225,7 +244,12 @@ private fun PhoneLayout(navigator: Navigator) {
     LaunchedEffect(navigator.tab, navigator.current.id) { app.endSelection() }
     val actions = selection != null && navigation
     val miniPlayer = page.miniPlayer && current != null && selection == null
-    val navInset = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
+    val density = LocalDensity.current
+    val navInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
+    val playerShown by remember(app) { derivedStateOf { app.player.shown } }
+    val pull = remember(app, density) {
+        app.player.pullGesture(with(density) { 400.dp.toPx() }) { app.player.miniBounds?.top ?: 1f }
+    }
     val bottomSpace = (if (navigation) 64.dp + navInset else navInset) +
         (if (miniPlayer || actions) 64.dp + 8.dp else 0.dp)
 
@@ -266,7 +290,7 @@ private fun PhoneLayout(navigator: Navigator) {
                     label = "snack",
                 )
                 SnackbarHost(
-                    app.snack,
+                    if (app.player.isOpen) null else app.snack,
                     app::dismissSnack,
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -290,11 +314,16 @@ private fun PhoneLayout(navigator: Navigator) {
                         buttons = ui.miniButtons,
                         actions = CorePlayback,
                         onOpen = app::openPlayer,
-                        modifier = Modifier.padding(
-                            start = 8.dp,
-                            end = 8.dp,
-                            bottom = if (navigation) 8.dp else 8.dp + navInset,
-                        ),
+                        pull = pull,
+                        modifier = Modifier
+                            .padding(
+                                start = 8.dp,
+                                end = 8.dp,
+                                bottom = if (navigation) 8.dp else 8.dp + navInset,
+                            )
+                            .onGloballyPositioned { app.player.miniBounds = it.boundsInRoot() }
+                            // The player draws it while any of the player shows.
+                            .graphicsLayer { alpha = if (playerShown) 0f else 1f },
                     )
                 }
                 // The selection's actions outlive it while they leave.
@@ -324,6 +353,10 @@ private fun PhoneLayout(navigator: Navigator) {
                     selected = navigator.tab,
                     onSelect = navigator::select,
                     sourcesBusy = scan != null,
+                    // It slides away as the player opens.
+                    modifier = Modifier.graphicsLayer {
+                        translationY = app.player.expand.value.coerceIn(0f, 1f) * size.height
+                    },
                 )
             }
         }

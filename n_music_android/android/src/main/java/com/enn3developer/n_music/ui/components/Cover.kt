@@ -82,7 +82,17 @@ fun Cover(
     shape: Shape = RectangleShape,
     placeholder: CoverPlaceholder = CoverPlaceholder.ALBUM,
 ) {
-    val bitmap = rememberCover(path)
+    Cover(rememberCover(path), modifier, shape, placeholder)
+}
+
+/** [bitmap] cropped to [shape], or the [placeholder] while there is none. */
+@Composable
+fun Cover(
+    bitmap: ImageBitmap?,
+    modifier: Modifier = Modifier,
+    shape: Shape = RectangleShape,
+    placeholder: CoverPlaceholder = CoverPlaceholder.ALBUM,
+) {
     Box(modifier.clip(shape), contentAlignment = Alignment.Center) {
         if (bitmap != null) {
             Image(
