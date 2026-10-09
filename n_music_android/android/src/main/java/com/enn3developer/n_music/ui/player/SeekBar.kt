@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.player
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
@@ -43,6 +45,7 @@ private val Reach = 10.dp
  * Where the track is: a wave up to the position and a line after it, with the position and the
  * length under them. Dragging along it or tapping it seeks once let go; meanwhile the bar and the
  * position show where it would go. [wave] flattens the wave from 1 to 0, [phase] makes it travel.
+ * The length rolls when another [item] plays, the way [skip] went.
  */
 @Composable
 fun SeekBar(
@@ -50,6 +53,8 @@ fun SeekBar(
     length: Double,
     onSeek: (Double) -> Unit,
     modifier: Modifier = Modifier,
+    item: ULong = 0u,
+    skip: () -> Int = { 1 },
     wave: () -> Float = { 1f },
     phase: () -> Float = { 0f },
 ) {
@@ -123,7 +128,15 @@ fun SeekBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(position, style = text(13, tabular = true), color = colors.onSurfaceVariant)
-            Text(total, style = text(13, tabular = true), color = colors.onSurfaceVariant)
+            val shift = with(LocalDensity.current) { 10.dp.roundToPx() }
+            AnimatedContent(
+                targetState = item to total,
+                contentKey = { it.first },
+                transitionSpec = { roll(skip(), shift) },
+                label = "length",
+            ) { (_, shown) ->
+                Text(shown, style = text(13, tabular = true), color = colors.onSurfaceVariant)
+            }
         }
     }
 }

@@ -1,5 +1,17 @@
 package com.enn3developer.n_music.ui.player
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -42,6 +54,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -54,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,8 +86,10 @@ import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.trackFormat
 
@@ -102,6 +118,8 @@ interface PlayerActions : PlaybackActions {
 /** What the player shows of playback. */
 @Immutable
 data class PlayerUi(
+    /** The play session's item playing: a skip changes it, the same track met again does not. */
+    val item: ULong,
     val track: TrackRow,
     val details: TrackDetails?,
     val playing: Boolean,
@@ -120,25 +138,35 @@ data class PlayerUi(
 /** The covers' corners on the player. */
 val PlayerCoverShape = RoundedCornerShape(28.dp)
 
+/** How long new text waits for the old to leave when it fades through. */
+private const val FADE_THROUGH_MS = 90L
+
 /**
  * The player: where it plays from, the cover, the track with its artist and album, the position,
- * the controls, the output and sleep timer, and what plays next. [group] gives each part the
- * look of its way in; [coverShown] hides the cover while another draws it flying, and
+ * the controls, the output and sleep timer, and what plays next. [artwork] gives a track's
+ * cover. A skip slides the covers one place, the way [skip] says it went: 1 to the next, -1 back,
+ * and the text fades through. Pausing shrinks the cover and flattens the wave. [group] gives each
+ * part the look of its way in; [coverShown] hides the cover while another draws it flying, and
  * [onCoverPlaced] tells where it is, from the player's top left corner.
  */
 @Composable
 fun PlayerContent(
     ui: PlayerUi,
-    artwork: ImageBitmap?,
+    artwork: @Composable (TrackRow) -> ImageBitmap?,
     seconds: () -> Double,
     length: Double,
     actions: PlayerActions,
     modifier: Modifier = Modifier,
+    skip: () -> Int = { 1 },
     group: (PlayerGroup) -> Modifier = { Modifier },
     coverShown: () -> Boolean = { true },
     onCoverPlaced: (Rect) -> Unit = {},
 ) {
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val density = LocalDensity.current
+    // From 0 while playing to 1 while paused: the cover shrinks to 94% and the wave flattens.
+    val paused = remember { Animatable(if (ui.playing) 0f else 1f) }
+    LaunchedEffect(ui.playing) { paused.animateTo(if (ui.playing) 0f else 1f, NMotion.spatialSlow()) }
     // The wave travels a wavelength a second while playing, and stands still while paused or
     // while animations are off.
     val phase = remember { mutableFloatStateOf(0f) }
@@ -169,18 +197,45 @@ fun PlayerContent(
                     .onPlaced { placed ->
                         root[0]?.let { onCoverPlaced(Rect(it.localPositionOf(placed, Offset.Zero), placed.size.toSize())) }
                     }
-                    .graphicsLayer { alpha = if (coverShown()) 1f else 0f }
+                    .graphicsLayer {
+                        alpha = if (coverShown()) 1f else 0f
+                        scaleX = 1f - 0.06f * paused.value
+                        scaleY = scaleX
+                    }
             ) {
-                Cover(
-                    artwork,
-                    Modifier
-                        .fillMaxSize()
-                        .floating(PlayerCoverShape),
-                    shape = PlayerCoverShape,
-                    placeholder = if (ui.track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
-                )
+                // The covers sit a gap apart, so a skip slides them one place.
+                val gap = with(density) { 32.dp.roundToPx() }
+                AnimatedContent(
+                    targetState = ui,
+                    contentKey = { it.item },
+                    transitionSpec = {
+                        val way = skip()
+                        slideInHorizontally(NMotion.spatialDefault()) { (it + gap) * way }
+                            .togetherWith(slideOutHorizontally(NMotion.spatialDefault()) { -(it + gap) * way })
+                            .using(SizeTransform(clip = false))
+                    },
+                    label = "cover",
+                ) { shown ->
+                    Cover(
+                        artwork(shown.track),
+                        Modifier
+                            .fillMaxSize()
+                            .floating(PlayerCoverShape),
+                        shape = PlayerCoverShape,
+                        placeholder = if (shown.track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
+                    )
+                }
             }
-            TitleBlock(ui, actions, Modifier.then(group(PlayerGroup.TITLE)))
+            val shift = with(density) { 12.dp.roundToPx() }
+            AnimatedContent(
+                targetState = ui,
+                contentKey = { it.item },
+                transitionSpec = { fadeThrough(skip(), shift) },
+                modifier = Modifier.then(group(PlayerGroup.TITLE)),
+                label = "title",
+            ) { shown ->
+                TitleBlock(shown, actions)
+            }
             SeekBar(
                 seconds = seconds,
                 length = length,
@@ -189,6 +244,9 @@ fun PlayerContent(
                     .fillMaxWidth()
                     .padding(start = 32.dp, end = 32.dp, top = 20.dp)
                     .then(group(PlayerGroup.SEEK)),
+                item = ui.item,
+                skip = skip,
+                wave = { 1f - 0.98f * paused.value },
                 phase = { phase.floatValue },
             )
             PlayerControls(
@@ -221,9 +279,27 @@ fun PlayerContent(
             Modifier
                 .align(Alignment.BottomCenter)
                 .then(group(PlayerGroup.UP_NEXT)),
+            skip,
         )
     }
 }
+
+/**
+ * Text fading through on a skip: the old leaves [shift] pixels the way the skip went, and the new
+ * comes in from the other side once the old is gone. [way] is 1 to the next, -1 back.
+ */
+fun AnimatedContentTransitionScope<*>.fadeThrough(way: Int, shift: Int): ContentTransform =
+    (fadeIn(NMotion.effectsDefault<Float>().delayed(FADE_THROUGH_MS)) +
+        slideInHorizontally(NMotion.spatialDefault<IntOffset>().delayed(FADE_THROUGH_MS)) { shift * way })
+        .togetherWith(fadeOut(NMotion.effectsFast()) + slideOutHorizontally(NMotion.spatialDefault()) { -shift * way })
+        .using(SizeTransform(clip = false))
+
+/** A number rolling on a skip: up to the next, down back, as [way] is 1 or -1. */
+fun AnimatedContentTransitionScope<*>.roll(way: Int, shift: Int): ContentTransform =
+    (fadeIn(NMotion.effectsDefault<Float>().delayed(FADE_THROUGH_MS)) +
+        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(FADE_THROUGH_MS)) { shift * way })
+        .togetherWith(fadeOut(NMotion.effectsFast()) + slideOutVertically(NMotion.spatialDefault()) { -shift * way })
+        .using(SizeTransform(clip = false))
 
 /** The height of what plays next, over the navigation bar. */
 private val UpNextHeight = 52.dp
@@ -282,10 +358,10 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
 
 /** The title, the artist and album, each a link to its page, and the track's format and plays. */
 @Composable
-private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
+private fun TitleBlock(ui: PlayerUi, actions: PlayerActions) {
     val track = ui.track
     Column(
-        modifier
+        Modifier
             .fillMaxWidth()
             .padding(start = 32.dp, end = 32.dp, top = 24.dp)
     ) {
@@ -312,8 +388,14 @@ private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, modifier: Modifier)
             },
         )
         val details = ui.details
-        if (details != null) {
-            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The chips keep their room while the track's details are read, so nothing below moves.
+        Row(
+            Modifier
+                .padding(top = 14.dp)
+                .height(28.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (details != null) {
                 trackFormat(details)?.let { InfoChip(it, colors.surface) }
                 InfoChip(
                     if (details.plays == 0u) {
@@ -435,7 +517,7 @@ private fun SleepChip(left: String?, onClick: () -> Unit) {
  * swipe down is left to the player, which closes.
  */
 @Composable
-private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier) {
+private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier, skip: () -> Int) {
     val description = stringResource(R.string.open_queue)
     Column(
         modifier
@@ -470,24 +552,32 @@ private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier) {
         ) {
             Text(stringResource(R.string.up_next), style = text(13, FontWeight.Bold), color = colors.primary)
             val muted = colors.onSurfaceVariant
-            Text(
-                if (next == null) {
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = muted)) { append(stringResource(R.string.queue_end)) }
-                    }
-                } else {
-                    val artist = next.artist.ifEmpty { stringResource(R.string.unknown_artist) }
-                    buildAnnotatedString {
-                        append(next.title)
-                        withStyle(SpanStyle(color = muted)) { append(" · $artist") }
-                    }
-                },
-                style = text(14),
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            val shift = with(LocalDensity.current) { 8.dp.roundToPx() }
+            AnimatedContent(
+                targetState = next,
+                contentKey = { it?.locator },
+                transitionSpec = { fadeThrough(skip(), shift) },
                 modifier = Modifier.weight(1f),
-            )
+                label = "next",
+            ) { shown ->
+                Text(
+                    if (shown == null) {
+                        buildAnnotatedString {
+                            withStyle(SpanStyle(color = muted)) { append(stringResource(R.string.queue_end)) }
+                        }
+                    } else {
+                        val artist = shown.artist.ifEmpty { stringResource(R.string.unknown_artist) }
+                        buildAnnotatedString {
+                            append(shown.title)
+                            withStyle(SpanStyle(color = muted)) { append(" · $artist") }
+                        }
+                    },
+                    style = text(14),
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             NIcon(NIcons.Expand, size = 20.dp, tint = muted)
         }
         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))

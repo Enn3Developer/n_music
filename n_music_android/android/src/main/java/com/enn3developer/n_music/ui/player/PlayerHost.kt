@@ -372,7 +372,10 @@ fun PlayerHost(transition: PlayerTransition) {
         if (seek != null && position.seek >= seek.first) pending.value = null
     }
     val length = position.length.takeIf { it > 0 } ?: track.length
+    val skips = remember { SkipTracker() }
+    skips.update(current?.item, queue)
     val ui = PlayerUi(
+        item = current?.item ?: 0u,
         track = track,
         details = details,
         playing = playing,
@@ -407,10 +410,12 @@ fun PlayerHost(transition: PlayerTransition) {
         }
     }
     val width = LocalWindowInfo.current.containerSize.width
+    val size = width - with(LocalDensity.current) { 64.dp.roundToPx() }
     PlayerOverlay(
         transition = transition,
         ui = ui,
-        artwork = rememberArtwork(track, width - with(LocalDensity.current) { 64.dp.roundToPx() }),
+        artwork = { rememberArtwork(it, size) },
+        skip = { skips.way },
         seconds = { pending.value?.second ?: seconds.value },
         length = length,
         actions = actions,
@@ -428,7 +433,8 @@ fun PlayerHost(transition: PlayerTransition) {
 fun PlayerOverlay(
     transition: PlayerTransition,
     ui: PlayerUi,
-    artwork: ImageBitmap?,
+    artwork: @Composable (TrackRow) -> ImageBitmap?,
+    skip: () -> Int,
     seconds: () -> Double,
     length: Double,
     actions: PlayerActions,
@@ -558,6 +564,7 @@ fun PlayerOverlay(
                 seconds = seconds,
                 length = length,
                 actions = actions,
+                skip = skip,
                 modifier = Modifier.offset { IntOffset(0, panel().top.roundToInt()) },
                 group = { part ->
                     Modifier.graphicsLayer {
@@ -593,7 +600,7 @@ fun PlayerOverlay(
                         .floating(coverShape)
                 ) {
                     Cover(
-                        artwork,
+                        artwork(track),
                         Modifier.fillMaxSize(),
                         shape = coverShape,
                         placeholder = if (track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
@@ -626,6 +633,32 @@ fun PlayerOverlay(
                 transition.open()
                 throw cancelled
             }
+        }
+    }
+}
+
+/** Tells which way playback went from one item to the next: on through the queue, or back. */
+private class SkipTracker {
+    private var last: ULong? = null
+
+    /** 1 when the last change went on, -1 when it went back. */
+    var way = 1
+        private set
+
+    fun update(item: ULong?, queue: List<QueueRow>) {
+        val from = last
+        if (item == from) return
+        last = item
+        if (from == null || item == null) return
+        val old = queue.indexOfFirst { it.item == from }
+        val new = queue.indexOfFirst { it.item == item }
+        way = when {
+            old < 0 || new < 0 -> 1
+            // Round from the end to the start on repeat is on; from the start to the end, back.
+            new == 0 && old == queue.lastIndex -> 1
+            new == queue.lastIndex && old == 0 -> -1
+            new < old -> -1
+            else -> 1
         }
     }
 }
