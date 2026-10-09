@@ -163,9 +163,10 @@ impl Handle<PlaybackChanged> for KotlinBridge {
 
 impl Handle<TrackChanged> for KotlinBridge {
     fn handle(&mut self, msg: &TrackChanged, _: &Ctx, _: &mut Outbox) {
+        let track = TrackRow::new(&msg.track, &self.library.read());
         self.send(CoreEvent::TrackChanged {
             item: msg.item,
-            track: TrackRow::from(&*msg.track),
+            track,
         });
     }
 }

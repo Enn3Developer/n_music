@@ -7,7 +7,7 @@ use documents::AndroidDocumentProvider;
 use jni::objects::{Global, JClass, JObject};
 use jni::refs::Reference;
 use jni::{EnvUnowned, JavaVM};
-use n_music_core::source::Providers;
+use n_music_core::source::{Providers, WebProvider};
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -118,16 +118,18 @@ fn forward_stdio_to_logcat() {
     }
 }
 
-/// The document provider for the folders picked through the Storage Access Framework.
+/// The document provider for the folders picked through the Storage Access Framework, and the
+/// web's for playlists on the web.
 pub fn providers() -> Providers {
     let android = ANDROID
         .get()
         .expect("NativeLibrary.init must run before Core.start");
+    let providers = Providers::default().with_web(WebProvider::default());
     match AndroidDocumentProvider::new(android.jvm.clone(), &android.context) {
-        Ok(documents) => Providers::default().with_documents(documents),
+        Ok(documents) => providers.with_documents(documents),
         Err(error) => {
             log::error!("Could not access the Android content resolver: {error:?}");
-            Providers::default()
+            providers
         }
     }
 }

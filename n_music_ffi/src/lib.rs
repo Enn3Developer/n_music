@@ -8,20 +8,26 @@
 mod android;
 mod bridge;
 mod commands;
+mod library;
 mod rows;
 mod types;
 
 pub use bridge::CoreEvent;
 pub use commands::Command;
-pub use rows::{QueueRow, TrackRow};
+pub use library::{
+    AlbumRow, ArtistRow, Facet, Facets, GenreRow, GroupSort, PlaylistRow, SourceRow, Summary,
+};
+pub use rows::{QueueRow, TrackDetails, TrackRow};
 
 use bridge::KotlinBridge;
 use n_event_bus::{App, EventReceiver, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::library::catalog::Library;
-use n_music_core::library::query::Query;
-use n_music_core::settings::{JsonFileStorage, SettingsStorage};
-use n_music_core::source::Providers;
+use n_music_core::library::query::{Filter, PlaylistId, Query};
+use n_music_core::library::track::ReplayGainMode;
+use n_music_core::library::LibraryPaths;
+use n_music_core::settings::{JsonFileStorage, PlaybackSettings, Section, SettingsStorage};
+use n_music_core::source::{Locator, Providers};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -42,6 +48,18 @@ pub struct Core {
     library_changed: Arc<AtomicBool>,
     scan_read: Arc<AtomicU64>,
     storage: Arc<JsonFileStorage>,
+    /// Where the library database is, to read what the library leaves out.
+    paths: LibraryPaths,
+}
+
+/// The playback settings the core keeps and reports no event for.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct PlaybackOptions {
+    pub replay_gain: ReplayGainMode,
+    /// The play session is kept between launches.
+    pub resume: bool,
+    /// Seconds each track fades into the next over; 0 plays them back to back.
+    pub crossfade: f64,
 }
 
 #[uniffi::export]
@@ -82,13 +100,13 @@ impl Core {
         let Some(library) = self.library.get() else {
             return vec![];
         };
-        // A scan waits on the lock to add each track it reads: hold it only to select.
-        let selected = library.read().select(&query);
-        selected
+        let catalog = library.read();
+        catalog
+            .select(&query)
             .iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .map(|track| TrackRow::from(&**track))
+            .map(|track| TrackRow::new(track, &catalog))
             .collect()
     }
 
@@ -99,6 +117,138 @@ impl Core {
         };
         let count = library.read().select(&query).len();
         u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
+    /// How many tracks `filter` selects and how long they play.
+    pub fn summary(&self, filter: Filter) -> Summary {
+        let Some(library) = self.library.get() else {
+            return library::summary(&[]);
+        };
+        let selected = library::selected(&library.read(), &filter);
+        library::summary(&selected)
+    }
+
+    /// The track at `locator`, when the library has it.
+    pub fn track(&self, locator: Locator) -> Option<TrackRow> {
+        let catalog = self.library.get()?.read();
+        catalog
+            .track(&locator)
+            .map(|track| TrackRow::new(track, &catalog))
+    }
+
+    /// What a track's menu adds to its row: its format, genres and plays.
+    pub fn track_details(&self, locator: Locator) -> Option<TrackDetails> {
+        let catalog = self.library.get()?.read();
+        catalog
+            .track(&locator)
+            .map(|track| TrackDetails::new(track, &catalog))
+    }
+
+    /// The albums of the tracks `filter` selects whose name or artist contains `search`.
+    pub fn albums(&self, filter: Filter, search: String, sort: GroupSort) -> Vec<AlbumRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        let selected = library::selected(&library.read(), &filter);
+        library::albums(&selected, &search, sort)
+    }
+
+    /// The artists of the tracks `filter` selects whose name contains `search`.
+    pub fn artists(&self, filter: Filter, search: String, sort: GroupSort) -> Vec<ArtistRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        let selected = library::selected(&library.read(), &filter);
+        library::artists(&selected, &search, sort)
+    }
+
+    /// The genres of the tracks `filter` selects whose name contains `search`.
+    pub fn genres(&self, filter: Filter, search: String, sort: GroupSort) -> Vec<GenreRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        let selected = library::selected(&library.read(), &filter);
+        library::genres(&selected, &search, sort)
+    }
+
+    /// The genres, formats and years of the library's tracks, for the filters.
+    pub fn facets(&self) -> Facets {
+        match self.library.get() {
+            Some(library) => library::facets(&library.read()),
+            None => library::facets(&Default::default()),
+        }
+    }
+
+    /// Every playlist with what it holds, by name.
+    pub fn playlists(&self) -> Vec<PlaylistRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        library::playlists(&library.read())
+    }
+
+    pub fn playlist(&self, id: PlaylistId) -> Option<PlaylistRow> {
+        library::playlist_row(&self.library.get()?.read(), id)
+    }
+
+    /// How many of `tracks` playlist `id` has.
+    pub fn playlist_holds(&self, id: PlaylistId, tracks: Vec<Locator>) -> u32 {
+        let Some(library) = self.library.get() else {
+            return 0;
+        };
+        library::playlist_holds(&library.read(), id, &tracks)
+    }
+
+    /// Each of `roots`, the library folders, with what it holds.
+    pub fn sources(&self, roots: Vec<Locator>) -> Vec<SourceRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        library::sources(&library.read(), &roots)
+    }
+
+    /// The tracks `root` listed while it could be reached that it can't play now, not being
+    /// saved for offline, with what the database knows of them.
+    pub fn missing_tracks(&self, root: Locator) -> Vec<TrackRow> {
+        let Some(library) = self.library.get() else {
+            return vec![];
+        };
+        let missing = library::missing(&library.read(), &root);
+        if missing.is_empty() {
+            return vec![];
+        }
+        let db = match self.paths.open_db() {
+            Ok(db) => db,
+            Err(error) => {
+                log::error!("Could not open the library database: {error}");
+                return vec![];
+            }
+        };
+        missing
+            .into_iter()
+            .map(|locator| {
+                let track = db
+                    .track(&locator)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| n_music_core::TrackInfo::placeholder(locator));
+                TrackRow::from(&track)
+            })
+            .collect()
+    }
+
+    /// ReplayGain, resuming and crossfade as the core keeps them.
+    pub fn playback_options(&self) -> PlaybackOptions {
+        let settings: PlaybackSettings = self
+            .storage
+            .load(PlaybackSettings::KEY)
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default();
+        PlaybackOptions {
+            replay_gain: settings.replay_gain,
+            resume: settings.resume,
+            crossfade: settings.crossfade,
+        }
     }
 
     /// The settings section `key` as JSON, or `None` when nothing is stored under it. The
@@ -172,8 +322,23 @@ impl Core {
             library_changed,
             scan_read,
             storage,
+            paths: LibraryPaths::new(data_dir, cache_dir),
         }
     }
+}
+
+/// What the library root `root` is called without a name of its own: its folder's name, or
+/// its playlist's.
+#[uniffi::export]
+pub fn default_source_name(root: Locator) -> String {
+    library::default_name(&root)
+}
+
+/// The web playlist at `address`, written the way the scan writes addresses; `None` when it is
+/// not an `http` or `https` address.
+#[uniffi::export]
+pub fn web_source(address: String) -> Option<Locator> {
+    Locator::web(&address)
 }
 
 /// What the bus thread starts the core services with.
@@ -243,7 +408,9 @@ fn providers() -> Providers {
 
 #[cfg(not(target_os = "android"))]
 fn providers() -> Providers {
-    Providers::default().with_local(n_music_core::source::LocalProvider)
+    Providers::default()
+        .with_local(n_music_core::source::LocalProvider)
+        .with_web(n_music_core::source::WebProvider::default())
 }
 
 #[cfg(test)]

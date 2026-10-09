@@ -1,4 +1,5 @@
 use super::*;
+use n_music_core::library::query::Filter;
 use n_music_core::source::Locator;
 use std::time::Instant;
 
@@ -81,6 +82,27 @@ fn reports_a_scanned_folder_and_answers_queries() {
     assert!((track.length - 1.0).abs() < 0.01, "length {}", track.length);
     assert_eq!(core.count(Query::library()), 1);
     assert!(core.tracks(Query::library(), 1, 10).is_empty());
+    assert!(track.loaded);
+    assert_eq!(core.track(track.locator.clone()), Some(track.clone()));
+
+    let everything = Filter::All(vec![]);
+    let summary = core.summary(everything.clone());
+    assert_eq!(summary.tracks, 1);
+    assert!((summary.length - 1.0).abs() < 0.01);
+    let albums = core.albums(everything.clone(), String::new(), GroupSort::Name);
+    assert_eq!(albums.len(), 1);
+    assert_eq!(albums[0].name, None, "the untagged track has no album");
+    let [source] = core.sources(vec![root.clone()]).try_into().unwrap();
+    assert_eq!(
+        (source.tracks, source.listed, source.reachable),
+        (1, true, true)
+    );
+    assert!(core.missing_tracks(root.clone()).is_empty());
+    assert_eq!(
+        core.facets().codecs.first().map(|codec| codec.tracks),
+        Some(1)
+    );
+    assert!(!core.playback_options().resume);
 
     core.send(Command::SetShuffle { enabled: true });
     wait_for(&core, |event| {
@@ -113,6 +135,7 @@ fn library_changes_come_one_at_a_time() {
         library_changed: pending,
         scan_read: read.clone(),
         storage: Arc::new(JsonFileStorage::open(settings_path(data.path()))),
+        paths: LibraryPaths::new(data.path(), data.path()),
     };
 
     bridge.library_changed();
