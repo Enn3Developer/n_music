@@ -9,6 +9,8 @@ QtObject {
 
     /// A page asked for the navigation, which narrow windows keep in a drawer.
     signal navigationRequested
+    /// The track called `title` was queued: to play `next`, or after what is queued.
+    signal queued(string title, bool next)
 
     readonly property string size: width >= 1600 ? "wide" : width >= 1100 ? "regular" : width >= 720 ? "compact" : "narrow"
     readonly property bool wide: size === "wide"

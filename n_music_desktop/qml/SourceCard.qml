@@ -29,6 +29,7 @@ AbstractButton {
 
     /// Opens its menu under its menu button.
     function openMenu() {
+        menu.transformOrigin = Popup.TopRight;
         menu.popup(more, more.width - menu.width, more.height + 4);
     }
 
@@ -45,7 +46,10 @@ AbstractButton {
 
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: point => menu.popup(card, point.position.x, point.position.y)
+        onTapped: point => {
+            menu.transformOrigin = Popup.TopLeft;
+            menu.popup(card, point.position.x, point.position.y);
+        }
     }
 
     background: null
@@ -62,13 +66,25 @@ AbstractButton {
                 path: card.source.cover
                 iconName: SourceKinds.icon(card.source.kind)
                 // Gone, its tracks cannot play.
-                opacity: card.down ? 0.8 : card.source.available ? 1 : 0.5
+                opacity: card.down ? 0.86 : card.source.available ? 1 : 0.5
+                scale: card.down ? 0.97 : 1
+
+                PressScale on scale {}
+                Behavior on opacity {
+                    id: dim
+
+                    OpacityAnimator {
+                        duration: dim.targetValue < 1 ? Motion.exit : Motion.fade
+                    }
+                }
 
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
                     color: "#FFFFFF"
                     opacity: card.hovered ? 0.06 : 0
+
+                    HoverFade on opacity {}
                 }
             }
 
@@ -104,12 +120,18 @@ AbstractButton {
                         stroke: 2
                         color: Theme.accentText
 
+                        // Under reduced motion it holds still.
                         RotationAnimator on rotation {
-                            running: card.source.updating && card.source.available && card.visible
+                            running: card.source.updating && card.source.available && card.visible && !Motion.reduced
                             from: 0
                             to: 360
                             duration: 1400
                             loops: Animation.Infinite
+                            // Stopped, it stands upright again.
+                            onRunningChanged: {
+                                if (!running)
+                                    target.rotation = 0;
+                            }
                         }
                     }
                     Label {

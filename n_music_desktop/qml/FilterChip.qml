@@ -28,6 +28,8 @@ AbstractButton {
         color: chip.hovered ? Theme.menuHover : Theme.raised
         border.width: chip.visualFocus ? 2 : 0
         border.color: Theme.text
+
+        TintFade on color {}
     }
 
     contentItem: Row {

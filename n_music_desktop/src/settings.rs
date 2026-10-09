@@ -21,6 +21,8 @@ pub struct UiSettings {
     pub accent: String,
     /// Track lists use smaller covers and tighter rows.
     pub compact_rows: bool,
+    /// Things change in place rather than travel across the screen.
+    pub reduce_motion: bool,
     /// Track table columns left out, by the names `TrackColumns` knows them by.
     pub hidden_columns: Vec<String>,
     /// The folder picker lists hidden folders too.
@@ -38,6 +40,7 @@ impl Default for UiSettings {
             mini_on_top: true,
             accent: String::from("amber"),
             compact_rows: false,
+            reduce_motion: false,
             hidden_columns: Vec::new(),
             show_hidden_folders: false,
         }

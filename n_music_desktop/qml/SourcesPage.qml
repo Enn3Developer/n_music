@@ -275,6 +275,7 @@ Item {
     // What updates every source.
     PopupMenu {
         id: actions
+        transformOrigin: Popup.TopRight
 
         MenuEntry {
             iconName: "refresh"

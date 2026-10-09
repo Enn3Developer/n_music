@@ -12,9 +12,6 @@ Item {
 
     readonly property real nowWidth: Math.max(300, Math.min(360, width - 56 - 32 - 420))
 
-    readonly property string format: Format.audio(Player.codec, Player.sampleRate, Player.bits)
-    readonly property string gain: Format.gain(Player.albumGain, Player.trackGain)
-
     readonly property string contextDescription: [queue.contextLabel === "" ? Tr.t.library : queue.contextLabel, queue.contextDetail, Player.shuffle ? Tr.t.shuffled : "", Tr.t.left_count.arg(Format.number(queue.leftCount))].filter(part => part !== "").join(" · ")
 
     /// A row is being dragged to another place: `held`, its top showing at `heldTop` in the
@@ -29,6 +26,12 @@ Item {
     property real stride: 0
     /// The held row eases into its place once let go.
     property bool settling: false
+    /// The row let go, which looks picked up until half way to its place.
+    property QueueRow landing: null
+    /// How long it waits for rows to leave its way first, in ms.
+    property int wait: 0
+    /// The playing row while another is dragged: the highlight rides along with it.
+    property QueueRow playing: null
     /// The view showed the current track once the rows came.
     property bool placed: false
     /// Pixels a second the list scrolls by while the pointer carries a row near its top or bottom.
@@ -46,6 +49,8 @@ Item {
 
     function pickUp(row: QueueRow, offset: real, sceneY: real) {
         dragging = true;
+        playing = list.itemAtIndex(queue.currentRow) as QueueRow;
+        landing = null;
         held = row;
         grip = offset;
         pointer = sceneY;
@@ -75,14 +80,31 @@ Item {
         }
     }
 
+    // The row lands in its place over 200 ms, looking picked up until half way. When rows have
+    // to leave its way first, it waits 80 ms for them; under reduced motion it snaps there.
     function drop(keep: bool) {
         if (!dragging)
             return;
         dragging = false;
-        queue.endDrag(keep);
+        playing = null;
+        const madeWay = queue.endDrag(keep);
+        wait = madeWay && !Motion.reduced ? Motion.exit : 0;
+        landing = held;
+        landed.interval = Motion.reduced ? 0 : wait + Motion.move / 2;
+        landed.restart();
         settling = true;
         held = null;
         settling = false;
+    }
+
+    /// Whether the place of a track queued now shows: right after the current one when it plays
+    /// `next`, else after the queued ones.
+    function shows(next: bool): bool {
+        if (list.count === 0)
+            return true;
+        const at = queue.historyCount + (queue.currentRow >= 0 ? 1 : 0) + (next ? 0 : queue.upNextCount);
+        const row = list.itemAtIndex(Math.min(at, list.count - 1));
+        return row !== null && row.y >= list.contentY && row.y + row.height <= list.contentY + list.height;
     }
 
     // Scrolls the current track to the top, the history above it.
@@ -103,7 +125,25 @@ Item {
         id: queue
         showHistory: true
         showCurrent: true
-        moving: displaced.running
+        fades: true
+        moving: rowMotion.moveDisplaced.running
+        onReplacing: rowMotion.fadeThrough()
+    }
+
+    RowTransitions {
+        id: rowMotion
+        view: list
+        queue: queue
+        pitch: (AppState.compactRows ? 42 : 54) + list.spacing
+        first: queue.historyCount
+        // A new list shows from the current track, as the page opens.
+        onSwapped: page.scrollToCurrent()
+    }
+
+    // Half way to its place, a row let go looks picked up no more.
+    Timer {
+        id: landed
+        onTriggered: page.landing = null
     }
 
     // The rows come once the session is read, the first ones from the current track.
@@ -160,11 +200,10 @@ Item {
             width: parent.width
             spacing: 18
 
-            Cover {
+            CoverSwap {
                 // Shrinks in short windows to keep the controls below it in view.
                 size: Shell.narrow ? Math.min(now.width, 240) : Math.max(160, Math.min(now.width, page.height - 28 - 24 - 3 * now.spacing - about.height - (chips.visible ? chips.height + now.spacing : 0) - ending.height))
                 radius: 12
-                path: Player.cover
             }
 
             Column {
@@ -180,43 +219,62 @@ Item {
                     font.letterSpacing: 0.96
                     font.capitalization: Font.AllUppercase
                 }
-                Label {
+                TrackSwap {
                     width: now.width
-                    text: Player.loaded ? Player.title : Tr.t.not_playing
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                    color: Player.loaded ? Theme.text : Theme.text3
-                    font.pixelSize: 26
-                    font.weight: Font.Bold
-                    font.letterSpacing: -0.26
-                }
-                Label {
-                    width: now.width
-                    visible: text !== ""
-                    text: [Player.artist, Player.album, Player.year].filter(part => part !== "").join(" · ")
-                    wrapMode: Text.Wrap
-                    color: Theme.text2
-                    font.pixelSize: 15
+
+                    delegate: Column {
+                        id: words
+
+                        required property var track
+
+                        spacing: 6
+
+                        Label {
+                            width: words.width
+                            text: words.track.loaded ? words.track.title : Tr.t.not_playing
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            color: words.track.loaded ? Theme.text : Theme.text3
+                            font.pixelSize: 26
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.26
+                        }
+                        Label {
+                            width: words.width
+                            visible: text !== ""
+                            text: [words.track.artist, words.track.album, words.track.year].filter(part => part !== "").join(" · ")
+                            wrapMode: Text.Wrap
+                            color: Theme.text2
+                            font.pixelSize: 15
+                        }
+                    }
                 }
             }
 
-            Flow {
+            TrackSwap {
                 id: chips
                 width: now.width
-                spacing: 6
                 visible: Player.loaded
 
-                Chip {
-                    visible: text !== ""
-                    text: page.format
-                }
-                Chip {
-                    visible: text !== ""
-                    text: page.gain
-                }
-                Chip {
-                    text: Tr.t.played_times.arg(Format.number(Player.plays))
+                delegate: Flow {
+                    id: facts
+
+                    required property var track
+
+                    spacing: 6
+
+                    Chip {
+                        visible: text !== ""
+                        text: Format.audio(facts.track.codec, facts.track.sampleRate, facts.track.bits)
+                    }
+                    Chip {
+                        visible: text !== ""
+                        text: Format.gain(facts.track.albumGain, facts.track.trackGain)
+                    }
+                    Chip {
+                        text: Tr.t.played_times.arg(Format.number(facts.track.plays))
+                    }
                 }
             }
 
@@ -316,6 +374,8 @@ Item {
                     color: link.hovered ? Theme.text : Theme.text2
                     font.pixelSize: 13
                     font.underline: true
+
+                    ColorFade on color {}
                 }
             }
         }
@@ -342,10 +402,36 @@ Item {
         // Scrolling happens in the view's layout too, where its model must not change.
         onContentYChanged: Qt.callLater(page.follow)
 
+        add: rowMotion.add
+        remove: rowMotion.remove
+        addDisplaced: rowMotion.addDisplaced
+        removeDisplaced: rowMotion.removeDisplaced
+        // Rows make way for the one dragged over them.
+        moveDisplaced: rowMotion.moveDisplaced
+        // The row in hand follows the pointer, from its place at once.
+        move: page.dragging ? null : rowMotion.move
+        populate: rowMotion.populate
+
+        // It hides while the playing row is in hand, and comes back as it lands.
+        PlayingHighlight {
+            // Under the rows, scrolling with them.
+            parent: list.contentItem
+            z: -1
+            width: list.width
+            row: queue.currentRow
+            pitch: rowMotion.pitch
+            rowHeight: AppState.compactRows ? 42 : 54
+            // Where the row's action goes.
+            barsX: list.width - 8 - 18 - 7
+            follow: page.playing
+            hidden: (page.held !== null && page.held.current) || (page.landing !== null && page.landing.current)
+        }
+
         delegate: QueueRow {
             id: entry
             width: ListView.view.width
             dragged: page.held === entry
+            lifted: dragged || page.landing === entry
             lift: dragged ? page.heldTop - y : 0
             onActivated: queue.play(index)
             onRemove: queue.remove(index)
@@ -368,20 +454,16 @@ Item {
 
             Behavior on lift {
                 enabled: page.settling
-                NumberAnimation {
-                    duration: 180
-                    easing.type: Easing.OutCubic
-                }
-            }
-        }
-        // Rows make way for the one dragged over them.
-        moveDisplaced: Transition {
-            id: displaced
 
-            NumberAnimation {
-                property: "y"
-                duration: 160
-                easing.type: Easing.OutCubic
+                SequentialAnimation {
+                    PauseAnimation {
+                        duration: page.wait
+                    }
+                    NumberAnimation {
+                        duration: Motion.reduced ? 0 : Motion.move
+                        easing.bezierCurve: Motion.landing
+                    }
+                }
             }
         }
 

@@ -161,9 +161,11 @@ Item {
 
         background: Rectangle {
             radius: 8
-            color: entry.current ? Theme.raised : entry.hovered ? Theme.hover : "transparent"
+            color: entry.current ? Theme.raised : entry.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
             border.width: entry.visualFocus ? 2 : 0
             border.color: Theme.text
+
+            TintFade on color {}
         }
         contentItem: Label {
             text: entry.text
@@ -172,6 +174,8 @@ Item {
             color: entry.current || entry.hovered ? Theme.text : Theme.text2
             font.pixelSize: 14
             font.weight: entry.current ? Font.DemiBold : Font.Medium
+
+            ColorFade on color {}
         }
     }
 }

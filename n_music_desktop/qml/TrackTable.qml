@@ -22,7 +22,22 @@ Item {
 
     /// Opens the menu of `row` from `x`, `y` of `item`, rightwards or leftwards.
     function openMenu(row: int, item: Item, x: real, y: real, leftwards: bool) {
+        menu.transformOrigin = leftwards ? Popup.TopRight : Popup.TopLeft;
         menu.show(row, item, leftwards ? x - menu.width : x, y);
+    }
+
+    /// The list was sorted anew and waits for its rows.
+    property bool sorting: false
+
+    // A sort shows the new order at once: the rows fade up from 60 % and the playing row is
+    // tinted for a moment, so the eye finds it again.
+    function sorted() {
+        if (!sorting)
+            return;
+        sorting = false;
+        settle.stop();
+        sortFade.restart();
+        highlight.tint();
     }
 
     TrackColumns {
@@ -31,7 +46,30 @@ Item {
         layout: table.layout
         compact: Shell.compact
         narrow: Shell.narrow
+        dense: AppState.compactRows
         hidden: AppState.hiddenColumns
+    }
+
+    Connections {
+        target: table.list
+
+        function onSortChanged() {
+            table.sorting = true;
+            settle.restart();
+        }
+        function onDataChanged() {
+            table.sorted();
+        }
+        function onModelReset() {
+            table.sorted();
+        }
+    }
+
+    // A sort that leaves the order as it was brings no rows.
+    Timer {
+        id: settle
+        interval: 1500
+        onTriggered: table.sorting = false
     }
 
     // Compact and narrow windows leave the column titles out.
@@ -61,6 +99,28 @@ Item {
         activeFocusOnTab: true
         Accessible.role: Accessible.Table
         Accessible.name: Tr.t.tracks
+
+        PlayingHighlight {
+            id: highlight
+            // Under the rows, scrolling with them.
+            parent: view.contentItem
+            z: -1
+            width: view.width
+            row: table.list.currentRow
+            raised: view.currentIndex >= 0 && view.currentIndex === table.list.currentRow
+            pitch: columns.rowHeight
+            rowHeight: columns.rowHeight
+            // Where the number would be.
+            barsX: columns.number > 0 ? columns.padding + columns.number - 28 : 0
+        }
+
+        OpacityAnimator {
+            id: sortFade
+            target: view.contentItem
+            from: 0.6
+            to: 1
+            duration: Motion.fade
+        }
 
         delegate: TrackRow {
             width: ListView.view.width

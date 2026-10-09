@@ -37,8 +37,11 @@ Slider {
         height: 12
         radius: 6
         color: slider.fill
-        visible: slider.enabled && (!slider.knobOnHover || slider.hovered || slider.pressed || slider.visualFocus)
+        visible: slider.enabled
+        opacity: !slider.knobOnHover || slider.hovered || slider.pressed || slider.visualFocus ? 1 : 0
         border.width: slider.visualFocus ? 2 : 0
         border.color: Theme.accent
+
+        HoverFade on opacity {}
     }
 }

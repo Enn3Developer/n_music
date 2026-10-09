@@ -44,6 +44,11 @@ pub mod qobject {
         #[qproperty(i32, repeat)]
         type Player = super::PlayerRust;
 
+        /// Another item of the session is about to be current; `back` when it plays before the
+        /// one that was. The properties still tell the old track, and change right after.
+        #[qsignal]
+        fn track_changing(self: Pin<&mut Player>, back: bool);
+
         /// Pauses, or plays: the current track, else the library.
         #[qinvokable]
         fn toggle(self: &Player);
@@ -83,7 +88,7 @@ use cxx_qt_lib::QString;
 use n_music_core::messages::{
     PlayNext, PlayPrevious, Seek, SetLoopStatus, SetShuffle, SetVolume, TogglePause, ToggleShuffle,
 };
-use n_music_core::queue::LoopStatus;
+use n_music_core::queue::{ItemId, LoopStatus};
 
 #[derive(Default)]
 pub struct PlayerRust {
@@ -109,6 +114,8 @@ pub struct PlayerRust {
     seek_sent: u64,
     /// The volume before muting.
     unmuted: f64,
+    /// The current item of the session.
+    item: Option<ItemId>,
 }
 
 impl cxx_qt::Initialize for qobject::Player {
@@ -130,12 +137,14 @@ impl cxx_qt::Initialize for qobject::Player {
 impl qobject::Player {
     fn changed(mut self: Pin<&mut Self>, changed: Changed) {
         // A copy: setting properties runs QML bindings, which must not find the hub locked.
-        let (track, time, seek, playing, volume, shuffle, loop_status) = {
+        let (track, item, queue, time, seek, playing, volume, shuffle, loop_status) = {
             let state = hub().state();
             let track = state.current.clone();
             let modes = (state.shuffle, state.loop_status.clone());
             (
                 track,
+                state.current_item,
+                state.queue.clone(),
                 state.time,
                 state.seek,
                 state.playing,
@@ -144,6 +153,15 @@ impl qobject::Player {
                 modes.1,
             )
         };
+        if changed.contains(Changed::CURRENT) && item != self.item {
+            let place = |item: Option<ItemId>| {
+                item.and_then(|item| queue.iter().position(|entry| entry.item == item))
+            };
+            let back =
+                matches!((place(self.item), place(item)), (Some(was), Some(now)) if now < was);
+            self.as_mut().rust_mut().item = item;
+            self.as_mut().track_changing(back);
+        }
         if changed.contains(Changed::CURRENT) {
             let text = |text: Option<&str>| QString::from(text.unwrap_or_default());
             self.as_mut().set_loaded(track.is_some());

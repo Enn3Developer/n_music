@@ -5,7 +5,7 @@ import NMusic
 
 // A small modal dialog confirming an action, optionally asking for a name first; what it
 // holds goes under the name.
-Popup {
+DialogPopup {
     id: dialog
 
     property string title
@@ -56,10 +56,7 @@ Popup {
         confirmed(text);
     }
 
-    parent: Overlay.overlay
-    anchors.centerIn: parent
     width: Math.min(400, parent.width - 32)
-    modal: true
     focus: true
     padding: 20
     onOpened: {
@@ -69,17 +66,6 @@ Popup {
         } else {
             confirmButton.forceActiveFocus();
         }
-    }
-
-    Overlay.modal: Rectangle {
-        color: Theme.dark ? "#99000000" : "#55000000"
-    }
-
-    background: Rectangle {
-        radius: 12
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.line2
     }
 
     contentItem: Column {

@@ -168,6 +168,8 @@ Item {
                         color: playAll.down ? Qt.darker(Theme.accent, 1.08) : playAll.hovered ? Qt.lighter(Theme.accent, 1.06) : Theme.accent
                         border.width: playAll.visualFocus ? 2 : 0
                         border.color: Theme.text
+
+                        TintFade on color {}
                     }
                     contentItem: Item {
                         Icon {
@@ -368,7 +370,7 @@ Item {
 
         Behavior on opacity {
             NumberAnimation {
-                duration: 180
+                duration: Motion.fade
             }
         }
 

@@ -30,9 +30,11 @@ AbstractButton {
 
     background: Rectangle {
         radius: button.iconOnly ? 10 : height / 2
-        color: button.down || kinds.visible ? Theme.selected : button.hovered ? Theme.raised : button.iconOnly ? "transparent" : Theme.input
+        color: button.down || kinds.visible ? Theme.selected : button.hovered ? Theme.raised : button.iconOnly ? Qt.alpha(Theme.raised, 0) : Theme.input
         border.width: button.visualFocus ? 2 : button.iconOnly ? 0 : 1
         border.color: button.visualFocus ? Theme.text : Theme.accent
+
+        TintFade on color {}
     }
     contentItem: Item {
         implicitWidth: content.implicitWidth
@@ -64,6 +66,7 @@ AbstractButton {
         id: kinds
         x: button.width - width
         y: button.height + 8
+        transformOrigin: Popup.TopRight
         width: 300
 
         Instantiator {

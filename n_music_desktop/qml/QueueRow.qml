@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// An item of the queue: cover, title and artist, length; queued ones can be taken out, the
-// current one shows it plays. It and those still to play can be picked up with the mouse and
-// dragged to another place, which a grip before them shows.
+// An item of the queue: cover, title and artist, length; queued ones can be taken out. The
+// page's highlight grounds the current one and marks it playing. It and those still to play can
+// be picked up with the mouse and dragged to another place, which a grip before them shows.
+// Played rows grey over 150 ms; a row picked up lifts, standing out and growing to 102 %.
 Rectangle {
     id: row
 
@@ -19,6 +20,10 @@ Rectangle {
     /// It is being dragged, shown `lift` away from its place.
     property bool dragged: false
     property real lift: 0
+    /// It looks picked up: while dragged, and after it is let go until half way to its place.
+    property bool lifted: dragged
+    /// Back from the view's pool: what it shows changes at once, rather than fading.
+    property bool pooled: false
 
     signal activated
     signal remove
@@ -35,14 +40,68 @@ Rectangle {
     /// One dragged among those played stays held.
     readonly property bool movable: section === "next" || dragged
 
+    /// Tints the row for a moment, so the eye finds it: it holds for 200 ms and fades over
+    /// 400 ms.
+    function tint() {
+        flash.restart();
+    }
+
     implicitHeight: dense ? 42 : 54
     radius: 8
-    z: dragged ? 3 : 1
-    color: dragged ? Theme.raised : current ? Theme.selected : queued ? (mouse.containsMouse ? Theme.raised : Theme.surface) : mouse.containsMouse ? Theme.hover : "transparent"
-    border.width: dragged ? 1 : 0
-    border.color: Theme.line2
+    z: lifted ? 3 : 1
+    color: lifted ? Theme.raised : current ? Qt.alpha(Theme.hover, 0) : queued ? (mouse.containsMouse ? Theme.raised : Theme.surface) : mouse.containsMouse ? Theme.hover : Qt.alpha(Theme.hover, 0)
+    border.width: 1
+    border.color: lifted ? Theme.line2 : Qt.alpha(Theme.line2, 0)
+    scale: lifted ? 1 + 0.02 * Motion.travel : 1
     transform: Translate {
         y: row.lift
+    }
+    // A row taken out faded; back from the pool it shows again.
+    ListView.onPooled: pooled = true
+    ListView.onReused: {
+        opacity = 1;
+        Qt.callLater(() => row.pooled = false);
+    }
+
+    TintFade on color {
+        enabled: !row.pooled && !Theme.changing
+    }
+    ColorFade on border.color {
+        enabled: !row.pooled && !Theme.changing
+    }
+    Behavior on scale {
+        enabled: !row.pooled
+
+        ScaleAnimator {
+            duration: Motion.fade
+            easing.bezierCurve: Motion.standard
+        }
+    }
+
+    SequentialAnimation {
+        id: flash
+
+        PropertyAction {
+            target: tinted
+            property: "opacity"
+            value: 1
+        }
+        PauseAnimation {
+            duration: Motion.move
+        }
+        OpacityAnimator {
+            target: tinted
+            to: 0
+            duration: 400
+        }
+    }
+
+    Rectangle {
+        id: tinted
+        anchors.fill: parent
+        radius: parent.radius
+        color: Qt.alpha(Theme.accent, 0.12)
+        opacity: 0
     }
 
     MouseArea {
@@ -88,15 +147,25 @@ Rectangle {
         onDoubleClicked: row.activated()
     }
 
+    // Played, it greys: the grip fades out, the cover to 60 %, the title to the quieter colour.
     Icon {
         x: 4
         anchors.verticalCenter: parent.verticalCenter
-        visible: row.movable
+        opacity: row.movable ? 1 : 0
         name: "grip"
         size: 16
         color: row.dragged || mouse.containsMouse ? Theme.text2 : Theme.text3
 
+        Behavior on opacity {
+            enabled: !row.pooled
+
+            OpacityAnimator {
+                duration: Motion.fade
+            }
+        }
+
         HoverHandler {
+            enabled: row.movable
             cursorShape: row.dragged ? Qt.ClosedHandCursor : Qt.OpenHandCursor
         }
     }
@@ -107,6 +176,14 @@ Rectangle {
         size: row.dense ? 32 : 40
         path: row.cover
         opacity: row.section === "history" ? 0.6 : 1
+
+        Behavior on opacity {
+            enabled: !row.pooled
+
+            OpacityAnimator {
+                duration: Motion.fade
+            }
+        }
     }
     Column {
         anchors.left: art.right
@@ -123,6 +200,10 @@ Rectangle {
             color: row.current ? Theme.accentText : row.section === "history" ? Theme.text2 : Theme.text
             font.pixelSize: 14
             font.weight: Font.DemiBold
+
+            ColorFade on color {
+                enabled: !row.pooled && !Theme.changing
+            }
         }
         Label {
             width: parent.width
@@ -153,12 +234,19 @@ Rectangle {
         width: 36
         height: parent.height
 
+        // The highlight draws them, but not under the row in hand.
         PlayingBars {
             anchors.centerIn: parent
-            visible: row.current
+            visible: row.current && row.lifted
             playing: row.current && Player.playing
             size: 14
             color: Theme.accentText
+        }
+        Item {
+            anchors.centerIn: parent
+            width: 14
+            height: 14
+            visible: row.current
             Accessible.name: Tr.t.now_playing
         }
         IconButton {

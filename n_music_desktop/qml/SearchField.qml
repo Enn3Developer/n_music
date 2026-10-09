@@ -69,7 +69,9 @@ Rectangle {
 
         background: Rectangle {
             radius: 12
-            color: clear.hovered ? Theme.raised : "transparent"
+            color: clear.hovered ? Theme.raised : Qt.alpha(Theme.raised, 0)
+
+            TintFade on color {}
         }
         contentItem: Item {
             Icon {

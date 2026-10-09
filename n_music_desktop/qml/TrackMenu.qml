@@ -14,7 +14,7 @@ PopupMenu {
     property int row: -1
     /// The playlists holding the track already.
     property var holding: []
-    /// What the track belongs to, see `TrackList.about`.
+    /// The track and what it belongs to, see `TrackList.about`.
     property var about: ({})
     /// The pages of the track's album and artist, empty when unknown or listed already.
     readonly property string albumPage: about.album ? unlisted(Filters.collectionPage("album", about.album, about.albumArtist)) : ""
@@ -41,11 +41,17 @@ PopupMenu {
 
     MenuEntry {
         text: Tr.t.play_next
-        onTriggered: menu.list.enqueue(menu.row, true)
+        onTriggered: {
+            menu.list.enqueue(menu.row, true);
+            Shell.queued(menu.about.title ?? "", true);
+        }
     }
     MenuEntry {
         text: Tr.t.add_to_queue
-        onTriggered: menu.list.enqueue(menu.row, false)
+        onTriggered: {
+            menu.list.enqueue(menu.row, false);
+            Shell.queued(menu.about.title ?? "", false);
+        }
     }
 
     PopupMenu {

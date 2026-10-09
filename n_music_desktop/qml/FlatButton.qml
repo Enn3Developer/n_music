@@ -21,9 +21,11 @@ AbstractButton {
 
     background: Rectangle {
         radius: 8
-        color: button.down ? Theme.selected : button.hovered ? Theme.raised : button.filled ? Theme.surface : "transparent"
+        color: button.down ? Theme.selected : button.hovered ? Theme.raised : button.filled ? Theme.surface : Qt.alpha(Theme.raised, 0)
         border.width: button.visualFocus ? 2 : 0
         border.color: Theme.text
+
+        TintFade on color {}
     }
 
     contentItem: Row {
@@ -42,6 +44,8 @@ AbstractButton {
             text: button.text
             font: button.font
             color: button.hovered ? Theme.text : button.color
+
+            ColorFade on color {}
         }
     }
 }

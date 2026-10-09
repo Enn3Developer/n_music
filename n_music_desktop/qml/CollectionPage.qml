@@ -15,6 +15,16 @@ Item {
 
     signal navigate(string page)
 
+    /// The header's cover, where a cover flying from a grid card lands.
+    readonly property Cover cover: art
+    /// Hides the header's cover while one flies over it.
+    property bool coverHidden: false
+
+    /// Where the header's words and the list are in `to`, which a flying cover keeps clear of.
+    function zones(to: Item): var {
+        return [about, table].map(item => item.mapToItem(to, 0, 0, item.width, item.height));
+    }
+
     readonly property var key: Filters.collectionKey(kind, argument)
     /// The page lists the tracks without the tag, like Unknown album.
     readonly property bool unknown: kind !== "source" && key.name === ""
@@ -78,6 +88,7 @@ Item {
             Cover {
                 id: art
                 Layout.alignment: Qt.AlignBottom
+                opacity: page.coverHidden ? 0 : 1
                 size: Shell.narrow ? 96 : 168
                 radius: page.kind === "artist" ? art.size / 2 : Shell.narrow ? 8 : 10
                 iconName: ({

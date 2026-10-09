@@ -4,7 +4,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// Navigation between the library views, playlists, the queue and the settings.
+// Navigation between the library views, playlists, the queue and the settings. A pill under
+// each group marks its active entry.
 Rectangle {
     id: sidebar
 
@@ -63,40 +64,66 @@ Rectangle {
                 font.weight: Font.DemiBold
                 font.letterSpacing: 0.9
             }
-            NavItem {
+            Item {
                 Layout.fillWidth: true
-                iconName: "note"
-                text: Tr.t.tracks
-                active: sidebar.page === "tracks"
-                onClicked: sidebar.navigate("tracks")
-            }
-            NavItem {
-                Layout.fillWidth: true
-                iconName: "disc"
-                text: Tr.t.albums
-                active: sidebar.page === "albums" || sidebar.page.startsWith("album:")
-                onClicked: sidebar.navigate("albums")
-            }
-            NavItem {
-                Layout.fillWidth: true
-                iconName: "artist"
-                text: Tr.t.artists
-                active: sidebar.page === "artists" || sidebar.page.startsWith("artist:")
-                onClicked: sidebar.navigate("artists")
-            }
-            NavItem {
-                Layout.fillWidth: true
-                iconName: "tag"
-                text: Tr.t.genres
-                active: sidebar.page === "genres" || sidebar.page.startsWith("genre:")
-                onClicked: sidebar.navigate("genres")
-            }
-            NavItem {
-                Layout.fillWidth: true
-                iconName: "folder"
-                text: Tr.t.sources
-                active: sidebar.page === "sources" || sidebar.page.startsWith("source:")
-                onClicked: sidebar.navigate("sources")
+                implicitHeight: library.implicitHeight
+
+                NavPill {
+                    width: parent.width
+                    height: 36
+                    index: [tracks.active, albums.active, artists.active, genres.active, sources.active].indexOf(true)
+                }
+                Column {
+                    id: library
+                    width: parent.width
+                    spacing: 2
+
+                    NavItem {
+                        id: tracks
+                        width: parent.width
+                        pilled: true
+                        iconName: "note"
+                        text: Tr.t.tracks
+                        active: sidebar.page === "tracks"
+                        onClicked: sidebar.navigate("tracks")
+                    }
+                    NavItem {
+                        id: albums
+                        width: parent.width
+                        pilled: true
+                        iconName: "disc"
+                        text: Tr.t.albums
+                        active: sidebar.page === "albums" || sidebar.page.startsWith("album:")
+                        onClicked: sidebar.navigate("albums")
+                    }
+                    NavItem {
+                        id: artists
+                        width: parent.width
+                        pilled: true
+                        iconName: "artist"
+                        text: Tr.t.artists
+                        active: sidebar.page === "artists" || sidebar.page.startsWith("artist:")
+                        onClicked: sidebar.navigate("artists")
+                    }
+                    NavItem {
+                        id: genres
+                        width: parent.width
+                        pilled: true
+                        iconName: "tag"
+                        text: Tr.t.genres
+                        active: sidebar.page === "genres" || sidebar.page.startsWith("genre:")
+                        onClicked: sidebar.navigate("genres")
+                    }
+                    NavItem {
+                        id: sources
+                        width: parent.width
+                        pilled: true
+                        iconName: "folder"
+                        text: Tr.t.sources
+                        active: sidebar.page === "sources" || sidebar.page.startsWith("source:")
+                        onClicked: sidebar.navigate("sources")
+                    }
+                }
             }
         }
 
@@ -140,10 +167,18 @@ Rectangle {
                 model: Playlists.items
                 Accessible.name: Tr.t.playlists
 
+                // Below the entries, scrolling with them.
+                NavPill {
+                    width: playlists.width
+                    height: 36
+                    index: Playlists.items.findIndex(playlist => sidebar.page === "playlist:" + playlist.id)
+                }
+
                 delegate: NavItem {
                     required property var modelData
 
                     width: ListView.view.width
+                    pilled: true
                     iconName: modelData.smart ? "filter" : "playlist"
                     text: modelData.name
                     active: sidebar.page === "playlist:" + modelData.id
@@ -164,19 +199,39 @@ Rectangle {
                 implicitHeight: 1
                 color: Theme.line
             }
-            NavItem {
+            Item {
                 Layout.fillWidth: true
-                iconName: "queue"
-                text: Tr.t.queue
-                active: sidebar.page === "queue"
-                onClicked: sidebar.navigate("queue")
-            }
-            NavItem {
-                Layout.fillWidth: true
-                iconName: "settings"
-                text: Tr.t.settings
-                active: sidebar.page === "settings" || sidebar.page.startsWith("settings:")
-                onClicked: sidebar.navigate("settings")
+                implicitHeight: bottom.implicitHeight
+
+                NavPill {
+                    width: parent.width
+                    height: 36
+                    index: [queue.active, settings.active].indexOf(true)
+                }
+                Column {
+                    id: bottom
+                    width: parent.width
+                    spacing: 2
+
+                    NavItem {
+                        id: queue
+                        width: parent.width
+                        pilled: true
+                        iconName: "queue"
+                        text: Tr.t.queue
+                        active: sidebar.page === "queue"
+                        onClicked: sidebar.navigate("queue")
+                    }
+                    NavItem {
+                        id: settings
+                        width: parent.width
+                        pilled: true
+                        iconName: "settings"
+                        text: Tr.t.settings
+                        active: sidebar.page === "settings" || sidebar.page.startsWith("settings:")
+                        onClicked: sidebar.navigate("settings")
+                    }
+                }
             }
 
             // How far a scan got; opens the sources.
@@ -202,6 +257,8 @@ Rectangle {
                     color: progress.down ? Theme.selected : progress.hovered ? Theme.raised : Theme.surface
                     border.width: progress.visualFocus ? 2 : 0
                     border.color: Theme.text
+
+                    TintFade on color {}
                 }
                 contentItem: ColumnLayout {
                     spacing: 6

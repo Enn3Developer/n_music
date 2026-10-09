@@ -35,6 +35,8 @@ AbstractButton {
         color: Theme.input
         border.width: box.visualFocus ? 2 : 1
         border.color: menu.visible || box.visualFocus ? Theme.accent : box.hovered ? Theme.text3 : Theme.border
+
+        ColorFade on border.color {}
     }
 
     contentItem: Item {

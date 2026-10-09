@@ -28,6 +28,8 @@ pub mod qobject {
         #[qproperty(QString, accent)]
         /// Track lists use smaller covers and tighter rows; saved when changed.
         #[qproperty(bool, compact_rows)]
+        /// Things change in place rather than travel across the screen; saved when changed.
+        #[qproperty(bool, reduce_motion)]
         /// Track table columns left out, see `TrackColumns.hidden`; saved when changed.
         #[qproperty(QStringList, hidden_columns)]
         /// The folder picker lists hidden folders too; saved when changed.
@@ -92,6 +94,7 @@ pub struct AppStateRust {
     mini_on_top: bool,
     accent: QString,
     compact_rows: bool,
+    reduce_motion: bool,
     hidden_columns: QStringList,
     show_hidden_folders: bool,
     window_width: i32,
@@ -118,6 +121,7 @@ impl Default for AppStateRust {
             mini_on_top: true,
             accent: QString::from("amber"),
             compact_rows: false,
+            reduce_motion: false,
             hidden_columns: QStringList::default(),
             show_hidden_folders: false,
             window_width: size.width as i32,
@@ -149,6 +153,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_mini_on_top(ui.mini_on_top);
         self.as_mut().set_accent(QString::from(&ui.accent));
         self.as_mut().set_compact_rows(ui.compact_rows);
+        self.as_mut().set_reduce_motion(ui.reduce_motion);
         self.as_mut()
             .set_show_hidden_folders(ui.show_hidden_folders);
         let mut hidden = QList::<QString>::default();
@@ -251,6 +256,12 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_compact_rows_changed(|app| {
                 let compact = *app.compact_rows();
                 settings::ui().update(|ui| ui.compact_rows = compact);
+            })
+            .release();
+        self.as_mut()
+            .on_reduce_motion_changed(|app| {
+                let reduced = *app.reduce_motion();
+                settings::ui().update(|ui| ui.reduce_motion = reduced);
             })
             .release();
         self.as_mut()

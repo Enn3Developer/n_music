@@ -50,6 +50,8 @@ Item {
                     font.weight: Font.DemiBold
                     font.letterSpacing: 0.48
                     font.capitalization: Font.AllUppercase
+
+                    ColorFade on color {}
                 }
                 Icon {
                     anchors.verticalCenter: parent.verticalCenter

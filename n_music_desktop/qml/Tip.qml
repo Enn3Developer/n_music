@@ -12,6 +12,22 @@ ToolTip {
     leftPadding: 9
     rightPadding: 9
 
+    enter: Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: Motion.fade
+        }
+    }
+    exit: Transition {
+        NumberAnimation {
+            property: "opacity"
+            to: 0
+            duration: Motion.exit
+        }
+    }
+
     contentItem: Label {
         text: tip.text
         wrapMode: Text.WrapAnywhere

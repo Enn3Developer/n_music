@@ -104,6 +104,8 @@ TextField {
         color: Theme.input
         border.width: 1
         border.color: box.activeFocus ? Theme.accent : box.hovered ? Theme.text3 : Theme.border
+
+        ColorFade on border.color {}
     }
 
     RegularExpressionValidator {
@@ -149,7 +151,9 @@ TextField {
 
                 background: Rectangle {
                     radius: 6
-                    color: choice.hovered || choice.ListView.isCurrentItem ? Theme.menuHover : "transparent"
+                    color: choice.hovered || choice.ListView.isCurrentItem ? Theme.menuHover : Qt.alpha(Theme.menuHover, 0)
+
+                    TintFade on color {}
                 }
                 contentItem: Label {
                     text: choice.text

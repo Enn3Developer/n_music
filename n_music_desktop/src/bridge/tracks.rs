@@ -99,8 +99,8 @@ pub mod qobject {
         /// The ids of the playlists holding the track of `row` as an added track.
         #[qinvokable]
         fn playlists_with(self: &TrackList, row: i32) -> QVariant;
-        /// What the track of `row` belongs to, as `{ album, albumArtist, artist }`; the album's
-        /// artist falls back to the first artist, and each is empty when unknown.
+        /// The track of `row` and what it belongs to, as `{ title, album, albumArtist, artist }`;
+        /// the album's artist falls back to the first artist, and each is empty when unknown.
         #[qinvokable]
         fn about(self: &TrackList, row: i32) -> QVariant;
     }
@@ -516,6 +516,7 @@ impl qobject::TrackList {
             let track = &row.track;
             let artist = track.artists.first().map(String::as_str);
             for (key, value) in [
+                ("title", Some(track.title.as_str())),
                 ("album", track.album.as_deref()),
                 ("albumArtist", track.album_artist.as_deref().or(artist)),
                 ("artist", artist),

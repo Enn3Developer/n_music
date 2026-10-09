@@ -195,7 +195,9 @@ Item {
 
                         background: Rectangle {
                             radius: 14
-                            color: editRules.hovered ? Theme.hover : "transparent"
+                            color: editRules.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+                            TintFade on color {}
                         }
                         contentItem: Label {
                             verticalAlignment: Text.AlignVCenter
@@ -203,6 +205,8 @@ Item {
                             color: editRules.hovered ? Theme.text : Theme.text2
                             font.pixelSize: 13
                             font.underline: true
+
+                            ColorFade on color {}
                         }
                     }
                 }
@@ -334,7 +338,7 @@ Item {
 
         Behavior on opacity {
             NumberAnimation {
-                duration: 180
+                duration: Motion.fade
             }
         }
 

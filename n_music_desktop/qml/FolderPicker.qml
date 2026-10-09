@@ -6,7 +6,7 @@ import NMusic
 
 // Picks a folder of this computer: the places to start from on the side, and the folders of
 // the one shown under the way to it, which can be typed instead.
-Popup {
+DialogPopup {
     id: picker
 
     property string title: Tr.t.choose_folder
@@ -99,11 +99,8 @@ Popup {
         return 16 + (crumb.kind !== "" ? 22 : 0) + Math.ceil((shown ? boldMetrics : metrics).advanceWidth(placeName(crumb)));
     }
 
-    parent: Overlay.overlay
-    anchors.centerIn: parent
     width: Math.min(760, parent.width - 32)
     height: Math.min(560, parent.height - 32)
-    modal: true
     focus: true
     padding: 0
     closePolicy: Popup.CloseOnEscape
@@ -115,17 +112,6 @@ Popup {
         browser.open(from !== "" ? from : browser.start());
     }
     onOpened: list.forceActiveFocus()
-
-    Overlay.modal: Rectangle {
-        color: Theme.dark ? "#99000000" : "#55000000"
-    }
-
-    background: Rectangle {
-        radius: 12
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.line2
-    }
 
     FolderBrowser {
         id: browser
@@ -220,9 +206,11 @@ Popup {
 
                 background: Rectangle {
                     radius: height / 2
-                    color: chip.active ? Theme.raised : chip.down ? Theme.selected : chip.hovered ? Theme.hover : "transparent"
+                    color: chip.active ? Theme.raised : chip.down ? Theme.selected : chip.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
                     border.width: chip.visualFocus ? 2 : 1
                     border.color: chip.visualFocus ? Theme.text : chip.active ? Theme.border : Theme.line2
+
+                    TintFade on color {}
                 }
                 contentItem: Row {
                     spacing: 6
@@ -398,7 +386,9 @@ Popup {
 
                                         background: Rectangle {
                                             radius: 6
-                                            color: step.down ? Theme.selected : step.hovered && !crumb.last ? Theme.hover : "transparent"
+                                            color: step.down ? Theme.selected : step.hovered && !crumb.last ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+                                            TintFade on color {}
                                         }
                                         contentItem: RowLayout {
                                             spacing: 6
@@ -547,7 +537,9 @@ Popup {
 
                             background: Rectangle {
                                 radius: 8
-                                color: folder.down || folder.marked ? Theme.selected : folder.hovered ? Theme.hover : "transparent"
+                                color: folder.down || folder.marked ? Theme.selected : folder.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+                                TintFade on color {}
                             }
                             contentItem: RowLayout {
                                 spacing: 12
@@ -558,6 +550,8 @@ Popup {
                                     name: "folder"
                                     size: 18
                                     color: folder.hovered || folder.marked ? Theme.accentText : Theme.text2
+
+                                    ColorFade on color {}
                                 }
                                 Label {
                                     Layout.fillWidth: true
@@ -576,6 +570,8 @@ Popup {
                                     stroke: 2
                                     color: Theme.text3
                                     opacity: folder.hovered || folder.marked ? 1 : 0
+
+                                    HoverFade on opacity {}
                                 }
                             }
                         }

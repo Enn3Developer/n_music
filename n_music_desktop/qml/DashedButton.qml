@@ -23,14 +23,18 @@ AbstractButton {
         Rectangle {
             anchors.fill: parent
             radius: button.radius
-            color: button.down ? Theme.selected : button.hovered ? Theme.hover : "transparent"
+            color: button.down ? Theme.selected : button.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
             border.width: button.visualFocus ? 2 : 0
             border.color: Theme.text
+
+            TintFade on color {}
         }
         DashedFrame {
             anchors.fill: parent
             radius: button.radius
             color: button.hovered ? Theme.text3 : Theme.border
+
+            ColorFade on color {}
         }
     }
 

@@ -4,7 +4,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import NMusic
 
-// The sidebar folded to a rail of icons for compact windows; the playlists open from a menu.
+// The sidebar folded to a rail of icons for compact windows; the playlists open from a menu. A
+// pill under each group marks its active entry.
 Rectangle {
     id: rail
 
@@ -49,35 +50,63 @@ Rectangle {
                 size: 26
             }
 
-            RailItem {
-                iconName: "note"
-                text: Tr.t.tracks
-                active: rail.page === "tracks"
-                onClicked: rail.navigate("tracks")
-            }
-            RailItem {
-                iconName: "disc"
-                text: Tr.t.albums
-                active: rail.page === "albums" || rail.page.startsWith("album:")
-                onClicked: rail.navigate("albums")
-            }
-            RailItem {
-                iconName: "artist"
-                text: Tr.t.artists
-                active: rail.page === "artists" || rail.page.startsWith("artist:")
-                onClicked: rail.navigate("artists")
-            }
-            RailItem {
-                iconName: "tag"
-                text: Tr.t.genres
-                active: rail.page === "genres" || rail.page.startsWith("genre:")
-                onClicked: rail.navigate("genres")
-            }
-            RailItem {
-                iconName: "folder"
-                text: Tr.t.sources
-                active: rail.page === "sources" || rail.page.startsWith("source:")
-                onClicked: rail.navigate("sources")
+            Item {
+                Layout.alignment: Qt.AlignHCenter
+                implicitWidth: 44
+                implicitHeight: library.implicitHeight
+
+                NavPill {
+                    width: 44
+                    height: 44
+                    radius: 10
+                    pitch: 48
+                    index: [tracks.active, albums.active, artists.active, genres.active, sources.active].indexOf(true)
+                }
+                Column {
+                    id: library
+                    spacing: 4
+
+                    RailItem {
+                        id: tracks
+                        pilled: true
+                        iconName: "note"
+                        text: Tr.t.tracks
+                        active: rail.page === "tracks"
+                        onClicked: rail.navigate("tracks")
+                    }
+                    RailItem {
+                        id: albums
+                        pilled: true
+                        iconName: "disc"
+                        text: Tr.t.albums
+                        active: rail.page === "albums" || rail.page.startsWith("album:")
+                        onClicked: rail.navigate("albums")
+                    }
+                    RailItem {
+                        id: artists
+                        pilled: true
+                        iconName: "artist"
+                        text: Tr.t.artists
+                        active: rail.page === "artists" || rail.page.startsWith("artist:")
+                        onClicked: rail.navigate("artists")
+                    }
+                    RailItem {
+                        id: genres
+                        pilled: true
+                        iconName: "tag"
+                        text: Tr.t.genres
+                        active: rail.page === "genres" || rail.page.startsWith("genre:")
+                        onClicked: rail.navigate("genres")
+                    }
+                    RailItem {
+                        id: sources
+                        pilled: true
+                        iconName: "folder"
+                        text: Tr.t.sources
+                        active: rail.page === "sources" || rail.page.startsWith("source:")
+                        onClicked: rail.navigate("sources")
+                    }
+                }
             }
             RailItem {
                 id: lists
@@ -130,18 +159,40 @@ Rectangle {
                 text: Tr.t.updating_library + (Scan.found > 0 ? " · " + Tr.t.read_of_found.arg(Format.number(Scan.read)).arg(Format.number(Scan.found)) : "")
                 onClicked: rail.navigate("sources")
             }
-            RailItem {
-                iconName: "queue"
-                text: Tr.t.queue
-                active: rail.page === "queue"
-                onClicked: rail.navigate("queue")
-            }
-            RailItem {
+            Item {
+                Layout.alignment: Qt.AlignHCenter
                 Layout.bottomMargin: 14
-                iconName: "settings"
-                text: Tr.t.settings
-                active: rail.page === "settings" || rail.page.startsWith("settings:")
-                onClicked: rail.navigate("settings")
+                implicitWidth: 44
+                implicitHeight: bottom.implicitHeight
+
+                NavPill {
+                    width: 44
+                    height: 44
+                    radius: 10
+                    pitch: 48
+                    index: [queue.active, settings.active].indexOf(true)
+                }
+                Column {
+                    id: bottom
+                    spacing: 4
+
+                    RailItem {
+                        id: queue
+                        pilled: true
+                        iconName: "queue"
+                        text: Tr.t.queue
+                        active: rail.page === "queue"
+                        onClicked: rail.navigate("queue")
+                    }
+                    RailItem {
+                        id: settings
+                        pilled: true
+                        iconName: "settings"
+                        text: Tr.t.settings
+                        active: rail.page === "settings" || rail.page.startsWith("settings:")
+                        onClicked: rail.navigate("settings")
+                    }
+                }
             }
         }
     }
@@ -161,6 +212,8 @@ Rectangle {
 
         property string iconName
         property bool active: false
+        /// A NavPill under the entries grounds the active one, rather than the entry itself.
+        property bool pilled: false
         property color iconColor: active ? Theme.accentText : hovered ? Theme.text : Theme.text2
         /// Turns the icon round and round while it shows.
         property bool spinning: false
@@ -180,9 +233,11 @@ Rectangle {
 
         background: Rectangle {
             radius: 10
-            color: item.active ? Theme.raised : item.down ? Theme.selected : item.hovered ? Theme.hover : "transparent"
+            color: item.active ? (item.pilled ? Qt.alpha(Theme.hover, 0) : Theme.raised) : item.down ? Theme.selected : item.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
             border.width: item.visualFocus ? 2 : 0
             border.color: Theme.text
+
+            TintFade on color {}
         }
         contentItem: Item {
             Icon {
@@ -190,13 +245,23 @@ Rectangle {
                 name: item.iconName
                 size: 20
                 color: item.iconColor
+                scale: item.down ? 0.84 : 1
 
+                ColorFade on color {}
+                PressScale on scale {}
+
+                // Under reduced motion it holds still; the tip still tells how far it got.
                 RotationAnimator on rotation {
-                    running: item.spinning && item.visible
+                    running: item.spinning && item.visible && !Motion.reduced
                     from: 0
                     to: 360
                     duration: 1400
                     loops: Animation.Infinite
+                    // Stopped, it stands upright again.
+                    onRunningChanged: {
+                        if (!running)
+                            target.rotation = 0;
+                    }
                 }
             }
         }

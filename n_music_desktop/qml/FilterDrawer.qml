@@ -3,7 +3,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// A panel sliding in from the right to write filter rules and an order. It works on a copy of
+// A panel coming in from the right to write filter rules and an order: it fades in as it moves
+// 24 px into place over 250 ms, and leaves the same way over 150 ms. It works on a copy of
 // `filter` and `sort`, counting the matches as it goes; Apply hands them over.
 FocusScope {
     id: drawer
@@ -100,16 +101,33 @@ FocusScope {
         reshape();
     }
 
-    x: shown ? parent.width - width : parent.width
+    x: parent.width - width
     width: Math.min(520, parent.width)
     height: parent.height
-    visible: x < parent.width
+    visible: shown || fading.running
+    opacity: shown ? 1 : 0
+    transform: Translate {
+        x: drawer.shown ? 0 : 24 * Motion.travel
+
+        // Coming in, it ends at 0.
+        Behavior on x {
+            id: slide
+
+            NumberAnimation {
+                duration: slide.targetValue === 0 ? Motion.enter : Motion.fade
+                easing.bezierCurve: slide.targetValue === 0 ? Motion.standard : Motion.leaving
+            }
+        }
+    }
     Keys.onEscapePressed: close()
 
-    Behavior on x {
-        NumberAnimation {
-            duration: 180
-            easing.type: Easing.OutCubic
+    Behavior on opacity {
+        id: fade
+
+        OpacityAnimator {
+            id: fading
+            duration: fade.targetValue > 0 ? Motion.enter : Motion.fade
+            easing.bezierCurve: fade.targetValue > 0 ? Motion.standard : Motion.leaving
         }
     }
 

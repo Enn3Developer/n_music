@@ -148,9 +148,11 @@ Rectangle {
 
                         background: Rectangle {
                             radius: 12
-                            color: card.modelData.later ? (card.hovered ? Theme.hover : "transparent") : card.down ? Theme.selected : card.hovered ? Theme.hover : Theme.surface
+                            color: card.modelData.later ? (card.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)) : card.down ? Theme.selected : card.hovered ? Theme.hover : Theme.surface
                             border.width: card.visualFocus ? 2 : 1
                             border.color: card.visualFocus ? Theme.text : card.modelData.later ? Theme.line : Theme.accent
+
+                            TintFade on color {}
                         }
                         contentItem: ColumnLayout {
                             spacing: 8
@@ -315,6 +317,8 @@ Rectangle {
                     color: build.down ? Qt.darker(Theme.accent, 1.08) : build.hovered ? Qt.lighter(Theme.accent, 1.06) : Theme.accent
                     border.width: build.visualFocus ? 2 : 0
                     border.color: Theme.text
+
+                    TintFade on color {}
                 }
                 contentItem: Row {
                     spacing: 8

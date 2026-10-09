@@ -30,7 +30,9 @@ MenuItem {
 
     background: Rectangle {
         radius: 6
-        color: (entry.highlighted || (entry.subMenu && entry.subMenu.visible)) && entry.enabled ? Theme.menuHover : "transparent"
+        color: (entry.highlighted || (entry.subMenu && entry.subMenu.visible)) && entry.enabled ? Theme.menuHover : Qt.alpha(Theme.menuHover, 0)
+
+        TintFade on color {}
     }
 
     contentItem: Item {

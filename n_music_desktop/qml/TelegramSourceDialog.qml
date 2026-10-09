@@ -7,7 +7,7 @@ import NMusic
 // Adds a Telegram chat as a source. Signs in first when needed, with the account's phone
 // number, the code Telegram sends and the account's password; then lists the account's chats
 // to pick one, or finds a public one by its @name or t.me link.
-Popup {
+DialogPopup {
     id: dialog
 
     /// The locations of the chats added already: they show as added, and are not picked again.
@@ -74,11 +74,8 @@ Popup {
             field.forceActiveFocus();
     }
 
-    parent: Overlay.overlay
-    anchors.centerIn: parent
     width: Math.min(picking ? 560 : 420, parent.width - 32)
     height: picking ? Math.min(600, parent.height - 32) : implicitHeight
-    modal: true
     focus: true
     padding: 20
     closePolicy: Popup.CloseOnEscape
@@ -119,17 +116,6 @@ Popup {
         id: typing
         interval: 300
         onTriggered: Telegram.find(search.text)
-    }
-
-    Overlay.modal: Rectangle {
-        color: Theme.dark ? "#99000000" : "#55000000"
-    }
-
-    background: Rectangle {
-        radius: 12
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.line2
     }
 
     contentItem: ColumnLayout {
@@ -329,7 +315,9 @@ Popup {
 
                         background: Rectangle {
                             radius: 8
-                            color: chat.down || chat.marked ? Theme.selected : chat.hovered ? Theme.hover : "transparent"
+                            color: chat.down || chat.marked ? Theme.selected : chat.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+                            TintFade on color {}
                         }
                         contentItem: RowLayout {
                             spacing: 12
@@ -344,6 +332,8 @@ Popup {
                                     })[chat.modelData.kind] ?? "send"
                                 size: 18
                                 color: chat.hovered || chat.marked ? Theme.accentText : Theme.text2
+
+                                ColorFade on color {}
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true

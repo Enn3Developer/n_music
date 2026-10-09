@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Controls.Basic
 import NMusic
 
-// A track in a table: its number (a playing mark while current), cover, title and artist,
-// album, then the values its columns show and the length; narrow ones put the length beside the
-// artist.
+// A track in a table: its number, cover, title and artist, album, then the values its columns
+// show and the length; narrow ones put the length beside the artist. The table's
+// PlayingHighlight grounds the current one, picked or not, and marks it playing: a ground of
+// its own would hide the playing bars.
 Rectangle {
     id: row
 
@@ -34,9 +35,11 @@ Rectangle {
     /// under a button at the right edge.
     signal menuRequested(Item item, real x, real y, bool leftwards)
 
-    implicitHeight: columns.narrow ? (dense ? 48 : 60) : dense ? 40 : 52
+    implicitHeight: columns.rowHeight
     radius: 8
-    color: selected ? Theme.raised : current || menuOpen ? Theme.selected : mouse.containsMouse ? Theme.hover : "transparent"
+    color: current ? Qt.alpha(Theme.hover, 0) : selected ? Theme.raised : menuOpen ? Theme.selected : mouse.containsMouse ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+    TintFade on color {}
 
     MouseArea {
         id: mouse
@@ -76,14 +79,14 @@ Rectangle {
                     "tnum": 1
                 }
             }
-            PlayingBars {
+            // The highlight draws the playing bars here.
+            Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
+                width: 14
+                height: 14
                 visible: row.current
-                playing: row.current && Player.playing
-                size: 14
-                color: Theme.accentText
                 Accessible.name: Tr.t.now_playing
             }
         }

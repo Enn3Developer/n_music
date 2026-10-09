@@ -10,11 +10,34 @@ Rectangle {
 
     signal navigate(string page)
 
+    /// Whether the place in Up next of a track queued now shows: first when it plays `next`,
+    /// else after the queued ones.
+    function shows(next: bool): bool {
+        if (!visible)
+            return false;
+        if (list.count === 0)
+            return true;
+        const row = list.itemAtIndex(Math.min(next ? 0 : queue.upNextCount, list.count - 1));
+        return row !== null && row.y >= list.contentY && row.y + row.height <= list.contentY + list.height;
+    }
+
     implicitWidth: 360
     color: Theme.panel
 
     QueueList {
         id: queue
+        fades: true
+        onReplacing: rowMotion.fadeThrough()
+    }
+
+    RowTransitions {
+        id: rowMotion
+        view: list
+        queue: queue
+        pitch: (AppState.compactRows ? 42 : 52) + list.spacing
+        slidesOnSkip: true
+        // A new list shows from its start.
+        onSwapped: list.positionViewAtBeginning()
     }
 
     Rectangle {
@@ -30,44 +53,50 @@ Rectangle {
         anchors.topMargin: 22
         spacing: 18
 
-        Cover {
+        CoverSwap {
             Layout.alignment: Qt.AlignHCenter
             // Leaves room for a few tracks after it in short windows.
             size: Math.min(panel.width - 40, Math.max(120, panel.height - 400))
             radius: 12
-            path: Player.cover
         }
 
-        ColumnLayout {
+        TrackSwap {
             Layout.fillWidth: true
-            spacing: 4
 
-            Label {
-                Layout.fillWidth: true
-                text: Player.loaded ? Player.title : Tr.t.not_playing
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                color: Player.loaded ? Theme.text : Theme.text3
-                font.pixelSize: 20
-                font.weight: Font.Bold
-            }
-            Label {
-                Layout.fillWidth: true
-                visible: text !== ""
-                text: [Player.artist, Player.album, Player.year].filter(part => part !== "").join(" · ")
-                elide: Text.ElideRight
-                color: Theme.text2
-                font.pixelSize: 14
-            }
-            Label {
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                visible: text !== ""
-                text: [Format.audio(Player.codec, Player.sampleRate, Player.bits), Format.gain(Player.albumGain, Player.trackGain)].filter(part => part !== "").join(" · ")
-                elide: Text.ElideRight
-                color: Theme.text3
-                font.pixelSize: 12
+            delegate: ColumnLayout {
+                id: words
+
+                required property var track
+
+                spacing: 4
+
+                Label {
+                    Layout.fillWidth: true
+                    text: words.track.loaded ? words.track.title : Tr.t.not_playing
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    color: words.track.loaded ? Theme.text : Theme.text3
+                    font.pixelSize: 20
+                    font.weight: Font.Bold
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: [words.track.artist, words.track.album, words.track.year].filter(part => part !== "").join(" · ")
+                    elide: Text.ElideRight
+                    color: Theme.text2
+                    font.pixelSize: 14
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    visible: text !== ""
+                    text: [Format.audio(words.track.codec, words.track.sampleRate, words.track.bits), Format.gain(words.track.albumGain, words.track.trackGain)].filter(part => part !== "").join(" · ")
+                    elide: Text.ElideRight
+                    color: Theme.text3
+                    font.pixelSize: 12
+                }
             }
         }
 
@@ -93,6 +122,8 @@ Rectangle {
                     color: open.hovered ? Theme.text : Theme.text2
                     font.pixelSize: 13
                     font.underline: true
+
+                    ColorFade on color {}
                 }
                 background: Rectangle {
                     color: "transparent"
@@ -110,7 +141,7 @@ Rectangle {
             Layout.rightMargin: -6
 
             ListView {
-                id: next
+                id: list
                 anchors.fill: parent
                 clip: true
                 spacing: 2
@@ -119,6 +150,13 @@ Rectangle {
                 reuseItems: true
                 boundsBehavior: Flickable.StopAtBounds
                 Accessible.name: Tr.t.up_next
+                add: rowMotion.add
+                remove: rowMotion.remove
+                addDisplaced: rowMotion.addDisplaced
+                removeDisplaced: rowMotion.removeDisplaced
+                moveDisplaced: rowMotion.moveDisplaced
+                move: rowMotion.move
+                populate: rowMotion.populate
 
                 delegate: AbstractButton {
                     id: entry
@@ -137,10 +175,46 @@ Rectangle {
                     hoverEnabled: true
                     text: title
                     onDoubleClicked: queue.play(index)
+                    // A row taken out faded; back from the pool it shows again.
+                    ListView.onReused: entry.opacity = 1
+
+                    /// Tints the row for a moment, so the eye finds it: it holds for 200 ms
+                    /// and fades over 400 ms.
+                    function tint() {
+                        flash.restart();
+                    }
+
+                    SequentialAnimation {
+                        id: flash
+
+                        PropertyAction {
+                            target: tinted
+                            property: "opacity"
+                            value: 1
+                        }
+                        PauseAnimation {
+                            duration: Motion.move
+                        }
+                        OpacityAnimator {
+                            target: tinted
+                            to: 0
+                            duration: 400
+                        }
+                    }
 
                     background: Rectangle {
                         radius: 8
-                        color: entry.hovered ? Theme.hover : "transparent"
+                        color: entry.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
+
+                        TintFade on color {}
+
+                        Rectangle {
+                            id: tinted
+                            anchors.fill: parent
+                            radius: parent.radius
+                            color: Qt.alpha(Theme.accent, 0.12)
+                            opacity: 0
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 10
@@ -189,7 +263,7 @@ Rectangle {
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 12
-                visible: next.count === 0
+                visible: list.count === 0
                 text: Tr.t.nothing_up_next
                 color: Theme.text3
                 font.pixelSize: 13

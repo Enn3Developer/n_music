@@ -271,6 +271,17 @@ ColumnLayout {
                 }
             }
             SettingRow {
+                title: Tr.t.reduce_motion
+                description: Tr.t.reduce_motion_hint
+                divider: true
+
+                ToggleSwitch {
+                    checked: AppState.reduceMotion
+                    Accessible.name: Tr.t.reduce_motion
+                    onToggled: AppState.reduceMotion = checked
+                }
+            }
+            SettingRow {
                 title: Tr.t.track_columns
                 description: Tr.t.track_columns_hint
                 divider: true
@@ -481,6 +492,8 @@ ColumnLayout {
                         color: link.hovered ? Theme.text : Theme.text2
                         font.pixelSize: 13
                         font.underline: true
+
+                        ColorFade on color {}
                     }
                     background: Rectangle {
                         color: "transparent"
@@ -526,9 +539,11 @@ ColumnLayout {
 
         background: Rectangle {
             radius: height / 2
-            color: toggle.checked ? Theme.raised : toggle.hovered ? Theme.hover : "transparent"
+            color: toggle.checked ? Theme.raised : toggle.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
             border.width: toggle.visualFocus ? 2 : 1
             border.color: toggle.visualFocus ? Theme.text : toggle.checked ? Theme.raised : Theme.border
+
+            TintFade on color {}
         }
         contentItem: Row {
             spacing: 6
@@ -549,7 +564,7 @@ ColumnLayout {
         }
     }
 
-    // One of the accent colours, ringed while picked.
+    // One of the accent colours, ringed while picked. Pressing shrinks it.
     component Swatch: AbstractButton {
         id: swatch
 
@@ -566,13 +581,18 @@ ColumnLayout {
         Accessible.name: text
         Accessible.checkable: true
         Accessible.checked: checked
+        scale: down ? 0.9 : 1
         onClicked: AppState.accent = modelData.name
+
+        PressScale on scale {}
 
         background: Rectangle {
             radius: width / 2
             color: "transparent"
             border.width: 2
-            border.color: swatch.checked || swatch.visualFocus ? Theme.text : swatch.hovered ? Theme.border : "transparent"
+            border.color: swatch.checked || swatch.visualFocus ? Theme.text : swatch.hovered ? Theme.border : Qt.alpha(Theme.border, 0)
+
+            ColorFade on border.color {}
 
             Rectangle {
                 anchors.fill: parent
@@ -584,11 +604,17 @@ ColumnLayout {
         contentItem: Item {
             Icon {
                 anchors.centerIn: parent
-                visible: swatch.checked
+                opacity: swatch.checked ? 1 : 0
                 name: "check"
                 size: 14
                 stroke: 2.4
                 color: swatch.modelData.ink
+
+                Behavior on opacity {
+                    OpacityAnimator {
+                        duration: Motion.fade
+                    }
+                }
             }
         }
     }

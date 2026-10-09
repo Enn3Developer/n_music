@@ -10,6 +10,12 @@ Rectangle {
     /// The queue page is open.
     property bool queueOpen: false
 
+    /// Lights the queue's button up for a moment, after a track was queued out of sight: it
+    /// turns the accent over 150 ms, holds and turns back.
+    function ping() {
+        pinged.restart();
+    }
+
     signal toggleQueue
     /// The mini player was asked for.
     signal miniRequested
@@ -19,6 +25,12 @@ Rectangle {
 
     implicitHeight: Shell.narrow ? 72 : 88
     color: Theme.surface
+
+    // How far the track got, smoothly between the player's reports.
+    PlayClock {
+        id: clock
+        running: bar.Window.visibility !== Window.Minimized && bar.Window.visibility !== Window.Hidden
+    }
 
     Rectangle {
         width: parent.width
@@ -32,35 +44,41 @@ Rectangle {
         height: parent.height
         visible: !Shell.narrow
 
-        Cover {
+        CoverSwap {
             id: art
             anchors.verticalCenter: parent.verticalCenter
             size: 56
             radius: 6
-            path: Player.cover
         }
-        Column {
+        TrackSwap {
             anchors.left: art.right
             anchors.leftMargin: 14
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 3
 
-            Label {
-                width: parent.width
-                text: Player.loaded ? Player.title : Tr.t.not_playing
-                elide: Text.ElideRight
-                color: Player.loaded ? Theme.text : Theme.text3
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-            }
-            Label {
-                width: parent.width
-                visible: Player.loaded
-                text: [Player.artist, Player.album].filter(part => part !== "").join(" · ")
-                elide: Text.ElideRight
-                color: Theme.text2
-                font.pixelSize: 13
+            delegate: Column {
+                id: words
+
+                required property var track
+
+                spacing: 3
+
+                Label {
+                    width: words.width
+                    text: words.track.loaded ? words.track.title : Tr.t.not_playing
+                    elide: Text.ElideRight
+                    color: words.track.loaded ? Theme.text : Theme.text3
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+                Label {
+                    width: words.width
+                    visible: words.track.loaded
+                    text: [words.track.artist, words.track.album].filter(part => part !== "").join(" · ")
+                    elide: Text.ElideRight
+                    color: Theme.text2
+                    font.pixelSize: 13
+                }
             }
         }
     }
@@ -99,16 +117,12 @@ Rectangle {
                 implicitWidth: 44
                 implicitHeight: 44
                 hoverEnabled: true
-                scale: play.down ? 0.96 : play.hovered ? 1.04 : 1
+                scale: play.down ? 0.9 : 1
                 text: Player.playing ? Tr.t.pause : Tr.t.play
                 Accessible.name: text
                 onClicked: Player.toggle()
 
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 90
-                    }
-                }
+                PressScale on scale {}
 
                 background: Rectangle {
                     radius: 22
@@ -117,11 +131,9 @@ Rectangle {
                     border.color: Theme.accent
                 }
                 contentItem: Item {
-                    Icon {
+                    PlayPauseIcon {
                         anchors.centerIn: parent
-                        // The triangle's weight sits left of its box.
-                        anchors.horizontalCenterOffset: Player.playing ? 0 : 1
-                        name: Player.playing ? "pause" : "play"
+                        playing: Player.playing
                         size: 20
                         color: Theme.surface
                     }
@@ -182,7 +194,7 @@ Rectangle {
 
                 Binding on value {
                     when: !progress.pressed
-                    value: Player.position
+                    value: clock.position
                     restoreMode: Binding.RestoreNone
                 }
             }
@@ -216,9 +228,14 @@ Rectangle {
         IconButton {
             anchors.verticalCenter: parent.verticalCenter
             iconName: "queue"
-            color: bar.queueOpen ? Theme.accentText : Theme.text2
+            color: bar.queueOpen || pinged.running ? Theme.accentText : Theme.text2
             text: Tr.t.queue
             onClicked: bar.toggleQueue()
+
+            Timer {
+                id: pinged
+                interval: 750
+            }
         }
         IconButton {
             anchors.verticalCenter: parent.verticalCenter
@@ -257,7 +274,7 @@ Rectangle {
             color: Theme.track
 
             Rectangle {
-                width: Player.length > 0 ? parent.width * Math.min(1, Player.position / Player.length) : 0
+                width: Player.length > 0 ? parent.width * Math.min(1, clock.position / Player.length) : 0
                 height: parent.height
                 color: Theme.accent
             }
@@ -280,39 +297,47 @@ Rectangle {
                 anchors.bottomMargin: 8
                 anchors.leftMargin: -6
                 radius: 8
-                color: current.down ? Theme.selected : current.hovered ? Theme.hover : "transparent"
+                color: current.down ? Theme.selected : current.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
                 border.width: current.visualFocus ? 2 : 0
                 border.color: Theme.text
+
+                TintFade on color {}
             }
             contentItem: Row {
                 spacing: 10
 
-                Cover {
+                CoverSwap {
                     anchors.verticalCenter: parent.verticalCenter
                     size: 44
                     radius: 5
-                    path: Player.cover
                 }
-                Column {
+                TrackSwap {
                     anchors.verticalCenter: parent.verticalCenter
                     width: current.width - 44 - 10
-                    spacing: 2
 
-                    Label {
-                        width: parent.width
-                        text: Player.loaded ? Player.title : Tr.t.not_playing
-                        elide: Text.ElideRight
-                        color: Player.loaded ? Theme.text : Theme.text3
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
-                    }
-                    Label {
-                        width: parent.width
-                        visible: Player.loaded && text !== ""
-                        text: Player.artist
-                        elide: Text.ElideRight
-                        color: Theme.text2
-                        font.pixelSize: 12
+                    delegate: Column {
+                        id: brief
+
+                        required property var track
+
+                        spacing: 2
+
+                        Label {
+                            width: brief.width
+                            text: brief.track.loaded ? brief.track.title : Tr.t.not_playing
+                            elide: Text.ElideRight
+                            color: brief.track.loaded ? Theme.text : Theme.text3
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                        }
+                        Label {
+                            width: brief.width
+                            visible: brief.track.loaded && text !== ""
+                            text: brief.track.artist
+                            elide: Text.ElideRight
+                            color: Theme.text2
+                            font.pixelSize: 12
+                        }
                     }
                 }
             }
@@ -330,21 +355,23 @@ Rectangle {
                 implicitWidth: 44
                 implicitHeight: 44
                 hoverEnabled: true
+                scale: toggle.down ? 0.9 : 1
                 text: Player.playing ? Tr.t.pause : Tr.t.play
                 Accessible.name: text
                 onClicked: Player.toggle()
 
+                PressScale on scale {}
+
                 background: Rectangle {
                     radius: 22
-                    color: toggle.down ? Qt.darker(Theme.text, 1.1) : Theme.text
+                    color: Theme.text
                     border.width: toggle.visualFocus ? 2 : 0
                     border.color: Theme.accent
                 }
                 contentItem: Item {
-                    Icon {
+                    PlayPauseIcon {
                         anchors.centerIn: parent
-                        anchors.horizontalCenterOffset: Player.playing ? 0 : 1
-                        name: Player.playing ? "pause" : "play"
+                        playing: Player.playing
                         size: 18
                         color: Theme.surface
                     }

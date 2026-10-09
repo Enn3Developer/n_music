@@ -34,11 +34,16 @@ pub mod qobject {
         /// Rows are sliding into their places: session updates wait until they stop, as one
         /// landing meanwhile would leave them where they stopped.
         #[qproperty(bool, moving)]
+        /// A change too big to show row by row waits for the view to fade the list out: it
+        /// tells `replacing` and calls `replace` once faded. Otherwise the list changes at once.
+        #[qproperty(bool, fades)]
         #[qproperty(i32, history_count)]
         /// Queued items still to play.
         #[qproperty(i32, up_next_count)]
         /// Items still to play, the last rows.
         #[qproperty(i32, left_count)]
+        /// The row of the current item; -1 when none is listed.
+        #[qproperty(i32, current_row)]
         /// What the session plays from, like `Tracks`; empty for the whole library.
         #[qproperty(QString, context_label)]
         /// How that was narrowed down, like a search, joined with ` · `.
@@ -77,6 +82,10 @@ pub mod qobject {
         #[inherit]
         fn end_move_rows(self: Pin<&mut QueueList>);
         #[inherit]
+        fn begin_reset_model(self: Pin<&mut QueueList>);
+        #[inherit]
+        fn end_reset_model(self: Pin<&mut QueueList>);
+        #[inherit]
         fn index(self: &QueueList, row: i32, column: i32, parent: &QModelIndex) -> QModelIndex;
         #[inherit]
         #[qsignal]
@@ -112,9 +121,22 @@ pub mod qobject {
         #[qinvokable]
         fn drag_to(self: Pin<&mut QueueList>, row: i32);
         /// Ends the drag: the dragged item plays where it was dropped when `keep`, or goes back
-        /// where it was.
+        /// where it was. True when rows had to leave their places for it, fading out first.
         #[qinvokable]
-        fn end_drag(self: Pin<&mut QueueList>, keep: bool);
+        fn end_drag(self: Pin<&mut QueueList>, keep: bool) -> bool;
+        /// Shows the change that waits for the list to fade out, see `fades`.
+        #[qinvokable]
+        fn replace(self: Pin<&mut QueueList>);
+        /// The row at `row` came with the last change from another place, more than one away.
+        #[qinvokable]
+        fn returning(self: &QueueList, row: i32) -> bool;
+        /// The row at `row` came with the last change, newly queued.
+        #[qinvokable]
+        fn fresh(self: &QueueList, row: i32) -> bool;
+
+        /// The list changes too much to show row by row: fade it out, then call `replace`.
+        #[qsignal]
+        fn replacing(self: Pin<&mut QueueList>);
     }
 
     impl cxx_qt::Threading for QueueList {}
@@ -131,6 +153,7 @@ use cxx_qt_lib::{
 use n_music_core::messages::{ClearQueued, MoveCurrent, MoveUpcoming, Play, RemoveQueued, Seek};
 use n_music_core::queue::ItemId;
 use n_music_core::{Track, TrackInfo};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -203,9 +226,11 @@ pub struct QueueListRust {
     show_history: bool,
     show_current: bool,
     moving: bool,
+    fades: bool,
     history_count: i32,
     up_next_count: i32,
     left_count: i32,
+    current_row: i32,
     context_label: QString,
     context_detail: QString,
     context_page: QString,
@@ -213,6 +238,11 @@ pub struct QueueListRust {
     drag: Option<Drag>,
     /// The session changed while rows could not move.
     missed: bool,
+    /// A change waiting for the view to fade the list out.
+    pending: Option<(Vec<Row>, Counts)>,
+    /// Items the last change took from more than one place away, and new queued ones.
+    returning: HashSet<ItemId>,
+    fresh: HashSet<ItemId>,
     slot: u64,
     generation: u64,
 }
@@ -223,15 +253,20 @@ impl Default for QueueListRust {
             show_history: false,
             show_current: false,
             moving: false,
+            fades: false,
             history_count: 0,
             up_next_count: 0,
             left_count: 0,
+            current_row: -1,
             context_label: QString::default(),
             context_detail: QString::default(),
             context_page: QString::from("tracks"),
             rows: vec![],
             drag: None,
             missed: false,
+            pending: None,
+            returning: HashSet::new(),
+            fresh: HashSet::new(),
             slot: worker::slot(),
             generation: 0,
         }
@@ -347,8 +382,9 @@ impl qobject::QueueList {
         );
     }
 
-    /// Shows `rows` as removals and insertions between the rows both lists keep at their
-    /// ends, so the view keeps its place when the session moves on.
+    /// Shows `rows`. A change of a few rows comes as removals, moves and insertions the view
+    /// animates; a new list, a reshuffle or rows sliding far wait for the view to fade the list
+    /// out when it `fades`.
     fn show(mut self: Pin<&mut Self>, generation: u64, rows: Vec<Row>, counts: Counts) {
         if generation != self.generation {
             return;
@@ -359,59 +395,185 @@ impl qobject::QueueList {
             self.as_mut().rust_mut().missed = true;
             return;
         }
-        let (old_len, new_len) = (self.rows.len(), rows.len());
-        let prefix = self
-            .rows
-            .iter()
-            .zip(&rows)
-            .take_while(|(a, b)| a.item == b.item)
-            .count();
-        let suffix = self
-            .rows
-            .iter()
-            .rev()
-            .zip(rows.iter().rev())
-            .take(old_len.min(new_len) - prefix)
-            .take_while(|(a, b)| a.item == b.item)
-            .count();
-        let changed: Vec<usize> = (0..prefix)
-            .filter(|&row| !self.rows[row].same(&rows[row]))
-            .chain((1..=suffix).filter_map(|back| {
-                let (old, new) = (old_len - back, new_len - back);
-                (!self.rows[old].same(&rows[new])).then_some(new)
-            }))
-            .collect();
+        // A fade under way shows the latest rows once it ends.
+        if self.pending.is_some() {
+            self.as_mut().rust_mut().pending = Some((rows, counts));
+            return;
+        }
+        if self.rows.is_empty() {
+            self.as_mut().reset(rows);
+        } else if Plan::new(&self.rows, &rows).overhauls() {
+            if self.fades {
+                self.as_mut().rust_mut().pending = Some((rows, counts));
+                self.as_mut().replacing();
+                return;
+            }
+            self.as_mut().swap_all(rows);
+        } else {
+            self.as_mut().step_to(rows);
+        }
+        self.set_counts(counts);
+    }
 
+    /// Tells where the current item's row is now.
+    fn mark_current(mut self: Pin<&mut Self>) {
+        let row = self
+            .rows
+            .iter()
+            .position(|row| row.current)
+            .map_or(-1, clamp);
+        self.as_mut().set_current_row(row);
+    }
+
+    fn set_counts(mut self: Pin<&mut Self>, counts: Counts) {
+        self.as_mut().set_history_count(clamp(counts.history));
+        self.as_mut().set_up_next_count(clamp(counts.next));
+        self.set_left_count(clamp(counts.left));
+    }
+
+    fn replace(mut self: Pin<&mut Self>) {
+        let Some((rows, counts)) = self.as_mut().rust_mut().pending.take() else {
+            return;
+        };
+        self.as_mut().swap_all(rows);
+        self.set_counts(counts);
+    }
+
+    /// Shows `rows` in place of all those shown: they all go, then the new ones come. Unlike a
+    /// reset, it leaves the view where it was rather than somewhere down a list of reused rows.
+    fn swap_all(mut self: Pin<&mut Self>, rows: Vec<Row>) {
         let root = QModelIndex::default();
-        if old_len - suffix > prefix {
-            self.as_mut()
-                .begin_remove_rows(&root, clamp(prefix), clamp(old_len - suffix - 1));
-            self.as_mut()
-                .rust_mut()
-                .rows
-                .drain(prefix..old_len - suffix);
+        {
+            let mut list = self.as_mut().rust_mut();
+            list.returning.clear();
+            list.fresh.clear();
+        }
+        if !self.rows.is_empty() {
+            let last = clamp(self.rows.len() - 1);
+            self.as_mut().begin_remove_rows(&root, 0, last);
+            self.as_mut().rust_mut().rows.clear();
             self.as_mut().end_remove_rows();
         }
-        if new_len - suffix > prefix {
-            self.as_mut()
-                .begin_insert_rows(&root, clamp(prefix), clamp(new_len - suffix - 1));
-            let inserted = rows[prefix..new_len - suffix].to_vec();
-            self.as_mut()
-                .rust_mut()
-                .rows
-                .splice(prefix..prefix, inserted);
+        if !rows.is_empty() {
+            let last = clamp(rows.len() - 1);
+            self.as_mut().begin_insert_rows(&root, 0, last);
+            self.as_mut().rust_mut().rows = rows;
             self.as_mut().end_insert_rows();
         }
+        self.mark_current();
+    }
+
+    /// Shows `rows` all at once, as a new list.
+    fn reset(mut self: Pin<&mut Self>, rows: Vec<Row>) {
+        self.as_mut().begin_reset_model();
+        {
+            let mut list = self.as_mut().rust_mut();
+            list.rows = rows;
+            list.returning.clear();
+            list.fresh.clear();
+        }
+        self.as_mut().end_reset_model();
+        self.mark_current();
+    }
+
+    /// Goes from the rows shown to `rows` by removals, moves and insertions the view animates:
+    /// a row out of order by one place moves, one farther leaves and comes back. True when one
+    /// came back.
+    fn step_to(mut self: Pin<&mut Self>, rows: Vec<Row>) -> bool {
+        let plan = Plan::new(&self.rows, &rows);
+        let had: HashSet<ItemId> = self.rows.iter().map(|row| row.item).collect();
+        let wanted: HashSet<ItemId> = rows.iter().map(|row| row.item).collect();
+        let fresh = rows
+            .iter()
+            .filter(|row| row.queued && !had.contains(&row.item))
+            .map(|row| row.item)
+            .collect();
+        let comes_back = !plan.far.is_empty();
+        // The view asks about the rows coming in as it lays them out.
+        {
+            let mut list = self.as_mut().rust_mut();
+            list.fresh = fresh;
+            list.returning = plan.far.clone();
+        }
+        let root = QModelIndex::default();
+        let leaves = |row: &Row| !wanted.contains(&row.item) || plan.far.contains(&row.item);
+        // Out, from the end a run at a time: rows gone, and those coming back elsewhere.
+        let mut index = self.rows.len();
+        while index > 0 {
+            index -= 1;
+            if !leaves(&self.rows[index]) {
+                continue;
+            }
+            let last = index;
+            while index > 0 && leaves(&self.rows[index - 1]) {
+                index -= 1;
+            }
+            self.as_mut()
+                .begin_remove_rows(&root, clamp(index), clamp(last));
+            self.as_mut().rust_mut().rows.drain(index..=last);
+            self.as_mut().end_remove_rows();
+        }
+        // Into the new order, a row at a time.
+        let left: HashSet<ItemId> = self.rows.iter().map(|row| row.item).collect();
+        let order: Vec<ItemId> = rows
+            .iter()
+            .map(|row| row.item)
+            .filter(|item| left.contains(item))
+            .collect();
+        for (to, &item) in order.iter().enumerate() {
+            if self.rows[to].item != item {
+                if let Some(from) =
+                    (to + 1..self.rows.len()).find(|&from| self.rows[from].item == item)
+                {
+                    self.as_mut().move_row(from, to);
+                }
+            }
+        }
+        // In, a run at a time: new rows, and those coming back.
+        let mut to = 0;
+        while to < rows.len() {
+            if self
+                .rows
+                .get(to)
+                .is_some_and(|row| row.item == rows[to].item)
+            {
+                to += 1;
+                continue;
+            }
+            let next = self.rows.get(to).map(|row| row.item);
+            let mut last = to;
+            while last + 1 < rows.len() && Some(rows[last + 1].item) != next {
+                last += 1;
+            }
+            self.as_mut()
+                .begin_insert_rows(&root, clamp(to), clamp(last));
+            let inserted = rows[to..=last].to_vec();
+            self.as_mut().rust_mut().rows.splice(to..to, inserted);
+            self.as_mut().end_insert_rows();
+            to = last + 1;
+        }
+        let changed: Vec<usize> = (0..rows.len())
+            .filter(|&row| !self.rows[row].same(&rows[row]))
+            .collect();
         self.as_mut().rust_mut().rows = rows;
-        if let (Some(&first), Some(&last)) = (changed.iter().min(), changed.iter().max()) {
+        if let (Some(&first), Some(&last)) = (changed.first(), changed.last()) {
             let top_left = self.index(clamp(first), 0, &root);
             let bottom_right = self.index(clamp(last), 0, &root);
             self.as_mut()
                 .data_changed(&top_left, &bottom_right, &QList::default());
         }
-        self.as_mut().set_history_count(clamp(counts.history));
-        self.as_mut().set_up_next_count(clamp(counts.next));
-        self.set_left_count(clamp(counts.left));
+        self.mark_current();
+        comes_back
+    }
+
+    fn returning(&self, row: i32) -> bool {
+        self.row(row)
+            .is_some_and(|row| self.returning.contains(&row.item))
+    }
+
+    fn fresh(&self, row: i32) -> bool {
+        self.row(row)
+            .is_some_and(|row| self.fresh.contains(&row.item))
     }
 
     fn row(&self, row: i32) -> Option<&Row> {
@@ -540,22 +702,43 @@ impl qobject::QueueList {
         }
     }
 
-    fn end_drag(mut self: Pin<&mut Self>, keep: bool) {
+    fn end_drag(mut self: Pin<&mut Self>, keep: bool) -> bool {
         let Some(drag) = self.as_mut().rust_mut().drag.take() else {
-            return;
+            return false;
         };
         let at = self.rows.iter().position(|row| row.item == drag.item);
         match at {
             Some(at) if keep && at != drag.from => {
                 let (item, before) = (drag.item, self.rows.get(at + 1).map(|row| row.item));
+                let mut made_way = false;
                 if drag.current {
                     bus::emit(MoveCurrent { item, before });
+                    // The queued items it passed going down play right after it: they go there
+                    // now, as the session puts them.
+                    if at > drag.from {
+                        let mut rows = Vec::with_capacity(self.rows.len());
+                        let mut passed = Vec::new();
+                        for (index, row) in self.rows.iter().enumerate() {
+                            if (drag.from..at).contains(&index) && row.queued {
+                                passed.push(row.clone());
+                            } else {
+                                rows.push(row.clone());
+                            }
+                        }
+                        let place = rows
+                            .iter()
+                            .position(|row| row.item == item)
+                            .map_or(rows.len(), |place| place + 1);
+                        rows.splice(place..place, passed);
+                        made_way = self.as_mut().step_to(rows);
+                    }
                 } else {
                     bus::emit(MoveUpcoming { item, before });
                 }
                 // Refreshes under way read the session before the move; this one waits for the
                 // session to make it.
                 self.refresh(MOVE_SETTLES);
+                made_way
             }
             Some(at) => {
                 if !keep {
@@ -569,8 +752,12 @@ impl qobject::QueueList {
                 if self.missed {
                     self.refresh(Duration::ZERO);
                 }
+                false
             }
-            None => self.refresh(Duration::ZERO),
+            None => {
+                self.refresh(Duration::ZERO);
+                false
+            }
         }
     }
 
@@ -590,16 +777,19 @@ impl qobject::QueueList {
             list.rows.insert(to, row);
         }
         self.as_mut().end_move_rows();
+        self.mark_current();
     }
 
     /// Sections the rows from `from` to `to` again, the current item dragged from one to the
-    /// other: above it the first `played` rows played, the others play after it.
+    /// other: above it the first `played` rows played, and the context's items it passed going
+    /// down, which count as played; the queued ones it passed play right after it, and the
+    /// others after it too.
     fn split_at_current(mut self: Pin<&mut Self>, from: usize, to: usize, played: usize) {
         let mut changed: Option<(usize, usize)> = None;
         {
             let mut list = self.as_mut().rust_mut();
             for index in from.min(to)..=from.max(to) {
-                let section = if index < to.min(played) {
+                let section = if index < to && (index < played || !list.rows[index].queued) {
                     Section::History
                 } else {
                     Section::Next
@@ -653,4 +843,87 @@ const MOVE_SETTLES: Duration = Duration::from_millis(250);
 /// Qt counts rows in `i32`.
 fn clamp(value: usize) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
+}
+
+/// How the rows shown go to new ones.
+struct Plan {
+    /// Items both lists hold.
+    kept: usize,
+    /// Kept items out of order by more than one place: they leave and come back.
+    far: HashSet<ItemId>,
+    /// The most places any other kept row slides.
+    slide: usize,
+}
+
+impl Plan {
+    fn new(old: &[Row], new: &[Row]) -> Self {
+        let place: HashMap<ItemId, usize> = new
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.item, index))
+            .collect();
+        // Where each kept item stood and stands, in the old order.
+        let kept: Vec<(usize, usize)> = old
+            .iter()
+            .enumerate()
+            .filter_map(|(index, row)| place.get(&row.item).map(|&to| (index, to)))
+            .collect();
+        let staying: HashSet<usize> =
+            longest_increasing(&kept.iter().map(|&(_, to)| to).collect::<Vec<_>>())
+                .into_iter()
+                .collect();
+        // Each kept item's rank among the kept ones in the new order.
+        let mut by_new: Vec<usize> = (0..kept.len()).collect();
+        by_new.sort_by_key(|&index| kept[index].1);
+        let mut rank = vec![0; kept.len()];
+        for (new_rank, &index) in by_new.iter().enumerate() {
+            rank[index] = new_rank;
+        }
+        let mut far = HashSet::new();
+        let mut slide = 0;
+        for (index, &(from, to)) in kept.iter().enumerate() {
+            if !staying.contains(&index) && index.abs_diff(rank[index]) > 1 {
+                far.insert(old[from].item);
+            } else {
+                slide = slide.max(from.abs_diff(to));
+            }
+        }
+        Plan {
+            kept: kept.len(),
+            far,
+            slide,
+        }
+    }
+
+    /// Too much changes to show row by row: a new list, more than three rows going far, or
+    /// rows sliding more than three places.
+    fn overhauls(&self) -> bool {
+        self.kept == 0 || self.far.len() > 3 || self.slide > 3
+    }
+}
+
+/// The places in `values` of a longest increasing run of them, in order.
+fn longest_increasing(values: &[usize]) -> Vec<usize> {
+    // `tails[length - 1]`: the place of the smallest last value of a run that long.
+    let mut tails: Vec<usize> = Vec::new();
+    let mut before = vec![usize::MAX; values.len()];
+    for (index, &value) in values.iter().enumerate() {
+        let length = tails.partition_point(|&tail| values[tail] < value);
+        if length > 0 {
+            before[index] = tails[length - 1];
+        }
+        if length == tails.len() {
+            tails.push(index);
+        } else {
+            tails[length] = index;
+        }
+    }
+    let mut run = Vec::with_capacity(tails.len());
+    let mut at = tails.last().copied().unwrap_or(usize::MAX);
+    while at != usize::MAX {
+        run.push(at);
+        at = before[at];
+    }
+    run.reverse();
+    run
 }

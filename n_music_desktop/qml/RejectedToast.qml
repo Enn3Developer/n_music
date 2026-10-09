@@ -3,18 +3,17 @@ import QtQuick.Controls.Basic
 import NMusic
 
 // Tells that the library refused a playlist change, and why, until dismissed or for a while.
-Rectangle {
+Toast {
     id: toast
 
     property string message
 
     function show(text: string) {
         message = text;
-        visible = true;
-        timer.restart();
+        pop();
     }
 
-    visible: false
+    stay: 10000
     width: Math.min(420, parent.width - 48)
     height: content.implicitHeight + 24
     radius: 10
@@ -23,12 +22,6 @@ Rectangle {
     border.color: Theme.dangerLine
     Accessible.role: Accessible.AlertMessage
     Accessible.name: Tr.t.playlist_not_saved + ". " + message
-
-    Timer {
-        id: timer
-        interval: 10000
-        onTriggered: toast.visible = false
-    }
 
     Icon {
         x: 14
@@ -74,6 +67,6 @@ Rectangle {
         iconName: "close"
         color: Theme.dangerText
         text: Tr.t.dismiss
-        onClicked: toast.visible = false
+        onClicked: toast.dismiss()
     }
 }

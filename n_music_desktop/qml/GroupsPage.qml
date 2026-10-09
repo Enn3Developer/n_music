@@ -68,11 +68,48 @@ Item {
         }
     ]
 
+    /// The first cards are coming: they fade in and rise 8 px, one after another.
+    property bool entering: true
+
+    /// The cover of the card opening `target`, a collection page, when it shows whole: where a
+    /// cover flies from or back to. Null when it is out of sight, cut off or still coming in.
+    function coverFor(target: string): Cover {
+        const first = grid.indexAt(grid.contentX + 1, grid.contentY + 1);
+        if (first < 0)
+            return null;
+        const end = grid.indexAt(grid.contentX + grid.width - 2, grid.contentY + grid.height - 2);
+        const last = end < 0 ? grid.count - 1 : end;
+        for (let index = first; index <= last; ++index) {
+            const key = groups.key(index);
+            if (Filters.collectionPage(page.kind, key.name, key.artist) !== target)
+                continue;
+            const cover = coverOf(grid.itemAtIndex(index));
+            if (cover === null || cover.parent.opacity < 1)
+                return null;
+            const box = cover.mapToItem(grid, 0, 0, cover.width, cover.height);
+            const whole = box.x >= -0.5 && box.y >= -0.5 && box.x + box.width <= grid.width + 0.5 && box.y + box.height <= grid.height + 0.5;
+            return whole ? cover : null;
+        }
+        return null;
+    }
+
+    function coverOf(card: var): Cover {
+        return card ? card.artwork : null;
+    }
+
     GroupList {
         id: groups
         kind: page.kind
         search: search.text
         sort: page.kind === "album" ? "artist" : "name"
+        // The cards laid out for the first list fade in; later ones show at once.
+        onReadyChanged: entered.start()
+    }
+
+    Timer {
+        id: entered
+        interval: 300
+        onTriggered: page.entering = false
     }
 
     ColumnLayout {
@@ -177,6 +214,9 @@ Item {
             delegate: AbstractButton {
                 id: card
 
+                /// Its cover, which can fly to the page it opens.
+                readonly property Cover artwork: art
+
                 required property int index
                 required property string name
                 required property string artist
@@ -202,41 +242,94 @@ Item {
                 }
 
                 background: null
-                contentItem: Column {
-                    spacing: 10
+                contentItem: Item {
+                    implicitWidth: body.implicitWidth
+                    implicitHeight: body.implicitHeight
 
-                    Cover {
-                        size: card.width
-                        radius: page.kind === "artist" ? card.width / 2 : 8
-                        path: card.cover
-                        iconName: page.words.icon
-                        opacity: card.down ? 0.8 : 1
+                    // The first cards come in 16 ms apart, the last at most 80 ms after the
+                    // first: a fade over 150 ms and an 8 px rise over 200 ms.
+                    Component.onCompleted: {
+                        if (!page.entering)
+                            return;
+                        body.opacity = 0;
+                        cardIn.start();
+                    }
 
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: parent.radius
-                            color: "#FFFFFF"
-                            opacity: card.hovered ? 0.06 : 0
+                    SequentialAnimation {
+                        id: cardIn
+
+                        PauseAnimation {
+                            duration: Math.min(card.index * 16, 80)
+                        }
+                        ParallelAnimation {
+                            OpacityAnimator {
+                                target: body
+                                from: 0
+                                to: 1
+                                duration: Motion.fade
+                                easing.bezierCurve: Motion.standard
+                            }
+                            YAnimator {
+                                target: body
+                                from: 8 * Motion.travel
+                                to: 0
+                                duration: Motion.move
+                                easing.bezierCurve: Motion.standard
+                            }
                         }
                     }
-                    Column {
-                        width: card.width
-                        spacing: 2
 
-                        Label {
-                            width: parent.width
-                            text: card.text
-                            elide: Text.ElideRight
-                            color: card.known ? Theme.text : Theme.text2
-                            font.pixelSize: 14
-                            font.weight: Font.DemiBold
+                    Column {
+                        id: body
+                        width: parent.width
+                        spacing: 10
+
+                        Cover {
+                            id: art
+                            size: card.width
+                            radius: page.kind === "artist" ? card.width / 2 : 8
+                            path: card.cover
+                            iconName: page.words.icon
+                            opacity: card.down ? 0.86 : 1
+                            scale: card.down ? 0.97 : 1
+
+                            PressScale on scale {}
+                            Behavior on opacity {
+                                id: dim
+
+                                OpacityAnimator {
+                                    duration: dim.targetValue < 1 ? Motion.exit : Motion.fade
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: parent.radius
+                                color: "#FFFFFF"
+                                opacity: card.hovered ? 0.06 : 0
+
+                                HoverFade on opacity {}
+                            }
                         }
-                        Label {
-                            width: parent.width
-                            text: card.detail
-                            elide: Text.ElideRight
-                            color: Theme.text2
-                            font.pixelSize: 13
+                        Column {
+                            width: card.width
+                            spacing: 2
+
+                            Label {
+                                width: parent.width
+                                text: card.text
+                                elide: Text.ElideRight
+                                color: card.known ? Theme.text : Theme.text2
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                            Label {
+                                width: parent.width
+                                text: card.detail
+                                elide: Text.ElideRight
+                                color: Theme.text2
+                                font.pixelSize: 13
+                            }
                         }
                     }
                 }

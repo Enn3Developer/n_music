@@ -17,10 +17,7 @@ ScrollBar {
         color: bar.pressed ? Theme.text3 : Theme.border
         opacity: bar.active || bar.hovered ? 1 : 0
 
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 150
-            }
-        }
+        ColorFade on color {}
+        HoverFade on opacity {}
     }
 }

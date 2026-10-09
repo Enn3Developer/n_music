@@ -30,15 +30,20 @@ ApplicationWindow {
         onActivated: Player.toggle()
     }
 
+    // How far the track got, smoothly between the player's reports.
+    PlayClock {
+        id: clock
+        running: mini.visible && mini.visibility !== Window.Minimized
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 12
         spacing: 14
 
-        Cover {
+        CoverSwap {
             size: 104
             radius: 8
-            path: Player.cover
         }
 
         ColumnLayout {
@@ -50,26 +55,33 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 6
 
-                ColumnLayout {
+                TrackSwap {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
-                    spacing: 2
 
-                    Label {
-                        Layout.fillWidth: true
-                        text: Player.loaded ? Player.title : Tr.t.not_playing
-                        elide: Text.ElideRight
-                        color: Player.loaded ? Theme.text : Theme.text3
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: Player.loaded && text !== ""
-                        text: Player.artist
-                        elide: Text.ElideRight
-                        color: Theme.text2
-                        font.pixelSize: 13
+                    delegate: Column {
+                        id: words
+
+                        required property var track
+
+                        spacing: 2
+
+                        Label {
+                            width: words.width
+                            text: words.track.loaded ? words.track.title : Tr.t.not_playing
+                            elide: Text.ElideRight
+                            color: words.track.loaded ? Theme.text : Theme.text3
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                        }
+                        Label {
+                            width: words.width
+                            visible: words.track.loaded && text !== ""
+                            text: words.track.artist
+                            elide: Text.ElideRight
+                            color: Theme.text2
+                            font.pixelSize: 13
+                        }
                     }
                 }
                 IconButton {
@@ -119,7 +131,7 @@ ApplicationWindow {
 
                     Binding on value {
                         when: !progress.pressed
-                        value: Player.position
+                        value: clock.position
                         restoreMode: Binding.RestoreNone
                     }
                 }
@@ -170,22 +182,23 @@ ApplicationWindow {
                     implicitWidth: 40
                     implicitHeight: 40
                     hoverEnabled: true
+                    scale: toggle.down ? 0.9 : 1
                     text: Player.playing ? Tr.t.pause : Tr.t.play
                     Accessible.name: text
                     onClicked: Player.toggle()
 
+                    PressScale on scale {}
+
                     background: Rectangle {
                         radius: 20
-                        color: toggle.down ? Qt.darker(Theme.text, 1.1) : Theme.text
+                        color: Theme.text
                         border.width: toggle.visualFocus ? 2 : 0
                         border.color: Theme.accent
                     }
                     contentItem: Item {
-                        Icon {
+                        PlayPauseIcon {
                             anchors.centerIn: parent
-                            // The triangle's weight sits left of its box.
-                            anchors.horizontalCenterOffset: Player.playing ? 0 : 1
-                            name: Player.playing ? "pause" : "play"
+                            playing: Player.playing
                             size: 18
                             color: Theme.surface
                         }

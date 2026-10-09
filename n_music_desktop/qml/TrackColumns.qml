@@ -13,8 +13,12 @@ QtObject {
     property bool compact: false
     /// Only the title, with the length beside the artist, in taller rows for narrow windows.
     property bool narrow: false
+    /// Smaller covers and tighter rows, from the settings.
+    property bool dense: false
     /// Leaves the value columns out.
     readonly property bool slim: compact || narrow
+    /// How tall a row is.
+    readonly property real rowHeight: narrow ? (dense ? 48 : 60) : dense ? 40 : 52
     /// Wide enough for the genre and the format too, and when the library's tracks were last
     /// played.
     readonly property bool roomy: width >= 1180 && !slim

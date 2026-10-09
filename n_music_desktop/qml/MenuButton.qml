@@ -31,9 +31,11 @@ AbstractButton {
 
     background: Rectangle {
         radius: button.iconOnly ? 10 : 8
-        color: button.down || menu.visible ? Theme.selected : button.hovered ? Theme.hover : "transparent"
+        color: button.down || menu.visible ? Theme.selected : button.hovered ? Theme.hover : Qt.alpha(Theme.hover, 0)
         border.width: button.visualFocus ? 2 : 0
         border.color: Theme.text
+
+        TintFade on color {}
     }
 
     contentItem: Row {
@@ -68,6 +70,7 @@ AbstractButton {
         id: menu
         x: button.width - width
         y: button.height + 4
+        transformOrigin: Popup.TopRight
 
         Instantiator {
             model: button.options
