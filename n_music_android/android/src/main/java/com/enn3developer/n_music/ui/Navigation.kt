@@ -26,7 +26,7 @@ sealed interface Page {
     data class Playlist(val id: Long) : Page
     data class Source(val root: Locator) : Page
 
-    /** Shows the navigation bar and the mini player under it. */
+    /** Shows the navigation bar, and what selecting asks for over it. */
     val navigation: Boolean
         get() = this !is Search && this !is Settings && this !is Licence
 
@@ -81,6 +81,13 @@ class Navigator(tab: Tab, saved: Map<Tab, List<Entry>>, private var nextId: Long
         this.tab = tab
         val stack = stacks.getValue(tab)
         while (stack.size > 1) stack.removeAt(stack.lastIndex)
+    }
+
+    /** Takes Settings, and what was opened from it, off the tab showing. */
+    fun closeSettings() {
+        val stack = stacks.getValue(tab)
+        val at = stack.indexOfFirst { it.page == Page.Settings }
+        if (at > 0) while (stack.size > at) stack.removeAt(stack.lastIndex)
     }
 
     /** Goes back a page, or to Library from another tab's own page; false when there is none. */

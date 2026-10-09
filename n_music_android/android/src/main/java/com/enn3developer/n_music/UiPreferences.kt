@@ -52,6 +52,8 @@ data class UiSettings(
     val sorts: Map<String, String> = emptyMap(),
     /** Welcome was gone through: an empty library no longer shows it. */
     val welcomed: Boolean = false,
+    /** A tablet's rail is widened into the drawer, which stays open beside the pages. */
+    val drawer: Boolean = false,
 ) {
     fun view(tab: LibraryTab): ViewMode = views[tab] ?: DEFAULT_VIEWS.getValue(tab)
 
@@ -99,6 +101,7 @@ object UiPreferences {
                 sorts.keys().asSequence().associateWith { sorts.optString(it) }
             } ?: emptyMap(),
             welcomed = section.optBoolean("welcomed", false),
+            drawer = section.optBoolean("drawer", false),
         )
     }
 
@@ -117,6 +120,8 @@ object UiPreferences {
 
     fun setWelcomed() = update { it.copy(welcomed = true) }
 
+    fun setDrawer(open: Boolean) = update { it.copy(drawer = open) }
+
     private fun update(change: (UiSettings) -> UiSettings) {
         val settings = change(_settings.value)
         if (settings == _settings.value) return
@@ -130,6 +135,7 @@ object UiPreferences {
         section.put("views", JSONObject(settings.views.entries.associate { it.key.stored to it.value.stored }))
         section.put("sorts", JSONObject(settings.sorts))
         section.put("welcomed", settings.welcomed)
+        section.put("drawer", settings.drawer)
         CoreRepository.setSetting(KEY, section.toString())
     }
 

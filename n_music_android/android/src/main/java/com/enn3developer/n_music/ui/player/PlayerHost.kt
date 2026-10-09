@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -75,23 +75,27 @@ import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalApp
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.MiniPlayerRow
+import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.PullGesture
 import com.enn3developer.n_music.ui.components.SnackbarHost
 import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.miniProgress
+import com.enn3developer.n_music.ui.components.miniShape
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.albumOf
 import com.enn3developer.n_music.ui.sheets.rememberClock
+import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -448,6 +452,8 @@ fun PlayerOverlay(
 ) {
     val track = ui.track
     val density = LocalDensity.current
+    // Beside a rail, the mini player is the taller bar.
+    val bar = LocalWindowLayout.current.rail
     val view = LocalView.current
     val corner = remember(view) { screenCorner(view) }
     val miniColor = colors.surfaceHigh
@@ -468,9 +474,12 @@ fun PlayerOverlay(
             Rect(8.dp.toPx(), height - navInset - 72.dp.toPx(), width - 8.dp.toPx(), height - navInset - 8.dp.toPx())
         }
         val full = Rect(0f, 0f, width, height)
-        val miniCover = with(density) { Rect(Offset(mini.left + 8.dp.toPx(), mini.top + 8.dp.toPx()), Size(48.dp.toPx(), 48.dp.toPx())) }
+        val miniCover = with(density) {
+            val side = (if (bar) 56.dp else 48.dp).toPx()
+            Rect(Offset(mini.left + 8.dp.toPx(), mini.top + 8.dp.toPx()), Size(side, side))
+        }
         val squeezeDistance = with(density) { SqueezeDistance.toPx() }
-        val miniRadius = with(density) { 16.dp.toPx() }
+        val miniRadius = with(density) { (if (bar) 20.dp else 16.dp).toPx() }
         fun panel(): Rect = lerp(mini, full, transition.expand.value)
         fun dragged(): Float = (transition.drag.value / squeezeDistance).coerceIn(0f, 1f)
 
@@ -490,7 +499,7 @@ fun PlayerOverlay(
                     layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                 }
                 .graphicsLayer { alpha = transition.shadow.value }
-                .floating(RoundedCornerShape(16.dp))
+                .floating(miniShape(bar))
         )
         Box(
             Modifier
@@ -552,6 +561,7 @@ fun PlayerOverlay(
                 actions = actions,
                 onOpen = {},
                 showCover = false,
+                bar = bar,
                 modifier = Modifier
                     .offset { IntOffset(mini.left.roundToInt(), panel().top.roundToInt()) }
                     .layout { measurable, _ ->
@@ -559,9 +569,15 @@ fun PlayerOverlay(
                         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                     }
                     .graphicsLayer { alpha = transition.mini.value }
-                    .miniProgress { if (length > 0) (seconds() / length).toFloat() else 0f }
+                    .miniProgress({ if (length > 0) (seconds() / length).toFloat() else 0f }, if (bar) 16.dp else 12.dp)
                     .clearAndSetSemantics {},
-            )
+            ) {
+                if (bar) {
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        NIcon(NIcons.PlayNext, tint = colors.onSurfaceVariant)
+                    }
+                }
+            }
             PlayerContent(
                 ui = ui,
                 artwork = artwork,
@@ -585,7 +601,7 @@ fun PlayerOverlay(
             val landing = slot
             if (landing != null) {
                 val coverShape = remember(density) {
-                    LiveCorners { with(density) { lerp(10.dp.toPx(), 28.dp.toPx(), transition.cover.value) } }
+                    LiveCorners { with(density) { lerp((if (bar) 12.dp else 10.dp).toPx(), 28.dp.toPx(), transition.cover.value) } }
                 }
                 Box(
                     Modifier

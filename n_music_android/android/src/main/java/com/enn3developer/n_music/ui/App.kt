@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,15 +22,24 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -42,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
@@ -60,17 +71,26 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ScanState
 import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.components.BottomFade
+import com.enn3developer.n_music.ui.components.DrawerWidth
 import com.enn3developer.n_music.ui.components.FabItem
 import com.enn3developer.n_music.ui.components.ExtendedFab
 import com.enn3developer.n_music.ui.components.FabMenu
 import com.enn3developer.n_music.ui.components.MiniPlayer
+import com.enn3developer.n_music.ui.components.ModalDrawer
+import com.enn3developer.n_music.ui.components.NIconButton
+import com.enn3developer.n_music.ui.components.NavActions
 import com.enn3developer.n_music.ui.components.NavBar
+import com.enn3developer.n_music.ui.components.NavDrawer
+import com.enn3developer.n_music.ui.components.NavPlace
+import com.enn3developer.n_music.ui.components.NavRail
 import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.SelectionActions
@@ -130,6 +150,9 @@ private class Controller(
 ) : AppController {
     override val player = PlayerTransition(scope)
 
+    /** How the window lays the app out: a tablet has no player to open, for its pane shows it. */
+    var layout = WindowLayout.PHONE
+
     /** Going to a page closes the player, which shows over every page. */
     private fun leavePlayer() {
         if (player.isOpen) player.close()
@@ -150,7 +173,9 @@ private class Controller(
         CoreRepository.send(Command.PlayFrom(query, start))
     }
 
-    override fun openPlayer() = player.open()
+    override fun openPlayer() {
+        if (layout != WindowLayout.TABLET) player.open()
+    }
 
     override val playback = object : PlaybackActions by CorePlayback {
         override fun openOutput() = host.openOutputSwitcher()
@@ -292,7 +317,7 @@ fun NMusicApp(host: AppHost) {
             else -> Screen.APP
         }
         CompositionLocalProvider(LocalApp provides controller) {
-            Box(Modifier.fillMaxSize()) {
+            WindowLayoutBox {
                 Crossfade(screen, animationSpec = NMotion.effectsSlow(), label = "screen") { shown ->
                     when (shown) {
                         Screen.WAITING -> Box(Modifier.fillMaxSize().background(colors.background))
@@ -314,15 +339,23 @@ private enum class Screen { WAITING, WELCOME, APP }
 /** The app's pages, with the player, the sheets and their messages over them. */
 @Composable
 private fun AppLayers(navigator: Navigator, controller: Controller) {
+    val layout = LocalWindowLayout.current
+    SideEffect { controller.layout = layout }
+    // A tablet shows what plays in its pane; the player opened elsewhere closes there.
+    LaunchedEffect(layout) {
+        if (layout == WindowLayout.TABLET && controller.player.isOpen) controller.player.close()
+    }
     Box(Modifier.fillMaxSize()) {
         // Accessibility services see only the top layer: a sheet or a dialog over
         // everything, else the open player over the app.
         val covered = controller.sheet != null || controller.dialog != null
         Box(if (covered || controller.player.isOpen) Modifier.clearAndSetSemantics {} else Modifier) {
-            PhoneLayout(navigator)
+            MainLayout(navigator)
         }
-        Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
-            PlayerHost(controller.player)
+        if (layout != WindowLayout.TABLET) {
+            Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
+                PlayerHost(controller.player)
+            }
         }
         SheetHost(controller.sheet, controller::closeSheet)
         // Over a sheet, so its own messages, like the queue's Undo, show.
@@ -338,8 +371,17 @@ private fun AppLayers(navigator: Navigator, controller: Controller) {
     }
 }
 
+/** A phone held sideways has its cutout and buttons on a side, which the app holds off. */
+private val SideInsets: WindowInsets
+    @Composable get() = WindowInsets.displayCutout.union(WindowInsets.navigationBars)
+
+/**
+ * The pages with what goes around them: the bottom bar on phones, the rail or a tablet's drawer
+ * beside them elsewhere, and the mini player over them, where there is no now playing pane.
+ */
 @Composable
-private fun PhoneLayout(navigator: Navigator) {
+private fun MainLayout(navigator: Navigator) {
+    val layout = LocalWindowLayout.current
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     val current by CoreRepository.current.collectAsStateWithLifecycle()
     val playing by CoreRepository.playing.collectAsStateWithLifecycle()
@@ -347,18 +389,25 @@ private fun PhoneLayout(navigator: Navigator) {
     val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
     val position by CoreRepository.position.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
+    val playlists by CoreRepository.playlists.collectAsStateWithLifecycle()
+    val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
     val sleep by SleepTimer.state.collectAsStateWithLifecycle()
     val seconds = rememberPlaybackSeconds(position, playing)
     val app = LocalApp.current
     val resources = LocalResources.current
 
     val page = navigator.current.page
-    val navigation = page.navigation
+    val rail = layout.rail
+    val tablet = layout == WindowLayout.TABLET
+    // Phones' bottom bar; the rail stays beside every page.
+    val navigation = page.navigation && !rail
     val selection = app.selection
     // Selecting belongs to a page: another page, or another tab, ends it.
     LaunchedEffect(navigator.tab, navigator.current.id) { app.endSelection() }
-    val actions = selection != null && navigation
-    val miniPlayer = page.miniPlayer && current != null && selection == null
+    val actions = selection != null && page.navigation
+    // A tablet's pane shows what plays instead.
+    val miniPlayer = page.miniPlayer && current != null && selection == null && !tablet
+    val miniHeight = if (rail) 72.dp else 64.dp
     val density = LocalDensity.current
     val navInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val playerShown by remember(app) { derivedStateOf { app.player.shown } }
@@ -366,167 +415,310 @@ private fun PhoneLayout(navigator: Navigator) {
         app.player.pullGesture(with(density) { 400.dp.toPx() }) { app.player.miniBounds?.top ?: 1f }
     }
     val bottomSpace = (if (navigation) 64.dp + navInset else navInset) +
-        (if (miniPlayer || actions) 64.dp + 8.dp else 0.dp)
+        (if (miniPlayer || actions) miniHeight + 8.dp else 0.dp)
     // Playlists' button for a new one, plain or smart; open, its scrim covers all the rest.
     val onPlaylists = page == Page.Playlists
     var newOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(onPlaylists) { if (!onPlaylists) newOpen = false }
     val covered = if (newOpen && onPlaylists) Modifier.clearAndSetSemantics {} else Modifier
     var snackHeight by remember { mutableStateOf(0.dp) }
+    // The drawer over the pages, beside a foldable's rail.
+    val drawer = rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(rail, tablet) { if (!rail || tablet) drawer.value = false }
+    val place = NavPlace(navigator.tab, settings = page == Page.Settings || page == Page.Licence)
+    val navActions = remember(app, navigator) { NavigationActions(app, navigator) { drawer.value = false } }
+    val playingFrom = (origin as? Origin.Playlist)?.id
 
     Box(
         Modifier
             .fillMaxSize()
             .background(colors.background)
     ) {
-        Box(covered) {
-            CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
-                PageHost(navigator)
-            }
-        }
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .then(covered)
-        ) {
-            Box(Modifier.fillMaxWidth()) {
-                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
-                androidx.compose.animation.AnimatedVisibility(
-                    miniPlayer || actions,
-                    Modifier.align(Alignment.BottomCenter),
-                    enter = fadeIn(NMotion.effectsDefault()),
-                    exit = fadeOut(NMotion.effectsFast()),
-                ) {
-                    BottomFade(
-                        when {
-                            actions -> 110.dp
-                            navigation -> 100.dp
-                            else -> 120.dp
-                        },
-                        solidFrom = when {
-                            actions -> 0.70f
-                            navigation -> 0.72f
-                            else -> 0.45f
-                        },
-                    )
-                }
-                // Behind the mini player, so a snackbar rises out from under it.
-                val snackBottom by animateDpAsState(
-                    (if (miniPlayer) 72.dp else 0.dp) + 8.dp + (if (navigation) 0.dp else navInset),
-                    NMotion.spatialDefault(),
-                    label = "snack",
+        Row(Modifier.fillMaxSize().windowInsetsPadding(SideInsets.only(WindowInsetsSides.End))) {
+            if (tablet) {
+                TabletNavigation(
+                    expanded = ui.drawer,
+                    onExpand = UiPreferences::setDrawer,
+                    place = place,
+                    playlists = playlists,
+                    playingFrom = playingFrom,
+                    playing = playing,
+                    scan = scan,
+                    actions = navActions,
+                    modifier = covered,
                 )
-                SnackbarHost(
-                    if (app.player.isOpen || app.sheet != null) null else app.snack,
-                    app::dismissSnack,
-                    app::snackAction,
+            } else if (rail) {
+                NavRail(place, scan != null, navActions, onMenu = { drawer.value = true }, modifier = covered)
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                Box(covered) {
+                    CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
+                        PageHost(navigator)
+                    }
+                }
+                Column(
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = snackBottom)
-                        .onSizeChanged { snackHeight = with(density) { it.height.toDp() } },
-                )
-                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
-                androidx.compose.animation.AnimatedVisibility(
-                    miniPlayer,
-                    Modifier.align(Alignment.BottomCenter),
-                    // Back from selecting, it waits for the actions to leave.
-                    enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
-                        fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
-                    exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
+                        .fillMaxWidth()
+                        .then(covered)
                 ) {
-                    MiniPlayer(
-                        ui = PlaybackUi(current?.track, playing, shuffle, loop, sleep != null),
-                        progress = {
-                            val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
-                            if (length > 0) (seconds.value / length).toFloat() else 0f
-                        },
-                        buttons = ui.miniButtons,
-                        actions = app.playback,
-                        onOpen = app::openPlayer,
-                        pull = pull,
-                        modifier = Modifier
-                            .padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                                bottom = if (navigation) 8.dp else 8.dp + navInset,
+                    Box(Modifier.fillMaxWidth()) {
+                        // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                        androidx.compose.animation.AnimatedVisibility(
+                            miniPlayer || actions,
+                            Modifier.align(Alignment.BottomCenter),
+                            enter = fadeIn(NMotion.effectsDefault()),
+                            exit = fadeOut(NMotion.effectsFast()),
+                        ) {
+                            BottomFade(
+                                when {
+                                    actions -> 110.dp
+                                    rail -> 130.dp
+                                    navigation -> 100.dp
+                                    else -> 120.dp
+                                },
+                                solidFrom = when {
+                                    actions -> 0.70f
+                                    rail -> 0.60f
+                                    navigation -> 0.72f
+                                    else -> 0.45f
+                                },
                             )
-                            .onGloballyPositioned { app.player.miniBounds = it.boundsInRoot() }
-                            // The player draws it while any of the player shows.
-                            .graphicsLayer { alpha = if (playerShown) 0f else 1f },
-                    )
+                        }
+                        // Behind the mini player, so a snackbar rises out from under it.
+                        val snackBottom by animateDpAsState(
+                            (if (miniPlayer) miniHeight + 8.dp else 0.dp) + 8.dp + (if (navigation) 0.dp else navInset),
+                            NMotion.spatialDefault(),
+                            label = "snack",
+                        )
+                        SnackbarHost(
+                            if (app.player.isOpen || app.sheet != null) null else app.snack,
+                            app::dismissSnack,
+                            app::snackAction,
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = snackBottom)
+                                .onSizeChanged { snackHeight = with(density) { it.height.toDp() } },
+                        )
+                        // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                        androidx.compose.animation.AnimatedVisibility(
+                            miniPlayer,
+                            Modifier.align(Alignment.BottomCenter),
+                            // Back from selecting, it waits for the actions to leave.
+                            enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
+                                fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
+                            exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
+                        ) {
+                            MiniPlayer(
+                                ui = PlaybackUi(current?.track, playing, shuffle, loop, sleep != null),
+                                progress = {
+                                    val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
+                                    if (length > 0) (seconds.value / length).toFloat() else 0f
+                                },
+                                buttons = ui.miniButtons,
+                                actions = app.playback,
+                                onOpen = app::openPlayer,
+                                pull = pull,
+                                bar = rail,
+                                modifier = Modifier
+                                    .padding(
+                                        start = if (rail) 12.dp else 8.dp,
+                                        end = if (rail) 16.dp else 8.dp,
+                                        bottom = if (navigation) 8.dp else 8.dp + navInset,
+                                    )
+                                    .onGloballyPositioned { app.player.miniBounds = it.boundsInRoot() }
+                                    // The player draws it while any of the player shows.
+                                    .graphicsLayer { alpha = if (playerShown) 0f else 1f },
+                            ) {
+                                if (rail) {
+                                    NIconButton(
+                                        NIcons.PlayNext,
+                                        stringResource(R.string.open_queue),
+                                        { app.show(Sheet.Queue) },
+                                        tint = colors.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        // The selection's actions outlive it while they leave.
+                        val acting = remember { arrayOfNulls<Selection>(1) }
+                        if (selection != null) acting[0] = selection
+                        // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                        androidx.compose.animation.AnimatedVisibility(
+                            actions,
+                            Modifier.align(Alignment.BottomCenter),
+                            enter = EnterTransition.None,
+                            exit = ExitTransition.None,
+                        ) {
+                            val picked = acting[0]
+                            SelectionActions(
+                                count = picked?.count ?: 0,
+                                onPlayNext = { picked?.let { queue(app, resources, it, next = true) } },
+                                onQueue = { picked?.let { queue(app, resources, it, next = false) } },
+                                onAddToPlaylist = { picked?.let { app.show(Sheet.AddToPlaylist(it.tracks)) } },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp + if (navigation) 0.dp else navInset),
+                            )
+                        }
+                    }
+                    if (navigation) {
+                        NavBar(
+                            selected = navigator.tab,
+                            onSelect = navigator::select,
+                            sourcesBusy = scan != null,
+                            // It slides away as the player opens.
+                            modifier = Modifier.graphicsLayer {
+                                translationY = app.player.expand.value.coerceIn(0f, 1f) * size.height
+                            },
+                        )
+                    }
                 }
-                // The selection's actions outlive it while they leave.
-                val acting = remember { arrayOfNulls<Selection>(1) }
-                if (selection != null) acting[0] = selection
-                // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
+                // A snackbar pushes it up.
+                val fabBottom by animateDpAsState(
+                    bottomSpace + 16.dp + if (snackHeight > 0.dp) snackHeight + 8.dp else 0.dp,
+                    NMotion.spatialDefault(),
+                    label = "fab",
+                )
+                FabMenu(
+                    visible = onPlaylists,
+                    open = newOpen && onPlaylists,
+                    onOpenChange = { newOpen = it },
+                    description = stringResource(R.string.new_playlist_menu),
+                    items = listOf(
+                        FabItem(NIcons.Playlist, stringResource(R.string.new_playlist)) {
+                            app.show(AppDialog.NewPlaylist(emptyList()))
+                        },
+                        // The library's filters carry over.
+                        FabItem(NIcons.Filter, stringResource(R.string.new_smart_playlist)) {
+                            app.show(Sheet.SmartPlaylist(null, start = app.filters))
+                        },
+                    ),
+                    bottom = fabBottom,
+                    modifier = Modifier.graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
+                )
+                // Sources' button for a new one.
                 androidx.compose.animation.AnimatedVisibility(
-                    actions,
-                    Modifier.align(Alignment.BottomCenter),
-                    enter = EnterTransition.None,
-                    exit = ExitTransition.None,
+                    page == Page.Sources,
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = fabBottom)
+                        .graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
+                    enter = scaleIn(NMotion.spatialDefault(), initialScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
+                        fadeIn(NMotion.effectsDefault()),
+                    exit = scaleOut(NMotion.effectsFast(), targetScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
+                        fadeOut(NMotion.effectsFast()),
                 ) {
-                    val picked = acting[0]
-                    SelectionActions(
-                        count = picked?.count ?: 0,
-                        onPlayNext = { picked?.let { queue(app, resources, it, next = true) } },
-                        onQueue = { picked?.let { queue(app, resources, it, next = false) } },
-                        onAddToPlaylist = { picked?.let { app.show(Sheet.AddToPlaylist(it.tracks)) } },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                    )
+                    ExtendedFab(NIcons.Add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
                 }
             }
-            if (navigation) {
-                NavBar(
-                    selected = navigator.tab,
-                    onSelect = navigator::select,
-                    sourcesBusy = scan != null,
-                    // It slides away as the player opens.
-                    modifier = Modifier.graphicsLayer {
-                        translationY = app.player.expand.value.coerceIn(0f, 1f) * size.height
-                    },
+        }
+        if (rail && !tablet) {
+            ModalDrawer(drawer.value, { drawer.value = false }) {
+                NavDrawer(
+                    place = place,
+                    playlists = playlists,
+                    playingFrom = playingFrom,
+                    playing = playing,
+                    scan = scan,
+                    actions = navActions,
+                    onClose = { drawer.value = false },
+                    closeLabel = stringResource(R.string.close_navigation),
                 )
             }
         }
-        // A snackbar pushes it up.
-        val fabBottom by animateDpAsState(
-            bottomSpace + 16.dp + if (snackHeight > 0.dp) snackHeight + 8.dp else 0.dp,
-            NMotion.spatialDefault(),
-            label = "fab",
-        )
-        FabMenu(
-            visible = onPlaylists,
-            open = newOpen && onPlaylists,
-            onOpenChange = { newOpen = it },
-            description = stringResource(R.string.new_playlist_menu),
-            items = listOf(
-                FabItem(NIcons.Playlist, stringResource(R.string.new_playlist)) {
-                    app.show(AppDialog.NewPlaylist(emptyList()))
-                },
-                // The library's filters carry over.
-                FabItem(NIcons.Filter, stringResource(R.string.new_smart_playlist)) {
-                    app.show(Sheet.SmartPlaylist(null, start = app.filters))
-                },
-            ),
-            bottom = fabBottom,
-            modifier = Modifier.graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
-        )
-        // Sources' button for a new one.
-        androidx.compose.animation.AnimatedVisibility(
-            page == Page.Sources,
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = fabBottom)
-                .graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
-            enter = scaleIn(NMotion.spatialDefault(), initialScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
-                fadeIn(NMotion.effectsDefault()),
-            exit = scaleOut(NMotion.effectsFast(), targetScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
-                fadeOut(NMotion.effectsFast()),
-        ) {
-            ExtendedFab(NIcons.Add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
+    }
+}
+
+/**
+ * A tablet's navigation: the rail, which ☰ widens into the drawer, [expanded] beside the pages
+ * until it is folded back.
+ */
+@Composable
+private fun TabletNavigation(
+    expanded: Boolean,
+    onExpand: (Boolean) -> Unit,
+    place: NavPlace,
+    playlists: List<PlaylistRow>,
+    playingFrom: Long?,
+    playing: Boolean,
+    scan: ScanState?,
+    actions: NavActions,
+    modifier: Modifier = Modifier,
+) {
+    val width by animateDpAsState(if (expanded) DrawerWidth else 96.dp, NMotion.spatialDefault(), label = "drawer")
+    val fill by animateColorAsState(
+        if (expanded) colors.surfaceLow else colors.surfaceLow.copy(alpha = 0f),
+        NMotion.effectsDefault(),
+        label = "drawerFill",
+    )
+    Box(
+        modifier
+            .fillMaxHeight()
+            .background(fill)
+            .windowInsetsPadding(SideInsets.only(WindowInsetsSides.Start))
+            .width(width)
+            .clipToBounds()
+    ) {
+        Crossfade(expanded, animationSpec = NMotion.effectsDefault(), label = "drawerContent") { open ->
+            // The drawer keeps its width while the rail widens into it.
+            Box(Modifier.wrapContentWidth(Alignment.Start, unbounded = true)) {
+                if (open) {
+                    NavDrawer(place, playlists, playingFrom, playing, scan, actions, onClose = { onExpand(false) })
+                } else {
+                    NavRail(place, scan != null, actions, onMenu = { onExpand(true) }, tablet = true)
+                }
+            }
         }
+    }
+}
+
+/**
+ * What the rail and the drawer do: going to a place leaves Settings, and closes the drawer over
+ * the pages.
+ */
+private class NavigationActions(
+    private val app: AppController,
+    private val navigator: Navigator,
+    private val closeDrawer: () -> Unit,
+) : NavActions {
+    override fun select(tab: Tab) {
+        closeDrawer()
+        // From Settings, a tab goes back to what it showed.
+        val fromSettings = navigator.current.page.let { it == Page.Settings || it == Page.Licence }
+        navigator.closeSettings()
+        if (!fromSettings || tab != navigator.tab) navigator.select(tab)
+    }
+
+    override fun openSettings() {
+        closeDrawer()
+        when (navigator.current.page) {
+            Page.Settings -> {}
+            Page.Licence -> navigator.back()
+            else -> app.open(Page.Settings)
+        }
+    }
+
+    override fun openPlaylist(id: Long) {
+        closeDrawer()
+        navigator.closeSettings()
+        navigator.home(Tab.PLAYLISTS)
+        app.open(Page.Playlist(id))
+    }
+
+    override fun newPlaylist() {
+        closeDrawer()
+        app.show(AppDialog.NewPlaylist(emptyList()))
+    }
+
+    override fun openScan() {
+        closeDrawer()
+        navigator.closeSettings()
+        navigator.home(Tab.SOURCES)
     }
 }
 

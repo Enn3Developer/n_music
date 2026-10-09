@@ -60,7 +60,8 @@ fun NavBar(
     ) {
         for (tab in Tab.entries) {
             NavItem(
-                tab,
+                tab.icon,
+                stringResource(tab.label),
                 selected = tab == selected,
                 onClick = { onSelect(tab) },
                 badge = tab == Tab.SOURCES && sourcesBusy,
@@ -75,11 +76,12 @@ fun NavBar(
 /** A destination: its icon in a pill that fills in when selected, and its label under it. */
 @Composable
 fun NavItem(
-    tab: Tab,
+    icon: ImageVector,
+    label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    badge: Boolean,
     modifier: Modifier = Modifier,
+    badge: Boolean = false,
 ) {
     val pill by animateColorAsState(
         if (selected) colors.secondaryContainer else Color.Transparent,
@@ -99,7 +101,7 @@ fun NavItem(
                     .scale(scaleX = width, scaleY = 1f)
                     .background(pill, RoundedCornerShape(16.dp))
             )
-            NIcon(tab.icon, tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant)
+            NIcon(icon, tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant)
             if (badge) {
                 Box(
                     Modifier
@@ -111,7 +113,7 @@ fun NavItem(
             }
         }
         Text(
-            stringResource(tab.label),
+            label,
             style = text(12, if (selected) FontWeight.Bold else FontWeight.SemiBold),
             color = if (selected) colors.onSurface else colors.onSurfaceVariant,
         )

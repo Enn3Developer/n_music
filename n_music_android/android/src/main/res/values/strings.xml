@@ -8,6 +8,10 @@
     <string name="nav_sources">Sources</string>
     <string name="back">Back</string>
     <string name="settings">Settings</string>
+    <string name="navigation">Navigation</string>
+    <string name="open_navigation">Open navigation</string>
+    <string name="collapse_navigation">Collapse navigation</string>
+    <string name="close_navigation">Close navigation</string>
     <string name="dismiss_sheet">Close sheet</string>
 
     <!-- Library -->
@@ -197,6 +201,8 @@
     <string name="building_library">Building your library</string>
     <string name="building_library_hint">Every track found is listed already and can play now. Titles and covers fill in as they’re read.</string>
     <string name="read_of_found">%1$s of %2$s read</string>
+    <!-- The drawer's note while the library updates: tracks read / found. -->
+    <string name="read_slash_found">%1$s / %2$s</string>
 
     <plurals name="tracks_count">
         <item quantity="one">%1$s track</item>

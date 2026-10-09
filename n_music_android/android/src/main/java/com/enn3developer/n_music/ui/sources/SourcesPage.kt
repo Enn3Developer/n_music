@@ -46,6 +46,7 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.bottomPadding
 import com.enn3developer.n_music.ui.components.Cover
@@ -102,7 +103,9 @@ fun SourcesPage() {
             override fun remove(source: SourceRow) = app.show(AppDialog.RemoveSource(source.root, source.title, source.tracks))
         }
     }
-    SourcesContent(sources, library.tracks, scan, missing, actions, onSettings = { app.open(Page.Settings) })
+    // Beside a rail, Settings is on it.
+    val settings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail }
+    SourcesContent(sources, library.tracks, scan, missing, actions, onSettings = settings)
 }
 
 /**
@@ -116,7 +119,7 @@ fun SourcesContent(
     scan: ScanState?,
     missing: Map<Locator, Int>,
     actions: SourceActions,
-    onSettings: () -> Unit,
+    onSettings: (() -> Unit)?,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val local = sources.filter { it.root.isLocal }
@@ -149,7 +152,9 @@ fun SourcesContent(
                         })
                     }
                 }
-                NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                if (onSettings != null) {
+                    NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                }
             }
         }
         item(key = "title") {

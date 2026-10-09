@@ -35,6 +35,7 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.bottomPadding
@@ -67,7 +68,8 @@ fun PlaylistsPage() {
         playingFrom = (origin as? Origin.Playlist)?.id?.takeIf { current != null },
         playing = playing,
         onOpen = { app.open(Page.Playlist(it.id)) },
-        onSettings = { app.open(Page.Settings) },
+        // Beside a rail, Settings is on it.
+        onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
     )
 }
 
@@ -78,7 +80,7 @@ fun PlaylistsContent(
     playingFrom: Long?,
     playing: Boolean,
     onOpen: (PlaylistRow) -> Unit,
-    onSettings: () -> Unit,
+    onSettings: (() -> Unit)?,
 ) {
     val smart = playlists.count { it.rule != null }
     LazyColumn(
@@ -96,7 +98,9 @@ fun PlaylistsContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
             ) {
-                NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                if (onSettings != null) {
+                    NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                }
             }
         }
         item(key = "title") {

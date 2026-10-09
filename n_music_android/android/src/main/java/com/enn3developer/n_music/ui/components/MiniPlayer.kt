@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,6 +54,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.MiniButton
@@ -60,6 +62,7 @@ import com.enn3developer.n_music.Position
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.TrackRow
+import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
@@ -125,6 +128,7 @@ interface PullGesture {
 /**
  * The mini player above the navigation: the playing track and its [buttons]. Tapping it opens
  * the player and swiping it up pulls the player open through [pull]; swiping it sideways skips.
+ * Beside a rail it is a [bar]: taller, naming the album too, with Play filled in.
  */
 @Composable
 fun MiniPlayer(
@@ -135,9 +139,10 @@ fun MiniPlayer(
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
     pull: PullGesture? = null,
+    bar: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = miniShape(bar)
     val track = ui.track ?: return
     val scope = rememberCoroutineScope()
     val swipe = remember { Animatable(0f) }
@@ -147,12 +152,12 @@ fun MiniPlayer(
     Box(
         modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(if (bar) 72.dp else 64.dp)
             .floating(shape)
             .clip(shape)
             .background(colors.surfaceHigh)
             .onSizeChanged { width = it.width }
-            .miniProgress(progress)
+            .miniProgress(progress, inset = if (bar) 16.dp else 12.dp)
             .draggable(
                 rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } },
                 Orientation.Horizontal,
@@ -177,18 +182,22 @@ fun MiniPlayer(
             onOpen = onOpen,
             direction = { direction },
             offset = { swipe.value },
+            bar = bar,
             trailing = trailing,
         )
     }
 }
 
-/** The mini player's progress, a line along its bottom edge. */
+/** The mini player's corners: a [bar]'s are rounder. */
+fun miniShape(bar: Boolean) = RoundedCornerShape(if (bar) 20.dp else 16.dp)
+
+/** The mini player's progress, a line along its bottom edge, [inset] from its sides. */
 @Composable
-fun Modifier.miniProgress(progress: () -> Float): Modifier {
+fun Modifier.miniProgress(progress: () -> Float, inset: Dp = 12.dp): Modifier {
     val line = colors.outlineVariant
     val fill = colors.primary
     return drawBehind {
-        val inset = 12.dp.toPx()
+        val inset = inset.toPx()
         val thickness = 3.dp.toPx()
         val top = size.height - thickness
         val width = size.width - 2 * inset
@@ -218,7 +227,8 @@ private fun Modifier.pullUp(pull: PullGesture): Modifier = pointerInput(pull) {
 
 /**
  * What the mini player holds: the track with its cover, which [showCover] can leave out, and the
- * [buttons]. A new track slides in from the side the last skip went, [direction].
+ * [buttons]. A new track slides in from the side the last skip went, [direction]. A [bar] has
+ * the bigger cover, and the album after the artist.
  */
 @Composable
 fun MiniPlayerRow(
@@ -231,9 +241,14 @@ fun MiniPlayerRow(
     direction: () -> Int = { 1 },
     offset: () -> Float = { 0f },
     showCover: Boolean = true,
+    bar: Boolean = false,
     trailing: @Composable () -> Unit = {},
 ) {
-    Row(modifier.padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier.padding(start = 8.dp, end = if (bar) 12.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (bar) Arrangement.spacedBy(12.dp) else Arrangement.Start,
+    ) {
         AnimatedContent(
             targetState = track,
             contentKey = { it.locator },
@@ -254,17 +269,17 @@ fun MiniPlayerRow(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(if (bar) 72.dp else 64.dp)
                     .tappable(onOpen)
                     .semantics { contentDescription = shown.title },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(48.dp)) {
+                Box(Modifier.size(if (bar) 56.dp else 48.dp)) {
                     if (showCover) {
                         Cover(
                             shown.cover,
                             Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(if (bar) 12.dp else 10.dp),
                             placeholder = if (shown.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
                         )
                     }
@@ -276,13 +291,14 @@ fun MiniPlayerRow(
                 ) {
                     Text(
                         shown.title,
-                        style = text(14, FontWeight.Bold),
+                        style = text(if (bar) 15 else 14, FontWeight.Bold),
                         color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val artist = shown.artist.ifEmpty { stringResource(R.string.unknown_artist) }
                     Text(
-                        shown.artist.ifEmpty { stringResource(R.string.unknown_artist) },
+                        if (bar) dotted(artist, shown.album) else artist,
                         style = text(13),
                         color = colors.onSurfaceVariant,
                         maxLines = 1,
@@ -292,14 +308,19 @@ fun MiniPlayerRow(
                 }
             }
         }
-        for (button in buttons) MiniPlayerButton(button, ui, actions)
+        Row(horizontalArrangement = if (bar) Arrangement.spacedBy(12.dp) else Arrangement.Start) {
+            for (button in buttons) MiniPlayerButton(button, ui, actions, filled = bar && button == MiniButton.PLAY_PAUSE)
+        }
         trailing()
     }
 }
 
-/** One of the mini player's buttons; shuffle, repeat and a running timer fill in while on. */
+/**
+ * One of the mini player's buttons; shuffle, repeat and a running timer fill in while on, and a
+ * [filled] one is a pill in the accent, as Play is on a bar.
+ */
 @Composable
-fun MiniPlayerButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackActions) {
+fun MiniPlayerButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackActions, filled: Boolean = false) {
     val (icon, description, action) = miniButton(button, ui, actions)
     val on = when (button) {
         MiniButton.SHUFFLE -> ui.shuffle
@@ -307,15 +328,19 @@ fun MiniPlayerButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackAction
         MiniButton.SLEEP_TIMER -> ui.sleeping
         else -> false
     }
+    val shape = if (filled) RoundedCornerShape(16.dp) else CircleShape
     Box(
         Modifier
-            .size(48.dp)
-            .clip(CircleShape)
+            .size(if (filled) 56.dp else 48.dp, 48.dp)
+            .clip(shape)
+            .then(if (filled) Modifier.background(colors.primaryContainer) else Modifier)
             .tappable(action, role = Role.Button)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        if (on) {
+        if (filled) {
+            NIcon(icon, tint = colors.onPrimaryContainer)
+        } else if (on) {
             Box(
                 Modifier
                     .size(40.dp)

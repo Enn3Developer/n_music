@@ -94,6 +94,7 @@ import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Selection
@@ -199,7 +200,11 @@ fun LibraryPage() {
                     onSelectAll = { selection?.addAll(tracks.orEmpty().map { it.locator }) },
                 )
             } else {
-                SearchHeader(onSearch = { app.open(Page.Search) }, onSettings = { app.open(Page.Settings) })
+                // Beside a rail, Settings is on it.
+                SearchHeader(
+                    onSearch = { app.open(Page.Search) },
+                    onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
+                )
             }
         }
         LibraryTabs(pager)
@@ -314,9 +319,9 @@ fun LibraryPage() {
     }
 }
 
-/** The library's search field, which opens Search, with Settings at its end. */
+/** The library's search field, which opens Search, with Settings at its end when [onSettings] is set. */
 @Composable
-fun SearchHeader(onSearch: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modifier = Modifier) {
     Box(
         modifier
             .windowInsetsPadding(WindowInsets.statusBars)
@@ -345,7 +350,9 @@ fun SearchHeader(onSearch: () -> Unit, onSettings: () -> Unit, modifier: Modifie
                 NIcon(NIcons.Search, tint = colors.onSurfaceVariant)
                 Text(hint, style = text(16), color = colors.onSurfaceVariant, maxLines = 1)
             }
-            NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+            if (onSettings != null) {
+                NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+            }
         }
     }
 }
