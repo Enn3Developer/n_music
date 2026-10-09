@@ -93,10 +93,17 @@ interface AppHost {
     fun pickFolder(onPicked: (Uri) -> Unit)
 
     fun openLink(url: String)
+
+    /** Opens Android's output switcher, to play on another speaker or headphones. */
+    fun openOutputSwitcher()
 }
 
 /** The app's controller: navigation, and playing what a page asks for. */
-private class Controller(override val navigator: Navigator, override val scope: CoroutineScope) : AppController {
+private class Controller(
+    override val navigator: Navigator,
+    override val scope: CoroutineScope,
+    private val host: AppHost,
+) : AppController {
     override val player = PlayerTransition(scope)
 
     /** Going to a page closes the player, which shows over every page. */
@@ -122,6 +129,8 @@ private class Controller(override val navigator: Navigator, override val scope: 
     override fun openPlayer() = player.open()
 
     override val playback = object : PlaybackActions by CorePlayback {
+        override fun openOutput() = host.openOutputSwitcher()
+
         override fun openSleepTimer() = show(Sheet.SleepTimer)
     }
 
@@ -209,7 +218,7 @@ fun NMusicApp(host: AppHost) {
     NTheme(ui.theme, ui.accent) {
         val navigator = rememberNavigator()
         val scope = rememberCoroutineScope()
-        val controller = remember(navigator) { Controller(navigator, scope) }
+        val controller = remember(navigator, host) { Controller(navigator, scope, host) }
         BackHandler(navigator.canGoBack) { navigator.back() }
         CompositionLocalProvider(LocalApp provides controller) {
             Box(Modifier.fillMaxSize()) {

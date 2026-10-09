@@ -250,6 +250,9 @@
     <string name="played_count">Played %1$d×</string>
     <string name="position_of">Position %1$s of %2$s</string>
     <string name="this_phone">This phone</string>
+    <string name="this_tablet">This tablet</string>
+    <string name="output_headphones">Headphones</string>
+    <string name="output_other">Audio device</string>
     <string name="output_named">Output: %1$s</string>
     <string name="up_next">Up next</string>
     <string name="queue_end">End of the queue</string>

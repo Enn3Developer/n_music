@@ -384,7 +384,7 @@ fun PlayerHost(transition: PlayerTransition) {
         loop = loop,
         origin = originName(origin)?.let { dotted(it, if (shuffle) stringResource(R.string.shuffled) else null) },
         next = upNext(queue, current?.item, loop),
-        output = stringResource(R.string.this_phone),
+        output = rememberOutputName(),
         sleep = sleepLabel(),
     )
     val latestTrack by rememberUpdatedState(track)

@@ -5,9 +5,11 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaRouter2
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -87,6 +89,38 @@ class MainActivity : AppCompatActivity(), AppHost {
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (error: ActivityNotFoundException) {
             Log.w("n_music", "Nothing can open $url", error)
+        }
+    }
+
+    /**
+     * Android's output switcher for this app's playback: MediaRouter2's from Android 14, System
+     * UI's media output dialog from Android 12, the settings panel on Android 11, and the
+     * Bluetooth settings where none of those is there.
+     */
+    override fun openOutputSwitcher() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            MediaRouter2.getInstance(this).showSystemOutputSwitcher()
+        ) {
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val dialog = Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG")
+                .setPackage("com.android.systemui")
+                .putExtra("package_name", packageName)
+            if (packageManager.queryBroadcastReceivers(dialog, 0).isNotEmpty()) {
+                sendBroadcast(dialog)
+                return
+            }
+        }
+        val panel = Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
+            .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", packageName)
+        for (intent in listOf(panel, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))) {
+            try {
+                startActivity(intent)
+                return
+            } catch (error: ActivityNotFoundException) {
+                Log.w("n_music", "No output switcher at ${intent.action}", error)
+            }
         }
     }
 }

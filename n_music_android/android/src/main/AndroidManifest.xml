@@ -10,6 +10,16 @@
     <!-- Keeps the CPU awake while the native player plays with the screen off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Android's output switcher: System UI's dialog and the settings panel before it. -->
+    <queries>
+        <intent>
+            <action android:name="com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG" />
+        </intent>
+        <intent>
+            <action android:name="com.android.settings.panel.action.MEDIA_OUTPUT" />
+        </intent>
+    </queries>
+
     <application
         android:name=".NMusicApplication"
         android:allowBackup="true"
