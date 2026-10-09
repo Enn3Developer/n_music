@@ -196,3 +196,23 @@ private fun FabMenuItem(item: FabItem, shown: Float, enabled: Boolean, onClick: 
         Text(item.label, style = text(16, FontWeight.Bold))
     }
 }
+
+/** A floating button with its [label] beside its [icon], for a page's main action. */
+@Composable
+fun ExtendedFab(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(16.dp)
+    ButtonSurface(
+        onClick = onClick,
+        shape = shape,
+        container = colors.primaryContainer,
+        content = colors.onPrimaryContainer,
+        modifier = modifier
+            .height(56.dp)
+            .floating(shape),
+        padding = PaddingValues(start = 18.dp, end = 22.dp),
+        arrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        NIcon(icon)
+        Text(label, style = text(16, FontWeight.Bold))
+    }
+}

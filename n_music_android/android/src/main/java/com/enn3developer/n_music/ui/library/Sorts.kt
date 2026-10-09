@@ -108,7 +108,10 @@ enum class SortedList(val stored: String, @param:StringRes val title: Int) {
     GENRES("genres", R.string.sort_genres),
 
     /** An artist's tracks, the most played first unless chosen otherwise. */
-    ARTIST_TRACKS("artist", R.string.sort_tracks);
+    ARTIST_TRACKS("artist", R.string.sort_tracks),
+
+    /** A source's tracks. */
+    SOURCE_TRACKS("source", R.string.sort_tracks);
 
     /** Its tracks' order in [sorts]; only for lists of tracks. */
     fun trackOrder(sorts: Map<String, String>): TrackOrder = TrackOrder.parse(
@@ -120,5 +123,5 @@ enum class SortedList(val stored: String, @param:StringRes val title: Int) {
     fun groupOrder(sorts: Map<String, String>): GroupOrder =
         GroupOrder.parse(sorts[stored], if (this == ALBUMS) GroupOrder.ARTIST else GroupOrder.NAME)
 
-    val ofTracks: Boolean get() = this == TRACKS || this == ARTIST_TRACKS
+    val ofTracks: Boolean get() = this == TRACKS || this == ARTIST_TRACKS || this == SOURCE_TRACKS
 }

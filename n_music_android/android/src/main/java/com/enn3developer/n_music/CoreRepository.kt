@@ -40,6 +40,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -225,7 +227,32 @@ object CoreRepository {
     fun build(roots: List<Locator>) {
         build.value = Build.WAITING
         _building.value = true
+        _roots.value = roots
         send(Command.SetLibraryRoots(roots))
+    }
+
+    /**
+     * Changes the library's folders and playlists with [change], then runs [after]: new ones are
+     * read, and the tracks of those left out leave. The roots change here at once, so another
+     * change right after builds on this one; before the core told them, it waits for them.
+     */
+    fun editRoots(change: (List<Locator>) -> List<Locator>, after: () -> Unit = {}) {
+        fun apply(roots: List<Locator>) {
+            val changed = change(roots)
+            _roots.value = changed
+            send(Command.SetLibraryRoots(changed))
+            after()
+        }
+        val known = _roots.value
+        if (known != null) {
+            apply(known)
+        } else {
+            scope.launch(Dispatchers.Main) {
+                _roots.filterNotNull().first()
+                // Read again: an edit that waited too may have gone first.
+                apply(_roots.value.orEmpty())
+            }
+        }
     }
 
     fun setReplayGain(mode: ReplayGainMode) {

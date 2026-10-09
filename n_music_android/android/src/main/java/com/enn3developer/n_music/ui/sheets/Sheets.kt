@@ -46,6 +46,9 @@ sealed interface Sheet {
 
     /** How playlist [id]'s tracks are sorted. */
     data class PlaylistSort(val id: Long) : Sheet
+
+    /** The kinds of source the library can get. */
+    data object AddSource : Sheet
 }
 
 /**
@@ -72,6 +75,7 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
                 Sheet.SleepTimer -> SleepTimerSheet(open, dismiss, gone)
                 is Sheet.SmartPlaylist -> SmartPlaylistSheet(sheet.id, sheet.focus, sheet.start, open, dismiss, gone)
                 is Sheet.PlaylistSort -> PlaylistSortSheet(sheet.id, open, dismiss, gone)
+                Sheet.AddSource -> AddSourceSheet(open, dismiss, gone)
             }
         }
     }

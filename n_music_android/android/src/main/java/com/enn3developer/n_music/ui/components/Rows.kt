@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,7 +69,9 @@ fun trackLine(track: TrackRow, album: Boolean = true): String {
 
 /**
  * A track's row: its cover, title, artists and album, length and ⋮. The playing track is washed
- * in the accent; a picked one shows a check on a highlighted row. [compact] makes it tighter.
+ * in the accent; a picked one shows a check on a highlighted row. [compact] makes it tighter;
+ * [quiet] fades its line and length, and [muted] its title too, for one that can't play; one
+ * without [onMore] has no ⋮.
  */
 @Composable
 fun TrackItem(
@@ -76,12 +79,14 @@ fun TrackItem(
     state: TrackState,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
-    onMore: () -> Unit,
+    onMore: (() -> Unit)?,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     title: AnnotatedString = AnnotatedString(track.title),
     line: String = trackLine(track),
     trailing: String = formatLength(track.length),
+    quiet: Boolean = false,
+    muted: Boolean = false,
     cover: @Composable (Modifier) -> Unit = { coverModifier ->
         TrackCover(track, state, coverModifier, if (compact) 40.dp else 48.dp)
     },
@@ -100,7 +105,8 @@ fun TrackItem(
             .fillMaxWidth()
             .height(if (compact) 56.dp else 64.dp)
             .background(background)
-            .tappable(onClick, onLongClick)
+            // One that can't play takes no taps.
+            .then(if (muted) Modifier else Modifier.tappable(onClick, onLongClick))
             .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 14.dp),
@@ -112,6 +118,7 @@ fun TrackItem(
                 style = text(if (compact) 15 else 16, FontWeight.Medium),
                 color = when {
                     state.current -> colors.primary
+                    muted -> colors.onSurfaceQuiet
                     !track.loaded -> colors.onSurfaceVariant
                     else -> colors.onSurface
                 },
@@ -121,7 +128,7 @@ fun TrackItem(
             Text(
                 line,
                 style = text(if (compact) 13 else 14),
-                color = if (track.loaded) colors.onSurfaceVariant else colors.onSurfaceQuiet,
+                color = if (track.loaded && !quiet && !muted) colors.onSurfaceVariant else colors.onSurfaceQuiet,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = if (compact) 1.dp else 2.dp),
@@ -131,18 +138,22 @@ fun TrackItem(
             Text(
                 trailing,
                 style = text(13, tabular = true),
-                color = colors.onSurfaceVariant,
+                color = if (quiet || muted) colors.onSurfaceQuiet else colors.onSurfaceVariant,
             )
         }
-        NIconButton(
-            NIcons.More,
-            stringResource(R.string.more_for, track.title),
-            onMore,
-            size = 48.dp,
-            iconSize = 20.dp,
-            tint = colors.onSurfaceVariant,
-            modifier = Modifier.width(44.dp),
-        )
+        if (onMore == null) {
+            Spacer(Modifier.width(44.dp))
+        } else {
+            NIconButton(
+                NIcons.More,
+                stringResource(R.string.more_for, track.title),
+                onMore,
+                size = 48.dp,
+                iconSize = 20.dp,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.width(44.dp),
+            )
+        }
     }
 }
 
@@ -517,15 +528,19 @@ fun AlbumTrackItem(
         if (length.isNotEmpty()) {
             Text(length, style = text(13, tabular = true), color = colors.onSurfaceVariant)
         }
-        NIconButton(
-            NIcons.More,
-            stringResource(R.string.more_for, track.title),
-            onMore,
-            size = 48.dp,
-            iconSize = 20.dp,
-            tint = colors.onSurfaceVariant,
-            modifier = Modifier.width(44.dp),
-        )
+        if (onMore == null) {
+            Spacer(Modifier.width(44.dp))
+        } else {
+            NIconButton(
+                NIcons.More,
+                stringResource(R.string.more_for, track.title),
+                onMore,
+                size = 48.dp,
+                iconSize = 20.dp,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.width(44.dp),
+            )
+        }
     }
 }
 

@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.enn3developer.n_music.R
@@ -144,7 +145,8 @@ fun DialogConfirm(label: String, onClick: () -> Unit, enabled: Boolean = true, d
 /**
  * A text field outlined as the design draws it: its label sits on the outline, which thickens in
  * the primary colour while the field has focus, on [fill], the colour around it; [helper]
- * explains it underneath. [focus] takes the focus, and with it the keyboard, as it first shows.
+ * explains it underneath, in the error colour along with the outline while [error]. [focus]
+ * takes the focus, and with it the keyboard, as it first shows.
  */
 @Composable
 fun OutlinedField(
@@ -154,7 +156,9 @@ fun OutlinedField(
     modifier: Modifier = Modifier,
     fill: Color = colors.surfaceHigh,
     helper: String? = null,
+    error: Boolean = false,
     focus: Boolean = false,
+    keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
     onDone: () -> Unit = {},
 ) {
@@ -163,7 +167,11 @@ fun OutlinedField(
     if (focus) {
         LaunchedEffect(Unit) { requester.requestFocus() }
     }
-    val edge = if (focused) colors.primary else colors.outline
+    val edge = when {
+        error -> colors.error
+        focused -> colors.primary
+        else -> colors.outline
+    }
     Column(modifier.fillMaxWidth()) {
         Box(
             Modifier
@@ -181,7 +189,13 @@ fun OutlinedField(
                 singleLine = true,
                 textStyle = text(16).copy(color = colors.onSurface),
                 cursorBrush = SolidColor(colors.primary),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = imeAction),
+                keyboardOptions = KeyboardOptions(
+                    // Addresses keep their case.
+                    capitalization = if (keyboardType == KeyboardType.Uri) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
+                    autoCorrectEnabled = keyboardType != KeyboardType.Uri,
+                    keyboardType = keyboardType,
+                    imeAction = imeAction,
+                ),
                 keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }),
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -194,7 +208,11 @@ fun OutlinedField(
             Text(
                 label,
                 style = text(12, FontWeight.SemiBold),
-                color = if (focused) colors.primary else colors.onSurfaceVariant,
+                color = when {
+                    error -> colors.error
+                    focused -> colors.primary
+                    else -> colors.onSurfaceVariant
+                },
                 modifier = Modifier
                     .offset(x = 10.dp, y = (-8).dp)
                     .background(fill)
@@ -205,7 +223,7 @@ fun OutlinedField(
             Text(
                 helper,
                 style = text(12, lineHeight = 16.sp),
-                color = colors.onSurfaceVariant,
+                color = if (error) colors.error else colors.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 6.dp),
             )
         }

@@ -94,6 +94,12 @@ interface AppController {
     /** Removals waiting on their snackbar, and the lists they leave out of. */
     val removals: Removals
 
+    /** Opens Android's folder picker; [onPicked] gets the folder as a source, readable from then on. */
+    fun pickFolder(onPicked: (Locator) -> Unit)
+
+    /** Lets go of [root]'s folder: Android stops keeping it readable for the app. */
+    fun releaseFolder(root: Locator)
+
     /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
     val scope: CoroutineScope
 }

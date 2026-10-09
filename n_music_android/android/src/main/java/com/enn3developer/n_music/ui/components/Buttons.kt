@@ -367,7 +367,7 @@ enum class PillStyle { FILLED, TONAL, OUTLINED, TEXT, ERROR }
 
 /**
  * A fully rounded button: filled in the primary container, tonal in the secondary one, outlined
- * or text only.
+ * or text only. Off, it greys out as Material's disabled buttons do.
  */
 @Composable
 fun PillButton(
@@ -383,12 +383,15 @@ fun PillButton(
     enabled: Boolean = true,
     outline: Color = colors.outline,
 ) {
-    val (container, ink) = when (style) {
-        PillStyle.FILLED -> colors.primaryContainer to colors.onPrimaryContainer
-        PillStyle.TONAL -> colors.secondaryContainer to colors.onSecondaryContainer
-        PillStyle.OUTLINED -> Color.Transparent to colors.onSurface
-        PillStyle.TEXT -> Color.Transparent to colors.primary
-        PillStyle.ERROR -> colors.error to colors.background
+    val (container, ink) = when {
+        !enabled && (style == PillStyle.OUTLINED || style == PillStyle.TEXT) ->
+            Color.Transparent to colors.onSurface.copy(alpha = 0.38f)
+        !enabled -> colors.onSurface.copy(alpha = 0.12f) to colors.onSurface.copy(alpha = 0.38f)
+        style == PillStyle.FILLED -> colors.primaryContainer to colors.onPrimaryContainer
+        style == PillStyle.TONAL -> colors.secondaryContainer to colors.onSecondaryContainer
+        style == PillStyle.OUTLINED -> Color.Transparent to colors.onSurface
+        style == PillStyle.TEXT -> Color.Transparent to colors.primary
+        else -> colors.error to colors.background
     }
     ButtonSurface(
         onClick = onClick,

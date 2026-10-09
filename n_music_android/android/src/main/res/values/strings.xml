@@ -345,7 +345,7 @@
     <string name="save_smart_playlist">Save as smart playlist</string>
     <string name="rules_match_all">Tracks that match all of these</string>
     <string name="rules_match_any">Tracks that match any of these</string>
-    <string name="rules_locked">These rules use options like “is not”, so only N Music on a computer can change them.</string>
+    <string name="rules_locked">These rules use options like “is not”, so only N\u00A0Music on a computer can change them.</string>
     <string name="playlists_empty">No playlists yet</string>
     <string name="playlists_empty_hint">Make one with the button below, or add tracks to a new one from the library.</string>
     <string name="playlist_no_tracks">No tracks yet</string>
@@ -423,6 +423,86 @@
         <item quantity="one">day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
+
+    <!-- Sources -->
+    <string name="sources_title">Sources</string>
+    <plurals name="sources_count">
+        <item quantity="one">%1$s source</item>
+        <item quantity="other">%1$s sources</item>
+    </plurals>
+    <string name="library_actions">Library actions</string>
+    <string name="updating_library">Updating library</string>
+    <string name="local_folders">Local folders</string>
+    <string name="web_playlists">Web playlists</string>
+    <string name="source_updating">Updating…</string>
+    <string name="source_unreachable">Can’t be reached</string>
+    <string name="more_for_source">More actions for %1$s</string>
+    <string name="add_source">Add source</string>
+    <string name="update_library">Update library</string>
+    <string name="reload_all_metadata">Reload all metadata</string>
+    <string name="update_now">Update now</string>
+    <string name="reload_metadata">Reload metadata</string>
+    <string name="remove_from_library">Remove from library</string>
+    <string name="sources_empty">No sources yet</string>
+    <string name="sources_empty_hint">Add a folder on this phone or a web playlist, and its music fills the library.</string>
+    <string name="internal_storage">Internal storage</string>
+    <string name="sd_card">SD card</string>
+    <string name="add_a_source">Add a source</string>
+    <string name="add_source_hint">N\u00A0Music only reads it and never changes what’s there.</string>
+    <string name="local_folder">Local folder</string>
+    <string name="local_folder_hint">Music files on this phone or an SD card</string>
+    <string name="web_playlist">Web playlist</string>
+    <string name="web_playlist_hint">An M3U or PLS playlist on the web</string>
+    <string name="coming_later">Coming later</string>
+    <string name="spotify" translatable="false">Spotify</string>
+    <string name="spotify_hint">Your saved tracks and playlists</string>
+    <string name="youtube" translatable="false">YouTube</string>
+    <string name="youtube_hint">Your playlists and liked music</string>
+    <string name="deezer" translatable="false">Deezer</string>
+    <string name="deezer_hint">Your favourites and playlists</string>
+    <string name="add_web_playlist">Add a web playlist</string>
+    <string name="add_web_playlist_hint">The address of an M3U or PLS playlist. Its tracks stream from the web, and with Cache web tracks on, the ones you play also work offline.</string>
+    <string name="address">Address</string>
+    <string name="address_hint">https:// is added if you leave it out.</string>
+    <string name="address_invalid">That isn’t a web address.</string>
+    <string name="display_name">Display name</string>
+    <string name="optional">Optional</string>
+    <string name="add">Add</string>
+    <string name="rename_source">Rename source</string>
+    <string name="rename_source_hint">Left empty, it’s called “%1$s”.</string>
+    <string name="remove_source_title">Remove “%1$s”?</string>
+    <plurals name="remove_source_local">
+        <item quantity="one">Its %1$s track leaves the library. The files in %2$s stay where they are.</item>
+        <item quantity="other">Its %1$s tracks leave the library. The files in %2$s stay where they are.</item>
+    </plurals>
+    <plurals name="remove_source_web">
+        <item quantity="one">Its %1$s track leaves the library. The playlist at %2$s stays as it is.</item>
+        <item quantity="other">Its %1$s tracks leave the library. The playlist at %2$s stays as it is.</item>
+    </plurals>
+    <string name="removed_source">Removed %1$s</string>
+    <plurals name="source_unreachable_hint">
+        <item quantity="one">%1$s didn’t answer. The %2$s track saved on this phone still plays.</item>
+        <item quantity="other">%1$s didn’t answer. The %2$s tracks saved on this phone still play.</item>
+    </plurals>
+    <string name="source_unreachable_none">%1$s didn’t answer, and none of its tracks are saved on this phone.</string>
+    <string name="try_again">Try again</string>
+    <string name="saved_on_phone">saved on this phone</string>
+    <string name="not_saved">not saved</string>
+    <plurals name="play_saved">
+        <item quantity="one">Play the %1$s saved track</item>
+        <item quantity="other">Play the %1$s saved tracks</item>
+    </plurals>
+    <plurals name="shuffle_saved">
+        <item quantity="one">Shuffle the %1$s saved track</item>
+        <item quantity="other">Shuffle the %1$s saved tracks</item>
+    </plurals>
+    <string name="source_empty">No music here yet</string>
+    <string name="source_empty_hint">Its tracks show up here once N\u00A0Music has read them.</string>
+    <string name="welcome_title">Where’s your music?</string>
+    <string name="welcome_hint">Add one or more sources. N\u00A0Music only reads them and never changes what’s there. You can add or remove sources later in Sources.</string>
+    <string name="added">Added</string>
+    <string name="build_my_library">Build my library</string>
+    <string name="remove_source_named">Remove source %1$s</string>
 
     <!-- The queue -->
     <string name="queue">Queue</string>

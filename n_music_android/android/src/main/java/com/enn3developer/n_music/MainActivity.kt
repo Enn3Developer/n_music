@@ -84,6 +84,15 @@ class MainActivity : AppCompatActivity(), AppHost {
         }
     }
 
+    override fun releaseFolder(folder: Uri) {
+        try {
+            contentResolver.releasePersistableUriPermission(folder, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (error: SecurityException) {
+            // Already let go of, or never kept.
+            Log.w("n_music", "Could not release $folder", error)
+        }
+    }
+
     override fun openLink(url: String) {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))

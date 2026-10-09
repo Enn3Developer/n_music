@@ -5,11 +5,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -41,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -51,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +69,7 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.components.BottomFade
 import com.enn3developer.n_music.ui.components.FabItem
+import com.enn3developer.n_music.ui.components.ExtendedFab
 import com.enn3developer.n_music.ui.components.FabMenu
 import com.enn3developer.n_music.ui.components.MiniPlayer
 import com.enn3developer.n_music.ui.components.NIconButton
@@ -85,6 +91,9 @@ import com.enn3developer.n_music.ui.player.PlayerHost
 import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.playlists.PlaylistPage
 import com.enn3developer.n_music.ui.playlists.PlaylistsPage
+import com.enn3developer.n_music.ui.sources.SourcePage
+import com.enn3developer.n_music.ui.sources.SourcesPage
+import com.enn3developer.n_music.ui.sources.WelcomePage
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -99,6 +108,9 @@ import kotlinx.coroutines.CoroutineScope
 interface AppHost {
     /** Opens Android's folder picker; [onPicked] gets the folder, readable from then on. */
     fun pickFolder(onPicked: (Uri) -> Unit)
+
+    /** Gives back the permission to read [folder] that [pickFolder] kept. */
+    fun releaseFolder(folder: Uri)
 
     fun openLink(url: String)
 
@@ -220,6 +232,13 @@ private class Controller(
     }
 
     override val removals = Removals()
+
+    override fun pickFolder(onPicked: (Locator) -> Unit) =
+        host.pickFolder { onPicked(Locator.DocumentTree(it.toString())) }
+
+    override fun releaseFolder(root: Locator) {
+        if (root is Locator.DocumentTree) host.releaseFolder(root.v1.toUri())
+    }
 }
 
 /** Playback's controls, sent to the core; the app opens the output and the sleep timer. */
@@ -252,31 +271,58 @@ fun NMusicApp(host: AppHost) {
                 controller.snack(Snack(resources.getString(R.string.playlist_rejected)))
             }
         }
+        val roots by CoreRepository.roots.collectAsStateWithLifecycle()
+        // The first run asks where the music is; it waits for the core to tell its sources.
+        val screen = when {
+            ui.welcomed -> Screen.APP
+            roots == null -> Screen.WAITING
+            roots.orEmpty().isEmpty() -> Screen.WELCOME
+            else -> Screen.APP
+        }
         CompositionLocalProvider(LocalApp provides controller) {
             Box(Modifier.fillMaxSize()) {
-                // Accessibility services see only the top layer: a sheet or a dialog over
-                // everything, else the open player over the app.
-                val covered = controller.sheet != null || controller.dialog != null
-                Box(if (covered || controller.player.isOpen) Modifier.clearAndSetSemantics {} else Modifier) {
-                    PhoneLayout(navigator)
+                Crossfade(screen, animationSpec = NMotion.effectsSlow(), label = "screen") { shown ->
+                    when (shown) {
+                        Screen.WAITING -> Box(Modifier.fillMaxSize().background(colors.background))
+                        Screen.WELCOME -> Box(if (controller.dialog != null) Modifier.clearAndSetSemantics {} else Modifier) {
+                            WelcomePage()
+                        }
+                        Screen.APP -> AppLayers(navigator, controller)
+                    }
                 }
-                Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
-                    PlayerHost(controller.player)
-                }
-                SheetHost(controller.sheet, controller::closeSheet)
-                // Over a sheet, so its own messages, like the queue's Undo, show.
-                SnackbarHost(
-                    controller.snack.takeIf { controller.sheet != null },
-                    controller::dismissSnack,
-                    controller::snackAction,
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(bottom = 8.dp),
-                )
                 DialogHost(controller.dialog, controller::closeDialog)
             }
         }
+    }
+}
+
+/** What the app shows: the first run's welcome, or the app itself. */
+private enum class Screen { WAITING, WELCOME, APP }
+
+/** The app's pages, with the player, the sheets and their messages over them. */
+@Composable
+private fun AppLayers(navigator: Navigator, controller: Controller) {
+    Box(Modifier.fillMaxSize()) {
+        // Accessibility services see only the top layer: a sheet or a dialog over
+        // everything, else the open player over the app.
+        val covered = controller.sheet != null || controller.dialog != null
+        Box(if (covered || controller.player.isOpen) Modifier.clearAndSetSemantics {} else Modifier) {
+            PhoneLayout(navigator)
+        }
+        Box(if (covered) Modifier.clearAndSetSemantics {} else Modifier) {
+            PlayerHost(controller.player)
+        }
+        SheetHost(controller.sheet, controller::closeSheet)
+        // Over a sheet, so its own messages, like the queue's Undo, show.
+        SnackbarHost(
+            controller.snack.takeIf { controller.sheet != null },
+            controller::dismissSnack,
+            controller::snackAction,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 8.dp),
+        )
     }
 }
 
@@ -455,6 +501,20 @@ private fun PhoneLayout(navigator: Navigator) {
             bottom = fabBottom,
             modifier = Modifier.graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
         )
+        // Sources' button for a new one.
+        androidx.compose.animation.AnimatedVisibility(
+            page == Page.Sources,
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = fabBottom)
+                .graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
+            enter = scaleIn(NMotion.spatialDefault(), initialScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
+                fadeIn(NMotion.effectsDefault()),
+            exit = scaleOut(NMotion.effectsFast(), targetScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
+                fadeOut(NMotion.effectsFast()),
+        ) {
+            ExtendedFab(NIcons.Add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
+        }
     }
 }
 
@@ -529,6 +589,8 @@ private fun PageContent(page: Page) {
         Page.Search -> SearchPage()
         Page.Playlists -> PlaylistsPage()
         is Page.Playlist -> PlaylistPage(page)
+        Page.Sources -> SourcesPage()
+        is Page.Source -> SourcePage(page)
         else -> ComingPage(page)
     }
 }
