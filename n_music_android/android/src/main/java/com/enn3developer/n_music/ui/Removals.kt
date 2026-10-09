@@ -14,8 +14,11 @@ class Removals {
     /** Each key held, and the library version it was sent at; [WAITING] until then. */
     private val held = mutableStateMapOf<Any, Long>()
 
-    /** Whether a list read at library [version] leaves out [key]. */
-    fun hides(key: Any, version: Long): Boolean = held[key]?.let { version <= it } ?: false
+    /**
+     * Whether a list read at library [version] leaves out [key]. Lists whose keys never come back,
+     * like the queue's items, leave the version out: theirs stay out once sent.
+     */
+    fun hides(key: Any, version: Long = Long.MIN_VALUE): Boolean = held[key]?.let { version <= it } ?: false
 
     /** Takes [keys] out of the lists while their snackbar shows. */
     fun hold(keys: Collection<Any>) {
@@ -41,3 +44,6 @@ class Removals {
 
 /** A track a playlist is about to lose. */
 data class PlaylistTrack(val playlist: Long, val track: Locator)
+
+/** A queued entry about to leave the queue. */
+data class QueuedItem(val item: ULong)

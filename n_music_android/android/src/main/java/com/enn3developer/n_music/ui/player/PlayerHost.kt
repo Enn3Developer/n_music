@@ -421,7 +421,8 @@ fun PlayerHost(transition: PlayerTransition) {
         length = length,
         actions = actions,
         miniButtons = settings.miniButtons,
-        snack = app.snack,
+        // Over a sheet, the app shows it.
+        snack = app.snack.takeIf { app.sheet == null },
         onSnackTimeout = app::dismissSnack,
         onSnackAction = app::snackAction,
     )

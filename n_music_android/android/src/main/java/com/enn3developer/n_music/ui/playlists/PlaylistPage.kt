@@ -2,13 +2,9 @@ package com.enn3developer.n_music.ui.playlists
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,25 +23,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
@@ -84,6 +72,7 @@ import com.enn3developer.n_music.ui.components.PageBar
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
 import com.enn3developer.n_music.ui.components.SortControl
+import com.enn3developer.n_music.ui.components.SwipeToRemove
 import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.barSwap
@@ -113,8 +102,6 @@ import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /** The order a playlist's tracks show in: its own, or by default the newest or most played first. */
 fun playlistOrder(playlist: PlaylistRow): TrackOrder =
@@ -302,7 +289,11 @@ fun PlaylistContent(
                     )
                 }
                 Box(Modifier.animateItem(fadeInSpec = null, placementSpec = NMotion.spatialDefault(IntOffset.VisibilityThreshold))) {
-                    if (smart || selection != null) item() else SwipeToRemove({ onRemove(track) }, item)
+                    if (smart || selection != null) {
+                        item()
+                    } else {
+                        SwipeToRemove({ onRemove(track) }, label = stringResource(R.string.remove_from_playlist), content = item)
+                    }
                 }
             }
         }
@@ -480,57 +471,5 @@ private fun LockedRules(rule: Filter) {
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 10.dp),
         )
-    }
-}
-
-/**
- * A row that a swipe to the left takes out of its playlist: Remove shows behind it as it goes,
- * and letting go past a third of the way removes it, else it springs back.
- */
-@Composable
-private fun SwipeToRemove(onRemove: () -> Unit, content: @Composable () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val offset = remember { Animatable(0f) }
-    var width by remember { mutableIntStateOf(1) }
-    val remove = stringResource(R.string.remove)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .onSizeChanged { width = it.width }
-            .clipToBounds()
-            .semantics { customActions = listOf(CustomAccessibilityAction(remove) { onRemove(); true }) }
-    ) {
-        Row(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = if (offset.value < 0f) 1f else 0f }
-                .background(colors.errorContainer)
-                .padding(end = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        ) {
-            NIcon(NIcons.Remove, size = 20.dp, tint = colors.onErrorContainer)
-            Text(remove, style = text(14, FontWeight.Bold), color = colors.onErrorContainer)
-        }
-        val shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
-        Box(
-            Modifier
-                .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .background(colors.background, if (offset.value < 0f) shape else RoundedCornerShape(0.dp))
-                .draggable(
-                    rememberDraggableState { delta -> scope.launch { offset.snapTo((offset.value + delta).coerceAtMost(0f)) } },
-                    Orientation.Horizontal,
-                    onDragStopped = { velocity ->
-                        if (-offset.value > width / 3f || velocity < -1500f) {
-                            offset.animateTo(-width.toFloat(), NMotion.throwing(width + offset.value, -velocity))
-                            onRemove()
-                        } else {
-                            offset.animateTo(0f, NMotion.spatialDefault())
-                        }
-                    },
-                )
-        ) {
-            content()
-        }
     }
 }

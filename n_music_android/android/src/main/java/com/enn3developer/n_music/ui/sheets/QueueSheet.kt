@@ -85,7 +85,7 @@ import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.Seek
 import com.enn3developer.n_music.ui.LocalApp
-import com.enn3developer.n_music.ui.Snack
+import com.enn3developer.n_music.ui.QueuedItem
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
 import com.enn3developer.n_music.ui.components.MenuItem
@@ -94,6 +94,7 @@ import com.enn3developer.n_music.ui.components.NMenu
 import com.enn3developer.n_music.ui.components.PlayingBars
 import com.enn3developer.n_music.ui.components.Segmented
 import com.enn3developer.n_music.ui.components.SheetFrame
+import com.enn3developer.n_music.ui.components.SwipeToRemove
 import com.enn3developer.n_music.ui.components.TextAction
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.components.tappable
@@ -102,6 +103,7 @@ import com.enn3developer.n_music.ui.formatLength
 import com.enn3developer.n_music.ui.player.openOrigin
 import com.enn3developer.n_music.ui.player.originName
 import com.enn3developer.n_music.ui.quantity
+import com.enn3developer.n_music.ui.removeQueued
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
@@ -113,8 +115,11 @@ import kotlinx.coroutines.launch
 interface QueueActions {
     fun openOrigin()
 
-    /** Takes the queued items still to play out; [tracks] are theirs, to put them back. */
-    fun clearQueued(tracks: List<QueueRow>)
+    /** Takes the queued items still to play out of the queue, with Undo. */
+    fun clearQueued(rows: List<QueueRow>)
+
+    /** Takes queued [row] out of the queue, with Undo. */
+    fun remove(row: QueueRow)
 
     fun setLoop(loop: LoopStatus)
 
@@ -153,16 +158,17 @@ fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) 
                 app.openOrigin(from)
             }
 
-            override fun clearQueued(tracks: List<QueueRow>) {
-                CoreRepository.send(Command.ClearQueued)
-                val count = tracks.size
-                app.snack(
-                    Snack(
-                        resources.getQuantityString(R.plurals.cleared_queued, quantity(count), formatCount(count)),
-                        resources.getString(R.string.undo),
-                    ) { CoreRepository.send(Command.Enqueue(tracks.map { it.track.locator }, true)) }
+            override fun clearQueued(rows: List<QueueRow>) {
+                val count = rows.size
+                app.removeQueued(
+                    rows,
+                    resources.getQuantityString(R.plurals.cleared_queued, quantity(count), formatCount(count)),
+                    resources,
                 )
             }
+
+            override fun remove(row: QueueRow) =
+                app.removeQueued(listOf(row), resources.getString(R.string.removed_from_queue, row.track.title), resources)
 
             override fun setLoop(loop: LoopStatus) = CoreRepository.send(Command.SetLoopStatus(loop))
 
@@ -178,7 +184,8 @@ fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) 
         }
     }
     QueueSheet(
-        entries = queue,
+        // Rows taken out leave at once, though the core hears of it once their snackbar goes.
+        entries = queue.filterNot { app.removals.hides(QueuedItem(it.item)) },
         current = current?.item,
         playing = playing,
         shuffle = shuffle,
@@ -493,42 +500,52 @@ private fun QueueList(
                 }
             ) {
                 if (dragged) Slot(Modifier.matchParentSize().graphicsLayer { alpha = drag.lift.value.coerceIn(0f, 1f) })
-                QueueItem(
-                    row = row,
-                    kind = kind,
-                    playing = playing,
-                    dragged = dragged,
-                    lift = { if (dragged) drag.lift.value else 0f },
-                    offset = { if (dragged) drag.offset else 0f },
-                    onClick = { if (kind != Kind.CURRENT) actions.play(row) },
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuFor = row.item
-                    },
-                    handle = if (kind == Kind.PLAYED) {
-                        null
-                    } else {
-                        {
-                            awaitEachGesture {
-                                val down = awaitFirstDown()
-                                down.consume()
-                                start(row)
-                                drag(down.id) { change ->
-                                    dragBy(change.positionChange().y)
-                                    change.consume()
+                // A queued row a swipe takes out; every row has the wrapper, so a row turning
+                // queued or current keeps its gestures.
+                SwipeToRemove(
+                    onRemove = { actions.remove(row) },
+                    label = null,
+                    shape = RoundedCornerShape(16.dp),
+                    surface = colors.surfaceLow,
+                    enabled = kind == Kind.UPCOMING && row.queued && drag.key == null,
+                ) {
+                    QueueItem(
+                        row = row,
+                        kind = kind,
+                        playing = playing,
+                        dragged = dragged,
+                        lift = { if (dragged) drag.lift.value else 0f },
+                        offset = { if (dragged) drag.offset else 0f },
+                        onClick = { if (kind != Kind.CURRENT) actions.play(row) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuFor = row.item
+                        },
+                        handle = if (kind == Kind.PLAYED) {
+                            null
+                        } else {
+                            {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown()
+                                    down.consume()
+                                    start(row)
+                                    drag(down.id) { change ->
+                                        dragBy(change.positionChange().y)
+                                        change.consume()
+                                    }
+                                    drop()
                                 }
-                                drop()
                             }
-                        }
-                    },
-                    moves = moves,
-                )
+                        },
+                        moves = moves,
+                    )
+                }
                 NMenu(menuFor == row.item, { menuFor = null }) {
-                    for ((label, icon, move) in moves) {
-                        MenuItem(label, icon, {
+                    for (move in moves) {
+                        MenuItem(move.label, move.icon, {
                             menuFor = null
-                            move()
-                        })
+                            move.run()
+                        }, danger = move.danger)
                     }
                 }
             }
@@ -536,7 +553,13 @@ private fun QueueList(
     }
 }
 
-/** What a long press offers for the row at [index]: moving it a place, or playing it next. */
+/** One of a row's long-press actions; [danger] takes something away. */
+private data class RowAction(val label: String, val icon: ImageVector, val danger: Boolean = false, val run: () -> Unit)
+
+/**
+ * What a long press offers for the row at [index]: moving it a place, playing it next, or
+ * taking a queued one out of the queue.
+ */
 @Composable
 private fun moves(
     rows: List<QueueRow>,
@@ -544,21 +567,24 @@ private fun moves(
     firstMovable: Int,
     kind: Kind,
     actions: QueueActions,
-): List<Triple<String, ImageVector, () -> Unit>> {
+): List<RowAction> {
     val row = rows[index]
     val current = kind == Kind.CURRENT
     return buildList {
         if (kind == Kind.UPCOMING && index - 1 > firstMovable) {
-            add(Triple(stringResource(R.string.move_up), NIcons.Expand) { actions.move(row, false, rows[index - 1].item) })
+            add(RowAction(stringResource(R.string.move_up), NIcons.Expand) { actions.move(row, false, rows[index - 1].item) })
         }
         if (kind != Kind.PLAYED && index < rows.lastIndex) {
-            add(Triple(stringResource(R.string.move_down), NIcons.Collapse) { actions.move(row, current, rows.getOrNull(index + 2)?.item) })
+            add(RowAction(stringResource(R.string.move_down), NIcons.Collapse) { actions.move(row, current, rows.getOrNull(index + 2)?.item) })
         }
         when {
             kind == Kind.PLAYED ->
-                add(Triple(stringResource(R.string.play_next), NIcons.PlayNext) { actions.playAgain(row) })
+                add(RowAction(stringResource(R.string.play_next), NIcons.PlayNext) { actions.playAgain(row) })
             kind == Kind.UPCOMING && index - 1 > firstMovable ->
-                add(Triple(stringResource(R.string.play_next), NIcons.PlayNext) { actions.move(row, false, rows[firstMovable + 1].item) })
+                add(RowAction(stringResource(R.string.play_next), NIcons.PlayNext) { actions.move(row, false, rows[firstMovable + 1].item) })
+        }
+        if (kind == Kind.UPCOMING && row.queued) {
+            add(RowAction(stringResource(R.string.remove_from_queue), NIcons.Remove, danger = true) { actions.remove(row) })
         }
     }
 }
@@ -601,7 +627,7 @@ private fun QueueItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     handle: (suspend PointerInputScope.() -> Unit)?,
-    moves: List<Triple<String, ImageVector, () -> Unit>>,
+    moves: List<RowAction>,
 ) {
     val track = row.track
     val shape = RoundedCornerShape(16.dp)
@@ -638,7 +664,7 @@ private fun QueueItem(
                     .background(colors.tint, shape)
             )
         }
-        val move = moves.map { (label, _, action) -> CustomAccessibilityAction(label) { action(); true } }
+        val move = moves.map { CustomAccessibilityAction(it.label) { it.run(); true } }
         Row(
             Modifier
                 .matchParentSize()

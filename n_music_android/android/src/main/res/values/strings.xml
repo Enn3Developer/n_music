@@ -427,6 +427,8 @@
     <!-- The queue -->
     <string name="queue">Queue</string>
     <string name="clear_queued">Clear queued</string>
+    <string name="remove_from_queue">Remove from queue</string>
+    <string name="removed_from_queue">Removed %1$s from the queue</string>
     <plurals name="cleared_queued">
         <item quantity="one">Cleared %1$s queued track</item>
         <item quantity="other">Cleared %1$s queued tracks</item>

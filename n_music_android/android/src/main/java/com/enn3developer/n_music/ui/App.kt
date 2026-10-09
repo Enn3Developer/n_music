@@ -264,6 +264,16 @@ fun NMusicApp(host: AppHost) {
                     PlayerHost(controller.player)
                 }
                 SheetHost(controller.sheet, controller::closeSheet)
+                // Over a sheet, so its own messages, like the queue's Undo, show.
+                SnackbarHost(
+                    controller.snack.takeIf { controller.sheet != null },
+                    controller::dismissSnack,
+                    controller::snackAction,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(bottom = 8.dp),
+                )
                 DialogHost(controller.dialog, controller::closeDialog)
             }
         }
@@ -350,7 +360,7 @@ private fun PhoneLayout(navigator: Navigator) {
                     label = "snack",
                 )
                 SnackbarHost(
-                    if (app.player.isOpen) null else app.snack,
+                    if (app.player.isOpen || app.sheet != null) null else app.snack,
                     app::dismissSnack,
                     app::snackAction,
                     Modifier

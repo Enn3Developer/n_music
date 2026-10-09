@@ -5,7 +5,9 @@ import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.TrackRow
+import kotlinx.coroutines.launch
 
 /**
  * Queues [tracks], to play [next] or after what is queued already. Returns what undoes it:
@@ -40,6 +42,35 @@ fun AppController.removeFromPlaylist(playlist: Long, track: TrackRow, resources:
                 val version = CoreRepository.version.value
                 CoreRepository.send(Command.RemoveFromPlaylist(playlist, listOf(track.locator)))
                 removals.sent(held, version)
+            },
+        )
+    )
+}
+
+/**
+ * Takes queued [rows] out of the queue at once, as far as it shows, with Undo on a snackbar
+ * saying [message]; the core hears of it once the snackbar goes away, so Undo puts them back
+ * where they were. One that comes up to play meanwhile is skipped.
+ */
+fun AppController.removeQueued(rows: List<QueueRow>, message: String, resources: Resources) {
+    val held = rows.map { QueuedItem(it.item) }
+    val items = rows.mapTo(HashSet()) { it.item }
+    removals.hold(held)
+    val skipping = scope.launch {
+        CoreRepository.current.collect { if (it?.item in items) CoreRepository.send(Command.PlayNext) }
+    }
+    snack(
+        Snack(
+            message,
+            resources.getString(R.string.undo),
+            onAction = {
+                skipping.cancel()
+                removals.release(held)
+            },
+            onGone = {
+                skipping.cancel()
+                for (item in items) CoreRepository.send(Command.RemoveQueued(item))
+                removals.sent(held, CoreRepository.version.value)
             },
         )
     )
