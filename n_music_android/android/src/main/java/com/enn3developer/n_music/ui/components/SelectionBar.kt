@@ -166,8 +166,8 @@ fun AnimatedVisibilityScope.SelectionActions(
         stringResource(R.string.add_to_queue),
         stringResource(R.string.add_to_playlist),
     )
-    // One size for all three: the design's, or on a phone narrower than its, as large as lets the
-    // longest label fit its third of the bar, rather than cut it short.
+    // One size for all three: the design's, or on a phone too narrow for it, the largest that
+    // fits the longest label in its third of the bar, rather than cutting labels short.
     val measurer = rememberTextMeasurer()
     var width by remember { mutableIntStateOf(0) }
     val size = remember(labels, width, density) {
