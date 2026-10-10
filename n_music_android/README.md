@@ -52,7 +52,8 @@ the wave stands still.
 
 The app's own settings, like the theme, the accent, the mini player's buttons and each list's
 view and sort, stay in the core's settings file, in the `android.ui` section the Slint app used,
-so its theme carries over. The strings are Android resources in `android/src/main/res/values`.
+so its theme carries over. The strings are Android resources in `android/src/main/res/values`,
+in English only for now.
 
 ## How Kotlin reaches the core
 
@@ -89,7 +90,7 @@ that runs on every process start, whether Android started the process for the UI
 `PlaybackService` or for a media button. The Slint app ran the core inside `android_main`, so it
 lived and died with the activity.
 
-What keeps the process alive is `PlaybackService`, a Media3 `MediaSessionService`:
+What keeps the process alive is `PlaybackService`, a Media3 `MediaLibraryService`:
 
 - Media3 runs it in the foreground, with the media notification, while `NPlayer` reports
   playing. The notification shows from the first play on, as in the Slint app. When the user
@@ -118,6 +119,11 @@ made public:
 - `AudioBecomingNoisyManager` pauses when headphones are unplugged, also while paused for a call,
   so the music does not come back on the speaker after it. Without it the core would follow the
   device change and carry on through the speaker.
+- `WifiLockManager` holds a Wi-Fi lock while a track from a web playlist plays, as ExoPlayer does
+  in its network wake mode. Up to Android 13 that keeps Wi-Fi out of power save with the screen
+  off. From Android 14, asking for the `WIFI_MODE_FULL_HIGH_PERF` lock Media3 uses gets a
+  low-latency lock instead, which only holds while the screen is on and the app is in the
+  foreground.
 
 ### Suspend
 
@@ -139,12 +145,14 @@ Within one process nothing is lost. The core keeps its state, and a new activity
 `PlaybackService` reads the current values from `CoreRepository`'s flows.
 
 After the process died, the core reopens the play session from the library database when its
-resume setting, `SetResume`, is on. It saves the session on pause, on every track change, at the
-end, and every 10 seconds of playback. Those periodic saves ride on position reports, and the
-core used to stop reporting positions while the app was hidden. A session killed in the
-background then resumed from wherever the app was last on screen. Hidden, the core now still
-reports positions every 5 seconds: no screen shows them, but the save needs them, and a killed
-session resumes within about 10 seconds of where it was.
+resume setting is on. That is the Resume switch in Settings, and it starts off, as on the
+desktop: with it off, a process Android killed comes back with nothing queued. With it on, the
+core saves the session on pause, on every track change, at the end, and every 10 seconds of
+playback. Those periodic saves ride on position reports, and the core used to stop reporting
+positions while the app was hidden. A session killed in the background then resumed from
+wherever the app was last on screen. Hidden, the core now still reports positions every 5
+seconds: no screen shows them, but the save needs them, and a killed session resumes within
+about 10 seconds of where it was.
 
 A headset or the notification can start playback with no process running. `MediaButtonReceiver`
 starts `PlaybackService` as a foreground service, and the play press reaches `NPlayer`, which
@@ -152,26 +160,32 @@ leaves idle right away: Media3 then puts the service in the foreground, which An
 within seconds. The core resumes its saved session, or plays the whole library when nothing was
 chosen yet; a Play that comes before the startup scan listed the library waits for the listing.
 Media3 only calls `onPlaybackResumption` to start playback when the player is empty and accepts
-new media items, which `NPlayer` never does, so its implementation only describes the session to
-whoever asks.
+new media items, which `NPlayer` never does, so there it only describes the session.
 
-### Not done yet
+After a reboot, Android's System UI can show a card in its media controls to resume what played
+last. At boot it binds to the app's `MediaBrowserService` and asks for its most recent item,
+which is why `PlaybackService` is an exported library service with no library to browse. While
+Resume is on, `onPlaybackResumption` then waits up to 5 seconds for the core to read the saved
+session back and gives System UI the track it stopped on, with the cover's bytes: System UI
+can't open the app's files. With Resume off it gives nothing, and System UI shows no card. The
+card's play button reaches `NPlayer` the way a headset's play key does.
 
-- Resume is off by default in the core's settings, so a killed process comes back with nothing
-  queued until the Resume switch in Settings is on.
+### Still to check on a device
+
 - From Android 15 an audio focus request fails unless the app is on top or runs a foreground
   service. Playback from the app is on top. Playback from a headset or the notification with
   the app in the background asks for focus once the core plays, after Media3 started the
-  foreground service. That Android grants it then still has to be checked on a device.
-- Android's resumption card after a reboot needs a `MediaLibraryService`. Android 15 also
-  forbids starting a `mediaPlayback` foreground service from `BOOT_COMPLETED`, so that card is
-  the only way back after a reboot.
-- Web playlists stream without a Wi-Fi lock. Media3's `WifiLockManager` would keep Wi-Fi up
-  while a remote track plays with the screen off.
+  foreground service. That Android grants it then still has to be checked.
+- That System UI shows the resumption card after a reboot, and that its play button gets to
+  start the foreground service with the app in the background.
+- How System UI draws the media notification, with its shuffle and repeat buttons.
+- That the Wi-Fi lock keeps a web track streaming with the screen off on Android 11 to 13.
 
 ## References
 
 - [Background playback with a MediaSessionService](https://developer.android.com/media/media3/session/background-playback)
 - [Media3 release notes](https://developer.android.com/jetpack/androidx/releases/media3)
 - [Manage audio focus](https://developer.android.com/media/optimize/audio-focus)
+- [Playback resumption](https://developer.android.com/media/media3/session/background-playback#resumption)
+- [WifiManager's lock modes](https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_HIGH_PERF)
 - [Cached apps freezer](https://source.android.com/docs/core/perf/cached-apps-freezer)
