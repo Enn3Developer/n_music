@@ -48,7 +48,8 @@ graphite surfaces and a choice of accent colours. It has:
 - selection: a long press picks tracks to play next, queue or add to a playlist
 - the mini player, which opens into the now playing page, with the queue, a sleep timer that
   fades playback out, and Android's output switcher
-- playlists, plain and smart, with rules, sorting and removals you can undo
+- playlists, plain and smart, with rules, sorting and removals you can undo. Each row in the
+  list plays or shuffles its playlist, and its menu queues, renames or deletes it
 - sources: local folders, web playlists and Telegram chats, a page for each, and the first
   run's welcome
 - signing in to Telegram a step at a time, then picking a chat to add from a search of the

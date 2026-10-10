@@ -340,6 +340,8 @@
     <string name="close_menu">Close menu</string>
     <string name="rename_playlist">Rename playlist</string>
     <string name="more_playlist_actions">More playlist actions</string>
+    <string name="play_playlist">Play %1$s</string>
+    <string name="shuffle_playlist">Shuffle %1$s</string>
     <string name="delete_playlist">Delete playlist</string>
     <string name="delete_playlist_title">Delete “%1$s”?</string>
     <string name="delete_playlist_hint">Its tracks stay in your library.</string>

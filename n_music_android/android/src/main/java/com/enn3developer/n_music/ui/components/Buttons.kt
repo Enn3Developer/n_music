@@ -173,6 +173,45 @@ fun PlayShuffle(
 }
 
 /**
+ * Play and Shuffle side by side, joined, as icons alone: for a row in a list, which
+ * [playDescription] and [shuffleDescription] name for what they play. Both are tonal, as a list
+ * repeats them on every row.
+ */
+@Composable
+fun PlayShuffleIcons(
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    playDescription: String,
+    shuffleDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        ButtonSurface(
+            onClick = onPlay,
+            shape = NShapes.first(20.dp, 6.dp),
+            container = colors.secondaryContainer,
+            content = colors.onSecondaryContainer,
+            modifier = Modifier
+                .size(44.dp, 40.dp)
+                .described(playDescription),
+        ) {
+            NIcon(NIcons.Play, size = 20.dp)
+        }
+        ButtonSurface(
+            onClick = onShuffle,
+            shape = NShapes.last(20.dp, 6.dp),
+            container = colors.secondaryContainer,
+            content = colors.onSecondaryContainer,
+            modifier = Modifier
+                .size(44.dp, 40.dp)
+                .described(shuffleDescription),
+        ) {
+            NIcon(NIcons.Shuffle, size = 20.dp)
+        }
+    }
+}
+
+/**
  * Play and Shuffle side by side, joined and both named: beside a tablet's sort control, or a
  * little larger in a tablet page's [header].
  */

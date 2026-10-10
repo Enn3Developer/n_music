@@ -111,6 +111,9 @@ import com.enn3developer.n_music.ui.tracksCount
 fun playlistOrder(playlist: PlaylistRow): TrackOrder =
     if (playlist.sort.isEmpty() && playlist.rule != null) TrackOrder(TrackSort.MOST_PLAYED) else TrackOrder.of(playlist.sort)
 
+/** A playlist's tracks in its own order, as its page lists them and Play plays them. */
+fun playlistQuery(playlist: PlaylistRow): Query = Query(Filter.Playlist(playlist.id), playlistOrder(playlist).keys(playlist.id))
+
 /**
  * A playlist's page: its tile, name and details, Play and Shuffle, and its tracks in its own
  * order. A smart one shows its rules as chips, or listed when only the desktop can edit them; a
