@@ -71,11 +71,13 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
+import com.enn3developer.n_music.ui.components.HoldFill
 import com.enn3developer.n_music.ui.components.MenuItem
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NMenu
 import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.PlaybackUi
+import com.enn3developer.n_music.ui.components.holdFill
 import com.enn3developer.n_music.ui.components.miniButton
 import com.enn3developer.n_music.ui.components.miniProgress
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -143,6 +145,10 @@ fun MiniPlayerEditor(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val drag = remember { EditorDrag() }
+    // The fill growing under the finger in step with the hold, on the button pressed.
+    val fill = remember { HoldFill() }
+    var pressed by remember { mutableStateOf<MiniButton?>(null) }
+    val fillColor = colors.onSurface
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var bar by remember { mutableStateOf(Rect.Zero) }
     // Where each button shows, bar and tray alike, for a finger to find it.
@@ -223,16 +229,24 @@ fun MiniPlayerEditor(
                         ?: return@awaitEachGesture
                     // The tray holds still while the bar is full.
                     if (full && button !in buttons) return@awaitEachGesture
+                    val hold = viewConfiguration.longPressTimeoutMillis
+                    pressed = button
+                    val from = down.position - (bounds[button]?.topLeft ?: Offset.Zero)
+                    scope.launch { fill.press(from, hold) }
                     var held = true
-                    val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    val up = withTimeoutOrNull(hold) {
                         waitForUpOrCancellation().also { held = false }
                     }
                     when {
-                        up != null -> menuFor = button
+                        up != null -> {
+                            scope.launch { fill.release() }
+                            menuFor = button
+                        }
                         // A scroll took the finger before it held.
-                        !held -> {}
+                        !held -> scope.launch { fill.cancel() }
                         else -> {
                             lift(button, down.position)
+                            scope.launch { fill.release() }
                             val finished = drag(down.id) { change ->
                                 follow(change.positionChange())
                                 change.consume()
@@ -285,6 +299,8 @@ fun MiniPlayerEditor(
                                 Box(place) {
                                     BarButton(
                                         entry, preview, buttons, root, bounds,
+                                        fill = if (pressed == entry) fill else null,
+                                        fillColor = fillColor,
                                         onMenu = { menuFor = entry },
                                         onTakeOut = { change(buttons - entry) },
                                         onMove = { move(entry, it) },
@@ -338,7 +354,13 @@ fun MiniPlayerEditor(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (button in row) {
                             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                TrayButton(button, enabled = !full, root, bounds, onMenu = { menuFor = button }, onAdd = { change(buttons + button) })
+                                TrayButton(
+                                    button, enabled = !full, root, bounds,
+                                    fill = if (pressed == button) fill else null,
+                                    fillColor = fillColor,
+                                    onMenu = { menuFor = button },
+                                    onAdd = { change(buttons + button) },
+                                )
                                 NMenu(menuFor == button, { menuFor = null }) {
                                     MenuItem(stringResource(R.string.mini_add), NIcons.Add, {
                                         menuFor = null
@@ -353,7 +375,7 @@ fun MiniPlayerEditor(
                 }
             }
         }
-        if (dragged != null) Lifted(dragged, preview, drag)
+        if (dragged != null) Lifted(dragged, preview, drag, fill, fillColor)
     }
 }
 
@@ -410,6 +432,8 @@ private fun BarButton(
     buttons: List<MiniButton>,
     root: LayoutCoordinates?,
     bounds: MutableMap<MiniButton, Rect>,
+    fill: HoldFill?,
+    fillColor: Color,
     onMenu: () -> Unit,
     onTakeOut: () -> Unit,
     onMove: (Int) -> Unit,
@@ -433,7 +457,8 @@ private fun BarButton(
                 role = Role.Button
                 onClick { onMenu(); true }
                 customActions = actions
-            },
+            }
+            .then(if (fill != null) Modifier.holdFill(fill, fillColor, CircleShape) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         if (on) {
@@ -458,6 +483,8 @@ private fun TrayButton(
     enabled: Boolean,
     root: LayoutCoordinates?,
     bounds: MutableMap<MiniButton, Rect>,
+    fill: HoldFill?,
+    fillColor: Color,
     onMenu: () -> Unit,
     onAdd: () -> Unit,
 ) {
@@ -478,11 +505,13 @@ private fun TrayButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        val shape = RoundedCornerShape(16.dp)
         Box(
             Modifier
                 .size(48.dp)
                 .tracked(button, root, bounds)
-                .background(colors.surfaceHigh, RoundedCornerShape(16.dp)),
+                .then(if (fill != null) Modifier.holdFill(fill, fillColor, shape) else Modifier)
+                .background(colors.surfaceHigh, shape),
             contentAlignment = Alignment.Center,
         ) {
             NIcon(trayIcon(button), tint = colors.onSurface)
@@ -525,7 +554,7 @@ private fun Slot(modifier: Modifier) {
 
 /** The held button, floating over the finger with its shadow. */
 @Composable
-private fun Lifted(button: MiniButton, preview: PlaybackUi, drag: EditorDrag) {
+private fun Lifted(button: MiniButton, preview: PlaybackUi, drag: EditorDrag, fill: HoldFill, fillColor: Color) {
     val density = LocalDensity.current
     val (icon, _, _) = miniButton(button, preview, Preview)
     Box(
@@ -543,6 +572,8 @@ private fun Lifted(button: MiniButton, preview: PlaybackUi, drag: EditorDrag) {
                 scaleY = scale
             }
             .dropShadow(CircleShape, Shadow(24.dp, Color.Black.copy(alpha = 0.35f), offset = DpOffset(0.dp, 10.dp)))
+            // The hold's fill fades as it lifts.
+            .holdFill(fill, fillColor, CircleShape)
             .background(colors.surfaceHighest, CircleShape),
         contentAlignment = Alignment.Center,
     ) {

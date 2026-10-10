@@ -167,7 +167,10 @@ fun PlayingBars(
     }
 }
 
-/** A row or tile's click, with a long press when [onLongClick] is set. */
+/**
+ * A row or tile's click, with a long press when [onLongClick] is set: then a fill grows from
+ * the finger in step with the hold.
+ */
 @Composable
 fun Modifier.tappable(
     onClick: () -> Unit,
@@ -177,6 +180,8 @@ fun Modifier.tappable(
     clickable(role = role, onClick = onClick)
 } else {
     combinedClickable(
+        interactionSource = null,
+        indication = rememberHoldIndication(),
         role = role,
         onClick = onClick,
         onLongClick = onLongClick,
