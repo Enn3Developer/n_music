@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,6 +43,32 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 
+/**
+ * How big the player's buttons are, with their icons, and how they share a row: [spread] across
+ * it, or [gap] apart.
+ */
+@Immutable
+data class ControlSizes(
+    val toggle: Dp,
+    val toggleIcon: Dp,
+    val skip: Dp,
+    val skipRadius: Dp,
+    val skipIcon: Dp,
+    val playWidth: Dp,
+    val playHeight: Dp,
+    val playRadius: Dp,
+    val playIcon: Dp,
+    val spread: Boolean = false,
+    val gap: Dp = 6.dp,
+) {
+    companion object {
+        val Phone = ControlSizes(48.dp, 24.dp, 64.dp, 20.dp, 28.dp, 96.dp, 80.dp, 28.dp, 36.dp)
+        val Fold = ControlSizes(44.dp, 22.dp, 56.dp, 18.dp, 26.dp, 84.dp, 72.dp, 26.dp, 32.dp, spread = true)
+        val Landscape = ControlSizes(48.dp, 24.dp, 60.dp, 20.dp, 26.dp, 92.dp, 68.dp, 26.dp, 32.dp, gap = 8.dp)
+        val Pane = ControlSizes(44.dp, 20.dp, 52.dp, 16.dp, 24.dp, 76.dp, 60.dp, 22.dp, 30.dp, spread = true)
+    }
+}
+
 /** The player's buttons: shuffle, previous, play or pause, next and repeat. */
 @Composable
 fun PlayerControls(
@@ -50,10 +77,11 @@ fun PlayerControls(
     loop: LoopStatus,
     actions: PlaybackActions,
     modifier: Modifier = Modifier,
+    sizes: ControlSizes = ControlSizes.Phone,
 ) {
     Row(
         modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = if (sizes.spread) Arrangement.SpaceBetween else Arrangement.spacedBy(sizes.gap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ToggleButton(
@@ -62,10 +90,11 @@ fun PlayerControls(
             stringResource(if (shuffle) R.string.toggle_on else R.string.toggle_off),
             shuffle,
             actions::toggleShuffle,
+            sizes,
         )
-        SkipButton(NIcons.Previous, stringResource(R.string.previous), actions::previous)
-        PlayPauseButton(playing, actions::togglePause)
-        SkipButton(NIcons.Next, stringResource(R.string.next), actions::next)
+        SkipButton(NIcons.Previous, stringResource(R.string.previous), actions::previous, sizes)
+        PlayPauseButton(playing, actions::togglePause, sizes)
+        SkipButton(NIcons.Next, stringResource(R.string.next), actions::next, sizes)
         ToggleButton(
             if (loop == LoopStatus.FILE) NIcons.RepeatOne else NIcons.Repeat,
             stringResource(R.string.repeat),
@@ -78,18 +107,19 @@ fun PlayerControls(
             ),
             loop != LoopStatus.OFF,
             actions::cycleRepeat,
+            sizes,
         )
     }
 }
 
 /** Shuffle or repeat: a round button, filled while [on]. */
 @Composable
-private fun ToggleButton(icon: ImageVector, label: String, state: String, on: Boolean, onClick: () -> Unit) {
+private fun ToggleButton(icon: ImageVector, label: String, state: String, on: Boolean, onClick: () -> Unit, sizes: ControlSizes) {
     val fill by animateColorAsState(if (on) colors.secondaryContainer else Color.Transparent, NMotion.effectsDefault(), label = "fill")
     val tint by animateColorAsState(if (on) colors.onSecondaryContainer else colors.onSurfaceVariant, NMotion.effectsDefault(), label = "tint")
     Box(
         Modifier
-            .size(48.dp)
+            .size(sizes.toggle)
             .clip(CircleShape)
             .background(fill)
             .clickable(role = Role.Button, interactionSource = null, indication = ripple(), onClick = onClick)
@@ -99,25 +129,25 @@ private fun ToggleButton(icon: ImageVector, label: String, state: String, on: Bo
             },
         contentAlignment = Alignment.Center,
     ) {
-        NIcon(icon, tint = tint)
+        NIcon(icon, size = sizes.toggleIcon, tint = tint)
     }
 }
 
 /** Previous or next: a square-ish button whose corners square up further while pressed. */
 @Composable
-private fun SkipButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun SkipButton(icon: ImageVector, label: String, onClick: () -> Unit, sizes: ControlSizes) {
     SqueezeButton(
-        width = 64.dp,
-        height = 64.dp,
-        radius = 20.dp,
-        pressedRadius = 12.dp,
+        width = sizes.skip,
+        height = sizes.skip,
+        radius = sizes.skipRadius,
+        pressedRadius = sizes.skipRadius - 8.dp,
         fill = colors.surfaceHigh,
         press = colors.onSurface,
         pressAlpha = 0.1f,
         label = label,
         onClick = onClick,
     ) {
-        NIcon(icon, size = 28.dp, tint = colors.onSurface)
+        NIcon(icon, size = sizes.skipIcon, tint = colors.onSurface)
     }
 }
 
@@ -126,24 +156,24 @@ private fun SkipButton(icon: ImageVector, label: String, onClick: () -> Unit) {
  * bars fold into a triangle as it pauses.
  */
 @Composable
-private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
+private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, sizes: ControlSizes) {
     // 0 shows the bars of Pause, 1 the triangle of Play.
     val morph = remember { Animatable(if (playing) 0f else 1f) }
     LaunchedEffect(playing) { morph.animateTo(if (playing) 0f else 1f, NMotion.effectsDefault()) }
     val tint = colors.onPrimaryContainer
     val path = remember { Path() }
     SqueezeButton(
-        width = 96.dp,
-        height = 80.dp,
-        radius = if (playing) 28.dp else 40.dp,
-        pressedRadius = 16.dp,
+        width = sizes.playWidth,
+        height = sizes.playHeight,
+        radius = if (playing) sizes.playRadius else sizes.playHeight / 2,
+        pressedRadius = sizes.playRadius - 12.dp,
         fill = colors.primaryContainer,
         press = colors.onPrimaryContainer,
         pressAlpha = 0.12f,
         label = stringResource(if (playing) R.string.pause else R.string.play),
         onClick = onClick,
     ) {
-        Canvas(Modifier.size(36.dp)) {
+        Canvas(Modifier.size(sizes.playIcon)) {
             val scale = size.width / 24f
             val t = morph.value
             path.reset()

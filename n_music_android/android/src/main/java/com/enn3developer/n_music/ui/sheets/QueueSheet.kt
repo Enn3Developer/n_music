@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -65,6 +66,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -73,6 +76,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -142,6 +146,36 @@ interface QueueActions {
  */
 @Composable
 fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
+    LiveQueue(onLeave = onDismissRequest) { entries, current, playing, shuffle, loop, origin, actions ->
+        QueueSheet(entries, current, playing, shuffle, loop, origin, actions, open, onDismissRequest, onGone)
+    }
+}
+
+/** The play session beside a foldable's player, as the sheet shows it, but for shuffle, which the player has. */
+@Composable
+fun QueuePanel(modifier: Modifier = Modifier) {
+    LiveQueue(onLeave = {}) { entries, current, playing, shuffle, loop, origin, actions ->
+        QueuePanel(entries, current, playing, shuffle, loop, origin, actions, modifier)
+    }
+}
+
+/**
+ * The play session from the core, and what the queue does with it; [onLeave] runs before it
+ * opens the page of what plays.
+ */
+@Composable
+private fun LiveQueue(
+    onLeave: () -> Unit,
+    content: @Composable (
+        entries: List<QueueRow>,
+        current: ULong?,
+        playing: Boolean,
+        shuffle: Boolean,
+        loop: LoopStatus,
+        origin: String?,
+        actions: QueueActions,
+    ) -> Unit,
+) {
     val app = LocalApp.current
     val resources = LocalResources.current
     val queue by CoreRepository.queue.collectAsStateWithLifecycle()
@@ -150,11 +184,12 @@ fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) 
     val shuffle by CoreRepository.shuffle.collectAsStateWithLifecycle()
     val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
     val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
+    val leave by rememberUpdatedState(onLeave)
     val actions = remember(app, resources) {
         object : QueueActions {
             override fun openOrigin() {
                 val from = PlayingFrom.origin.value ?: return
-                onDismissRequest()
+                leave()
                 app.openOrigin(from)
             }
 
@@ -183,18 +218,15 @@ fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) 
             override fun playAgain(row: QueueRow) = CoreRepository.send(Command.Enqueue(listOf(row.track.locator), true))
         }
     }
-    QueueSheet(
+    content(
         // Rows taken out leave at once, though the core hears of it once their snackbar goes.
-        entries = queue.filterNot { app.removals.hides(QueuedItem(it.item)) },
-        current = current?.item,
-        playing = playing,
-        shuffle = shuffle,
-        loop = loop,
-        origin = originName(origin),
-        actions = actions,
-        open = open,
-        onDismissRequest = onDismissRequest,
-        onGone = onGone,
+        queue.filterNot { app.removals.hides(QueuedItem(it.item)) },
+        current?.item,
+        playing,
+        shuffle,
+        loop,
+        originName(origin),
+        actions,
     )
 }
 
@@ -219,50 +251,7 @@ fun QueueSheet(
     SheetFrame(
         open, title, onDismissRequest, onGone,
         tall = true,
-        header = {
-            // 2 dp higher than the tall sheets' handle leaves it, as the design's is shorter.
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .margins(top = 2.dp)
-                    .height(40.dp)
-                    .padding(start = 20.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(title, style = text(20, FontWeight.ExtraBold), color = colors.onSurface, modifier = Modifier.weight(1f))
-                if (queued.isNotEmpty()) {
-                    TextAction(stringResource(R.string.clear_queued), { actions.clearQueued(queued) })
-                }
-            }
-            PlayingFrom(origin, shuffle, upcoming.size, actions::openOrigin)
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
-                Text(
-                    stringResource(R.string.at_the_end),
-                    style = text(12, FontWeight.Bold),
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Segmented(
-                        options = listOf(LoopStatus.OFF, LoopStatus.PLAYLIST, LoopStatus.FILE),
-                        selected = loop,
-                        label = {
-                            stringResource(
-                                when (it) {
-                                    LoopStatus.OFF -> R.string.end_stop
-                                    LoopStatus.PLAYLIST -> R.string.repeat_all
-                                    LoopStatus.FILE -> R.string.repeat_one
-                                }
-                            )
-                        },
-                        onSelect = actions::setLoop,
-                        modifier = Modifier.weight(1f),
-                        weights = listOf(1f, 1.45f, 1.3f),
-                    )
-                    ShuffleToggle(shuffle, actions::toggleShuffle)
-                }
-            }
-        },
+        header = { QueueHeader(title, queued, upcoming.size, shuffle, loop, origin, actions, panel = false) },
     ) {
         Box(
             Modifier
@@ -274,9 +263,107 @@ fun QueueSheet(
     }
 }
 
+/** The panel itself, for the session's [entries] with [current] playing. */
+@Composable
+fun QueuePanel(
+    entries: List<QueueRow>,
+    current: ULong?,
+    playing: Boolean,
+    shuffle: Boolean,
+    loop: LoopStatus,
+    origin: String?,
+    actions: QueueActions,
+    modifier: Modifier = Modifier,
+) {
+    val title = stringResource(R.string.queue)
+    val index = entries.indexOfFirst { it.item == current }
+    val upcoming = entries.drop(index + 1)
+    val queued = upcoming.filter { it.queued }
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(colors.surfaceLow, shape)
+            .semantics {
+                paneTitle = title
+                isTraversalGroup = true
+            }
+    ) {
+        QueueHeader(title, queued, upcoming.size, shuffle, loop, origin, actions, panel = true)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.outlineVariant)
+        )
+        QueueList(entries, current, playing, actions, Modifier.weight(1f), dense = true)
+    }
+}
+
+/**
+ * The queue's title with Clear queued, where it plays from, and what happens at its end, with
+ * shuffle beside it on the sheet; a [panel] beside the player leaves shuffle to it.
+ */
+@Composable
+private fun QueueHeader(
+    title: String,
+    queued: List<QueueRow>,
+    left: Int,
+    shuffle: Boolean,
+    loop: LoopStatus,
+    origin: String?,
+    actions: QueueActions,
+    panel: Boolean,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            // 2 dp higher than the tall sheets' handle leaves it, as the design's is shorter.
+            .then(if (panel) Modifier.padding(top = 12.dp) else Modifier.margins(top = 2.dp))
+            .height(40.dp)
+            .padding(start = 20.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = text(20, FontWeight.ExtraBold), color = colors.onSurface, modifier = Modifier.weight(1f))
+        if (queued.isNotEmpty()) {
+            TextAction(stringResource(R.string.clear_queued), { actions.clearQueued(queued) })
+        }
+    }
+    PlayingFrom(origin, shuffle, left, actions::openOrigin, minHeight = if (panel) 16.dp else 36.dp)
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = if (panel) 10.dp else 4.dp, bottom = 12.dp)) {
+        Text(
+            stringResource(R.string.at_the_end),
+            style = text(12, FontWeight.Bold),
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Segmented(
+                options = listOf(LoopStatus.OFF, LoopStatus.PLAYLIST, LoopStatus.FILE),
+                selected = loop,
+                label = {
+                    stringResource(
+                        when (it) {
+                            LoopStatus.OFF -> R.string.end_stop
+                            LoopStatus.PLAYLIST -> R.string.repeat_all
+                            LoopStatus.FILE -> R.string.repeat_one
+                        }
+                    )
+                },
+                onSelect = actions::setLoop,
+                modifier = Modifier.weight(1f),
+                weights = if (panel) listOf(1f, 1.35f, 1.35f) else listOf(1f, 1.45f, 1.3f),
+                textSize = if (panel) 13 else 14,
+                checkSize = if (panel) 16.dp else 18.dp,
+            )
+            if (!panel) ShuffleToggle(shuffle, actions::toggleShuffle)
+        }
+    }
+}
+
 /** Playing from Late night · shuffled · 23 left, the name a link to its page. */
 @Composable
-private fun PlayingFrom(origin: String?, shuffle: Boolean, left: Int, onOrigin: () -> Unit) {
+private fun PlayingFrom(origin: String?, shuffle: Boolean, left: Int, onOrigin: () -> Unit, minHeight: Dp) {
     val style = text(13)
     val muted = colors.onSurfaceVariant
     val rest = buildString {
@@ -286,7 +373,7 @@ private fun PlayingFrom(origin: String?, shuffle: Boolean, left: Int, onOrigin: 
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 36.dp)
+            .heightIn(min = minHeight)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -361,7 +448,8 @@ private class QueueDrag {
 /**
  * The session's rows, scrolled to show the two that played last above the current one. Holding
  * a row's handle lifts it, and dragging moves it: past a neighbour's middle, the neighbour slides
- * over with a tick, and letting go settles it in its slot. What played stays put.
+ * over with a tick, and letting go settles it in its slot. What played stays put. [dense] rows
+ * are a little shorter, for the panel beside a foldable's player.
  */
 @Composable
 private fun QueueList(
@@ -370,6 +458,7 @@ private fun QueueList(
     playing: Boolean,
     actions: QueueActions,
     modifier: Modifier,
+    dense: Boolean = false,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
@@ -379,7 +468,8 @@ private fun QueueList(
     val firstMovable = currentIndex.coerceAtLeast(0)
     val state = rememberLazyListState(
         initialFirstVisibleItemIndex = (currentIndex - 2).coerceAtLeast(0),
-        initialFirstVisibleItemScrollOffset = if (currentIndex >= 2) with(density) { 32.dp.roundToPx() } else 0,
+        // Just over half the first row hides above the list's top.
+        initialFirstVisibleItemScrollOffset = if (currentIndex >= 2) with(density) { (if (dense) 30.dp else 32.dp).roundToPx() } else 0,
     )
     val drag = remember { QueueDrag() }
     LaunchedEffect(entries) { if (!drag.held) drag.order = null }
@@ -538,6 +628,7 @@ private fun QueueList(
                             }
                         },
                         moves = moves,
+                        dense = dense,
                     )
                 }
                 NMenu(menuFor == row.item, { menuFor = null }) {
@@ -611,10 +702,13 @@ private fun Slot(modifier: Modifier) {
     )
 }
 
+/** How tall a row of the queue is, but for the current one, which is 4 dp taller. */
+private fun rowHeight(dense: Boolean) = if (dense) 58.dp else 60.dp
+
 /**
  * A row of the queue: what played is greyed, the current one washed in the accent, and queued
  * ones say so. A row [dragged] lifts by [lift], [offset] pixels from its slot; [handle] follows
- * a finger on its handle, which played rows lack.
+ * a finger on its handle, which played rows lack. A [dense] row has a smaller cover.
  */
 @Composable
 private fun QueueItem(
@@ -628,6 +722,7 @@ private fun QueueItem(
     onLongClick: () -> Unit,
     handle: (suspend PointerInputScope.() -> Unit)?,
     moves: List<RowAction>,
+    dense: Boolean,
 ) {
     val track = row.track
     val shape = RoundedCornerShape(16.dp)
@@ -640,7 +735,7 @@ private fun QueueItem(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(if (now) 64.dp else 60.dp)
+            .height(rowHeight(dense) + if (now) 4.dp else 0.dp)
             .graphicsLayer {
                 translationY = offset()
                 val scale = 1f + 0.03f * lift()
@@ -675,7 +770,7 @@ private fun QueueItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(44.dp).graphicsLayer { alpha = if (played) 0.5f else 1f }) {
+            Box(Modifier.size(if (dense) 42.dp else 44.dp).graphicsLayer { alpha = if (played) 0.5f else 1f }) {
                 Cover(
                     track.cover,
                     Modifier.fillMaxSize(),

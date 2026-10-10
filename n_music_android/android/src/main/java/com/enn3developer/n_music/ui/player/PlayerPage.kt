@@ -24,15 +24,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -61,11 +67,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -75,6 +83,8 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
+import com.enn3developer.n_music.ui.LocalWindowLayout
+import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
 import com.enn3developer.n_music.ui.components.InfoChip
@@ -84,6 +94,7 @@ import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.components.tappable
+import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NType
@@ -144,13 +155,45 @@ val PlayerCoverShape = RoundedCornerShape(28.dp)
 /** How long new text waits for the old to leave when it fades through. */
 private const val FADE_THROUGH_MS = 90L
 
+/** How big the player's text is and how far apart its parts sit, which the window decides. */
+@Immutable
+private data class PlayerMetrics(
+    /** Space on both sides of the title, the position and the controls. */
+    val side: Dp,
+    val title: TextStyle,
+    val titleTop: Dp,
+    /** The artist and album. */
+    val line: TextStyle,
+    val chipsTop: Dp,
+    val seekTop: Dp,
+    val controlsTop: Dp,
+    val controls: ControlSizes,
+) {
+    companion object {
+        val Phone = PlayerMetrics(
+            32.dp, NType.titleLarge, 24.dp, text(16, lineHeight = 22.sp), 14.dp, 20.dp, 20.dp, ControlSizes.Phone,
+        )
+        val Fold = PlayerMetrics(
+            24.dp, text(24, FontWeight.ExtraBold, 30.sp, (-0.3).sp), 20.dp, text(15, lineHeight = 18.sp), 12.dp, 18.dp, 18.dp,
+            ControlSizes.Fold,
+        )
+        val Landscape = PlayerMetrics(
+            0.dp, NType.titleLarge, 14.dp, text(15, lineHeight = 18.sp), 12.dp, 16.dp, 12.dp, ControlSizes.Landscape,
+        )
+    }
+}
+
+/** The open player's width on a foldable, beside the queue. */
+private val FoldPlayerWidth = 344.dp
+
 /**
  * The player: where it plays from, the cover, the track with its artist and album, the position,
  * the controls, the output and sleep timer, and what plays next. [artwork] gives a track's
  * cover. A skip slides the covers one place, the way [skip] says it went: 1 to the next, -1 back,
  * and the text fades through. Pausing shrinks the cover and flattens the wave. [group] gives each
  * part the look of its way in; [coverShown] hides the cover while another draws it flying, and
- * [onCoverPlaced] tells where it is, from the player's top left corner.
+ * [onCoverPlaced] tells where it is, from the player's top left corner. A foldable shows the
+ * [queue] beside it; a phone held sideways puts the cover beside the rest.
  */
 @Composable
 fun PlayerContent(
@@ -164,9 +207,9 @@ fun PlayerContent(
     group: (PlayerGroup) -> Modifier = { Modifier },
     coverShown: () -> Boolean = { true },
     onCoverPlaced: (Rect) -> Unit = {},
+    queue: @Composable (Modifier) -> Unit = {},
 ) {
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    val density = LocalDensity.current
     // From 0 while playing to 1 while paused: the cover shrinks to 94% and the wave flattens.
     val paused = remember { Animatable(if (ui.playing) 0f else 1f) }
     LaunchedEffect(ui.playing) { paused.animateTo(if (ui.playing) 0f else 1f, NMotion.spatialSlow()) }
@@ -183,107 +226,221 @@ fun PlayerContent(
             }
         }
     }
+    val placed = Modifier.onPlaced { root[0] = it }
+    val coverPlaced = Modifier.onPlaced { cover ->
+        root[0]?.let { onCoverPlaced(Rect(it.localPositionOf(cover, Offset.Zero), cover.size.toSize())) }
+    }
+
+    @Composable
+    fun CoverSlot(modifier: Modifier) = PlayerCover(ui, artwork, skip, { paused.value }, coverShown, modifier.then(coverPlaced))
+
+    @Composable
+    fun Title(metrics: PlayerMetrics) {
+        val shift = with(LocalDensity.current) { 12.dp.roundToPx() }
+        AnimatedContent(
+            targetState = ui,
+            contentKey = { it.item },
+            transitionSpec = { fadeThrough(skip(), shift) },
+            modifier = Modifier.then(group(PlayerGroup.TITLE)),
+            label = "title",
+        ) { shown ->
+            TitleBlock(shown, actions, metrics)
+        }
+    }
+
+    @Composable
+    fun Seek(metrics: PlayerMetrics) = SeekBar(
+        seconds = seconds,
+        length = length,
+        onSeek = actions::seek,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = metrics.side, end = metrics.side, top = metrics.seekTop)
+            .then(group(PlayerGroup.SEEK)),
+        item = ui.item,
+        skip = skip,
+        wave = { 1f - 0.98f * paused.value },
+        phase = { phase.floatValue },
+    )
+
+    @Composable
+    fun Controls(metrics: PlayerMetrics, modifier: Modifier = Modifier) = PlayerControls(
+        playing = ui.playing,
+        shuffle = ui.shuffle,
+        loop = ui.loop,
+        actions = actions,
+        modifier = modifier.then(group(PlayerGroup.CONTROLS)),
+        sizes = metrics.controls,
+    )
+
+    @Composable
+    fun Chips(top: Dp) = Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = top)
+            .then(group(PlayerGroup.CHIPS)),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+    ) {
+        OutputChip(ui.output, actions::openOutput)
+        SleepChip(ui.sleep, actions::openSleepTimer)
+    }
+
     Box(modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .onPlaced { root[0] = it }
-                .windowInsetsPadding(WindowInsets.statusBars)
-        ) {
-            TopBar(ui, actions, Modifier.then(group(PlayerGroup.TOP_BAR)))
-            Box(
-                Modifier
-                    .weight(1f, fill = false)
-                    .padding(start = 32.dp, end = 32.dp, top = 12.dp)
-                    .aspectRatio(1f)
-                    .align(Alignment.CenterHorizontally)
-                    .onPlaced { placed ->
-                        root[0]?.let { onCoverPlaced(Rect(it.localPositionOf(placed, Offset.Zero), placed.size.toSize())) }
-                    }
-                    .graphicsLayer {
-                        alpha = if (coverShown()) 1f else 0f
-                        scaleX = 1f - 0.06f * paused.value
-                        scaleY = scaleX
-                    }
-            ) {
-                // The covers sit a gap apart, so a skip slides them one place.
-                val gap = with(density) { 32.dp.roundToPx() }
-                AnimatedContent(
-                    targetState = ui,
-                    contentKey = { it.item },
-                    transitionSpec = {
-                        val way = skip()
-                        slideInHorizontally(NMotion.spatialDefault()) { (it + gap) * way }
-                            .togetherWith(slideOutHorizontally(NMotion.spatialDefault()) { -(it + gap) * way })
-                            .using(SizeTransform(clip = false))
-                    },
-                    label = "cover",
-                ) { shown ->
-                    Cover(
-                        artwork(shown.track),
+        when (LocalWindowLayout.current) {
+            WindowLayout.FOLD -> Row(placed.fillMaxSize()) {
+                val metrics = PlayerMetrics.Fold
+                Column(
+                    Modifier
+                        .width(FoldPlayerWidth)
+                        .fillMaxHeight()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                ) {
+                    TopBar(ui, actions, Modifier.then(group(PlayerGroup.TOP_BAR)))
+                    CoverSlot(
                         Modifier
-                            .fillMaxSize()
-                            .floating(PlayerCoverShape),
-                        shape = PlayerCoverShape,
-                        placeholder = if (shown.track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
+                            .weight(1f, fill = false)
+                            .padding(start = metrics.side, end = metrics.side, top = 12.dp)
+                            .aspectRatio(1f)
+                            .align(Alignment.CenterHorizontally)
                     )
+                    Title(metrics)
+                    Seek(metrics)
+                    Controls(
+                        metrics,
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = metrics.side, end = metrics.side, top = metrics.controlsTop),
+                    )
+                    Chips(top = 20.dp)
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                }
+                queue(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(top = 8.dp, end = 8.dp)
+                        .then(group(PlayerGroup.UP_NEXT))
+                )
+            }
+
+            WindowLayout.LANDSCAPE -> Row(
+                placed
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(start = 48.dp, top = 4.dp, end = 24.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+            ) {
+                val metrics = PlayerMetrics.Landscape
+                CoverSlot(
+                    Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(1f)
+                )
+                // Its top bar lines up with the cover's top edge, the rest under it.
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .offset(y = (-12).dp)
+                ) {
+                    SideTopBar(ui, actions, Modifier.then(group(PlayerGroup.TOP_BAR)))
+                    Title(metrics)
+                    Seek(metrics)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = metrics.controlsTop),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Controls(metrics)
+                        Spacer(Modifier.weight(1f))
+                        QueueButton(actions::openQueue, Modifier.then(group(PlayerGroup.CHIPS)))
+                    }
                 }
             }
-            val shift = with(density) { 12.dp.roundToPx() }
-            AnimatedContent(
-                targetState = ui,
-                contentKey = { it.item },
-                transitionSpec = { fadeThrough(skip(), shift) },
-                modifier = Modifier.then(group(PlayerGroup.TITLE)),
-                label = "title",
-            ) { shown ->
-                TitleBlock(shown, actions)
+
+            else -> {
+                val metrics = PlayerMetrics.Phone
+                Column(
+                    placed
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                ) {
+                    TopBar(ui, actions, Modifier.then(group(PlayerGroup.TOP_BAR)))
+                    CoverSlot(
+                        Modifier
+                            .weight(1f, fill = false)
+                            .padding(start = metrics.side, end = metrics.side, top = 12.dp)
+                            .aspectRatio(1f)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                    Title(metrics)
+                    Seek(metrics)
+                    Controls(
+                        metrics,
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = metrics.side, end = metrics.side, top = metrics.controlsTop),
+                    )
+                    Chips(top = 24.dp)
+                    // Room for what plays next, which stays at the bottom.
+                    Spacer(Modifier.height(UpNextHeight))
+                    Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                }
+                UpNext(
+                    ui.next,
+                    actions::openQueue,
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .then(group(PlayerGroup.UP_NEXT)),
+                    skip,
+                )
             }
-            SeekBar(
-                seconds = seconds,
-                length = length,
-                onSeek = actions::seek,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 32.dp, end = 32.dp, top = 20.dp)
-                    .then(group(PlayerGroup.SEEK)),
-                item = ui.item,
-                skip = skip,
-                wave = { 1f - 0.98f * paused.value },
-                phase = { phase.floatValue },
-            )
-            PlayerControls(
-                playing = ui.playing,
-                shuffle = ui.shuffle,
-                loop = ui.loop,
-                actions = actions,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 32.dp, end = 32.dp, top = 20.dp)
-                    .then(group(PlayerGroup.CONTROLS)),
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp)
-                    .then(group(PlayerGroup.CHIPS)),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            ) {
-                OutputChip(ui.output, actions::openOutput)
-                SleepChip(ui.sleep, actions::openSleepTimer)
-            }
-            // Room for what plays next, which stays at the bottom.
-            Spacer(Modifier.height(UpNextHeight))
-            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
-        UpNext(
-            ui.next,
-            actions::openQueue,
-            Modifier
-                .align(Alignment.BottomCenter)
-                .then(group(PlayerGroup.UP_NEXT)),
-            skip,
-        )
+    }
+}
+
+/** The cover, which a skip slides one place, shrunk while [paused] and hidden while not [shown]. */
+@Composable
+private fun PlayerCover(
+    ui: PlayerUi,
+    artwork: @Composable (TrackRow) -> ImageBitmap?,
+    skip: () -> Int,
+    paused: () -> Float,
+    shown: () -> Boolean,
+    modifier: Modifier,
+) {
+    val density = LocalDensity.current
+    Box(
+        modifier.graphicsLayer {
+            alpha = if (shown()) 1f else 0f
+            scaleX = 1f - 0.06f * paused()
+            scaleY = scaleX
+        }
+    ) {
+        // The covers sit a gap apart, so a skip slides them one place.
+        val gap = with(density) { 32.dp.roundToPx() }
+        AnimatedContent(
+            targetState = ui,
+            contentKey = { it.item },
+            transitionSpec = {
+                val way = skip()
+                slideInHorizontally(NMotion.spatialDefault()) { (it + gap) * way }
+                    .togetherWith(slideOutHorizontally(NMotion.spatialDefault()) { -(it + gap) * way })
+                    .using(SizeTransform(clip = false))
+            },
+            label = "cover",
+        ) { shown ->
+            Cover(
+                artwork(shown.track),
+                Modifier
+                    .fillMaxSize()
+                    .floating(PlayerCoverShape),
+                shape = PlayerCoverShape,
+                placeholder = if (shown.track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
+            )
+        }
     }
 }
 
@@ -319,17 +476,18 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
     ) {
         NIconButton(NIcons.Collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
         val playingFrom = stringResource(R.string.playing_from)
+        val origin = ui.origin?.let { dotted(it, if (ui.shuffle) stringResource(R.string.shuffled) else null) }
         Column(
             Modifier
                 .weight(1f)
                 .height(48.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .then(
-                    if (ui.origin != null) {
+                    if (origin != null) {
                         Modifier
                             .tappable(actions::openOrigin)
                             .clearAndSetSemantics {
-                                contentDescription = "$playingFrom ${ui.origin}"
+                                contentDescription = "$playingFrom $origin"
                                 role = Role.Button
                             }
                     } else {
@@ -339,10 +497,10 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            if (ui.origin != null) {
+            if (origin != null) {
                 Text(playingFrom, style = text(12), color = colors.onSurfaceVariant, maxLines = 1)
                 Text(
-                    ui.origin,
+                    origin,
                     style = text(14, FontWeight.Bold),
                     color = colors.onSurface,
                     maxLines = 1,
@@ -359,33 +517,152 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
     }
 }
 
+/**
+ * The top bar of a player held sideways: where it plays from on one line, then the output, the
+ * sleep timer and ⋮, which have no room below.
+ */
+@Composable
+private fun SideTopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
+    Row(
+        modifier
+            .bleed(8.dp)
+            .height(48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        NIconButton(NIcons.Collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
+        val origin = ui.origin
+        val muted = colors.onSurfaceVariant
+        val strong = colors.onSurface
+        val shuffled = stringResource(R.string.shuffled)
+        // The sentence around the name, wherever a language puts it.
+        val sentence = stringResource(R.string.queue_playing_from, "\u0000").split('\u0000')
+        val playingFrom = stringResource(R.string.playing_from)
+        Box(
+            Modifier
+                .weight(1f)
+                .height(48.dp)
+                .then(
+                    if (origin != null) {
+                        Modifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .tappable(actions::openOrigin)
+                            .clearAndSetSemantics {
+                                contentDescription = "$playingFrom ${dotted(origin, if (ui.shuffle) shuffled else null)}"
+                                role = Role.Button
+                            }
+                    } else {
+                        Modifier
+                    }
+                ),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (origin != null) {
+                Text(
+                    buildAnnotatedString {
+                        append(sentence[0])
+                        withStyle(SpanStyle(color = strong, fontWeight = FontWeight.Bold)) { append(origin) }
+                        append(sentence.getOrElse(1) { "" })
+                        if (ui.shuffle) append(" · $shuffled")
+                    },
+                    style = text(13),
+                    color = muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        NIconButton(
+            NIcons.Output,
+            stringResource(R.string.output_named, ui.output),
+            actions::openOutput,
+            iconSize = 22.dp,
+            tint = muted,
+        )
+        // Filled while a timer runs.
+        val sleep = ui.sleep
+        val sleepLabel = sleep?.description ?: stringResource(R.string.sleep_timer)
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .tappable(actions::openSleepTimer)
+                .semantics { contentDescription = sleepLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (sleep != null) {
+                Box(Modifier.size(40.dp).background(colors.secondaryContainer, CircleShape))
+            }
+            NIcon(NIcons.SleepTimer, size = 22.dp, tint = if (sleep != null) colors.onSecondaryContainer else muted)
+        }
+        NIconButton(
+            NIcons.More,
+            stringResource(R.string.more_for, ui.track.title),
+            actions::openMore,
+            tint = colors.onSurface,
+        )
+    }
+}
+
+/** Reaches [by] past both sides of its room, so the icons it starts and ends with line up with the text. */
+private fun Modifier.bleed(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = by.roundToPx()
+    val width = constraints.maxWidth + 2 * extra
+    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
+}
+
+/** The queue, behind its button on a player held sideways. */
+@Composable
+private fun QueueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(20.dp)
+    val description = stringResource(R.string.open_queue)
+    Row(
+        modifier
+            .height(40.dp)
+            .clip(shape)
+            .border(1.dp, colors.outlineVariant, shape)
+            .tappable(onClick)
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+            }
+            .padding(start = 10.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        NIcon(NIcons.PlayNext, size = 18.dp, tint = colors.onSurfaceVariant)
+        Text(stringResource(R.string.queue), style = text(13, FontWeight.SemiBold), color = colors.onSurfaceVariant, maxLines = 1)
+    }
+}
+
 /** The title, the artist and album, each a link to its page, and the track's format and plays. */
 @Composable
-private fun TitleBlock(ui: PlayerUi, actions: PlayerActions) {
+private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, metrics: PlayerMetrics) {
     val track = ui.track
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(start = 32.dp, end = 32.dp, top = 24.dp)
+            .padding(start = metrics.side, end = metrics.side, top = metrics.titleTop)
     ) {
         Text(
             track.title,
-            style = NType.titleLarge,
+            style = metrics.title,
             color = colors.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        val line = text(16, lineHeight = 22.sp)
+        val line = metrics.line
         SharedLine(
             Modifier.padding(top = 4.dp),
             first = {
-                Link(track.artist.ifEmpty { stringResource(R.string.unknown_artist) }, actions::openArtist)
+                Link(track.artist.ifEmpty { stringResource(R.string.unknown_artist) }, line, actions::openArtist)
             },
             second = track.album?.let { album ->
                 {
                     Row {
                         Text(" · ", style = line, color = colors.onSurfaceVariant, modifier = Modifier.clearAndSetSemantics {})
-                        Link(album, actions::openAlbum)
+                        Link(album, line, actions::openAlbum)
                     }
                 }
             },
@@ -394,7 +671,7 @@ private fun TitleBlock(ui: PlayerUi, actions: PlayerActions) {
         // The chips keep their room while the track's details are read, so nothing below moves.
         Row(
             Modifier
-                .padding(top = 14.dp)
+                .padding(top = metrics.chipsTop)
                 .height(28.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -415,10 +692,10 @@ private fun TitleBlock(ui: PlayerUi, actions: PlayerActions) {
 
 /** A link in the artist and album line, with a touch area taller than the line. */
 @Composable
-private fun Link(label: String, onClick: () -> Unit) {
+private fun Link(label: String, style: TextStyle, onClick: () -> Unit) {
     Text(
         label,
-        style = text(16, lineHeight = 22.sp),
+        style = style,
         color = colors.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

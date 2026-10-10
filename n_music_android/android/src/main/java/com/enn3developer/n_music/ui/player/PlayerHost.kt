@@ -78,6 +78,7 @@ import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Snack
+import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
 import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.MiniPlayerRow
@@ -90,8 +91,8 @@ import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.miniProgress
 import com.enn3developer.n_music.ui.components.miniShape
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
-import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.rememberLibrary
+import com.enn3developer.n_music.ui.sheets.QueuePanel
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.albumOf
 import com.enn3developer.n_music.ui.sheets.rememberClock
@@ -386,7 +387,7 @@ fun PlayerHost(transition: PlayerTransition) {
         playing = playing,
         shuffle = shuffle,
         loop = loop,
-        origin = originName(origin)?.let { dotted(it, if (shuffle) stringResource(R.string.shuffled) else null) },
+        origin = originName(origin),
         next = upNext(queue, current?.item, loop),
         output = rememberOutputName(),
         sleep = sleepLabel(),
@@ -414,8 +415,15 @@ fun PlayerHost(transition: PlayerTransition) {
             override fun openQueue() = app.show(Sheet.Queue)
         }
     }
-    val width = LocalWindowInfo.current.containerSize.width
-    val size = width - with(LocalDensity.current) { 64.dp.roundToPx() }
+    // The cover's size open: as wide as the phone, or as tall as a phone held sideways.
+    val window = LocalWindowInfo.current.containerSize
+    val size = with(LocalDensity.current) {
+        when (LocalWindowLayout.current) {
+            WindowLayout.FOLD -> 296.dp.roundToPx()
+            WindowLayout.LANDSCAPE -> window.height - 80.dp.roundToPx()
+            else -> window.width - 64.dp.roundToPx()
+        }
+    }
     PlayerOverlay(
         transition = transition,
         ui = ui,
@@ -596,6 +604,7 @@ fun PlayerOverlay(
                 },
                 coverShown = { !transition.flying },
                 onCoverPlaced = { slot = it },
+                queue = { QueuePanel(it) },
             )
             // The cover on its flight between the mini player's and its place.
             val landing = slot
