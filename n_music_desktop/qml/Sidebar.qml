@@ -169,6 +169,8 @@ Rectangle {
 
                 // Below the entries, scrolling with them.
                 NavPill {
+                    parent: playlists.contentItem
+                    z: -1
                     width: playlists.width
                     height: 36
                     index: Playlists.items.findIndex(playlist => sidebar.page === "playlist:" + playlist.id)
