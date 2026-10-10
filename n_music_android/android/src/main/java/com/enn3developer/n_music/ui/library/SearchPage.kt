@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Filter
@@ -130,6 +131,7 @@ fun searchQuery(text: String) = Query(Filter.Search(text), listOf(SortKey(SortFi
 @Composable
 fun SearchPage(initial: String = "") {
     val app = LocalApp.current
+    val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     var text by rememberSaveable { mutableStateOf(initial) }
     var kind by rememberSaveable { mutableStateOf(SearchKind.ALL) }
     val version by CoreRepository.version.collectAsStateWithLifecycle()
@@ -166,6 +168,7 @@ fun SearchPage(initial: String = "") {
         onGenre = { genre -> app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty()))) },
         // Back at a search one played from, the results matter more than the keyboard.
         focus = initial.isEmpty(),
+        compact = ui.compactRows,
     )
 }
 
@@ -185,6 +188,7 @@ fun SearchContent(
     onArtist: (ArtistRow) -> Unit,
     onGenre: (GenreRow) -> Unit,
     focus: Boolean = false,
+    compact: Boolean = false,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
@@ -228,6 +232,7 @@ fun SearchContent(
                             onLongClick = null,
                             onMore = { onMore(track) },
                             title = highlight(track.title, search),
+                            compact = compact,
                         )
                     }
                 }

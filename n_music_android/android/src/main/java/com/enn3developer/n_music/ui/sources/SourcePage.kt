@@ -121,6 +121,7 @@ fun SourcePage(page: Page.Source) {
         onPlayAll = { shuffle -> app.play(query, origin, shuffle = shuffle) },
         onSort = { app.show(Sheet.Sort(SortedList.SOURCE_TRACKS)) },
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
+        compact = ui.compactRows,
     )
 }
 
@@ -144,6 +145,7 @@ fun SourceContent(
     onPlayAll: (shuffle: Boolean) -> Unit,
     onSort: () -> Unit,
     onMore: (TrackRow) -> Unit,
+    compact: Boolean = false,
 ) {
     val rows = tracks.orEmpty()
     val margins = LocalPageMargins.current
@@ -221,6 +223,7 @@ fun SourceContent(
                     onMore = { onMore(track) },
                     line = if (down) dotted(artist(track), stringResource(R.string.saved_on_phone)) else trackLine(track),
                     quiet = down,
+                    compact = compact,
                 )
             }
             items(missing, key = { "missing " + it.locator.key }) { track ->
@@ -233,10 +236,11 @@ fun SourceContent(
                     onMore = null,
                     line = dotted(artist(track), stringResource(R.string.not_saved)),
                     muted = true,
+                    compact = compact,
                     cover = { modifier ->
                         Box(
                             modifier
-                                .size(48.dp)
+                                .size(if (compact) 40.dp else 48.dp)
                                 .background(colors.surfaceHigh, RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center,
                         ) {

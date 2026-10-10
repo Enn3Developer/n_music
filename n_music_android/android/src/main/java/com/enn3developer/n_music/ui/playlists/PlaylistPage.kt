@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.PlaylistRow
@@ -165,6 +166,7 @@ fun PlaylistPage(page: Page.Playlist) {
         onMore = { app.show(Sheet.TrackActions(it.locator, page.id.takeIf { playlist?.rule == null })) },
         onRemove = { app.removeFromPlaylist(page.id, it, resources) },
         onLibrary = { app.navigator.home(Tab.LIBRARY) },
+        compact = UiPreferences.settings.collectAsStateWithLifecycle().value.compactRows,
         menu = { close ->
             if (!tracks.isNullOrEmpty()) {
                 MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
@@ -200,6 +202,7 @@ fun PlaylistContent(
     onMore: (TrackRow) -> Unit,
     onRemove: (TrackRow) -> Unit,
     onLibrary: () -> Unit,
+    compact: Boolean = false,
     menu: @Composable (close: () -> Unit) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -291,6 +294,7 @@ fun PlaylistContent(
                         onMore = { onMore(track) },
                         line = track.artist.ifEmpty { stringResource(R.string.unknown_artist) },
                         trailing = if (order.sort == TrackSort.MOST_PLAYED) playsCount(track.plays) else formatLength(track.length),
+                        compact = compact,
                     )
                 }
                 Box(Modifier.animateItem(fadeInSpec = null, placementSpec = NMotion.spatialDefault(IntOffset.VisibilityThreshold))) {
