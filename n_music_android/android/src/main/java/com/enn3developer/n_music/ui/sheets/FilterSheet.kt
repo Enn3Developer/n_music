@@ -355,7 +355,6 @@ private fun RulesSheet(
     var draft by remember { mutableStateOf(filters) }
     var picker by remember { mutableStateOf(focus?.takeIf { it == FilterField.ARTIST }) }
     val matching = rememberLibrary<UInt?>(null, draft) { count(draft) }
-    BackHandler(open && picker != null) { picker = null }
     SheetFrame(
         open, title, onDismissRequest, onGone,
         tall = true,
@@ -380,6 +379,8 @@ private fun RulesSheet(
             intro()
         },
     ) {
+        // Back goes to the handler added last, so this one, after the sheet's, closes the picker first.
+        BackHandler(open && picker != null) { picker = null }
         AnimatedContent(
             picker,
             modifier = Modifier.weight(1f),
