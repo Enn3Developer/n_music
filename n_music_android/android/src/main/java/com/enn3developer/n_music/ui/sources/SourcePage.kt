@@ -106,6 +106,8 @@ fun SourcePage(page: Page.Source) {
             override fun scan(root: Locator?, reload: Boolean) =
                 CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
 
+            override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
+
             override fun remove(source: SourceRow) = app.show(AppDialog.RemoveSource(source.root, source.title, source.tracks))
         }
     }
@@ -119,7 +121,7 @@ fun SourcePage(page: Page.Source) {
         held = (app.sheet as? Sheet.TrackActions)?.track,
         actions = actions,
         onBack = app::back,
-        onRename = { source?.let { app.show(AppDialog.RenameSource(it.root, it.name)) } },
+        onRename = { source?.let(actions::rename) },
         onPlay = { app.play(query, origin, it.locator) },
         onPlayAll = { shuffle -> app.play(query, origin, shuffle = shuffle) },
         onSort = { app.show(Sheet.Sort(SortedList.SOURCE_TRACKS)) },

@@ -79,6 +79,9 @@ interface SourceActions {
     /** Reads [root] again, or every source while `null`; [reload] reads every file's tags again. */
     fun scan(root: Locator?, reload: Boolean)
 
+    /** Asks for another name for [source]. */
+    fun rename(source: SourceRow)
+
     fun remove(source: SourceRow)
 }
 
@@ -102,6 +105,8 @@ fun SourcesPage() {
 
             override fun scan(root: Locator?, reload: Boolean) =
                 CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
+
+            override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
 
             override fun remove(source: SourceRow) = app.show(AppDialog.RemoveSource(source.root, source.title, source.tracks))
         }
@@ -356,15 +361,16 @@ private fun SourceItem(
                 tint = colors.onSurfaceVariant,
             )
             NMenu(menuOpen, { menuOpen = false }) {
-                SourceMenu(source, actions) { menuOpen = false }
+                // The list has no pencil by the name, as a source's page has: its menu renames it.
+                SourceMenu(source, actions, rename = true) { menuOpen = false }
             }
         }
     }
 }
 
-/** What ⋮ offers for one source: read it again, or take it out of the library. */
+/** What ⋮ offers for one source: read it again, [rename] it, or take it out of the library. */
 @Composable
-fun SourceMenu(source: SourceRow, actions: SourceActions, close: () -> Unit) {
+fun SourceMenu(source: SourceRow, actions: SourceActions, rename: Boolean = false, close: () -> Unit) {
     MenuItem(stringResource(R.string.update_now), NIcons.Update, {
         close()
         actions.scan(source.root, reload = false)
@@ -373,6 +379,12 @@ fun SourceMenu(source: SourceRow, actions: SourceActions, close: () -> Unit) {
         close()
         actions.scan(source.root, reload = true)
     })
+    if (rename) {
+        MenuItem(stringResource(R.string.rename), NIcons.Rename, {
+            close()
+            actions.rename(source)
+        })
+    }
     MenuDivider()
     MenuItem(stringResource(R.string.remove_from_library), NIcons.RemoveSource, {
         close()
