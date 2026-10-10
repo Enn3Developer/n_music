@@ -93,6 +93,7 @@ import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.library.label
 import com.enn3developer.n_music.ui.library.offeredFields
+import com.enn3developer.n_music.ui.library.rememberChipsState
 import com.enn3developer.n_music.ui.library.rememberNowPlaying
 import com.enn3developer.n_music.ui.playsCount
 import com.enn3developer.n_music.ui.quantity
@@ -401,6 +402,7 @@ private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (Fi
         Modifier
             .fillMaxWidth()
             .padding(top = 16.dp),
+        state = rememberChipsState(active),
         contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

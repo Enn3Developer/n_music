@@ -4,10 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -49,6 +56,7 @@ fun FilterRow(
     val margins = LocalPageMargins.current
     LazyRow(
         modifier.fillMaxWidth(),
+        state = rememberChipsState(active),
         contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -111,4 +119,21 @@ fun FilterRow(
             )
         }
     }
+}
+
+/**
+ * The state of a row of filter chips, which goes back to its start when the [set] parts change:
+ * they lead the row, so one set or cleared from a chip further along shows where it went.
+ */
+@Composable
+fun rememberChipsState(set: List<FilterField>): LazyListState {
+    val state = rememberLazyListState()
+    var placed by remember { mutableStateOf(set) }
+    LaunchedEffect(set) {
+        if (set != placed) {
+            placed = set
+            state.animateScrollToItem(0)
+        }
+    }
+    return state
 }
