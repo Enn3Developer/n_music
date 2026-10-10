@@ -55,12 +55,14 @@ builds take them from the `N_MUSIC_TELEGRAM_API_ID` and `N_MUSIC_TELEGRAM_API_HA
 ### Translations
 
 If your language isn't fully supported by N Music, you can add a language by creating a file in
-`n_music_desktop/assets/lang`. The Android app keeps its strings as Android resources in
-`n_music_android/android/src/main/res/values/strings.xml`, and a translation of them goes in a
-`values-<language>` folder next to it, `values-it` for Italian.
+`n_music_desktop/assets/lang`.
 The file must be a JSON file and its name should be like this: `it_Italiano.json`; `it` is the denominator of the
 language, `Italiano` is the name of the language in that language (i.e. how it should be displayed in the app).
 
 You can copy the english file and rename it correctly and start translating, then to check if everything works correctly
 you can compile and run a debug build, the language will automatically be added to the supported languages during
 compilation.
+
+The Android app keeps its strings as Android resources in
+`n_music_android/android/src/main/res/values/strings.xml`. A translation of them goes in a
+`values-<language>` folder next to it, like `values-it` for Italian.
