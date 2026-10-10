@@ -76,8 +76,10 @@ import com.enn3developer.n_music.ui.components.OutlinedField
 import com.enn3developer.n_music.ui.components.PillButton
 import com.enn3developer.n_music.ui.components.RadioMark
 import com.enn3developer.n_music.ui.components.SearchField
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.components.TextAction
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.library.PlayedFilter
@@ -107,6 +109,9 @@ import kotlin.math.roundToInt
 
 /** How many genres show as chips before See all. */
 private const val GENRE_CHIPS = 9
+
+/** How many genres a sheet from the side shows as chips: two rows of its width. */
+private const val SIDE_GENRE_CHIPS = 8
 
 /**
  * The tracks' filters, a part to a section. Changes stay in the sheet until Show applies them;
@@ -169,7 +174,7 @@ fun FilterSheet(
                 stringResource(R.string.filters_hint),
                 style = text(13, lineHeight = 18.sp),
                 color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp),
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = if (inSideSheet) 0.dp else 2.dp),
             )
         },
     ) { draft, matching ->
@@ -358,8 +363,10 @@ private fun RulesSheet(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .then(if (inSideSheet) Modifier.height(64.dp) else Modifier)
                     .padding(start = 24.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     title,
@@ -368,6 +375,7 @@ private fun RulesSheet(
                     modifier = Modifier.weight(1f),
                 )
                 TextAction(stringResource(R.string.clear_all), { draft = TrackFilters() })
+                SheetClose()
             }
             intro()
         },
@@ -407,12 +415,14 @@ private fun RulesSheet(
                 else -> Sections(draft, { draft = it }, facets, sources, focus, onPicker = { picker = it })
             }
         }
+        // From the side, it takes in the gesture area, as the design has it.
+        val side = inSideSheet
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(if (side) 88.dp else 72.dp)
                 .topLine()
-                .padding(start = 12.dp, end = 16.dp),
+                .padding(start = 12.dp, end = if (side) 24.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -443,18 +453,19 @@ private fun Sections(
             .fillMaxSize()
             .verticalScroll(scroll)
             .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (inSideSheet) 16.dp else 18.dp),
     ) {
         fun Modifier.top(field: FilterField) = onPlaced { tops[field] = it.positionInParent().y.roundToInt() }
 
-        val genres = facets.genres.take(GENRE_CHIPS).map(Facet::name)
+        val shown = if (inSideSheet) SIDE_GENRE_CHIPS else GENRE_CHIPS
+        val genres = facets.genres.take(shown).map(Facet::name)
         val names = genres + draft.genres.filter { chosen -> genres.none { it.equals(chosen, ignoreCase = true) } }
         if (names.isNotEmpty()) {
             Section(
                 FilterField.GENRE,
                 Modifier.top(FilterField.GENRE),
                 trailing = {
-                    if (facets.genres.size > GENRE_CHIPS) {
+                    if (facets.genres.size > shown) {
                         TextAction(
                             stringResource(R.string.see_all, formatCount(facets.genres.size)),
                             { onPicker(FilterField.GENRE) },

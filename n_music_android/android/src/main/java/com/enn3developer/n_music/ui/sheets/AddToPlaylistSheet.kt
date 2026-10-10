@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
@@ -37,7 +38,9 @@ import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.components.CheckMark
 import com.enn3developer.n_music.ui.components.Mosaic
 import com.enn3developer.n_music.ui.components.NIcon
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatCount
@@ -127,16 +130,25 @@ fun AddToPlaylistSheet(
         end = 8.dp,
         header = {
             // 2 dp less above than the design's 4, as the handle here keeps 12 below it, not 10.
-            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 10.dp)) {
-                Text(title, style = text(22, FontWeight.Bold), color = colors.onSurface)
-                Text(
-                    subtitle,
-                    style = text(14),
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+            val side = inSideSheet
+            Row(
+                Modifier
+                    .then(if (side) Modifier.heightIn(min = 64.dp) else Modifier)
+                    .padding(start = 24.dp, end = if (side) 12.dp else 24.dp, top = if (side) 0.dp else 2.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = text(22, FontWeight.Bold), color = colors.onSurface)
+                    Text(
+                        subtitle,
+                        style = text(14),
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                SheetClose()
             }
         },
     ) {

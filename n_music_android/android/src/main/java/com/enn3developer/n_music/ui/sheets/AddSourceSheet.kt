@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.sp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.components.NIcon
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.sources.addSource
@@ -65,13 +67,20 @@ fun AddSourceSheet(
     SheetFrame(
         open, title, onDismissRequest, onGone,
         header = {
-            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 12.dp)) {
-                Text(title, style = text(22, FontWeight.Bold), color = colors.onSurface)
+            val side = inSideSheet
+            Column(Modifier.padding(start = 24.dp, end = if (side) 12.dp else 24.dp, top = if (side) 0.dp else 4.dp, bottom = 12.dp)) {
+                Row(
+                    if (side) Modifier.height(64.dp) else Modifier,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(title, style = text(22, FontWeight.Bold), color = colors.onSurface, modifier = Modifier.weight(1f))
+                    SheetClose()
+                }
                 Text(
                     stringResource(R.string.add_source_hint),
                     style = text(14, lineHeight = 20.sp),
                     color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = if (side) 0.dp else 4.dp, end = if (side) 12.dp else 0.dp),
                 )
             }
         },

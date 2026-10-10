@@ -97,9 +97,11 @@ import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NMenu
 import com.enn3developer.n_music.ui.components.PlayingBars
 import com.enn3developer.n_music.ui.components.Segmented
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.components.SwipeToRemove
 import com.enn3developer.n_music.ui.components.TextAction
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.formatCount
@@ -315,19 +317,28 @@ private fun QueueHeader(
     actions: QueueActions,
     panel: Boolean,
 ) {
+    val side = inSideSheet
     Row(
         Modifier
             .fillMaxWidth()
             // 2 dp higher than the tall sheets' handle leaves it, as the design's is shorter.
-            .then(if (panel) Modifier.padding(top = 12.dp) else Modifier.margins(top = 2.dp))
-            .height(40.dp)
-            .padding(start = 20.dp, end = 8.dp),
+            .then(
+                when {
+                    panel -> Modifier.padding(top = 12.dp)
+                    side -> Modifier
+                    else -> Modifier.margins(top = 2.dp)
+                }
+            )
+            .height(if (side) 64.dp else 40.dp)
+            .padding(start = 20.dp, end = if (side) 12.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(title, style = text(20, FontWeight.ExtraBold), color = colors.onSurface, modifier = Modifier.weight(1f))
         if (queued.isNotEmpty()) {
             TextAction(stringResource(R.string.clear_queued), { actions.clearQueued(queued) })
         }
+        SheetClose()
     }
     PlayingFrom(origin, shuffle, left, actions::openOrigin, minHeight = if (panel) 16.dp else 36.dp)
     Column(Modifier.padding(start = 16.dp, end = 16.dp, top = if (panel) 10.dp else 4.dp, bottom = 12.dp)) {

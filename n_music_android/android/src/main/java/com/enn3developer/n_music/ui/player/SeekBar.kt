@@ -45,7 +45,8 @@ private val Reach = 10.dp
  * Where the track is: a wave up to the position and a line after it, with the position and the
  * length under them. Dragging along it or tapping it seeks once let go; meanwhile the bar and the
  * position show where it would go. [wave] flattens the wave from 1 to 0, [phase] makes it travel.
- * The length rolls when another [item] plays, the way [skip] went.
+ * The length rolls when another [item] plays, the way [skip] went. A [compact] bar is a little
+ * smaller, for a tablet's pane.
  */
 @Composable
 fun SeekBar(
@@ -57,7 +58,10 @@ fun SeekBar(
     skip: () -> Int = { 1 },
     wave: () -> Float = { 1f },
     phase: () -> Float = { 0f },
+    compact: Boolean = false,
 ) {
+    val thumb = if (compact) 4.dp else 5.dp
+    val times = text(if (compact) 12 else 13, tabular = true)
     // Where the finger holds the bar, from 0 to 1, while it drags.
     var held by remember { mutableStateOf<Float?>(null) }
     val seek by rememberUpdatedState(onSeek)
@@ -75,7 +79,7 @@ fun SeekBar(
                 .margins(top = Reach, bottom = Reach)
                 .pointerInput(length) {
                     // The thumb's middle runs between these, as the bar draws it.
-                    val inset = (1.dp + 2.5.dp).toPx()
+                    val inset = (1.dp + thumb / 2).toPx()
                     fun at(x: Float) = ((x - inset) / (size.width - 2 * inset)).coerceIn(0f, 1f)
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -109,25 +113,26 @@ fun SeekBar(
                     }
                 }
                 .padding(vertical = Reach)
-                .height(28.dp),
+                .height(if (compact) 24.dp else 28.dp),
             color = colors.primary,
             trackColor = colors.secondaryContainer,
             stroke = 4.dp,
-            amplitude = { 3.dp * wave() },
+            amplitude = { (if (compact) 2.5.dp else 3.dp) * wave() },
             wavelength = 16.dp,
             gap = 5.dp,
             stopDot = false,
             phase = phase,
             thumb = true,
+            thumbWidth = thumb,
             taper = true,
         )
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp),
+                .padding(top = if (compact) 2.dp else 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(position, style = text(13, tabular = true), color = colors.onSurfaceVariant)
+            Text(position, style = times, color = colors.onSurfaceVariant)
             val shift = with(LocalDensity.current) { 10.dp.roundToPx() }
             AnimatedContent(
                 targetState = item to total,
@@ -135,7 +140,7 @@ fun SeekBar(
                 transitionSpec = { roll(skip(), shift) },
                 label = "length",
             ) { (_, shown) ->
-                Text(shown, style = text(13, tabular = true), color = colors.onSurfaceVariant)
+                Text(shown, style = times, color = colors.onSurfaceVariant)
             }
         }
     }

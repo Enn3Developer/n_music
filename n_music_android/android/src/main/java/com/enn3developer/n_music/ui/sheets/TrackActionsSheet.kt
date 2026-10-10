@@ -36,7 +36,9 @@ import com.enn3developer.n_music.ui.components.Cover
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
 import com.enn3developer.n_music.ui.components.InfoChip
 import com.enn3developer.n_music.ui.components.NIcon
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.components.trackLine
 import com.enn3developer.n_music.ui.enqueue
 import com.enn3developer.n_music.ui.removeFromPlaylist
@@ -137,8 +139,9 @@ fun TrackActionsSheet(
         open, title, onDismissRequest, onGone,
         header = {
             // 4 dp less above than the design's 6, as the handle here keeps 12 below it, not 10.
+            val side = inSideSheet
             Row(
-                Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp),
+                Modifier.padding(start = 24.dp, end = if (side) 12.dp else 24.dp, top = if (side) 8.dp else 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -167,6 +170,7 @@ fun TrackActionsSheet(
                         )
                     }
                 }
+                SheetClose()
             }
             Row(
                 Modifier

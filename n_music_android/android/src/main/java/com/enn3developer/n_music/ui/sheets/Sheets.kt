@@ -1,6 +1,9 @@
 package com.enn3developer.n_music.ui.sheets
 
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -8,10 +11,13 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.ui.components.SheetClose
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.library.SortedList
@@ -86,13 +92,27 @@ fun SheetHost(current: Sheet?, onDismiss: () -> Unit) {
     }
 }
 
-/** A sheet's title, under its handle. */
+/** A sheet's title, under its handle; from the side, beside its close button. */
 @Composable
 fun ColumnScope.SheetTitle(title: String) {
-    Text(
-        title,
-        style = text(22, FontWeight.Bold),
-        color = colors.onSurface,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 12.dp),
-    )
+    val style = text(22, FontWeight.Bold)
+    if (inSideSheet) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .padding(start = 24.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = style, color = colors.onSurface, modifier = Modifier.weight(1f))
+            SheetClose()
+        }
+    } else {
+        Text(
+            title,
+            style = style,
+            color = colors.onSurface,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 12.dp),
+        )
+    }
 }

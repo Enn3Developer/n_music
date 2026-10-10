@@ -194,12 +194,12 @@ fun Modifier.inert(): Modifier = clearAndSetSemantics {}.pointerInput(Unit) {
 
 /** A small fact on a [background] chip, like a track's format or plays. */
 @Composable
-fun InfoChip(label: String, background: Color, modifier: Modifier = Modifier) {
+fun InfoChip(label: String, background: Color, modifier: Modifier = Modifier, height: Dp = 28.dp, padding: Dp = 10.dp) {
     Box(
         modifier
-            .height(28.dp)
+            .height(height)
             .background(background, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = padding),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = text(12, FontWeight.SemiBold, tabular = true), color = colors.onSurfaceVariant, maxLines = 1)

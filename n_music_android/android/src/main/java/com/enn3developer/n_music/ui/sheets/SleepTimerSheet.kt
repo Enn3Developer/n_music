@@ -39,7 +39,9 @@ import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.PillButton
 import com.enn3developer.n_music.ui.components.PillStyle
 import com.enn3developer.n_music.ui.components.RadioMark
+import com.enn3developer.n_music.ui.components.SheetClose
 import com.enn3developer.n_music.ui.components.SheetFrame
+import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.formatPosition
@@ -134,12 +136,12 @@ fun SleepTimerSheet(
         end = 8.dp,
         header = {
             // 2 dp higher than the short sheets' handle leaves it, as the design's is shorter.
+            val side = inSideSheet
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .margins(top = 2.dp)
-                    .heightIn(min = 32.dp)
-                    .padding(horizontal = 24.dp),
+                    .then(if (side) Modifier.heightIn(min = 64.dp) else Modifier.margins(top = 2.dp).heightIn(min = 32.dp))
+                    .padding(start = 24.dp, end = if (side) 12.dp else 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -161,6 +163,7 @@ fun SleepTimerSheet(
                         )
                     }
                 }
+                SheetClose()
             }
             Text(
                 stringResource(R.string.sleep_fades),

@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.Current
 import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.MiniButton
 import com.enn3developer.n_music.R
@@ -77,6 +78,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
+import com.enn3developer.n_music.ui.QueuedItem
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.components.CoverPlaceholder
@@ -348,21 +350,23 @@ private fun screenCorner(view: View): Float {
     return insets.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius?.toFloat() ?: 0f
 }
 
-/**
- * The player over the app while any of it shows: its scrim, the container growing out of the
- * mini player with the player in it, and the cover on its flight.
- */
-@Composable
-fun PlayerHost(transition: PlayerTransition) {
-    val shown by remember(transition) { derivedStateOf { transition.shown } }
-    if (!shown) return
-    val current by CoreRepository.current.collectAsStateWithLifecycle()
-    val track = current?.track
-    LaunchedEffect(track == null) { if (track == null) transition.close() }
-    if (track == null) return
+/** What the player and a tablet's pane show of playback, and what they do with it. */
+class LivePlayback(
+    val ui: PlayerUi,
+    /** The session, without the rows taken out and waiting on their snackbar. */
+    val queue: List<QueueRow>,
+    val seconds: () -> Double,
+    val length: Double,
+    /** Which way the last skip went: 1 on, -1 back. */
+    val skip: () -> Int,
+    val actions: PlayerActions,
+)
 
+/** [now] as the player shows it, with what the player does; [close] closes what shows it. */
+@Composable
+fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     val app = LocalApp.current
-    val settings by UiPreferences.settings.collectAsStateWithLifecycle()
+    val track = now.track
     val playing by CoreRepository.playing.collectAsStateWithLifecycle()
     val shuffle by CoreRepository.shuffle.collectAsStateWithLifecycle()
     val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
@@ -377,26 +381,26 @@ fun PlayerHost(transition: PlayerTransition) {
         val seek = pending.value
         if (seek != null && position.seek >= seek.first) pending.value = null
     }
-    val length = position.length.takeIf { it > 0 } ?: track.length
     val skips = remember { SkipTracker() }
-    skips.update(current?.item, queue)
+    skips.update(now.item, queue)
     val ui = PlayerUi(
-        item = current?.item ?: 0u,
+        item = now.item,
         track = track,
         details = details,
         playing = playing,
         shuffle = shuffle,
         loop = loop,
         origin = originName(origin),
-        next = upNext(queue, current?.item, loop),
+        next = upNext(queue, now.item, loop),
         output = rememberOutputName(),
         sleep = sleepLabel(),
     )
     val latestTrack by rememberUpdatedState(track)
     val latestOrigin by rememberUpdatedState(origin)
-    val actions = remember(app, transition) {
+    val onClose by rememberUpdatedState(close)
+    val actions = remember(app) {
         object : PlayerActions, PlaybackActions by app.playback {
-            override fun close() = transition.close()
+            override fun close() = onClose()
 
             override fun openOrigin() {
                 latestOrigin?.let { app.openOrigin(it) }
@@ -415,6 +419,32 @@ fun PlayerHost(transition: PlayerTransition) {
             override fun openQueue() = app.show(Sheet.Queue)
         }
     }
+    return LivePlayback(
+        ui = ui,
+        queue = queue.filterNot { app.removals.hides(QueuedItem(it.item)) },
+        seconds = { pending.value?.second ?: seconds.value },
+        length = position.length.takeIf { it > 0 } ?: track.length,
+        skip = { skips.way },
+        actions = actions,
+    )
+}
+
+/**
+ * The player over the app while any of it shows: its scrim, the container growing out of the
+ * mini player with the player in it, and the cover on its flight.
+ */
+@Composable
+fun PlayerHost(transition: PlayerTransition) {
+    val shown by remember(transition) { derivedStateOf { transition.shown } }
+    if (!shown) return
+    val current by CoreRepository.current.collectAsStateWithLifecycle()
+    val now = current
+    LaunchedEffect(now == null) { if (now == null) transition.close() }
+    if (now == null) return
+
+    val app = LocalApp.current
+    val settings by UiPreferences.settings.collectAsStateWithLifecycle()
+    val live = livePlayback(now, transition::close)
     // The cover's size open: as wide as the phone, or as tall as a phone held sideways.
     val window = LocalWindowInfo.current.containerSize
     val size = with(LocalDensity.current) {
@@ -426,12 +456,12 @@ fun PlayerHost(transition: PlayerTransition) {
     }
     PlayerOverlay(
         transition = transition,
-        ui = ui,
+        ui = live.ui,
         artwork = { rememberArtwork(it, size) },
-        skip = { skips.way },
-        seconds = { pending.value?.second ?: seconds.value },
-        length = length,
-        actions = actions,
+        skip = live.skip,
+        seconds = live.seconds,
+        length = live.length,
+        actions = live.actions,
         miniButtons = settings.miniButtons,
         // Over a sheet, the app shows it.
         snack = app.snack.takeIf { app.sheet == null },

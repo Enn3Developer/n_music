@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -41,6 +42,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -157,7 +160,7 @@ private const val FADE_THROUGH_MS = 90L
 
 /** How big the player's text is and how far apart its parts sit, which the window decides. */
 @Immutable
-private data class PlayerMetrics(
+internal data class PlayerMetrics(
     /** Space on both sides of the title, the position and the controls. */
     val side: Dp,
     val title: TextStyle,
@@ -168,6 +171,9 @@ private data class PlayerMetrics(
     val seekTop: Dp,
     val controlsTop: Dp,
     val controls: ControlSizes,
+    val lineTop: Dp = 4.dp,
+    /** Smaller chips, and a smaller position bar, as a tablet's pane has them. */
+    val small: Boolean = false,
 ) {
     companion object {
         val Phone = PlayerMetrics(
@@ -180,6 +186,14 @@ private data class PlayerMetrics(
         val Landscape = PlayerMetrics(
             0.dp, NType.titleLarge, 14.dp, text(15, lineHeight = 18.sp), 12.dp, 16.dp, 12.dp, ControlSizes.Landscape,
         )
+        val Pane = PlayerMetrics(
+            0.dp, text(22, FontWeight.ExtraBold, 28.sp), 16.dp, text(14), 10.dp, 12.dp, 10.dp, ControlSizes.Pane,
+            lineTop = 2.dp,
+            small = true,
+        )
+
+        /** The pane beside the open drawer, a little narrower. */
+        val NarrowPane = Pane.copy(seekTop = 14.dp, controls = ControlSizes.Pane.copy(playWidth = 72.dp))
     }
 }
 
@@ -210,22 +224,8 @@ fun PlayerContent(
     queue: @Composable (Modifier) -> Unit = {},
 ) {
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
-    // From 0 while playing to 1 while paused: the cover shrinks to 94% and the wave flattens.
-    val paused = remember { Animatable(if (ui.playing) 0f else 1f) }
-    LaunchedEffect(ui.playing) { paused.animateTo(if (ui.playing) 0f else 1f, NMotion.spatialSlow()) }
-    // The wave travels a wavelength a second while playing, and stands still while paused or
-    // while animations are off.
-    val phase = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(ui.playing) {
-        if (!ui.playing || coroutineContext[MotionDurationScale]?.scaleFactor == 0f) return@LaunchedEffect
-        var last = withFrameNanos { it }
-        while (true) {
-            withFrameNanos { now ->
-                phase.floatValue = (phase.floatValue + (now - last) / 1e9f) % 1f
-                last = now
-            }
-        }
-    }
+    val paused = rememberPaused(ui.playing)
+    val phase = rememberWavePhase(ui.playing)
     val placed = Modifier.onPlaced { root[0] = it }
     val coverPlaced = Modifier.onPlaced { cover ->
         root[0]?.let { onCoverPlaced(Rect(it.localPositionOf(cover, Offset.Zero), cover.size.toSize())) }
@@ -401,15 +401,44 @@ fun PlayerContent(
     }
 }
 
+/** From 0 while [playing] to 1 while paused: the cover shrinks to 94% and the wave flattens. */
+@Composable
+internal fun rememberPaused(playing: Boolean): Animatable<Float, AnimationVector1D> {
+    val paused = remember { Animatable(if (playing) 0f else 1f) }
+    LaunchedEffect(playing) { paused.animateTo(if (playing) 0f else 1f, NMotion.spatialSlow()) }
+    return paused
+}
+
+/**
+ * Where the wave is along its length, from 0 to 1: it travels a wavelength a second while
+ * [playing], and stands still while paused or while animations are off.
+ */
+@Composable
+internal fun rememberWavePhase(playing: Boolean): FloatState {
+    val phase = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(playing) {
+        if (!playing || coroutineContext[MotionDurationScale]?.scaleFactor == 0f) return@LaunchedEffect
+        var last = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                phase.floatValue = (phase.floatValue + (now - last) / 1e9f) % 1f
+                last = now
+            }
+        }
+    }
+    return phase
+}
+
 /** The cover, which a skip slides one place, shrunk while [paused] and hidden while not [shown]. */
 @Composable
-private fun PlayerCover(
+internal fun PlayerCover(
     ui: PlayerUi,
     artwork: @Composable (TrackRow) -> ImageBitmap?,
     skip: () -> Int,
     paused: () -> Float,
     shown: () -> Boolean,
     modifier: Modifier,
+    shape: Shape = PlayerCoverShape,
 ) {
     val density = LocalDensity.current
     Box(
@@ -436,8 +465,8 @@ private fun PlayerCover(
                 artwork(shown.track),
                 Modifier
                     .fillMaxSize()
-                    .floating(PlayerCoverShape),
-                shape = PlayerCoverShape,
+                    .floating(shape),
+                shape = shape,
                 placeholder = if (shown.track.loaded) CoverPlaceholder.ALBUM else CoverPlaceholder.UNREAD,
             )
         }
@@ -638,7 +667,7 @@ private fun QueueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 /** The title, the artist and album, each a link to its page, and the track's format and plays. */
 @Composable
-private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, metrics: PlayerMetrics) {
+internal fun TitleBlock(ui: PlayerUi, actions: PlayerActions, metrics: PlayerMetrics) {
     val track = ui.track
     Column(
         Modifier
@@ -654,7 +683,7 @@ private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, metrics: PlayerMetr
         )
         val line = metrics.line
         SharedLine(
-            Modifier.padding(top = 4.dp),
+            Modifier.padding(top = metrics.lineTop),
             first = {
                 Link(track.artist.ifEmpty { stringResource(R.string.unknown_artist) }, line, actions::openArtist)
             },
@@ -669,21 +698,27 @@ private fun TitleBlock(ui: PlayerUi, actions: PlayerActions, metrics: PlayerMetr
         )
         val details = ui.details
         // The chips keep their room while the track's details are read, so nothing below moves.
+        val small = metrics.small
+        val chip = if (small) 26.dp else 28.dp
+        val fill = if (small) colors.surfaceHigh else colors.surface
+        val padding = if (small) 9.dp else 10.dp
         Row(
             Modifier
                 .padding(top = metrics.chipsTop)
-                .height(28.dp),
+                .height(chip),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (details != null) {
-                trackFormat(details)?.let { InfoChip(it, colors.surface) }
+                trackFormat(details)?.let { InfoChip(it, fill, height = chip, padding = padding) }
                 InfoChip(
                     if (details.plays == 0u) {
                         stringResource(R.string.plays_never)
                     } else {
                         stringResource(R.string.played_count, details.plays.toInt())
                     },
-                    colors.surface,
+                    fill,
+                    height = chip,
+                    padding = padding,
                 )
             }
         }
@@ -738,38 +773,39 @@ private fun SharedLine(modifier: Modifier, first: @Composable () -> Unit, second
     }
 }
 
-/** Where it plays, opening Android's output switcher. */
+/** Where it plays, opening Android's output switcher; [small] in a tablet's pane. */
 @Composable
-private fun OutputChip(name: String, onClick: () -> Unit) {
+internal fun OutputChip(name: String, onClick: () -> Unit, small: Boolean = false) {
     val description = stringResource(R.string.output_named, name)
+    val shape = RoundedCornerShape(if (small) 16.dp else 18.dp)
     Row(
         Modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .border(1.dp, colors.outlineVariant, RoundedCornerShape(18.dp))
+            .height(if (small) 32.dp else 36.dp)
+            .clip(shape)
+            .border(1.dp, colors.outlineVariant, shape)
             .tappable(onClick)
             .clearAndSetSemantics {
                 contentDescription = description
                 role = Role.Button
             }
-            .padding(start = 10.dp, end = 14.dp),
+            .padding(start = 10.dp, end = if (small) 12.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {
         NIcon(NIcons.Output, size = 18.dp, tint = colors.onSurfaceVariant)
         Text(name, style = text(13, FontWeight.SemiBold), color = colors.onSurfaceVariant, maxLines = 1)
     }
 }
 
-/** The sleep timer: filled with its time left while one runs. */
+/** The sleep timer: filled with its time left while one runs; [small] in a tablet's pane. */
 @Composable
-private fun SleepChip(sleep: Sleep?, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+internal fun SleepChip(sleep: Sleep?, onClick: () -> Unit, small: Boolean = false) {
+    val shape = RoundedCornerShape(if (small) 16.dp else 18.dp)
     val left = sleep?.label
     val description = sleep?.description ?: stringResource(R.string.sleep_timer)
     Row(
         Modifier
-            .height(36.dp)
+            .height(if (small) 32.dp else 36.dp)
             .clip(shape)
             .then(
                 if (left != null) {
@@ -783,9 +819,9 @@ private fun SleepChip(sleep: Sleep?, onClick: () -> Unit) {
                 contentDescription = description
                 role = Role.Button
             }
-            .padding(start = 10.dp, end = 14.dp),
+            .padding(start = 10.dp, end = if (small) 12.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {
         val tint = if (left != null) colors.onSecondaryContainer else colors.onSurfaceVariant
         NIcon(NIcons.SleepTimer, size = 18.dp, tint = tint)

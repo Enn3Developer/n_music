@@ -10,10 +10,12 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -104,6 +106,7 @@ import com.enn3developer.n_music.ui.library.ArtistPage
 import com.enn3developer.n_music.ui.library.LibraryPage
 import com.enn3developer.n_music.ui.library.SearchPage
 import com.enn3developer.n_music.ui.library.TrackFilters
+import com.enn3developer.n_music.ui.player.NowPlayingPane
 import com.enn3developer.n_music.ui.player.PlayerHost
 import com.enn3developer.n_music.ui.player.PlayerTransition
 import com.enn3developer.n_music.ui.playlists.PlaylistPage
@@ -615,6 +618,15 @@ private fun MainLayout(navigator: Navigator) {
                 ) {
                     ExtendedFab(NIcons.Add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
                 }
+            }
+            // A tablet shows what plays beside the pages, but for Settings.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = tablet && current != null && !place.settings,
+                // It slides in from the screen's edge as the pages make room.
+                enter = expandHorizontally(NMotion.spatialDefault(), Alignment.End) + fadeIn(NMotion.effectsDefault()),
+                exit = shrinkHorizontally(NMotion.spatialDefault(), Alignment.End) + fadeOut(NMotion.effectsFast()),
+            ) {
+                NowPlayingPane(narrow = ui.drawer, modifier = covered)
             }
         }
         if (rail && !tablet) {

@@ -13,6 +13,7 @@
     <string name="collapse_navigation">Collapse navigation</string>
     <string name="close_navigation">Close navigation</string>
     <string name="dismiss_sheet">Close sheet</string>
+    <string name="close">Close</string>
 
     <!-- Library -->
     <string name="search_library">Search your library</string>
@@ -278,6 +279,10 @@
     <string name="up_next">Up next</string>
     <string name="queue_end">End of the queue</string>
     <string name="open_queue">Open the queue</string>
+    <!-- The now playing pane's button for the queue, beside "Up next". -->
+    <string name="open_queue_short">Open queue</string>
+    <!-- After "Now playing" in a tablet's pane: what it plays from, like "from Late night". -->
+    <string name="now_playing_from">from %1$s</string>
 
     <!-- The sleep timer -->
     <string name="sleep_fades">Fades out over the last 10 seconds, then pauses.</string>
