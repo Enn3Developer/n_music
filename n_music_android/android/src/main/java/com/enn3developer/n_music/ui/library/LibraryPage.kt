@@ -78,6 +78,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -259,6 +260,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.ALBUMS),
                         sortLabel = stringResource(order.label),
                         minTile = 160.dp,
+                        columns = 2,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
@@ -288,6 +290,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.ARTISTS),
                         sortLabel = stringResource(order.label),
                         minTile = 104.dp,
+                        columns = 3,
                         rowGap = 16.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
@@ -310,6 +313,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.GENRES),
                         sortLabel = stringResource(order.label),
                         minTile = 160.dp,
+                        columns = 2,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
@@ -670,7 +674,7 @@ fun TracksTab(
                     val grid = rememberLazyGridState(first.index)
                     FollowFirst(first) { grid.firstVisibleItemIndex }
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(104.dp),
+                        columns = AdaptiveAtLeast(104.dp, 3),
                         modifier = Modifier.fillMaxSize(),
                         state = grid,
                         contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 8.dp, bottom = bottom),
@@ -746,8 +750,25 @@ fun trackSection(track: TrackRow, sort: TrackSort): String? = when (sort) {
 }
 
 /**
+ * As many columns at least [minSize] wide as fit, as [GridCells.Adaptive] gives, but never fewer
+ * than [least]: a phone narrower than the design keeps its columns, a little narrower.
+ */
+private class AdaptiveAtLeast(private val minSize: Dp, private val least: Int) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = maxOf((availableSize + spacing) / (minSize.roundToPx() + spacing), least)
+        val cells = (availableSize - spacing * (count - 1)).coerceAtLeast(0)
+        return List(count) { cells / count + if (it < cells % count) 1 else 0 }
+    }
+
+    override fun equals(other: Any?) = other is AdaptiveAtLeast && other.minSize == minSize && other.least == least
+
+    override fun hashCode() = minSize.hashCode() * 31 + least
+}
+
+/**
  * Albums, artists or genres: their sort, view and count, then the list or the grid of
- * [minTile] wide tiles, so wider windows get more columns.
+ * [minTile] wide tiles, so wider windows get more columns, and never fewer than the design's
+ * [columns] on a phone.
  */
 @Composable
 fun <T> GroupTab(
@@ -756,6 +777,7 @@ fun <T> GroupTab(
     view: ViewMode,
     sortLabel: String,
     minTile: Dp,
+    columns: Int,
     rowGap: Dp,
     onToggleView: (ViewMode) -> Unit,
     onSort: () -> Unit,
@@ -810,7 +832,7 @@ fun <T> GroupTab(
                 val grid = rememberLazyGridState(first.index)
                 FollowFirst(first) { grid.firstVisibleItemIndex }
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minTile),
+                    columns = AdaptiveAtLeast(minTile, columns),
                     modifier = Modifier.fillMaxSize(),
                     state = grid,
                     contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 12.dp, bottom = bottom),

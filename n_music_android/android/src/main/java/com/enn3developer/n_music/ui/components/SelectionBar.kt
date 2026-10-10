@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -40,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -156,13 +158,35 @@ fun AnimatedVisibilityScope.SelectionActions(
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableIntStateOf(-1) }
-    val rise = with(LocalDensity.current) { ACTIONS_RISE.roundToPx() }
+    val density = LocalDensity.current
+    val rise = with(density) { ACTIONS_RISE.roundToPx() }
     val description = pluralStringResource(R.plurals.act_on, count, formatCount(count))
-    PressGroup(3, modifier.semantics { contentDescription = description }) { index, interaction, weight ->
-        val (label, action) = when (index) {
-            0 -> stringResource(R.string.play_next) to onPlayNext
-            1 -> stringResource(R.string.add_to_queue) to onQueue
-            else -> stringResource(R.string.add_to_playlist) to onAddToPlaylist
+    val labels = listOf(
+        stringResource(R.string.play_next),
+        stringResource(R.string.add_to_queue),
+        stringResource(R.string.add_to_playlist),
+    )
+    // One size for all three: the design's, or on a phone narrower than its, as large as lets the
+    // longest label fit its third of the bar, rather than cut it short.
+    val measurer = rememberTextMeasurer()
+    var width by remember { mutableIntStateOf(0) }
+    val size = remember(labels, width, density) {
+        val widest = labels.maxOf { measurer.measure(it, text(ACTION_TEXT, FontWeight.Bold), maxLines = 1).size.width }
+        val room = with(density) { (width - 2 * ACTIONS_GAP.toPx()) / 3 - 2 * ACTION_PADDING.toPx() }
+        if (width == 0 || widest <= room) ACTION_TEXT.toFloat() else (ACTION_TEXT * room / widest).coerceAtLeast(11f)
+    }
+    PressGroup(
+        3,
+        modifier
+            .onSizeChanged { width = it.width }
+            .semantics { contentDescription = description },
+        gap = ACTIONS_GAP,
+    ) { index, interaction, weight ->
+        val label = labels[index]
+        val action = when (index) {
+            0 -> onPlayNext
+            1 -> onQueue
+            else -> onAddToPlaylist
         }
         val shape = RoundedCornerShape(24.dp)
         // Play next comes first; the rest follow it in.
@@ -171,6 +195,7 @@ fun AnimatedVisibilityScope.SelectionActions(
         val lag = if (index == pressed) NMotion.STAGGER_MS else 0L
         ActionButton(
             label,
+            size,
             interaction,
             onClick = {
                 pressed = index
@@ -190,9 +215,20 @@ fun AnimatedVisibilityScope.SelectionActions(
     }
 }
 
+/** The actions' labels, in sp, where the bar is wide enough for them. */
+private const val ACTION_TEXT = 14
+
+/** Between the actions. */
+private val ACTIONS_GAP = 8.dp
+
+/** Either side of an action's label. */
+private val ACTION_PADDING = 12.dp
+
+/** One of the actions, its [label] [size] sp. */
 @Composable
 private fun ActionButton(
     label: String,
+    size: Float,
     interaction: MutableInteractionSource,
     onClick: () -> Unit,
     filled: Boolean,
@@ -205,9 +241,9 @@ private fun ActionButton(
         content = if (filled) colors.onPrimaryContainer else colors.onSecondaryContainer,
         modifier = modifier,
         interactionSource = interaction,
-        padding = PaddingValues(horizontal = 12.dp),
+        padding = PaddingValues(horizontal = ACTION_PADDING),
     ) {
-        Text(label, style = text(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = text(size, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
