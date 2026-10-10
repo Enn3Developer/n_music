@@ -104,12 +104,13 @@ private fun NewPlaylistDialog(tracks: List<Locator>, open: Boolean, onDismissReq
                     Snack(
                         resources.getQuantityString(R.plurals.added_to_playlist, quantity(count), formatCount(count), chosen),
                         resources.getString(R.string.undo),
-                    ) {
-                        // The newest playlist of that name is the one this made.
-                        CoreRepository.playlists.value.filter { it.name == chosen }.maxByOrNull { it.created }?.let {
-                            CoreRepository.send(Command.DeletePlaylist(it.id))
-                        }
-                    }
+                        onAction = {
+                            // The newest playlist of that name is the one this made.
+                            CoreRepository.playlists.value.filter { it.name == chosen }.maxByOrNull { it.created }?.let {
+                                CoreRepository.send(Command.DeletePlaylist(it.id))
+                            }
+                        },
+                    )
                 )
             }
         }
