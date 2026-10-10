@@ -656,7 +656,8 @@ private fun QueueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 contentDescription = description
                 role = Role.Button
             }
-            .padding(start = 10.dp, end = 14.dp),
+            // The outline takes 1 dp of its own outside the padding.
+            .padding(start = 11.dp, end = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -788,7 +789,8 @@ internal fun OutputChip(name: String, onClick: () -> Unit, small: Boolean = fals
                 contentDescription = description
                 role = Role.Button
             }
-            .padding(start = 10.dp, end = if (small) 12.dp else 14.dp),
+            // The outline takes 1 dp of its own outside the padding.
+            .padding(start = 11.dp, end = if (small) 13.dp else 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {
@@ -819,7 +821,8 @@ internal fun SleepChip(sleep: Sleep?, onClick: () -> Unit, small: Boolean = fals
                 contentDescription = description
                 role = Role.Button
             }
-            .padding(start = 10.dp, end = if (small) 12.dp else 14.dp),
+            // The outline takes 1 dp of its own outside the padding, drawn or not.
+            .padding(start = 11.dp, end = if (small) 13.dp else 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {

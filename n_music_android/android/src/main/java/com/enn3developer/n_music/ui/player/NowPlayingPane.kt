@@ -137,11 +137,12 @@ fun NowPlayingPane(
     val title = stringResource(R.string.now_playing)
     BoxWithConstraints(
         modifier
-            .width(width)
             .fillMaxHeight()
             .windowInsetsPadding(WindowInsets.statusBars)
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).exclude(WindowInsets(bottom = GestureArea)))
+            // The margin is outside the pane's width.
             .padding(top = 4.dp, end = 12.dp, bottom = 12.dp)
+            .width(width)
             .clip(RoundedCornerShape(28.dp))
             .background(colors.surfaceLow)
             .semantics {

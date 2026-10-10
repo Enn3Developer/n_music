@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -95,7 +98,7 @@ fun ButtonSurface(
 
 /**
  * Play and Shuffle side by side, joined: [large] for a page's header, small beside the sort
- * control where Shuffle shows only its icon.
+ * control where Shuffle shows only its icon but on a tablet, whose wider row names both.
  */
 @Composable
 fun PlayShuffle(
@@ -106,8 +109,40 @@ fun PlayShuffle(
     playLabel: String = stringResource(R.string.play),
     playDescription: String? = null,
     shuffleDescription: String? = null,
+    named: Boolean = false,
 ) {
-    if (large) {
+    if (named) {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ButtonSurface(
+                onClick = onPlay,
+                shape = NShapes.first(20.dp, 6.dp),
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                modifier = Modifier
+                    .height(40.dp)
+                    .described(playDescription),
+                padding = PaddingValues(start = 14.dp, end = 18.dp),
+            ) {
+                NIcon(NIcons.Play, size = 18.dp)
+                Box(Modifier.width(8.dp))
+                Text(playLabel, style = text(14, FontWeight.Bold, tabular = true), maxLines = 1)
+            }
+            ButtonSurface(
+                onClick = onShuffle,
+                shape = NShapes.last(20.dp, 6.dp),
+                container = colors.secondaryContainer,
+                content = colors.onSecondaryContainer,
+                modifier = Modifier
+                    .height(40.dp)
+                    .described(shuffleDescription),
+                padding = PaddingValues(start = 14.dp, end = 18.dp),
+            ) {
+                NIcon(NIcons.Shuffle, size = 18.dp)
+                Box(Modifier.width(8.dp))
+                Text(stringResource(R.string.shuffle), style = text(14, FontWeight.Bold), maxLines = 1)
+            }
+        }
+    } else if (large) {
         Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ButtonSurface(
                 onClick = onPlay,
@@ -172,16 +207,19 @@ fun PlayShuffle(
 private fun Modifier.described(description: String?) =
     if (description == null) this else semantics { contentDescription = description }
 
-/** The sort control: what the list is sorted by, opening the sort sheet. */
+/**
+ * The sort control: what the list is sorted by, opening the sort sheet. Its icon sits [start]
+ * into it.
+ */
 @Composable
-fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, start: Dp = 10.dp) {
     ButtonSurface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
         container = Color.Transparent,
         content = colors.onSurface,
         modifier = modifier.height(40.dp),
-        padding = PaddingValues(start = 10.dp, end = 8.dp),
+        padding = PaddingValues(start = start, end = 8.dp),
     ) {
         NIcon(NIcons.Sort, size = 18.dp, tint = colors.primary)
         Box(Modifier.width(6.dp))
@@ -304,9 +342,10 @@ fun NChip(
                 this.role = role
                 this.selected = selected
             },
+        // The outline takes 1 dp of its own outside the padding, drawn or not.
         padding = PaddingValues(
-            start = if (icon != null) 8.dp else 12.dp,
-            end = if (trailing != null) 6.dp else 12.dp,
+            start = if (icon != null) 9.dp else 13.dp,
+            end = if (trailing != null) 7.dp else 13.dp,
         ),
     ) {
         if (icon != null) {
@@ -395,6 +434,7 @@ fun PillButton(
         style == PillStyle.TEXT -> Color.Transparent to colors.primary
         else -> colors.error to colors.background
     }
+    val direction = LocalLayoutDirection.current
     ButtonSurface(
         onClick = onClick,
         shape = RoundedCornerShape(height / 2),
@@ -403,7 +443,13 @@ fun PillButton(
         modifier = modifier.height(height),
         border = if (style == PillStyle.OUTLINED) BorderStroke(1.dp, outline) else null,
         enabled = enabled,
-        padding = padding,
+        // An outline takes 1 dp of its own outside the padding.
+        padding = if (style != PillStyle.OUTLINED) padding else PaddingValues(
+            start = padding.calculateStartPadding(direction) + 1.dp,
+            top = padding.calculateTopPadding(),
+            end = padding.calculateEndPadding(direction) + 1.dp,
+            bottom = padding.calculateBottomPadding(),
+        ),
     ) {
         if (icon != null) {
             NIcon(icon, size = iconSize)

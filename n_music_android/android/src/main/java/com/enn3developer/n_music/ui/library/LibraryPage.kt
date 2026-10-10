@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -74,6 +75,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,7 +127,9 @@ import com.enn3developer.n_music.ui.components.WavyProgress
 import com.enn3developer.n_music.ui.components.inert
 import com.enn3developer.n_music.ui.components.rememberScrolled
 import com.enn3developer.n_music.ui.components.sectionLetter
+import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatCount
+import com.enn3developer.n_music.ui.formatDuration
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
@@ -133,6 +137,7 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
+import com.enn3developer.n_music.ui.tracksCount
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -324,7 +329,7 @@ fun LibraryPage() {
 
 /**
  * The library's search field, which opens Search, with Settings at its end when [onSettings] is
- * set. A tablet's is no wider than 520 dp, and sits a little higher.
+ * set. A tablet's is no wider than 536 dp, and sits a little higher.
  */
 @Composable
 fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modifier = Modifier) {
@@ -337,7 +342,7 @@ fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modi
     ) {
         Row(
             Modifier
-                .then(if (tablet) Modifier.widthIn(max = 520.dp) else Modifier)
+                .then(if (tablet) Modifier.widthIn(max = 536.dp) else Modifier)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(28.dp))
@@ -490,6 +495,7 @@ fun TracksTab(
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
     val wide = LocalWindowLayout.current.rail
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     val haptics = LocalHapticFeedback.current
     val selecting = selection != null
     // While selecting, the filters and what plays dim and stop answering.
@@ -528,7 +534,12 @@ fun TracksTab(
                 .then(if (selecting) Modifier.inert() else Modifier)
         ) {
             FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
-            if (!empty) Row(
+            if (!empty && tablet) {
+                TabletSortRow(
+                    tracks, total, order, view, filtered, onSort, onToggleView, onPlayAll,
+                    Modifier.padding(start = margins.start, end = margins.end, top = 8.dp, bottom = 8.dp),
+                )
+            } else if (!empty) Row(
                 Modifier.padding(start = margins.startLess(10.dp), end = margins.end, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -565,22 +576,40 @@ fun TracksTab(
         }
         val rows = tracks.orEmpty()
         val section = { index: Int -> rows.getOrNull(index)?.let { trackSection(it, order.sort) } }
-        Box(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             if (view == ViewMode.LIST) {
+                // A tablet lists the tracks in a table while its page is wide enough for one.
+                val table = tablet && maxWidth >= TrackTableWidth
+                val album = maxWidth >= AlbumColumnWidth
                 val list = rememberLazyListState()
-                LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(bottom = bottom)) {
-                    items(rows, key = { it.locator.key }) { track ->
-                        TrackItem(
-                            track,
-                            state(track),
-                            onClick = { press(track) },
-                            onLongClick = { hold(track) },
-                            onMore = { onMore(track) },
-                            compact = compact,
-                        )
+                Column(Modifier.fillMaxSize()) {
+                    if (table) TrackTableHeader(album, compact)
+                    LazyColumn(Modifier.weight(1f), list, contentPadding = PaddingValues(bottom = bottom)) {
+                        items(rows, key = { it.locator.key }) { track ->
+                            if (table) {
+                                TrackTableRow(
+                                    track,
+                                    state(track),
+                                    onClick = { press(track) },
+                                    onLongClick = { hold(track) },
+                                    onMore = { onMore(track) },
+                                    album = album,
+                                    compact = compact,
+                                )
+                            } else {
+                                TrackItem(
+                                    track,
+                                    state(track),
+                                    onClick = { press(track) },
+                                    onLongClick = { hold(track) },
+                                    onMore = { onMore(track) },
+                                    compact = compact,
+                                )
+                            }
+                        }
                     }
                 }
-                FastScroller(rememberScrolled(list), section, bottom = bottom + 16.dp)
+                FastScroller(rememberScrolled(list), section, top = if (table) 57.dp else 24.dp, bottom = bottom + 16.dp)
             } else {
                 val grid = rememberLazyGridState()
                 LazyVerticalGrid(
@@ -604,6 +633,49 @@ fun TracksTab(
                 FastScroller(rememberScrolled(grid), section, bottom = bottom + 16.dp)
             }
         }
+    }
+}
+
+/**
+ * A tablet's row over its tracks: the sort, the view, how many tracks there are and how long
+ * they play, then Play and Shuffle, both named.
+ */
+@Composable
+private fun TabletSortRow(
+    tracks: List<TrackRow>?,
+    total: Long,
+    order: TrackOrder,
+    view: ViewMode,
+    filtered: Boolean,
+    onSort: () -> Unit,
+    onToggleView: (ViewMode) -> Unit,
+    onPlayAll: (shuffle: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val length = remember(tracks) { tracks.orEmpty().sumOf { it.length } }
+    val count = formatCount(total)
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SortControl(stringResource(order.sort.label), onSort, start = 4.dp)
+        ViewSwitch(view, { onToggleView(if (view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) })
+        Text(
+            dotted(tracksCount(total), if (length > 0) formatDuration(length) else null),
+            style = text(13, tabular = true),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        PlayShuffle(
+            onPlay = { onPlayAll(false) },
+            onShuffle = { onPlayAll(true) },
+            named = true,
+            playDescription = stringResource(if (filtered) R.string.play_matching else R.string.play_all, count),
+            shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
+        )
     }
 }
 

@@ -65,6 +65,13 @@
     <string name="sort_shortest_first">Shortest first</string>
     <string name="sort_longest_first">Longest first</string>
 
+    <!-- The columns of a tablet's track tables -->
+    <string name="column_title">Title</string>
+    <string name="column_album">Album</string>
+    <string name="column_year">Year</string>
+    <string name="column_plays">Plays</string>
+    <string name="column_time">Time</string>
+
     <!-- Filters -->
     <string name="filters">Filters</string>
     <plurals name="filters_active">

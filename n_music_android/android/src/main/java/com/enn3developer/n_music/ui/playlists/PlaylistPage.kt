@@ -430,7 +430,8 @@ private fun RuleChip(label: String, set: Boolean, onClick: () -> Unit) {
         content = if (set) colors.onSecondaryContainer else colors.onSurface,
         border = if (set) null else BorderStroke(1.dp, colors.outlineVariant),
         modifier = Modifier.height(32.dp),
-        padding = PaddingValues(start = 12.dp, end = 6.dp),
+        // The outline takes 1 dp of its own outside the padding, drawn or not.
+        padding = PaddingValues(start = 13.dp, end = 7.dp),
         arrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(label, style = text(14, if (set) FontWeight.Bold else FontWeight.SemiBold), maxLines = 1)
