@@ -9,6 +9,9 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationChannelCompat
@@ -21,13 +24,23 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.ConnectionResult
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.widget.Widgets
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 
 /**
  * Keeps playback going in the background: Media3 runs this service in the foreground, with the
@@ -35,11 +48,13 @@ import com.google.common.util.concurrent.ListenableFuture
  * resume from the notification or a headset without hitting background start restrictions.
  *
  * The core itself lives in the process, started by [NMusicApplication]; this service only
- * mirrors it for the system.
+ * mirrors it for the system. It is a library service, with no library to browse, so Android's
+ * System UI can show its card for resuming playback after a reboot.
  */
 @OptIn(UnstableApi::class)
-class PlaybackService : MediaSessionService() {
-    private var mediaSession: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var mediaSession: MediaLibrarySession? = null
+    private val scope = MainScope()
     private var player: NPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
     private val toggleRepeatCommand = SessionCommand(
@@ -121,62 +136,64 @@ class PlaybackService : MediaSessionService() {
         )
         val player = NPlayer(this)
         this.player = player
-        val session = MediaSession.Builder(this, player)
+        val callback = object : MediaLibrarySession.Callback {
+            override fun onConnect(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+            ): ConnectionResult = ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(
+                    ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                        .add(toggleRepeatCommand)
+                        .add(toggleShuffleCommand)
+                        .build()
+                )
+                .build()
+
+            override fun onCustomCommand(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                customCommand: SessionCommand,
+                args: Bundle,
+            ): ListenableFuture<SessionResult> {
+                val sessionPlayer = session.player
+                when (customCommand) {
+                    // Off, all, one, like the native ToggleRepeat.
+                    toggleRepeatCommand -> sessionPlayer.repeatMode =
+                        when (sessionPlayer.repeatMode) {
+                            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                            else -> Player.REPEAT_MODE_OFF
+                        }
+
+                    toggleShuffleCommand ->
+                        sessionPlayer.shuffleModeEnabled = !sessionPlayer.shuffleModeEnabled
+
+                    else -> return super.onCustomCommand(session, controller, customCommand, args)
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
+            // To play, Media3 only asks when a controller plays an empty player that takes new
+            // items, which NPlayer never is: a play press reaches it and the core resumes its
+            // own saved session. The answer describes that session for anyone who asks anyway.
+            // At boot System UI asks without playing, for its resumption card.
+            override fun onPlaybackResumption(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                isForPlayback: Boolean,
+            ): ListenableFuture<MediaItemsWithStartPosition> {
+                if (!isForPlayback) return resumptionCard(player)
+                val (items, index, positionMs) = player.resumptionItems()
+                return Futures.immediateFuture(
+                    MediaItemsWithStartPosition(items, index, positionMs)
+                )
+            }
+        }
+        val session = MediaLibrarySession.Builder(this, player, callback)
             .setSessionActivity(sessionActivity)
             // Repeat and shuffle capabilities alone do not create buttons in Android's media
             // controls.
             .setMediaButtonPreferences(modeButtons(player))
-            .setCallback(object : MediaSession.Callback {
-                override fun onConnect(
-                    session: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                ): ConnectionResult = ConnectionResult.AcceptedResultBuilder(session)
-                    .setAvailableSessionCommands(
-                        ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-                            .add(toggleRepeatCommand)
-                            .add(toggleShuffleCommand)
-                            .build()
-                    )
-                    .build()
-
-                override fun onCustomCommand(
-                    session: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    customCommand: SessionCommand,
-                    args: Bundle,
-                ): ListenableFuture<SessionResult> {
-                    val sessionPlayer = session.player
-                    when (customCommand) {
-                        // Off, all, one, like the native ToggleRepeat.
-                        toggleRepeatCommand -> sessionPlayer.repeatMode =
-                            when (sessionPlayer.repeatMode) {
-                                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                                else -> Player.REPEAT_MODE_OFF
-                            }
-
-                        toggleShuffleCommand ->
-                            sessionPlayer.shuffleModeEnabled = !sessionPlayer.shuffleModeEnabled
-
-                        else -> return super.onCustomCommand(session, controller, customCommand, args)
-                    }
-                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                }
-
-                // Media3 only asks when a controller plays an empty player that takes new items,
-                // which NPlayer never is: a play press reaches it and the core resumes its own
-                // saved session. The answer describes that session for anyone who asks anyway.
-                override fun onPlaybackResumption(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    isForPlayback: Boolean,
-                ): ListenableFuture<MediaItemsWithStartPosition> {
-                    val (items, index, positionMs) = player.resumptionItems()
-                    return Futures.immediateFuture(
-                        MediaItemsWithStartPosition(items, index, positionMs)
-                    )
-                }
-            })
             .build()
         mediaSession = session
         player.addListener(modeListener)
@@ -189,8 +206,53 @@ class PlaybackService : MediaSessionService() {
         manager.registerAudioDeviceCallback(audioDeviceCallback, handler)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         mediaSession
+
+    /**
+     * What System UI's resumption card shows after a reboot: the track the saved session stopped
+     * on, once the core has read it back, with its cover's bytes, as System UI can't open the
+     * app's files. Nothing when there is no session to come back to: while Resume is off, or
+     * before anything played.
+     */
+    private fun resumptionCard(player: NPlayer): ListenableFuture<MediaItemsWithStartPosition> {
+        val nothing = MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, C.TIME_UNSET)
+        if (!CoreRepository.options.value.resume) return Futures.immediateFuture(nothing)
+        val card = SettableFuture.create<MediaItemsWithStartPosition>()
+        scope.launch {
+            val item = withTimeoutOrNull(RESTORE_WAIT_MS) {
+                var item = restoredItem(player)
+                while (item == null) {
+                    delay(RESTORE_POLL_MS)
+                    item = restoredItem(player)
+                }
+                item
+            }
+            if (item == null) {
+                card.set(nothing)
+                return@launch
+            }
+            val cover = item.mediaMetadata.artworkUri?.path?.let { path ->
+                withContext(Dispatchers.IO) { runCatching { File(path).readBytes() }.getOrNull() }
+            }
+            // Media3 refuses a library item that doesn't say whether it can be browsed and played.
+            val metadata = item.mediaMetadata.buildUpon()
+                .setArtworkData(cover, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .build()
+            val shown = item.buildUpon().setMediaMetadata(metadata).build()
+            card.set(MediaItemsWithStartPosition(listOf(shown), 0, player.resumptionItems().third))
+        }
+        return card
+    }
+
+    /** The core's current track as [player] shows it, once the player caught up with the core. */
+    private fun restoredItem(player: NPlayer): MediaItem? {
+        val current = CoreRepository.current.value ?: return null
+        val (items, index, _) = player.resumptionItems()
+        return items.getOrNull(index)?.takeIf { it.mediaId == current.item.toString() }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.getBooleanExtra(Widgets.EXTRA_WIDGET, false) == true) {
@@ -274,6 +336,7 @@ class PlaybackService : MediaSessionService() {
         player?.release()
         player = null
         mediaSession = null
+        scope.cancel()
         super.onDestroy()
     }
 
@@ -284,5 +347,9 @@ class PlaybackService : MediaSessionService() {
 
         /** Apart from Media3's own notification. */
         const val PLACEHOLDER_NOTIFICATION_ID = 2_001
+
+        /** How long the resumption card waits for the core to read the saved session back. */
+        const val RESTORE_WAIT_MS = 5_000L
+        const val RESTORE_POLL_MS = 100L
     }
 }
