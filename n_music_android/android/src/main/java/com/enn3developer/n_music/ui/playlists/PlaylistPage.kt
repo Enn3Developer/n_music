@@ -387,15 +387,16 @@ private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) 
 
 /**
  * A smart playlist's rules as chips, each opening the rules at its section: how many are set,
- * then the set ones, then the rest the sheet has a section for, but for the artist, picked from a
- * list.
+ * then the set ones, then the rest the sheet has a section for, but for the artist and the album,
+ * picked from a list.
  */
 @Composable
 private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (FilterField?) -> Unit) {
     val margins = LocalPageMargins.current
     val active = rules.active
     val facets by CoreRepository.facets.collectAsStateWithLifecycle()
-    val unset = offeredFields(facets, sources.size).filter { it !in active && it != FilterField.ARTIST }
+    val unset = offeredFields(facets, sources.size)
+        .filter { it !in active && it != FilterField.ARTIST && it != FilterField.ALBUM }
     val sourceName = { root: Locator -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
     val description = pluralStringResource(R.plurals.edit_rules, active.size, active.size)
     LazyRow(

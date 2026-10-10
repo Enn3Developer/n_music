@@ -11,9 +11,11 @@ import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Tag
 import com.enn3developer.n_music.core.defaultSourceName
+import com.enn3developer.n_music.ui.library.AlbumKey
 import com.enn3developer.n_music.ui.library.PlayedFilter
 import com.enn3developer.n_music.ui.library.PlaysFilter
 import com.enn3developer.n_music.ui.library.TrackFilters
+import com.enn3developer.n_music.ui.library.albumOf
 import com.enn3developer.n_music.ui.library.formatName
 
 private const val DAY = 86_400uL
@@ -38,6 +40,7 @@ fun rulesOf(rule: Filter): TrackFilters? {
             values.all { it is Filter.Library } && once("source") ->
                 rules.copy(sources = values.map { (it as Filter.Library).v1 })
             values.size > 1 -> return null
+            albumOf(part) != null && once("album") -> rules.copy(album = albumOf(part))
             part is Filter.Year && once("year") -> rules.copy(yearFrom = part.from, yearTo = part.to)
             part is Filter.Plays && once("plays") ->
                 rules.copy(plays = PlaysFilter.entries.find { it.min == part.min && it.max == part.max } ?: return null)
@@ -69,7 +72,7 @@ fun ruleLines(rule: Filter): List<String> {
 /** [filter] in words: Played 5 times or more, Genre isn't Christmas. */
 @Composable
 private fun describe(filter: Filter): String = when (filter) {
-    is Filter.All -> filter.v1.map { describe(it) }.joinToString(stringResource(R.string.rule_and))
+    is Filter.All -> albumOf(filter)?.let { album(it) } ?: filter.v1.map { describe(it) }.joinToString(stringResource(R.string.rule_and))
     is Filter.Any -> anyOf(filter.v1) ?: filter.v1.map { describe(it) }.joinToString(stringResource(R.string.rule_or))
     is Filter.Not -> negated(filter.v1)
     is Filter.Genre -> stringResource(R.string.rule_genre_is, filter.v1)
@@ -114,6 +117,14 @@ private fun negated(filter: Filter): String = when (filter) {
     is Filter.PlayedWithin -> stringResource(R.string.rule_not_played_within, period(filter.seconds))
     is Filter.NotPlayedWithin -> stringResource(R.string.rule_played_within, period(filter.seconds))
     else -> stringResource(R.string.rule_not, describe(filter))
+}
+
+/** An album the way the filters pick it: Album is Blue Hour by Kōsuke Arai Trio. */
+@Composable
+private fun album(album: AlbumKey): String = when {
+    album.name == null -> stringResource(R.string.rule_no_album)
+    album.artist == null -> stringResource(R.string.rule_album_is, album.name)
+    else -> stringResource(R.string.rule_album_by, album.name, album.artist)
 }
 
 @Composable

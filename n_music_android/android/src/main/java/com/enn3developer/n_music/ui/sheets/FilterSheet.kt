@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Facet
@@ -81,6 +82,7 @@ import com.enn3developer.n_music.ui.components.SheetFrame
 import com.enn3developer.n_music.ui.components.TextAction
 import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.formatCount
+import com.enn3developer.n_music.ui.library.AlbumKey
 import com.enn3developer.n_music.ui.library.FilterField
 import com.enn3developer.n_music.ui.library.PlayedFilter
 import com.enn3developer.n_music.ui.library.PlaysFilter
@@ -115,8 +117,8 @@ private const val SIDE_GENRE_CHIPS = 8
 
 /**
  * The tracks' filters, a part to a section. Changes stay in the sheet until Show applies them;
- * [focus] scrolls to its part when the sheet opens, or opens the artist picker. Save as smart
- * playlist starts one with them.
+ * [focus] scrolls to its part when the sheet opens, or opens the artist or album picker. Save as
+ * smart playlist starts one with them.
  */
 @Composable
 fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
@@ -129,6 +131,7 @@ fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit
         sources = sources,
         count = { CoreRepository.summary(it.filter()).tracks },
         artists = { CoreRepository.artists(Filter.All(emptyList()), it, GroupSort.NAME) },
+        albums = { CoreRepository.albums(Filter.All(emptyList()), it, GroupSort.NAME) },
         onApply = { app.filters = it },
         onSaveSmart = { app.show(Sheet.SmartPlaylist(null, null, it)) },
         focus = focus,
@@ -140,9 +143,9 @@ fun FilterSheet(focus: FilterField?, open: Boolean, onDismissRequest: () -> Unit
 
 /**
  * The filter sheet over [filters], offering what [facets] and [sources] hold. [count] reads how
- * many tracks a set of filters keeps and [artists] the artists matching a search, both off the
- * main thread; [onApply] takes the filters Show applies, [onSaveSmart] those to start a smart
- * playlist with.
+ * many tracks a set of filters keeps, and [artists] and [albums] the artists and albums matching
+ * a search, all off the main thread; [onApply] takes the filters Show applies, [onSaveSmart]
+ * those to start a smart playlist with.
  */
 @Composable
 fun FilterSheet(
@@ -151,6 +154,7 @@ fun FilterSheet(
     sources: List<SourceRow>,
     count: (TrackFilters) -> UInt,
     artists: (String) -> List<ArtistRow>,
+    albums: (String) -> List<AlbumRow>,
     onApply: (TrackFilters) -> Unit,
     onSaveSmart: (TrackFilters) -> Unit,
     focus: FilterField?,
@@ -165,6 +169,7 @@ fun FilterSheet(
         sources = sources,
         count = count,
         artists = artists,
+        albums = albums,
         focus = focus,
         open = open,
         onDismissRequest = onDismissRequest,
@@ -239,6 +244,7 @@ fun SmartPlaylistSheet(
         sources = sources,
         count = { CoreRepository.summary(it.filter()).tracks },
         artists = { CoreRepository.artists(Filter.All(emptyList()), it, GroupSort.NAME) },
+        albums = { CoreRepository.albums(Filter.All(emptyList()), it, GroupSort.NAME) },
         onSave = { name, rules ->
             if (playlist != null) {
                 CoreRepository.send(Command.SetPlaylistRule(playlist.id, rules.filter()))
@@ -276,6 +282,7 @@ fun SmartPlaylistSheet(
     sources: List<SourceRow>,
     count: (TrackFilters) -> UInt,
     artists: (String) -> List<ArtistRow>,
+    albums: (String) -> List<AlbumRow>,
     onSave: (name: String, rules: TrackFilters) -> Unit,
     focus: FilterField?,
     open: Boolean,
@@ -291,6 +298,7 @@ fun SmartPlaylistSheet(
         sources = sources,
         count = count,
         artists = artists,
+        albums = albums,
         focus = focus,
         open = open,
         onDismissRequest = onDismissRequest,
@@ -345,6 +353,7 @@ private fun RulesSheet(
     sources: List<SourceRow>,
     count: (TrackFilters) -> UInt,
     artists: (String) -> List<ArtistRow>,
+    albums: (String) -> List<AlbumRow>,
     focus: FilterField?,
     open: Boolean,
     onDismissRequest: () -> Unit,
@@ -353,7 +362,7 @@ private fun RulesSheet(
     footer: @Composable RowScope.(draft: TrackFilters, matching: UInt?) -> Unit,
 ) {
     var draft by remember { mutableStateOf(filters) }
-    var picker by remember { mutableStateOf(focus?.takeIf { it == FilterField.ARTIST }) }
+    var picker by remember { mutableStateOf(focus?.takeIf { it == FilterField.ARTIST || it == FilterField.ALBUM }) }
     val matching = rememberLibrary<UInt?>(null, draft) { count(draft) }
     SheetFrame(
         open, title, onDismissRequest, onGone,
@@ -408,6 +417,16 @@ private fun RulesSheet(
                     chosen = draft.artist,
                     onPick = { artist ->
                         draft = draft.copy(artist = artist)
+                        picker = null
+                    },
+                    onBack = { picker = null },
+                )
+
+                FilterField.ALBUM -> AlbumPicker(
+                    albums = albums,
+                    chosen = draft.album,
+                    onPick = { album ->
+                        draft = draft.copy(album = album)
                         picker = null
                     },
                     onBack = { picker = null },
@@ -575,8 +594,8 @@ private fun Sections(
             }
         }
 
-        // One source has nothing to tell apart.
-        if (sources.size > 1) {
+        // Even one, which a smart playlist can keep to as more come.
+        if (sources.isNotEmpty()) {
             Section(FilterField.SOURCE, Modifier.top(FilterField.SOURCE)) {
                 Chips {
                     for (source in sources) {
@@ -594,29 +613,47 @@ private fun Sections(
             }
         }
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .topLine()
-                .clickable(role = Role.Button) { onPicker(FilterField.ARTIST) },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(stringResource(R.string.filter_artist), style = text(16, FontWeight.Bold), color = colors.onSurface)
-            Text(
-                draft.artist ?: stringResource(R.string.any_artist),
-                style = text(14),
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-                modifier = Modifier.weight(1f),
-            )
-            NIcon(NIcons.Open, size = 20.dp, tint = colors.onSurfaceVariant)
+        // One under the other, as a list; a chip opening the sheet at either scrolls to both.
+        Column(Modifier.top(FilterField.ARTIST).top(FilterField.ALBUM)) {
+            PickerEntry(FilterField.ARTIST, draft.artist ?: stringResource(R.string.any_artist)) {
+                onPicker(FilterField.ARTIST)
+            }
+            PickerEntry(FilterField.ALBUM, draft.album?.let { albumName(it.name) } ?: stringResource(R.string.any_album)) {
+                onPicker(FilterField.ALBUM)
+            }
         }
     }
 }
+
+/** A part picked from a list of its own: its name, what is picked, and the way to the list. */
+@Composable
+private fun PickerEntry(field: FilterField, picked: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .topLine()
+            .clickable(role = Role.Button, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(stringResource(field.label), style = text(16, FontWeight.Bold), color = colors.onSurface)
+        Text(
+            picked,
+            style = text(14),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
+        )
+        NIcon(NIcons.Open, size = 20.dp, tint = colors.onSurfaceVariant)
+    }
+}
+
+/** An album's name, or what the tracks without one go by. */
+@Composable
+private fun albumName(name: String?): String = name ?: stringResource(R.string.no_album)
 
 /** Scrolls to where [top] says a section starts, once it has been placed. */
 private suspend fun scrollTo(scroll: ScrollState, top: Flow<Int?>) {
@@ -699,6 +736,43 @@ private fun ArtistPicker(
     }
 }
 
+/**
+ * Every album, to pick one, or any: each by its name and artist, as the library groups them, the
+ * tracks without an album too.
+ */
+@Composable
+private fun AlbumPicker(
+    albums: (String) -> List<AlbumRow>,
+    chosen: AlbumKey?,
+    onPick: (AlbumKey?) -> Unit,
+    onBack: () -> Unit,
+) {
+    var search by rememberSaveable { mutableStateOf("") }
+    val found = rememberLibrary(emptyList(), search) { albums(search.trim()) }
+    Picker(stringResource(R.string.filter_album), search, { search = it }, stringResource(R.string.search_albums), onBack) {
+        if (search.isBlank()) {
+            item(key = "") {
+                PickerRow(stringResource(R.string.any_album), null, chosen == null, Role.RadioButton, { onPick(null) }) {
+                    RadioMark(chosen == null)
+                }
+            }
+        }
+        items(found, key = { it.name to it.artist }) { album ->
+            // The library tells albums apart regardless of case, and so does a rule.
+            val on = chosen != null && album.name.equals(chosen.name, ignoreCase = true) &&
+                album.artist.equals(chosen.artist, ignoreCase = true)
+            PickerRow(
+                albumName(album.name),
+                tracksCount(album.tracks),
+                on,
+                Role.RadioButton,
+                { onPick(AlbumKey(album.name, album.artist)) },
+                detail = album.artist ?: stringResource(R.string.unknown_artist).takeIf { album.name != null },
+            ) { RadioMark(on) }
+        }
+    }
+}
+
 /** A list to pick from inside the sheet, with the way back and a field narrowing it. */
 @Composable
 private fun Picker(
@@ -724,7 +798,10 @@ private fun Picker(
     }
 }
 
-/** A choice in a picker: its mark, its name and how many tracks it has. */
+/**
+ * A choice in a picker: its mark, its name, with its [detail] under it when it has one, and how
+ * many tracks it has.
+ */
 @Composable
 private fun PickerRow(
     name: String,
@@ -732,26 +809,37 @@ private fun PickerRow(
     on: Boolean,
     role: Role,
     onClick: () -> Unit,
+    detail: String? = null,
     mark: @Composable () -> Unit,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(if (detail != null) 64.dp else 56.dp)
             .toggleable(on, role = role) { onClick() }
             .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         mark()
-        Text(
-            name,
-            style = text(16, if (on) FontWeight.Bold else FontWeight.Medium),
-            color = colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                name,
+                style = text(16, if (on) FontWeight.Bold else FontWeight.Medium),
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (detail != null) {
+                Text(
+                    detail,
+                    style = text(13),
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (count != null) Text(count, style = text(13, tabular = true), color = colors.onSurfaceVariant)
     }
 }

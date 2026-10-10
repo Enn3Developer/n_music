@@ -88,6 +88,7 @@
     <string name="filter_format">Format</string>
     <string name="filter_source">Source</string>
     <string name="filter_artist">Artist</string>
+    <string name="filter_album">Album</string>
     <!-- The parts of the filters as "Change the %s filter" names them. -->
     <string name="filter_genre_named">genre</string>
     <string name="filter_year_named">year</string>
@@ -96,6 +97,7 @@
     <string name="filter_format_named">format</string>
     <string name="filter_source_named">source</string>
     <string name="filter_artist_named">artist</string>
+    <string name="filter_album_named">album</string>
     <string name="change_filter">Change the %1$s filter</string>
     <string name="clear_filter">Clear the %1$s filter</string>
     <string name="see_all">See all %1$s</string>
@@ -121,10 +123,13 @@
     <string name="played_not_in_month_chip">Not played in a month</string>
     <string name="played_not_in_year_chip">Not played in a year</string>
     <string name="any_artist">Any artist</string>
+    <string name="any_album">Any album</string>
     <string name="no_genre_short">No genre</string>
+    <string name="no_album_short">No album</string>
     <string name="more_values">%1$s +%2$d</string>
     <string name="search_genres">Search genres</string>
     <string name="search_artists">Search artists</string>
+    <string name="search_albums">Search albums</string>
     <string name="clear_search">Clear search</string>
     <string name="show_tracks_counting">Show tracks</string>
     <plurals name="show_tracks">
@@ -389,6 +394,7 @@
     <string name="rule_album_artist_is_not">Album artist isn’t %1$s</string>
     <string name="rule_album_is">Album is %1$s</string>
     <string name="rule_album_is_not">Album isn’t %1$s</string>
+    <string name="rule_album_by">Album is %1$s by %2$s</string>
     <string name="rule_format_is">Format is %1$s</string>
     <string name="rule_format_is_not">Format isn’t %1$s</string>
     <string name="rule_no_genre">Has no genre</string>
