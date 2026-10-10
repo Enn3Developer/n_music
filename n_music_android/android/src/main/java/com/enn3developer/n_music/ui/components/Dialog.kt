@@ -109,6 +109,7 @@ fun DialogFrame(
                     scaleY = 0.9f + 0.1f * value
                 }
                 .background(colors.surfaceHigh, RoundedCornerShape(28.dp))
+                .blocksScrim()
                 .semantics { paneTitle = title }
                 .padding(24.dp),
         ) {

@@ -185,6 +185,7 @@ fun SheetFrame(
                     }
                     .clip(SideSheetShape)
                     .background(colors.surfaceLow)
+                    .blocksScrim()
                     .semantics {
                         paneTitle = title
                         isTraversalGroup = true
@@ -231,6 +232,7 @@ fun SheetFrame(
                         }
                     }
                     .background(colors.surfaceLow, NShapes.sheet)
+                    .blocksScrim()
                     .semantics {
                         paneTitle = title
                         isTraversalGroup = true

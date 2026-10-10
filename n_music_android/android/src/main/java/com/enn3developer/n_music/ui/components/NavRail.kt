@@ -364,6 +364,7 @@ fun ModalDrawer(open: Boolean, onClose: () -> Unit, content: @Composable () -> U
                     .fillMaxHeight()
                     .floating(shape)
                     .background(colors.surfaceLow, shape)
+                    .blocksScrim()
                     .semantics { paneTitle = title }
             ) {
                 content()
