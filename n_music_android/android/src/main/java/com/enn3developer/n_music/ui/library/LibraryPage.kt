@@ -110,6 +110,7 @@ import com.enn3developer.n_music.ui.components.ArtistItem
 import com.enn3developer.n_music.ui.components.ArtistTile
 import com.enn3developer.n_music.ui.components.EmptyState
 import com.enn3developer.n_music.ui.components.FastScroller
+import com.enn3developer.n_music.ui.components.FollowFirst
 import com.enn3developer.n_music.ui.components.GenreItem
 import com.enn3developer.n_music.ui.components.GenreTile
 import com.enn3developer.n_music.ui.components.NIcon
@@ -117,6 +118,7 @@ import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
+import com.enn3developer.n_music.ui.components.ViewSwap
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.Tab
@@ -578,60 +580,64 @@ fun TracksTab(
         val rows = tracks.orEmpty()
         val section = { index: Int -> rows.getOrNull(index)?.let { trackSection(it, order.sort) } }
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (view == ViewMode.LIST) {
-                // A tablet lists the tracks in a table while its page is wide enough for one.
-                val table = tablet && maxWidth >= TrackTableWidth
-                val album = maxWidth >= AlbumColumnWidth
-                val list = rememberLazyListState()
-                Column(Modifier.fillMaxSize()) {
-                    if (table) TrackTableHeader(album, compact)
-                    LazyColumn(Modifier.weight(1f), list, contentPadding = PaddingValues(bottom = bottom)) {
-                        items(rows, key = { it.locator.key }) { track ->
-                            if (table) {
-                                TrackTableRow(
-                                    track,
-                                    state(track),
-                                    onClick = { press(track) },
-                                    onLongClick = { hold(track) },
-                                    onMore = { onMore(track) },
-                                    album = album,
-                                    compact = compact,
-                                )
-                            } else {
-                                TrackItem(
-                                    track,
-                                    state(track),
-                                    onClick = { press(track) },
-                                    onLongClick = { hold(track) },
-                                    onMore = { onMore(track) },
-                                    compact = compact,
-                                )
+            // A tablet lists the tracks in a table while its page is wide enough for one.
+            val table = tablet && maxWidth >= TrackTableWidth
+            val album = maxWidth >= AlbumColumnWidth
+            ViewSwap(view, Modifier.fillMaxSize()) { mode, first ->
+                if (mode == ViewMode.LIST) {
+                    val list = rememberLazyListState(first.index)
+                    FollowFirst(first) { list.firstVisibleItemIndex }
+                    Column(Modifier.fillMaxSize()) {
+                        if (table) TrackTableHeader(album, compact)
+                        LazyColumn(Modifier.weight(1f), list, contentPadding = PaddingValues(bottom = bottom)) {
+                            items(rows, key = { it.locator.key }) { track ->
+                                if (table) {
+                                    TrackTableRow(
+                                        track,
+                                        state(track),
+                                        onClick = { press(track) },
+                                        onLongClick = { hold(track) },
+                                        onMore = { onMore(track) },
+                                        album = album,
+                                        compact = compact,
+                                    )
+                                } else {
+                                    TrackItem(
+                                        track,
+                                        state(track),
+                                        onClick = { press(track) },
+                                        onLongClick = { hold(track) },
+                                        onMore = { onMore(track) },
+                                        compact = compact,
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                FastScroller(rememberScrolled(list), section, top = if (table) 57.dp else 24.dp, bottom = bottom + 16.dp)
-            } else {
-                val grid = rememberLazyGridState()
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(104.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    state = grid,
-                    contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 8.dp, bottom = bottom),
-                    horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    items(rows, key = { it.locator.key }) { track ->
-                        TrackTile(
-                            track,
-                            state(track),
-                            onClick = { press(track) },
-                            onLongClick = { hold(track) },
-                            onMore = { onMore(track) },
-                        )
+                    FastScroller(rememberScrolled(list), section, top = if (table) 57.dp else 24.dp, bottom = bottom + 16.dp)
+                } else {
+                    val grid = rememberLazyGridState(first.index)
+                    FollowFirst(first) { grid.firstVisibleItemIndex }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(104.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        state = grid,
+                        contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 8.dp, bottom = bottom),
+                        horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        items(rows, key = { it.locator.key }) { track ->
+                            TrackTile(
+                                track,
+                                state(track),
+                                onClick = { press(track) },
+                                onLongClick = { hold(track) },
+                                onMore = { onMore(track) },
+                            )
+                        }
                     }
+                    FastScroller(rememberScrolled(grid), section, bottom = bottom + 16.dp)
                 }
-                FastScroller(rememberScrolled(grid), section, bottom = bottom + 16.dp)
             }
         }
     }
@@ -741,15 +747,17 @@ fun <T> GroupTab(
                 Text(count(rows.size), style = text(13, tabular = true), color = colors.onSurfaceVariant)
             }
         }
-        Box(Modifier.fillMaxSize()) {
-            if (view == ViewMode.LIST) {
-                val list = rememberLazyListState()
+        ViewSwap(view, Modifier.fillMaxSize()) { mode, first ->
+            if (mode == ViewMode.LIST) {
+                val list = rememberLazyListState(first.index)
+                FollowFirst(first) { list.firstVisibleItemIndex }
                 LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(top = 6.dp, bottom = bottom)) {
                     items(rows, key = key) { item(it) }
                 }
                 FastScroller(rememberScrolled(list), sectionAt, bottom = bottom + 16.dp)
             } else {
-                val grid = rememberLazyGridState()
+                val grid = rememberLazyGridState(first.index)
+                FollowFirst(first) { grid.firstVisibleItemIndex }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minTile),
                     modifier = Modifier.fillMaxSize(),

@@ -41,6 +41,7 @@ import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.GenreRow
 import com.enn3developer.n_music.core.TrackRow
+import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatLength
@@ -168,7 +169,7 @@ fun TrackItem(
 fun TrackCover(track: TrackRow, state: TrackState, modifier: Modifier = Modifier, size: Dp = 48.dp) {
     val radius by animateDpAsState(if (state.selected) size / 2 else 8.dp, NMotion.spatialFast(), label = "radius")
     val shape = RoundedCornerShape(radius)
-    Box(modifier.size(size)) {
+    Box(modifier.coverWay(rememberCoverWay(track.locator.key)).size(size)) {
         Cover(
             track.cover,
             Modifier.fillMaxSize(),
@@ -206,7 +207,7 @@ fun TrackTile(
     Column(modifier.tappable(onClick, onLongClick)) {
         val radius by animateDpAsState(if (state.selected) 48.dp else 12.dp, NMotion.spatialFast(), label = "radius")
         val shape = RoundedCornerShape(radius)
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        Box(Modifier.coverWay(rememberCoverWay(track.locator.key)).fillMaxWidth().aspectRatio(1f)) {
             Cover(
                 track.cover,
                 Modifier.fillMaxSize(),
@@ -304,7 +305,7 @@ fun AlbumTile(
     onLongClick: (() -> Unit)? = null,
 ) {
     Column(modifier.tappable(onClick, onLongClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        Box(Modifier.coverWay(rememberCoverWay(albumKey(album))).fillMaxWidth().aspectRatio(1f)) {
             Cover(album.cover, Modifier.fillMaxSize(), shape = RoundedCornerShape(16.dp))
             if (current) PlayingBadge(playing, Modifier.align(Alignment.BottomStart).padding(8.dp))
         }
@@ -326,6 +327,9 @@ fun AlbumTile(
         )
     }
 }
+
+/** What tells an album apart in a list: its name and its artist. */
+fun albumKey(album: AlbumRow): String = "${album.name}\u0000${album.artist}"
 
 /** A row of a list of albums, artists or genres: a 56 dp picture, a name and a line. */
 @Composable
@@ -387,7 +391,7 @@ fun AlbumItem(
     onLongClick: (() -> Unit)? = null,
 ) {
     GroupItem(albumName(album), albumLine(album), current, playing, onClick, modifier, onLongClick) {
-        Cover(album.cover, it, shape = RoundedCornerShape(10.dp))
+        Cover(album.cover, Modifier.coverWay(rememberCoverWay(albumKey(album))).then(it), shape = RoundedCornerShape(10.dp))
     }
 }
 
@@ -404,7 +408,12 @@ fun ArtistItem(
     onLongClick: (() -> Unit)? = null,
 ) {
     GroupItem(artistName(artist), tracksCount(artist.tracks), current, playing, onClick, modifier, onLongClick) {
-        Cover(artist.cover, it, shape = CircleShape, placeholder = CoverPlaceholder.ARTIST)
+        Cover(
+            artist.cover,
+            Modifier.coverWay(rememberCoverWay(artist.name.toString())).then(it),
+            shape = CircleShape,
+            placeholder = CoverPlaceholder.ARTIST,
+        )
     }
 }
 
@@ -421,7 +430,7 @@ fun ArtistTile(
     Column(modifier.tappable(onClick, onLongClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Cover(
             artist.cover,
-            Modifier.fillMaxWidth().aspectRatio(1f),
+            Modifier.coverWay(rememberCoverWay(artist.name.toString())).fillMaxWidth().aspectRatio(1f),
             shape = CircleShape,
             placeholder = CoverPlaceholder.ARTIST,
         )
@@ -451,7 +460,7 @@ fun genreName(genre: GenreRow): String = genre.name ?: stringResource(R.string.n
 @Composable
 fun GenreItem(genre: GenreRow, onClick: () -> Unit, modifier: Modifier = Modifier) {
     GroupItem(genreName(genre), tracksCount(genre.tracks), current = false, playing = false, onClick, modifier) {
-        Mosaic(genre.covers, it, shape = RoundedCornerShape(10.dp))
+        Mosaic(genre.covers, Modifier.coverWay(rememberCoverWay(genre.name.toString())).then(it), shape = RoundedCornerShape(10.dp))
     }
 }
 
@@ -459,7 +468,11 @@ fun GenreItem(genre: GenreRow, onClick: () -> Unit, modifier: Modifier = Modifie
 @Composable
 fun GenreTile(genre: GenreRow, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.tappable(onClick)) {
-        Mosaic(genre.covers, Modifier.fillMaxWidth().aspectRatio(1f), shape = RoundedCornerShape(16.dp))
+        Mosaic(
+            genre.covers,
+            Modifier.coverWay(rememberCoverWay(genre.name.toString())).fillMaxWidth().aspectRatio(1f),
+            shape = RoundedCornerShape(16.dp),
+        )
         Text(
             genreName(genre),
             style = text(15, FontWeight.SemiBold),
