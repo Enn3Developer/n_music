@@ -3,6 +3,7 @@ package com.enn3developer.n_music.ui.sources
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import com.enn3developer.n_music.CoreRepository
@@ -10,11 +11,34 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
+import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.core.defaultSourceName
+import com.enn3developer.n_music.ui.theme.NIcons
 
-/** A source on this phone, rather than one streamed from the web. */
+/** A source on this phone, rather than one streamed from the web or Telegram. */
 val Locator.isLocal: Boolean
     get() = this is Locator.Local || this is Locator.DocumentTree
+
+/** What kind of source [root] is, as an icon: a folder, a link or Telegram's plane. */
+fun sourceIcon(root: Locator): ImageVector = when {
+    root.isLocal -> NIcons.Sources
+    root is Locator.TelegramChat -> NIcons.Telegram
+    else -> NIcons.Web
+}
+
+/** What kind of source [root] is, in words. */
+fun sourceKind(root: Locator): Int = when {
+    root.isLocal -> R.string.local_folder
+    root is Locator.TelegramChat -> R.string.telegram_chat
+    else -> R.string.web_playlist
+}
+
+/**
+ * [root] is a Telegram chat, and can't be read for want of signing in to Telegram, which is at
+ * [telegram]: `null` without Telegram at all.
+ */
+fun signedOut(root: Locator, telegram: TelegramStatus?): Boolean =
+    root is Locator.TelegramChat && telegram != null && telegram !is TelegramStatus.SignedIn
 
 /** What a source is called: the name it was given, or its folder's or playlist's. */
 val SourceRow.title: String
@@ -31,8 +55,8 @@ fun defaultName(root: Locator): String = when (root) {
 } ?: defaultSourceName(root)
 
 /**
- * Where a source is, the way people know it: Internal storage › Music, SD card › Rips, or a web
- * address without its scheme.
+ * Where a source is, the way people know it: Internal storage › Music, SD card › Rips, a web
+ * address without its scheme, or Telegram.
  */
 @Composable
 fun sourcePlace(root: Locator): String {
@@ -40,6 +64,7 @@ fun sourcePlace(root: Locator): String {
         is Locator.DocumentTree -> treeParts(root.v1)
         is Locator.Local -> localParts(root.v1)
         is Locator.Web -> return webAddress(root.v1)
+        is Locator.TelegramChat -> return stringResource(R.string.telegram)
         else -> return defaultSourceName(root)
     } ?: return defaultSourceName(root)
     val (volume, folders) = parts

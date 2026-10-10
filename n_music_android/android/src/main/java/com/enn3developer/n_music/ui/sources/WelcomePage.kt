@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
@@ -52,10 +54,12 @@ import com.enn3developer.n_music.ui.theme.text
 @Composable
 fun WelcomePage() {
     val app = LocalApp.current
+    val telegram by CoreRepository.telegram.collectAsStateWithLifecycle()
     WelcomeContent(
         sources = WelcomeDraft.sources,
         onFolder = { app.pickFolder { WelcomeDraft.add(it) } },
         onWeb = { app.show(AppDialog.AddWebPlaylist(draft = true)) },
+        onTelegram = { app.show(AppDialog.Telegram(draft = true)) }.takeIf { telegram != null },
         onRemove = { source ->
             WelcomeDraft.remove(source.root)
             app.releaseFolder(source.root)
@@ -73,7 +77,7 @@ fun WelcomePage() {
     )
 }
 
-/** The screen itself, with [sources] picked so far. */
+/** The screen itself, with [sources] picked so far; a Telegram chat to pick unless [onTelegram] is `null`. */
 @Composable
 fun WelcomeContent(
     sources: List<DraftSource>,
@@ -81,6 +85,7 @@ fun WelcomeContent(
     onWeb: () -> Unit,
     onRemove: (DraftSource) -> Unit,
     onBuild: () -> Unit,
+    onTelegram: (() -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -115,8 +120,12 @@ fun WelcomeContent(
                 modifier = Modifier.padding(top = 28.dp),
             )
             Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Option(NIcons.Sources, R.string.local_folder, R.string.local_folder_hint, groupShape(0, 2), onFolder)
-                Option(NIcons.Web, R.string.web_playlist, R.string.web_playlist_hint, groupShape(1, 2), onWeb)
+                val kinds = if (onTelegram != null) 3 else 2
+                Option(NIcons.Sources, R.string.local_folder, R.string.local_folder_hint, groupShape(0, kinds), onFolder)
+                Option(NIcons.Web, R.string.web_playlist, R.string.web_playlist_hint, groupShape(1, kinds), onWeb)
+                if (onTelegram != null) {
+                    Option(NIcons.Telegram, R.string.telegram_chat, R.string.telegram_hint, groupShape(2, kinds), onTelegram)
+                }
             }
             if (sources.isNotEmpty()) {
                 Row(
@@ -148,7 +157,7 @@ fun WelcomeContent(
     }
 }
 
-/** A kind of source to add: its icon, name and what it is, as one card of a pair. */
+/** A kind of source to add: its icon, name and what it is, as one card of a group. */
 @Composable
 private fun Option(icon: ImageVector, name: Int, detail: Int, shape: RoundedCornerShape, onClick: () -> Unit) {
     Row(
@@ -204,7 +213,7 @@ private fun Added(source: DraftSource, shape: RoundedCornerShape, onRemove: () -
                 .background(colors.surfaceHigh, RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            NIcon(if (source.root.isLocal) NIcons.Sources else NIcons.Web, tint = colors.onSurfaceVariant)
+            NIcon(sourceIcon(source.root), tint = colors.onSurfaceVariant)
         }
         Column(Modifier.weight(1f)) {
             Text(

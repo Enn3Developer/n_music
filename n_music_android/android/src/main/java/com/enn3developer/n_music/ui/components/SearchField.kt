@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -23,14 +24,23 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
-/** A rounded field that narrows a list as one types, with a cross once it holds text. */
+/**
+ * A rounded field that narrows a list as one types, with a cross once it holds text; [fill] sets
+ * it apart from what it is on.
+ */
 @Composable
-fun SearchField(value: String, onValueChange: (String) -> Unit, hint: String, modifier: Modifier = Modifier) {
+fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    hint: String,
+    modifier: Modifier = Modifier,
+    fill: Color = colors.surfaceHigh,
+) {
     Row(
         modifier
             .fillMaxWidth()
             .height(48.dp)
-            .background(colors.surfaceHigh, RoundedCornerShape(24.dp))
+            .background(fill, RoundedCornerShape(24.dp))
             .padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),

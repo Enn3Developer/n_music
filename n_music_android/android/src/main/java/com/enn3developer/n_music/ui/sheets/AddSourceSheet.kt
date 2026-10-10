@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,6 +23,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.components.NIcon
@@ -35,10 +38,14 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
-/** The kinds of source to add: a folder on this phone or a web playlist, and those to come. */
+/**
+ * The kinds of source to add: a folder on this phone, a web playlist or, in builds with Telegram,
+ * a Telegram chat, and those to come.
+ */
 @Composable
 fun AddSourceSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
     val app = LocalApp.current
+    val telegram by CoreRepository.telegram.collectAsStateWithLifecycle()
     AddSourceSheet(
         onFolder = {
             onDismissRequest()
@@ -48,13 +55,17 @@ fun AddSourceSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Un
             onDismissRequest()
             app.show(AppDialog.AddWebPlaylist())
         },
+        onTelegram = {
+            onDismissRequest()
+            app.show(AppDialog.Telegram())
+        }.takeIf { telegram != null },
         open = open,
         onDismissRequest = onDismissRequest,
         onGone = onGone,
     )
 }
 
-/** The sheet itself; [onFolder] and [onWeb] add those kinds. */
+/** The sheet itself; [onFolder], [onWeb] and [onTelegram] add those kinds, Telegram unless `null`. */
 @Composable
 fun AddSourceSheet(
     onFolder: () -> Unit,
@@ -62,6 +73,7 @@ fun AddSourceSheet(
     open: Boolean,
     onDismissRequest: () -> Unit,
     onGone: () -> Unit,
+    onTelegram: (() -> Unit)? = null,
 ) {
     val title = stringResource(R.string.add_a_source)
     SheetFrame(
@@ -87,6 +99,9 @@ fun AddSourceSheet(
     ) {
         SourceKind(NIcons.Sources, stringResource(R.string.local_folder), stringResource(R.string.local_folder_hint), onFolder)
         SourceKind(NIcons.Web, stringResource(R.string.web_playlist), stringResource(R.string.web_playlist_hint), onWeb)
+        if (onTelegram != null) {
+            SourceKind(NIcons.Telegram, stringResource(R.string.telegram_chat), stringResource(R.string.telegram_hint), onTelegram)
+        }
         Box(
             Modifier
                 .padding(horizontal = 24.dp, vertical = 8.dp)

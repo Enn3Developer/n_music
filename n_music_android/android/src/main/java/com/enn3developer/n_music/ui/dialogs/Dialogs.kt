@@ -61,6 +61,15 @@ sealed interface AppDialog {
 
     /** Asks before taking source [root], called [name], and its [tracks] out of the library. */
     data class RemoveSource(val root: Locator, val name: String, val tracks: UInt) : AppDialog
+
+    /**
+     * Signs in to Telegram, then adds a chat to the library, or to the sources Welcome holds
+     * while [draft]; with [signInOnly], it only signs in.
+     */
+    data class Telegram(val draft: Boolean = false, val signInOnly: Boolean = false) : AppDialog
+
+    /** Asks before signing out of Telegram. */
+    data object TelegramSignOut : AppDialog
 }
 
 /** The open dialog, and one still fading out. [onDismiss] closes the open one. */
@@ -82,6 +91,8 @@ fun DialogHost(current: AppDialog?, onDismiss: () -> Unit) {
                 is AppDialog.AddWebPlaylist -> AddWebPlaylistDialog(dialog.draft, open, dismiss, gone)
                 is AppDialog.RenameSource -> RenameSourceDialog(dialog.root, dialog.name, open, dismiss, gone)
                 is AppDialog.RemoveSource -> RemoveSourceDialog(dialog.root, dialog.name, dialog.tracks, open, dismiss, gone)
+                is AppDialog.Telegram -> TelegramDialog(dialog.draft, dialog.signInOnly, open, dismiss, gone)
+                AppDialog.TelegramSignOut -> TelegramSignOutDialog(open, dismiss, gone)
             }
         }
     }
@@ -328,11 +339,44 @@ private fun RemoveSourceDialog(
     ) {
         Text(
             pluralStringResource(
-                if (root.isLocal) R.plurals.remove_source_local else R.plurals.remove_source_web,
+                when {
+                    root.isLocal -> R.plurals.remove_source_local
+                    root is Locator.TelegramChat -> R.plurals.remove_source_telegram
+                    else -> R.plurals.remove_source_web
+                },
                 quantity(count),
                 formatCount(count),
                 sourcePlace(root),
             ),
+            style = text(14, lineHeight = 20.sp),
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+    }
+}
+
+/** Asks before signing out of Telegram: its sources stay, and play again once signed back in. */
+@Composable
+private fun TelegramSignOutDialog(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
+    DialogFrame(
+        open,
+        stringResource(R.string.telegram_sign_out_title),
+        onDismissRequest,
+        onGone,
+        buttons = {
+            DialogCancel(onDismissRequest)
+            DialogConfirm(
+                stringResource(R.string.sign_out),
+                {
+                    CoreRepository.send(Command.TelegramSignOut)
+                    onDismissRequest()
+                },
+                danger = true,
+            )
+        },
+    ) {
+        Text(
+            stringResource(R.string.telegram_sign_out_message),
             style = text(14, lineHeight = 20.sp),
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp),
