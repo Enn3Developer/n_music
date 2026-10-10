@@ -36,7 +36,7 @@ fun originName(origin: Origin?, resources: Resources, playlists: List<PlaylistRo
 /** Opens the page of what plays, closing the player. */
 fun AppController.openOrigin(origin: Origin) = when (origin) {
     Origin.Library -> showTracks(filters)
-    is Origin.Search -> open(Page.Search)
+    is Origin.Search -> open(Page.Search(origin.text))
     is Origin.Album -> open(Page.Album(origin.name, origin.artist))
     is Origin.Artist -> open(Page.Artist(origin.name))
     is Origin.Playlist -> open(Page.Playlist(origin.id))

@@ -205,7 +205,7 @@ fun LibraryPage() {
         LibraryHeader(
             selection = selection,
             total = tracks.orEmpty().size,
-            onSearch = { app.open(Page.Search) },
+            onSearch = { app.open(Page.Search()) },
             // Beside a rail, Settings is on it.
             onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
             onEndSelection = app::endSelection,

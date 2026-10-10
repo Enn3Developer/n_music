@@ -855,7 +855,7 @@ private fun PageContent(page: Page) {
         Page.Library -> LibraryPage()
         is Page.Album -> AlbumPage(page)
         is Page.Artist -> ArtistPage(page)
-        Page.Search -> SearchPage()
+        is Page.Search -> SearchPage(page.text)
         Page.Playlists -> PlaylistsPage()
         is Page.Playlist -> PlaylistPage(page)
         Page.Sources -> SourcesPage()
