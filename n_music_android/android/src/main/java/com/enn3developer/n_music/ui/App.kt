@@ -9,6 +9,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -410,6 +411,12 @@ private fun MainLayout(navigator: Navigator) {
     val actions = selection != null && page.navigation
     // A tablet's pane shows what plays instead.
     val miniPlayer = page.miniPlayer && current != null && selection == null && !tablet
+    // Whether it stepped aside for the selection's actions, which it fades out of the way of
+    // and back from, rather than sliding.
+    val forActions = remember { booleanArrayOf(false) }
+    if (!miniPlayer) forActions[0] = actions
+    val miniShown = remember { MutableTransitionState(miniPlayer) }
+    miniShown.targetState = miniPlayer
     val miniHeight = if (rail) 72.dp else 64.dp
     val density = LocalDensity.current
     val navInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
@@ -509,23 +516,36 @@ private fun MainLayout(navigator: Navigator) {
                             NMotion.spatialDefault(),
                             label = "snack",
                         )
+                        // An action's snackbar waits for the mini player coming back to rise from.
+                        val behindReturn = forActions[0] && miniShown.targetState && !miniShown.isIdle
                         SnackbarHost(
                             if (app.player.isOpen || app.sheet != null) null else app.snack,
                             app::dismissSnack,
                             app::snackAction,
-                            Modifier
+                            enterDelay = if (behindReturn) SNACK_AFTER_ACTIONS_MS else 0L,
+                            modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = snackBottom)
                                 .onSizeChanged { snackHeight = with(density) { it.height.toDp() } },
                         )
                         // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
                         androidx.compose.animation.AnimatedVisibility(
-                            miniPlayer,
+                            miniShown,
                             Modifier.align(Alignment.BottomCenter),
-                            // Back from selecting, it waits for the actions to leave.
-                            enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
-                                fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
-                            exit = slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()),
+                            // For the actions it shrinks a little as it fades, once the covers
+                            // have turned, and comes back once they have started leaving.
+                            enter = if (forActions[0]) {
+                                scaleIn(NMotion.spatialDefault<Float>().delayed(MINI_BACK_MS), initialScale = MINI_ASIDE_SCALE) +
+                                    fadeIn(NMotion.effectsDefault<Float>().delayed(MINI_BACK_MS))
+                            } else {
+                                slideInVertically(NMotion.spatialDefault()) { it } + fadeIn(NMotion.effectsDefault())
+                            },
+                            exit = if (forActions[0]) {
+                                scaleOut(NMotion.spatialDefault<Float>().delayed(MINI_ASIDE_MS), targetScale = MINI_ASIDE_SCALE) +
+                                    fadeOut(NMotion.effectsFast<Float>().delayed(MINI_ASIDE_MS))
+                            } else {
+                                slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast())
+                            },
                         ) {
                             MiniPlayer(
                                 ui = PlaybackUi(current?.track, playing, shuffle, loop, sleep != null),
@@ -763,6 +783,18 @@ private fun queue(app: AppController, resources: Resources, selection: Selection
         )
     )
 }
+
+/** How long after selecting starts the mini player steps aside for the actions. */
+private const val MINI_ASIDE_MS = 100L
+
+/** How long after the selection ends the mini player comes back. */
+private const val MINI_BACK_MS = 140L
+
+/** How far the mini player shrinks as it steps aside. */
+private const val MINI_ASIDE_SCALE = 0.96f
+
+/** How long after the selection ends an action's snackbar rises from behind the mini player. */
+private const val SNACK_AFTER_ACTIONS_MS = 240L
 
 /**
  * The current page. Another tab fades through; a page opened over another slides in from the

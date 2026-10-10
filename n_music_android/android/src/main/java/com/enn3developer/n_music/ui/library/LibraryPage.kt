@@ -3,6 +3,7 @@ package com.enn3developer.n_music.ui.library
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -62,6 +63,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -117,8 +119,9 @@ import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PlayShuffle
-import com.enn3developer.n_music.ui.components.SelectionBar
+import com.enn3developer.n_music.ui.components.SelectionBarContent
 import com.enn3developer.n_music.ui.components.ViewSwap
+import com.enn3developer.n_music.ui.components.barDrift
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.Tab
@@ -139,6 +142,7 @@ import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
 import kotlin.math.abs
@@ -198,26 +202,15 @@ fun LibraryPage() {
     // Selecting belongs to the Tracks tab.
     LaunchedEffect(pager.currentPage) { app.endSelection() }
     Column(Modifier.fillMaxSize()) {
-        AnimatedContent(
-            selection != null,
-            transitionSpec = { barSwap(targetState) },
-            label = "header",
-        ) { selecting ->
-            if (selecting) {
-                SelectionBar(
-                    count = selection?.count ?: 0,
-                    total = tracks.orEmpty().size,
-                    onClose = app::endSelection,
-                    onSelectAll = { selection?.addAll(tracks.orEmpty().map { it.locator }) },
-                )
-            } else {
-                // Beside a rail, Settings is on it.
-                SearchHeader(
-                    onSearch = { app.open(Page.Search) },
-                    onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
-                )
-            }
-        }
+        LibraryHeader(
+            selection = selection,
+            total = tracks.orEmpty().size,
+            onSearch = { app.open(Page.Search) },
+            // Beside a rail, Settings is on it.
+            onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
+            onEndSelection = app::endSelection,
+            onSelectAll = { selection?.addAll(tracks.orEmpty().map { it.locator }) },
+        )
         LibraryTabs(pager)
         HorizontalPager(
             state = pager,
@@ -336,6 +329,45 @@ fun LibraryPage() {
  */
 @Composable
 fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val pill = colors.surfaceHigh
+    HeaderPill({ pill }, modifier) { SearchContent(onSearch, onSettings) }
+}
+
+/**
+ * The library's header: its search field, or the selection bar in its place while selecting.
+ * The pill stays, taking the selection's colour as the first cover turns, while what it holds
+ * fades through.
+ */
+@Composable
+internal fun LibraryHeader(
+    selection: Selection?,
+    total: Int,
+    onSearch: () -> Unit,
+    onSettings: (() -> Unit)?,
+    onEndSelection: () -> Unit,
+    onSelectAll: () -> Unit,
+) {
+    val selecting = selection != null
+    val pill by animateColorAsState(
+        if (selecting) colors.secondaryContainer else colors.surfaceHigh,
+        NMotion.effectsDefault<Color>().delayed(NMotion.STAGGER_MS),
+        label = "pill",
+    )
+    val drift = barDrift()
+    HeaderPill({ pill }) {
+        AnimatedContent(selecting, transitionSpec = { barSwap(targetState, drift) }, label = "header") { shown ->
+            if (shown) {
+                SelectionBarContent(selection?.count ?: 0, total, onEndSelection, onSelectAll)
+            } else {
+                SearchContent(onSearch, onSettings)
+            }
+        }
+    }
+}
+
+/** The pill the library's header sits on, in [color]. */
+@Composable
+private fun HeaderPill(color: () -> Color, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val margins = LocalPageMargins.current
     val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     Box(
@@ -343,33 +375,45 @@ fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modi
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(start = margins.start, end = margins.end, top = if (tablet) 4.dp else 8.dp, bottom = 8.dp)
     ) {
-        Row(
+        Box(
             Modifier
                 .then(if (tablet) Modifier.widthIn(max = 536.dp) else Modifier)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(colors.surfaceHigh)
-                .padding(end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .drawBehind { drawRect(color()) },
         ) {
-            val hint = stringResource(R.string.search_library)
-            Row(
-                Modifier
-                    .weight(1f)
-                    .height(56.dp)
-                    .clickable(role = Role.Button, onClick = onSearch)
-                    .semantics { contentDescription = hint }
-                    .padding(start = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                NIcon(NIcons.Search, tint = colors.onSurfaceVariant)
-                Text(hint, style = text(16), color = colors.onSurfaceVariant, maxLines = 1)
-            }
-            if (onSettings != null) {
-                NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
-            }
+            content()
+        }
+    }
+}
+
+/** The search field's hint, which opens Search, and Settings when [onSettings] is set. */
+@Composable
+private fun SearchContent(onSearch: () -> Unit, onSettings: (() -> Unit)?) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val hint = stringResource(R.string.search_library)
+        Row(
+            Modifier
+                .weight(1f)
+                .height(56.dp)
+                .clickable(role = Role.Button, onClick = onSearch)
+                .semantics { contentDescription = hint }
+                .padding(start = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            NIcon(NIcons.Search, tint = colors.onSurfaceVariant)
+            Text(hint, style = text(16), color = colors.onSurfaceVariant, maxLines = 1)
+        }
+        if (onSettings != null) {
+            NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
         }
     }
 }
@@ -501,8 +545,12 @@ fun TracksTab(
     val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     val haptics = LocalHapticFeedback.current
     val selecting = selection != null
-    // While selecting, the filters and what plays dim and stop answering.
-    val dim by animateFloatAsState(if (selecting) 0.38f else 1f, NMotion.effectsDefault(), label = "dim")
+    // While selecting, the filters and what plays dim and stop answering, as the header changes.
+    val dim by animateFloatAsState(
+        if (selecting) 0.38f else 1f,
+        NMotion.effectsDefault<Float>().delayed(NMotion.STAGGER_MS),
+        label = "dim",
+    )
     fun press(track: TrackRow) = if (selecting) onSelect(track) else onPlay(track)
     fun hold(track: TrackRow) {
         if (!selecting) haptics.performHapticFeedback(HapticFeedbackType.LongPress)

@@ -64,6 +64,7 @@ import com.enn3developer.n_music.ui.components.SmallAlbumTile
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.artistName
+import com.enn3developer.n_music.ui.components.barDrift
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.enqueue
@@ -172,7 +173,8 @@ fun ArtistContent(
     val title = artist?.let { artistName(it) } ?: name ?: stringResource(R.string.no_artist)
     var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState) }, label = "bar") { selecting ->
+        val drift = barDrift()
+        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState, drift) }, label = "bar") { selecting ->
             if (selecting) {
                 SelectionBar(selection?.count ?: 0, rows.size, onEndSelection, { selection?.addAll(rows.map { it.locator }) })
             } else {

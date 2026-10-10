@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -52,8 +53,8 @@ import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 
 /**
- * The bar standing in for a page's search field while selecting: Stop selecting, how many are
- * picked, and Select all, which picks the [total] tracks of the list.
+ * The bar standing in for a page's own while selecting: Stop selecting, how many are picked,
+ * and Select all, which picks the [total] tracks of the list.
  */
 @Composable
 fun SelectionBar(count: Int, total: Int, onClose: () -> Unit, onSelectAll: () -> Unit, modifier: Modifier = Modifier) {
@@ -63,27 +64,38 @@ fun SelectionBar(count: Int, total: Int, onClose: () -> Unit, onSelectAll: () ->
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(start = margins.start, end = margins.end, top = 8.dp, bottom = 8.dp)
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(colors.secondaryContainer, RoundedCornerShape(28.dp))
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompositionLocalProvider(LocalContentColor provides colors.onSecondaryContainer) {
-                NIconButton(NIcons.Close, stringResource(R.string.stop_selecting), onClose)
-                RollingText(
-                    pluralStringResource(R.plurals.selected_count, count, formatCount(count)),
-                    count,
-                    text(18, FontWeight.Bold, tabular = true),
-                    colors.onSecondaryContainer,
-                    Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp),
-                )
-                NIconButton(NIcons.SelectAll, stringResource(R.string.select_all, formatCount(total)), onSelectAll)
-            }
+        SelectionBarContent(
+            count,
+            total,
+            onClose,
+            onSelectAll,
+            Modifier.background(colors.secondaryContainer, RoundedCornerShape(28.dp)),
+        )
+    }
+}
+
+/** What the selection bar holds, on whatever pill holds it. */
+@Composable
+fun SelectionBarContent(count: Int, total: Int, onClose: () -> Unit, onSelectAll: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides colors.onSecondaryContainer) {
+            NIconButton(NIcons.Close, stringResource(R.string.stop_selecting), onClose)
+            RollingText(
+                pluralStringResource(R.plurals.selected_count, count, formatCount(count)),
+                count,
+                text(18, FontWeight.Bold, tabular = true),
+                colors.onSecondaryContainer,
+                Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+            )
+            NIconButton(NIcons.SelectAll, stringResource(R.string.select_all, formatCount(total)), onSelectAll)
         }
     }
 }
@@ -120,10 +132,20 @@ private fun roll(up: Boolean): ContentTransform {
     )
 }
 
+/** How long after selecting starts Play next rises, once the mini player has started fading. */
+private const val ACTIONS_IN_MS = 170L
+
+/** How long after Play next the other actions rise. */
+private const val ACTIONS_FOLLOW_MS = 60L
+
+/** How far the actions rise as they come and drop as they leave. */
+private val ACTIONS_RISE = 16.dp
+
 /**
  * What can be done with the picked tracks, in place of the mini player: Play next, Add to queue
- * and Add to playlist. The pressed one widens as the others give way, and once it is let go the
- * others leave before it does.
+ * and Add to playlist. They rise into place, Play next first and the others a little after. The
+ * pressed one widens as the others give way, and once it is let go the others leave before it
+ * does.
  */
 @Composable
 fun AnimatedVisibilityScope.SelectionActions(
@@ -134,6 +156,7 @@ fun AnimatedVisibilityScope.SelectionActions(
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableIntStateOf(-1) }
+    val rise = with(LocalDensity.current) { ACTIONS_RISE.roundToPx() }
     val description = pluralStringResource(R.plurals.act_on, count, formatCount(count))
     PressGroup(3, modifier.semantics { contentDescription = description }) { index, interaction, weight ->
         val (label, action) = when (index) {
@@ -142,6 +165,8 @@ fun AnimatedVisibilityScope.SelectionActions(
             else -> stringResource(R.string.add_to_playlist) to onAddToPlaylist
         }
         val shape = RoundedCornerShape(24.dp)
+        // Play next comes first; the rest follow it in.
+        val lead = if (index == 0) ACTIONS_IN_MS else ACTIONS_IN_MS + ACTIONS_FOLLOW_MS
         // The rest leave first; the pressed one follows them out.
         val lag = if (index == pressed) NMotion.STAGGER_MS else 0L
         ActionButton(
@@ -154,10 +179,9 @@ fun AnimatedVisibilityScope.SelectionActions(
             filled = index == 0,
             modifier = weight
                 .animateEnterExit(
-                    // They come in once the mini player has left.
-                    enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(2 * NMotion.STAGGER_MS)) { it } +
-                        fadeIn(NMotion.effectsDefault<Float>().delayed(2 * NMotion.STAGGER_MS)),
-                    exit = slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lag)) { it } +
+                    enter = slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { rise } +
+                        fadeIn(NMotion.effectsDefault<Float>().delayed(lead)),
+                    exit = slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lag)) { rise } +
                         fadeOut(NMotion.effectsFast<Float>().delayed(lag)),
                 )
                 .height(48.dp)
@@ -187,18 +211,25 @@ private fun ActionButton(
     }
 }
 
+/** How far a bar and the selection bar drift as they swap. */
+private val BAR_DRIFT = 6.dp
+
+/** [BAR_DRIFT] in pixels, for [barSwap]. */
+@Composable
+fun barDrift(): Int = with(LocalDensity.current) { BAR_DRIFT.roundToPx() }
+
 /**
- * A page's bar giving way to the selection bar, or back: the old one leaves first, the new
- * one follows 90 ms later, and both drift 8 dp the way the change goes.
+ * A bar giving way to the selection bar, or back: the old one leaves first, the new one follows
+ * 90 ms later, and both drift [drift] px, up as selecting starts and down as it ends.
  */
-fun AnimatedContentTransitionScope<Boolean>.barSwap(selecting: Boolean): ContentTransform {
-    val drift = if (selecting) 1 else -1
+fun AnimatedContentTransitionScope<Boolean>.barSwap(selecting: Boolean, drift: Int): ContentTransform {
+    val way = if (selecting) -1 else 1
     val lead = NMotion.STAGGER_MS
     return (
-        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead + 90)) { -drift * it / 9 } +
+        slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(lead + 90)) { -way * drift } +
             fadeIn(NMotion.effectsDefault<Float>().delayed(lead + 90))
         ).togetherWith(
-        slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { drift * it / 9 } +
+        slideOutVertically(NMotion.spatialDefault<IntOffset>().delayed(lead)) { way * drift } +
             fadeOut(NMotion.effectsFast<Float>().delayed(lead))
     ) using SizeTransform(clip = false)
 }

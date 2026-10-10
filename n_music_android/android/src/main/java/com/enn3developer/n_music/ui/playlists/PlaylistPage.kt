@@ -76,6 +76,7 @@ import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.SwipeToRemove
 import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.TrackItem
+import com.enn3developer.n_music.ui.components.barDrift
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.dotted
@@ -209,7 +210,8 @@ fun PlaylistContent(
     val rules = remember(playlist?.rule) { playlist?.rule?.let(::rulesOf) }
     var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState) }, label = "bar") { selecting ->
+        val drift = barDrift()
+        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState, drift) }, label = "bar") { selecting ->
             if (selecting) {
                 SelectionBar(selection?.count ?: 0, rows.size, onEndSelection, { selection?.addAll(rows.map { it.locator }) })
             } else {

@@ -25,11 +25,13 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import kotlinx.coroutines.delay
 
@@ -44,6 +46,7 @@ fun SnackbarHost(
     onTimeout: (Long) -> Unit,
     onAction: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    enterDelay: Long = 0L,
 ) {
     val accessibility = LocalAccessibilityManager.current
     LaunchedEffect(snack?.first) {
@@ -65,7 +68,10 @@ fun SnackbarHost(
         modifier,
         contentKey = { it?.first },
         transitionSpec = {
-            (slideInVertically(NMotion.spatialDefault()) { it } + fadeIn(NMotion.effectsDefault()))
+            (
+                slideInVertically(NMotion.spatialDefault<IntOffset>().delayed(enterDelay)) { it } +
+                    fadeIn(NMotion.effectsDefault<Float>().delayed(enterDelay))
+                )
                 .togetherWith(slideOutVertically(NMotion.spatialDefault()) { it } + fadeOut(NMotion.effectsFast()))
                 .using(SizeTransform(clip = false))
         },

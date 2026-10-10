@@ -66,6 +66,7 @@ import com.enn3developer.n_music.ui.components.PageBar
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
 import com.enn3developer.n_music.ui.components.albumName
+import com.enn3developer.n_music.ui.components.barDrift
 import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.margins
@@ -179,7 +180,8 @@ fun AlbumContent(
     val discs = rows.mapNotNull { it.discNumber }.distinct().size > 1
     var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState) }, label = "bar") { selecting ->
+        val drift = barDrift()
+        AnimatedContent(selection != null, transitionSpec = { barSwap(targetState, drift) }, label = "bar") { selecting ->
             if (selecting) {
                 SelectionBar(selection?.count ?: 0, rows.size, onEndSelection, { selection?.addAll(rows.map { it.locator }) })
             } else {
