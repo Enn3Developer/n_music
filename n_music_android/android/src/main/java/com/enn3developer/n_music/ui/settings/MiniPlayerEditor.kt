@@ -1,6 +1,10 @@
 package com.enn3developer.n_music.ui.settings
 
+import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.animateBounds
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -21,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -38,15 +43,19 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
@@ -62,10 +71,12 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import com.enn3developer.n_music.MiniButton
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
@@ -83,6 +94,7 @@ import com.enn3developer.n_music.ui.components.miniProgress
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
+import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -99,6 +111,16 @@ private val TRAY_ORDER = listOf(
 
 /** How far above the finger a lifted button floats, so the finger doesn't hide it. */
 private val LIFT_ABOVE = 22.dp
+
+/** How long after a tray button lifts the others close its gap, once it has lifted. */
+private const val TRAY_CLOSE_MS = 230L
+
+/** How long after a button lands back in the tray its name comes back. */
+private const val NAME_BACK_MS = 100L
+
+/** A tray button's corners, and a lifted one's on the bigger chip. */
+private val TRAY_CORNER = 16.dp
+private val CHIP_TRAY_CORNER = TRAY_CORNER * 56f / 48f
 
 /** Nothing in the preview plays: its buttons only show. */
 private object Preview : PlaybackActions {
@@ -127,6 +149,18 @@ private class EditorDrag {
 
     /** From 0 to 1 as it lifts. */
     val lift = Animatable(0f)
+
+    /** The button let go, while it lands in its new place. */
+    var landing by mutableStateOf<MiniButton?>(null)
+
+    /** It lands in the tray, where it turns back into a rounded square. */
+    var toTray by mutableStateOf(false)
+
+    /** The chip's centre when it was let go, which it lands from. */
+    var from by mutableStateOf(Offset.Zero)
+
+    /** From 0 to 1 as it lands. */
+    val land = Animatable(0f)
 }
 
 /**
@@ -161,7 +195,17 @@ fun MiniPlayerEditor(
     val entries: List<MiniButton?> = drag.target?.let { target ->
         rest.toMutableList<MiniButton?>().apply { add(target.coerceIn(0, size), null) }
     } ?: rest
-    val tray = TRAY_ORDER.filter { it !in buttons && it != dragged }
+    // The tray as it shows: one lifted out of it leaves a gap that closes, and one held off the
+    // bar has its place open while it is out of the bar's reach.
+    val tray = TRAY_ORDER.filter { button ->
+        if (button == dragged) drag.fromBar && drag.target == null else button !in buttons
+    }
+    val trayMove = remember(drag) {
+        BoundsTransform { _, _ ->
+            val delay = if (drag.button != null && !drag.fromBar) TRAY_CLOSE_MS else 0L
+            NMotion.spatialDefault(Rect.VisibilityThreshold).delayed(delay)
+        }
+    }
 
     fun change(next: List<MiniButton>) {
         if (next != buttons) onChange(next)
@@ -187,6 +231,7 @@ fun MiniPlayerEditor(
     }
 
     fun lift(button: MiniButton, at: Offset) {
+        drag.landing = null
         drag.fromBar = button in buttons
         drag.button = button
         drag.position = at
@@ -212,10 +257,19 @@ fun MiniPlayerEditor(
             target != null -> change(others.toMutableList().apply { add(target.coerceIn(0, size), button) })
             drag.fromBar -> change(others)
         }
+        // It lands where it now is, shrinking back as its shadow goes.
+        drag.from = drag.position - Offset(0f, with(density) { LIFT_ABOVE.toPx() })
+        drag.toTray = target == null
+        drag.landing = button
         drag.button = null
         drag.target = null
         haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
-        scope.launch { drag.lift.snapTo(0f) }
+        scope.launch {
+            drag.land.snapTo(0f)
+            launch { drag.lift.animateTo(0f, NMotion.spatialDefault()) }
+            drag.land.animateTo(1f, NMotion.spatialDefault())
+            if (drag.landing == button) drag.landing = null
+        }
     }
 
     Box(
@@ -301,6 +355,7 @@ fun MiniPlayerEditor(
                                         entry, preview, buttons, root, bounds,
                                         fill = if (pressed == entry) fill else null,
                                         fillColor = fillColor,
+                                        landing = drag.landing == entry,
                                         onMenu = { menuFor = entry },
                                         onTakeOut = { change(buttons - entry) },
                                         onMove = { move(entry, it) },
@@ -344,38 +399,45 @@ fun MiniPlayerEditor(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp),
                 )
             }
-            Column(
-                Modifier
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)
-                    .graphicsLayer { alpha = if (full) 0.38f else 1f },
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                for (row in tray.chunked(4)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (button in row) {
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                TrayButton(
-                                    button, enabled = !full, root, bounds,
-                                    fill = if (pressed == button) fill else null,
-                                    fillColor = fillColor,
-                                    onMenu = { menuFor = button },
-                                    onAdd = { change(buttons + button) },
-                                )
-                                NMenu(menuFor == button, { menuFor = null }) {
-                                    MenuItem(stringResource(R.string.mini_add), NIcons.Add, {
-                                        menuFor = null
-                                        change(buttons + button)
-                                    })
+            LookaheadScope {
+                TrayGrid(
+                    Modifier
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)
+                        .animateContentSize(NMotion.spatialDefault())
+                        .graphicsLayer { alpha = if (full) 0.38f else 1f },
+                ) {
+                    for (button in tray) {
+                        key(button) {
+                            Box(
+                                Modifier.animateBounds(this@LookaheadScope, boundsTransform = trayMove),
+                                contentAlignment = Alignment.TopCenter,
+                            ) {
+                                if (button == dragged) {
+                                    Slot(Modifier, corner = TRAY_CORNER)
+                                } else {
+                                    TrayButton(
+                                        button, enabled = !full, root, bounds,
+                                        fill = if (pressed == button) fill else null,
+                                        fillColor = fillColor,
+                                        landing = drag.landing == button,
+                                        onMenu = { menuFor = button },
+                                        onAdd = { change(buttons + button) },
+                                    )
+                                    NMenu(menuFor == button, { menuFor = null }) {
+                                        MenuItem(stringResource(R.string.mini_add), NIcons.Add, {
+                                            menuFor = null
+                                            change(buttons + button)
+                                        })
+                                    }
                                 }
                             }
                         }
-                        // Short rows keep the columns of full ones.
-                        repeat(4 - row.size) { Box(Modifier.weight(1f)) }
                     }
                 }
             }
         }
-        if (dragged != null) Lifted(dragged, preview, drag, fill, fillColor)
+        val chip = dragged ?: drag.landing
+        if (chip != null) Lifted(chip, preview, drag, bounds, fill, fillColor)
     }
 }
 
@@ -434,6 +496,7 @@ private fun BarButton(
     bounds: MutableMap<MiniButton, Rect>,
     fill: HoldFill?,
     fillColor: Color,
+    landing: Boolean,
     onMenu: () -> Unit,
     onTakeOut: () -> Unit,
     onMove: (Int) -> Unit,
@@ -458,7 +521,9 @@ private fun BarButton(
                 onClick { onMenu(); true }
                 customActions = actions
             }
-            .then(if (fill != null) Modifier.holdFill(fill, fillColor, CircleShape) else Modifier),
+            .then(if (fill != null) Modifier.holdFill(fill, fillColor, CircleShape) else Modifier)
+            // Its chip shows it while it lands.
+            .graphicsLayer { alpha = if (landing) 0f else 1f },
         contentAlignment = Alignment.Center,
     ) {
         if (on) {
@@ -485,6 +550,7 @@ private fun TrayButton(
     bounds: MutableMap<MiniButton, Rect>,
     fill: HoldFill?,
     fillColor: Color,
+    landing: Boolean,
     onMenu: () -> Unit,
     onAdd: () -> Unit,
 ) {
@@ -505,18 +571,29 @@ private fun TrayButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val shape = RoundedCornerShape(16.dp)
+        val shape = RoundedCornerShape(TRAY_CORNER)
+        // Landing back in the tray, its name comes back a little after its chip lets go.
+        val named = remember { Animatable(if (landing) 0f else 1f) }
+        LaunchedEffect(Unit) { named.animateTo(1f, NMotion.effectsDefault<Float>().delayed(NAME_BACK_MS)) }
         Box(
             Modifier
                 .size(48.dp)
                 .tracked(button, root, bounds)
                 .then(if (fill != null) Modifier.holdFill(fill, fillColor, shape) else Modifier)
+                .graphicsLayer { alpha = if (landing) 0f else 1f }
                 .background(colors.surfaceHigh, shape),
             contentAlignment = Alignment.Center,
         ) {
             NIcon(trayIcon(button), tint = colors.onSurface)
         }
-        Text(name, style = text(12, FontWeight.SemiBold), color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            name,
+            style = text(12, FontWeight.SemiBold),
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.graphicsLayer { alpha = named.value },
+        )
     }
 }
 
@@ -531,13 +608,26 @@ private fun trayIcon(button: MiniButton) = when (button) {
     MiniButton.SLEEP_TIMER -> NIcons.SleepTimer
 }
 
-/** The dashed ring where a held button would land in the bar. */
+/** The dashed outline where a held button would land: round in the bar, [corner] in the tray. */
 @Composable
-private fun Slot(modifier: Modifier) {
+private fun Slot(modifier: Modifier, corner: Dp? = null) {
     val color = colors.primary
+    // It opens out from a little smaller.
+    val grow = remember { Animatable(0f) }
+    val shown = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch { shown.animateTo(1f, NMotion.effectsFast()) }
+        grow.animateTo(1f, NMotion.spatialDefault())
+    }
     Box(
         modifier
             .size(48.dp)
+            .graphicsLayer {
+                val scale = 0.6f + 0.4f * grow.value
+                scaleX = scale
+                scaleY = scale
+                alpha = shown.value
+            }
             .drawBehind {
                 val width = 2.dp.toPx()
                 val dash = 4.dp.toPx()
@@ -545,38 +635,101 @@ private fun Slot(modifier: Modifier) {
                     color,
                     topLeft = Offset(width / 2, width / 2),
                     size = Size(size.width - width, size.height - width),
-                    cornerRadius = CornerRadius(size.minDimension / 2),
+                    cornerRadius = CornerRadius(corner?.toPx() ?: (size.minDimension / 2)),
                     style = Stroke(width, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))),
                 )
             }
     )
 }
 
-/** The held button, floating over the finger with its shadow. */
+/**
+ * The held button, floating over the finger with its shadow. Let go, it lands in its new place
+ * in [bounds], shrinking back as its shadow goes, and in the tray turns back into a rounded
+ * square of the tray's colour.
+ */
 @Composable
-private fun Lifted(button: MiniButton, preview: PlaybackUi, drag: EditorDrag, fill: HoldFill, fillColor: Color) {
-    val density = LocalDensity.current
+private fun Lifted(
+    button: MiniButton,
+    preview: PlaybackUi,
+    drag: EditorDrag,
+    bounds: Map<MiniButton, Rect>,
+    fill: HoldFill,
+    fillColor: Color,
+) {
     val (icon, _, _) = miniButton(button, preview, Preview)
+    val lifted = colors.surfaceHighest
+    val tray = colors.surfaceHigh
+    val disc = colors.secondaryContainer
+    val landing = drag.landing == button
+    // An on button lands in the bar as the bar draws it: smaller, on its own disc.
+    val landsOn = landing && !drag.toTray && isOn(button, preview)
     Box(
         Modifier
             .offset {
-                val half = with(density) { 28.dp.toPx() }
-                val above = with(density) { LIFT_ABOVE.toPx() }
-                IntOffset((drag.position.x - half).roundToInt(), (drag.position.y - half - above).roundToInt())
+                val half = 28.dp.toPx()
+                val center = if (landing) {
+                    lerp(drag.from, bounds[button]?.center ?: drag.from, drag.land.value)
+                } else {
+                    drag.position - Offset(0f, LIFT_ABOVE.toPx())
+                }
+                IntOffset((center.x - half).roundToInt(), (center.y - half).roundToInt())
             }
             .size(56.dp)
             .graphicsLayer {
-                val lift = drag.lift.value
-                val scale = 48f / 56f + (1f - 48f / 56f) * lift
+                val scale = 48f / 56f + (1f - 48f / 56f) * drag.lift.value
                 scaleX = scale
                 scaleY = scale
             }
-            .dropShadow(CircleShape, Shadow(24.dp, Color.Black.copy(alpha = 0.35f), offset = DpOffset(0.dp, 10.dp)))
-            // The hold's fill fades as it lifts.
-            .holdFill(fill, fillColor, CircleShape)
-            .background(colors.surfaceHighest, CircleShape),
+            .dropShadow(CircleShape) {
+                radius = 24.dp.toPx()
+                color = Color.Black
+                alpha = 0.35f * drag.lift.value.coerceIn(0f, 1f)
+                offset = Offset(0f, 10.dp.toPx())
+            }
+            .graphicsLayer {
+                val round = size.minDimension / 2
+                val corner = if (landing && drag.toTray) lerp(round, CHIP_TRAY_CORNER.toPx(), drag.land.value) else round
+                shape = RoundedCornerShape(corner)
+                clip = true
+            }
+            .holdFill(fill, fillColor, RectangleShape)
+            .drawBehind {
+                val landed = drag.land.value.coerceIn(0f, 1f)
+                when {
+                    !landing -> drawRect(lifted)
+                    drag.toTray -> drawRect(lerp(lifted, tray, landed))
+                    landsOn -> drawCircle(lerp(lifted, disc, landed), size.minDimension / 2 * lerp(1f, 40f / 48f, landed))
+                    // The bar's other buttons are bare.
+                    else -> drawRect(lifted.copy(alpha = 1f - landed))
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
-        NIcon(icon, tint = colors.onSurface)
+        NIcon(
+            if (landing && drag.toTray) trayIcon(button) else icon,
+            Modifier.graphicsLayer {
+                val scale = if (landsOn) lerp(1f, 22f / 24f, drag.land.value) else 1f
+                scaleX = scale
+                scaleY = scale
+            },
+            tint = if (landsOn) colors.onSecondaryContainer else colors.onSurface,
+        )
+    }
+}
+
+/** The tray's buttons, four to a row; a short row keeps the columns of full ones. */
+@Composable
+private fun TrayGrid(modifier: Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { measurables, constraints ->
+        val gap = 8.dp.roundToPx()
+        val cell = ((constraints.maxWidth - 3 * gap) / 4).coerceAtLeast(0)
+        val placeables = measurables.map { it.measure(Constraints.fixedWidth(cell)) }
+        val row = placeables.maxOfOrNull { it.height } ?: 0
+        val rows = (placeables.size + 3) / 4
+        layout(constraints.maxWidth, (rows * row + (rows - 1) * gap).coerceAtLeast(0)) {
+            placeables.forEachIndexed { index, placeable ->
+                placeable.placeRelative((index % 4) * (cell + gap), (index / 4) * (row + gap))
+            }
+        }
     }
 }

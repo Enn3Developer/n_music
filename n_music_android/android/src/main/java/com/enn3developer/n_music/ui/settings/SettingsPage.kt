@@ -2,6 +2,7 @@ package com.enn3developer.n_music.ui.settings
 
 import android.os.Build
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -66,6 +67,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -108,6 +110,7 @@ import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.Segmented
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.components.tappable
+import com.enn3developer.n_music.ui.player.fadeThrough
 import com.enn3developer.n_music.ui.sources.groupShape
 import com.enn3developer.n_music.ui.theme.Accent
 import com.enn3developer.n_music.ui.theme.AppLogo
@@ -958,7 +961,17 @@ private fun MiniPlayerCard(
             NIcon(NIcons.MiniPlayer, tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f)) {
                 CardTitle(stringResource(R.string.mini_player_buttons))
-                Text(buttonsLine(buttons), style = text(14), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                // It changes over as buttons go in, the way they went: on as one is added, back
+                // as one is taken out.
+                val shift = with(LocalDensity.current) { 8.dp.roundToPx() }
+                AnimatedContent(
+                    buttons,
+                    Modifier.padding(top = 2.dp),
+                    transitionSpec = { fadeThrough(if (targetState.size < initialState.size) -1 else 1, shift) },
+                    label = "summary",
+                ) { shown ->
+                    Text(buttonsLine(shown), style = text(14), color = colors.onSurfaceVariant)
+                }
             }
             NIcon(if (open) NIcons.Expand else NIcons.Collapse, tint = colors.onSurfaceVariant)
         }
