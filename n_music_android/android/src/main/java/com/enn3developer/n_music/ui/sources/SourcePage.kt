@@ -42,6 +42,7 @@ import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.core.SourceRow
+import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
@@ -78,8 +79,9 @@ import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
 
 /**
- * A source's page: its cover, kind, name and where it is, then its tracks. A web playlist that
- * can't be reached says so, plays what is saved on this phone, and lists the rest greyed.
+ * A source's page: its cover, kind, name and where it is, then its tracks. A web playlist or a
+ * Telegram chat that can't be reached says so, plays what is saved on this phone, and lists the
+ * rest greyed.
  */
 @Composable
 fun SourcePage(page: Page.Source) {
@@ -87,6 +89,7 @@ fun SourcePage(page: Page.Source) {
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
+    val telegram by CoreRepository.telegram.collectAsStateWithLifecycle()
     val source = sources.find { it.root == page.root }
     val order = SortedList.SOURCE_TRACKS.trackOrder(ui.sorts)
     val query = Query(Filter.Library(page.root), order.keys())
@@ -103,6 +106,8 @@ fun SourcePage(page: Page.Source) {
             override fun scan(root: Locator?, reload: Boolean) =
                 CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
 
+            override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
+
             override fun remove(source: SourceRow) = app.show(AppDialog.RemoveSource(source.root, source.title, source.tracks))
         }
     }
@@ -116,17 +121,21 @@ fun SourcePage(page: Page.Source) {
         held = (app.sheet as? Sheet.TrackActions)?.track,
         actions = actions,
         onBack = app::back,
-        onRename = { source?.let { app.show(AppDialog.RenameSource(it.root, it.name)) } },
+        onRename = { source?.let(actions::rename) },
         onPlay = { app.play(query, origin, it.locator) },
         onPlayAll = { shuffle -> app.play(query, origin, shuffle = shuffle) },
         onSort = { app.show(Sheet.Sort(SortedList.SOURCE_TRACKS)) },
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
+        compact = ui.compactRows,
+        telegram = telegram?.status,
+        onSignIn = { app.show(AppDialog.Telegram(signInOnly = true)) },
     )
 }
 
 /**
  * The page itself, for [source] as the library has it: [tracks] it plays, and [missing], those a
- * web playlist that can't be reached listed and can't play; [scan] while one reads it.
+ * source that can't be reached listed and can't play; [scan] while one reads it. [telegram] is
+ * where signing in to Telegram is, `null` without Telegram: a chat can't be reached signed out.
  */
 @Composable
 fun SourceContent(
@@ -144,6 +153,9 @@ fun SourceContent(
     onPlayAll: (shuffle: Boolean) -> Unit,
     onSort: () -> Unit,
     onMore: (TrackRow) -> Unit,
+    compact: Boolean = false,
+    telegram: TelegramStatus? = null,
+    onSignIn: () -> Unit = {},
 ) {
     val rows = tracks.orEmpty()
     val margins = LocalPageMargins.current
@@ -169,7 +181,11 @@ fun SourceContent(
             item(key = "header") { Header(source, source.tracks.toLong() + missing.size, onRename) }
             if (down) {
                 item(key = "down") {
-                    Unreachable(source.root, rows.size) { actions.scan(source.root, reload = false) }
+                    if (signedOut(source.root, telegram)) {
+                        Unreachable(source.root, rows.size, signedOut = true, onSignIn)
+                    } else {
+                        Unreachable(source.root, rows.size, signedOut = false) { actions.scan(source.root, reload = false) }
+                    }
                 }
             } else if (scan != null && rows.isEmpty()) {
                 item(key = "scan") { UpdatingCard(scan, Modifier.padding(start = margins.start, end = margins.end, top = 16.dp)) }
@@ -205,7 +221,7 @@ fun SourceContent(
             } else if (tracks != null && missing.isEmpty() && scan == null) {
                 item(key = "empty") {
                     EmptyState(
-                        if (source.root.isLocal) NIcons.Sources else NIcons.Web,
+                        sourceIcon(source.root),
                         stringResource(R.string.source_empty),
                         stringResource(R.string.source_empty_hint),
                         Modifier.fillParentMaxHeight(0.6f),
@@ -221,6 +237,7 @@ fun SourceContent(
                     onMore = { onMore(track) },
                     line = if (down) dotted(artist(track), stringResource(R.string.saved_on_phone)) else trackLine(track),
                     quiet = down,
+                    compact = compact,
                 )
             }
             items(missing, key = { "missing " + it.locator.key }) { track ->
@@ -233,10 +250,11 @@ fun SourceContent(
                     onMore = null,
                     line = dotted(artist(track), stringResource(R.string.not_saved)),
                     muted = true,
+                    compact = compact,
                     cover = { modifier ->
                         Box(
                             modifier
-                                .size(48.dp)
+                                .size(if (compact) 40.dp else 48.dp)
                                 .background(colors.surfaceHigh, RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -267,7 +285,7 @@ private fun Header(source: SourceRow, tracks: Long, onRename: () -> Unit) {
         SourceTile(source, 104.dp)
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(if (source.root.isLocal) R.string.local_folder else R.string.web_playlist),
+                stringResource(sourceKind(source.root)),
                 style = text(13, FontWeight.Bold),
                 color = colors.onSurfaceVariant,
             )
@@ -312,11 +330,11 @@ private fun Header(source: SourceRow, tracks: Long, onRename: () -> Unit) {
 }
 
 /**
- * What a web playlist that can't be reached says: who didn't answer, what still plays, and a way
- * to try again.
+ * What a source that can't be reached says: who didn't answer, what still plays, and a way to try
+ * again. A Telegram chat [signedOut] asks to sign in instead.
  */
 @Composable
-private fun Unreachable(root: Locator, saved: Int, onRetry: () -> Unit) {
+private fun Unreachable(root: Locator, saved: Int, signedOut: Boolean, onAction: () -> Unit) {
     val margins = LocalPageMargins.current
     val host = (root as? Locator.Web)?.v1?.let(::webHost) ?: sourcePlace(root)
     Column(
@@ -329,20 +347,25 @@ private fun Unreachable(root: Locator, saved: Int, onRetry: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NIcon(NIcons.Info, size = 20.dp, tint = colors.onErrorContainer)
-            Text(stringResource(R.string.source_unreachable), style = text(15, FontWeight.Bold), color = colors.onErrorContainer)
+            Text(
+                stringResource(if (signedOut) R.string.source_signed_out else R.string.source_unreachable),
+                style = text(15, FontWeight.Bold),
+                color = colors.onErrorContainer,
+            )
         }
         Text(
-            if (saved == 0) {
-                stringResource(R.string.source_unreachable_none, host)
-            } else {
-                pluralStringResource(R.plurals.source_unreachable_hint, saved, host, formatCount(saved))
+            when {
+                signedOut && saved == 0 -> stringResource(R.string.source_signed_out_none)
+                signedOut -> pluralStringResource(R.plurals.source_signed_out_hint, saved, formatCount(saved))
+                saved == 0 -> stringResource(R.string.source_unreachable_none, host)
+                else -> pluralStringResource(R.plurals.source_unreachable_hint, saved, host, formatCount(saved))
             },
             style = text(14, lineHeight = 20.sp),
             color = colors.onErrorContainer,
             modifier = Modifier.padding(top = 6.dp),
         )
         ButtonSurface(
-            onClick = onRetry,
+            onClick = onAction,
             shape = RoundedCornerShape(20.dp),
             container = colors.onErrorContainer,
             content = colors.errorContainer,
@@ -351,7 +374,7 @@ private fun Unreachable(root: Locator, saved: Int, onRetry: () -> Unit) {
                 .height(40.dp),
             padding = PaddingValues(horizontal = 16.dp),
         ) {
-            Text(stringResource(R.string.try_again), style = text(14, FontWeight.Bold))
+            Text(stringResource(if (signedOut) R.string.sign_in else R.string.try_again), style = text(14, FontWeight.Bold))
         }
     }
 }

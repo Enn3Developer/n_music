@@ -16,6 +16,7 @@ Cargo.lock
 *.jks
 /.android-signing/
 /n_music_android/.gradle/
+/n_music_android/.kotlin/
 /n_music_android/build/
 /n_music_android/android/build/
 /n_music_android/android/src/main/jniLibs/

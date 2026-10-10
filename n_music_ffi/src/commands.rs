@@ -116,6 +116,22 @@ pub enum Command {
     AppVisibilityChanged {
         visible: bool,
     },
+    /// Each Telegram step is answered with `CoreEvent.TelegramStatusChanged` as it starts and
+    /// ends. One sent while another runs is dropped.
+    TelegramSignIn {
+        phone: String,
+    },
+    TelegramCode {
+        code: String,
+    },
+    TelegramPassword {
+        password: String,
+    },
+    TelegramSignOut,
+    /// Answered with `CoreEvent.TelegramChatsFound`; a newer one replaces it.
+    FindTelegramChats {
+        query: String,
+    },
 }
 
 impl Command {
@@ -192,6 +208,15 @@ impl Command {
             }
             Command::AppVisibilityChanged { visible } => {
                 writer.emit(messages::AppVisibilityChanged(visible))
+            }
+            Command::TelegramSignIn { phone } => writer.emit(messages::TelegramSignIn { phone }),
+            Command::TelegramCode { code } => writer.emit(messages::TelegramCode(code)),
+            Command::TelegramPassword { password } => {
+                writer.emit(messages::TelegramPassword(password))
+            }
+            Command::TelegramSignOut => writer.emit(messages::TelegramSignOut),
+            Command::FindTelegramChats { query } => {
+                writer.emit(messages::FindTelegramChats { query })
             }
         }
     }

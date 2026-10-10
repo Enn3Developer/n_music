@@ -157,7 +157,7 @@ class PlaybackService : MediaLibraryService() {
             ): ListenableFuture<SessionResult> {
                 val sessionPlayer = session.player
                 when (customCommand) {
-                    // Off, all, one, like the native ToggleRepeat.
+                    // Off, all, one, like the app's repeat button.
                     toggleRepeatCommand -> sessionPlayer.repeatMode =
                         when (sessionPlayer.repeatMode) {
                             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL

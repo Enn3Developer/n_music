@@ -86,18 +86,18 @@ fun AddToPlaylistSheet(tracks: List<Locator>, open: Boolean, onDismissRequest: (
                 CoreRepository.send(Command.RemoveFromPlaylist(playlist.id, tracks))
                 val count = tracks.size
                 app.snack(
-                    Snack(resources.getQuantityString(R.plurals.removed_from_playlist, quantity(count), formatCount(count), name), undo) {
+                    Snack(resources.getQuantityString(R.plurals.removed_from_playlist, quantity(count), formatCount(count), name), undo, onAction = {
                         CoreRepository.send(Command.AddToPlaylist(playlist.id, tracks))
-                    }
+                    })
                 )
             } else {
                 app.scope.launch {
                     val added = CoreRepository.addToPlaylist(playlist.id, tracks)
                     val count = added.size
                     app.snack(
-                        Snack(resources.getQuantityString(R.plurals.added_to_playlist, quantity(count), formatCount(count), name), undo) {
+                        Snack(resources.getQuantityString(R.plurals.added_to_playlist, quantity(count), formatCount(count), name), undo, onAction = {
                             CoreRepository.send(Command.RemoveFromPlaylist(playlist.id, added))
-                        }
+                        })
                     )
                 }
             }

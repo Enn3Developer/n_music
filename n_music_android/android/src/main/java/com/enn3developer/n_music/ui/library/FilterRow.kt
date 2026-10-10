@@ -4,10 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -33,12 +40,13 @@ import com.enn3developer.n_music.ui.theme.text
 
 /**
  * The tracks' filter chips: Filters, which opens the filter sheet, then a chip for each part that
- * is set, then one for each that is not. A chip opens the sheet at its part; the cross on a set
- * one clears it.
+ * is set, then one for each of the [offered] ones that is not. A chip opens the sheet at its part;
+ * the cross on a set one clears it.
  */
 @Composable
 fun FilterRow(
     filters: TrackFilters,
+    offered: List<FilterField>,
     sourceName: (Locator) -> String,
     onOpen: (FilterField?) -> Unit,
     onClear: (FilterField) -> Unit,
@@ -48,6 +56,7 @@ fun FilterRow(
     val margins = LocalPageMargins.current
     LazyRow(
         modifier.fillMaxWidth(),
+        state = rememberChipsState(active),
         contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -96,7 +105,7 @@ fun FilterRow(
                 ),
             )
         }
-        items(FilterField.entries - active.toSet(), key = { "unset " + it.name }) { field ->
+        items(offered - active.toSet(), key = { "unset " + it.name }) { field ->
             NChip(
                 stringResource(field.label),
                 { onOpen(field) },
@@ -110,4 +119,21 @@ fun FilterRow(
             )
         }
     }
+}
+
+/**
+ * The state of a row of filter chips, which goes back to its start when the [set] parts change:
+ * they lead the row, so one set or cleared from a chip further along shows where it went.
+ */
+@Composable
+fun rememberChipsState(set: List<FilterField>): LazyListState {
+    val state = rememberLazyListState()
+    var placed by remember { mutableStateOf(set) }
+    LaunchedEffect(set) {
+        if (set != placed) {
+            placed = set
+            state.animateScrollToItem(0)
+        }
+    }
+    return state
 }

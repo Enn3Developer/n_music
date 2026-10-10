@@ -8,11 +8,13 @@ use n_music_core::library::catalog::Library;
 use n_music_core::messages::{
     LibraryRenamed, LibraryRootsChanged, LoopStatusChanged, OutputDevices, PlaybackChanged,
     PlaylistRejected, PlaylistSummary, PlaylistsChanged, PositionChanged, QueueChanged,
-    ScanFinished, ScanProgress, ShuffleChanged, StreamCacheChanged, TrackChanged,
-    TrackMetadataLoaded, TrackPlayed, TracksEnumerated, VolumeChanged,
+    ScanFinished, ScanProgress, ShuffleChanged, StreamCacheChanged, TelegramChatsFound,
+    TelegramStatusChanged, TrackChanged, TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
+    VolumeChanged,
 };
 use n_music_core::queue::{ItemId, LoopStatus};
 use n_music_core::settings::OutputDevice;
+use n_music_core::source::telegram::{TelegramChatInfo, TelegramError, TelegramStatus};
 use n_music_core::source::Locator;
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -89,6 +91,20 @@ pub enum CoreEvent {
     OutputDevices {
         devices: Vec<OutputDevice>,
     },
+    /// Only in a build that signs in to Telegram, first as the core starts: until one comes,
+    /// there is no Telegram.
+    TelegramStatusChanged {
+        status: TelegramStatus,
+        /// A step runs: the next one waits for it to end.
+        busy: bool,
+        /// Why the step that ended failed.
+        error: Option<TelegramError>,
+    },
+    TelegramChatsFound {
+        query: String,
+        chats: Vec<TelegramChatInfo>,
+        error: Option<TelegramError>,
+    },
 }
 
 pub struct KotlinBridge {
@@ -152,6 +168,8 @@ impl Subscriber for KotlinBridge {
         reg.on::<LibraryRootsChanged>();
         reg.on::<StreamCacheChanged>();
         reg.on::<OutputDevices>();
+        reg.on::<TelegramStatusChanged>();
+        reg.on::<TelegramChatsFound>();
     }
 }
 
@@ -310,6 +328,26 @@ impl Handle<OutputDevices> for KotlinBridge {
     fn handle(&mut self, msg: &OutputDevices, _: &Ctx, _: &mut Outbox) {
         self.send(CoreEvent::OutputDevices {
             devices: msg.0.clone(),
+        });
+    }
+}
+
+impl Handle<TelegramStatusChanged> for KotlinBridge {
+    fn handle(&mut self, msg: &TelegramStatusChanged, _: &Ctx, _: &mut Outbox) {
+        self.send(CoreEvent::TelegramStatusChanged {
+            status: msg.status.clone(),
+            busy: msg.busy,
+            error: msg.error.clone(),
+        });
+    }
+}
+
+impl Handle<TelegramChatsFound> for KotlinBridge {
+    fn handle(&mut self, msg: &TelegramChatsFound, _: &Ctx, _: &mut Outbox) {
+        self.send(CoreEvent::TelegramChatsFound {
+            query: msg.query.clone(),
+            chats: msg.chats.clone(),
+            error: msg.error.clone(),
         });
     }
 }

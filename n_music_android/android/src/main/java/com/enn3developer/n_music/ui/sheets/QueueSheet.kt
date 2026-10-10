@@ -459,8 +459,10 @@ private class QueueDrag {
 /**
  * The session's rows, scrolled to show the two that played last above the current one. Holding
  * a row's handle lifts it, and dragging moves it: past a neighbour's middle, the neighbour slides
- * over with a tick, and letting go settles it in its slot. What played stays put. [dense] rows
- * are a little shorter, for the panel beside a foldable's player.
+ * over with a tick, and letting go settles it in its slot. Played rows have no handle, but a row
+ * dragged above the current one goes among them, and counts as played; the current one dragged
+ * up plays the ones it passes again after it. [dense] rows are a little shorter, for the panel
+ * beside a foldable's player.
  */
 @Composable
 private fun QueueList(
@@ -475,8 +477,6 @@ private fun QueueList(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val currentIndex = entries.indexOfFirst { it.item == current }
-    // Nothing moves above the current row: what played stays put.
-    val firstMovable = currentIndex.coerceAtLeast(0)
     val state = rememberLazyListState(
         initialFirstVisibleItemIndex = (currentIndex - 2).coerceAtLeast(0),
         // Just over half the first row hides above the list's top.
@@ -485,6 +485,13 @@ private fun QueueList(
     val drag = remember { QueueDrag() }
     LaunchedEffect(entries) { if (!drag.held) drag.order = null }
     val rows = drag.order ?: entries
+    // Above the current row, as the rows stand, is what played.
+    val now = rows.indexOfFirst { it.item == current }.coerceAtLeast(0)
+    // A handle's gesture outlives the composition it started in: it reads the rows as they are,
+    // not as they were when its row first showed.
+    val shown by rememberUpdatedState(rows)
+    val listed by rememberUpdatedState(entries)
+    val playingItem by rememberUpdatedState(current)
     var menuFor by remember { mutableStateOf<ULong?>(null) }
 
     /**
@@ -498,8 +505,6 @@ private fun QueueList(
         val index = order.indexOfFirst { it.item == key }
         val visible = state.layoutInfo.visibleItemsInfo
         val self = visible.firstOrNull { it.index == index }
-        // The current row goes no higher than its place, the rest no higher than below it.
-        val highest = if (currentIndex < 0 || key == current) firstMovable else firstMovable + 1
         if (self != null && index >= 0) {
             val top = self.offset + offset
             val bottom = top + self.size
@@ -510,7 +515,7 @@ private fun QueueList(
                     offset -= below.size
                     index + 1
                 }
-                toward < 0 && above != null && index - 1 >= highest && top < above.offset + above.size / 2f -> {
+                toward < 0 && above != null && top < above.offset + above.size / 2f -> {
                     offset += above.size
                     index - 1
                 }
@@ -530,7 +535,7 @@ private fun QueueList(
 
     fun start(row: QueueRow) {
         drag.settling?.cancel()
-        drag.order = rows
+        drag.order = shown
         drag.key = row.item
         drag.held = true
         drag.offset = 0f
@@ -540,16 +545,18 @@ private fun QueueList(
     fun drop() {
         val key = drag.key ?: return
         drag.held = false
-        val order = drag.order ?: entries
+        val order = drag.order ?: listed
         val moved = order.indexOfFirst { it.item == key }
         val row = order.getOrNull(moved)
-        if (row != null && moved != entries.indexOfFirst { it.item == key }) {
-            actions.move(row, key == current, order.getOrNull(moved + 1)?.item)
+        if (row != null && moved != listed.indexOfFirst { it.item == key }) {
+            actions.move(row, key == playingItem, order.getOrNull(moved + 1)?.item)
         }
         drag.settling = scope.launch {
             launch { drag.lift.animateTo(0f, NMotion.spatialDefault()) }
             animate(drag.offset, 0f, animationSpec = NMotion.spatialDefault()) { value, _ -> drag.offset = value }
             drag.key = null
+            // By now the core has told the order the move gave, or that nothing moved.
+            drag.order = null
         }
     }
 
@@ -588,11 +595,11 @@ private fun QueueList(
         itemsIndexed(rows, key = { _, row -> row.item.toLong() }) { index, row ->
             val kind = when {
                 row.item == current -> Kind.CURRENT
-                index < firstMovable -> Kind.PLAYED
+                index < now -> Kind.PLAYED
                 else -> Kind.UPCOMING
             }
             val dragged = drag.key == row.item
-            val moves = moves(rows, index, firstMovable, kind, actions)
+            val moves = moves(rows, index, now, kind, actions)
             Box(
                 if (dragged) {
                     Modifier.zIndex(1f)
@@ -622,7 +629,8 @@ private fun QueueList(
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuFor = row.item
                         },
-                        handle = if (kind == Kind.PLAYED) {
+                        // A row dragged among those played keeps its handle, and its gesture.
+                        handle = if (kind == Kind.PLAYED && !dragged) {
                             null
                         } else {
                             {

@@ -479,14 +479,15 @@ pub fn facets(catalog: &Catalog) -> Facets {
     }
 }
 
-/// What a library root is called without a name of its own: its folder's name, or its
-/// playlist's.
+/// What a library root is called without a name of its own: its folder's name, its
+/// playlist's, or Telegram for a chat, which is named after its title as it is added.
 pub fn default_name(root: &Locator) -> String {
     match root {
         Locator::Local(path) => Path::new(path)
             .file_name()
             .map_or_else(|| path.clone(), |name| name.to_string_lossy().into_owned()),
         Locator::DocumentTree(uri) => tree_folder(uri).unwrap_or_else(|| uri.clone()),
+        Locator::TelegramChat(_) => String::from("Telegram"),
         root => root.display_name(),
     }
 }

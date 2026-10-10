@@ -44,6 +44,7 @@ import com.enn3developer.n_music.ScanState
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
+import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.LocalPageMargins
@@ -78,12 +79,15 @@ interface SourceActions {
     /** Reads [root] again, or every source while `null`; [reload] reads every file's tags again. */
     fun scan(root: Locator?, reload: Boolean)
 
+    /** Asks for another name for [source]. */
+    fun rename(source: SourceRow)
+
     fun remove(source: SourceRow)
 }
 
 /**
- * The library's sources, local folders then web playlists, with the scan's progress over them
- * while one runs.
+ * The library's sources, local folders, web playlists then Telegram chats, with the scan's
+ * progress over them while one runs.
  */
 @Composable
 fun SourcesPage() {
@@ -91,7 +95,8 @@ fun SourcesPage() {
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
     val library by CoreRepository.library.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
-    // What a web playlist that can't be reached listed and lacks, for how many tracks it has.
+    val telegram by CoreRepository.telegram.collectAsStateWithLifecycle()
+    // What a source that can't be reached listed and lacks, for how many tracks it has.
     val down = sources.filter { !it.reachable }.map { it.root }
     val missing = rememberLibrary(emptyMap(), down) { down.associateWith { CoreRepository.missingTracks(it).size } }
     val actions = remember(app) {
@@ -101,17 +106,20 @@ fun SourcesPage() {
             override fun scan(root: Locator?, reload: Boolean) =
                 CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
 
+            override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
+
             override fun remove(source: SourceRow) = app.show(AppDialog.RemoveSource(source.root, source.title, source.tracks))
         }
     }
     // Beside a rail, Settings is on it.
     val settings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail }
-    SourcesContent(sources, library.tracks, scan, missing, actions, onSettings = settings)
+    SourcesContent(sources, library.tracks, scan, missing, actions, onSettings = settings, telegram = telegram?.status)
 }
 
 /**
  * The page itself: [sources], [tracks] in the whole library, and [scan] while one runs; [missing]
- * counts the tracks unreachable sources listed and can't play.
+ * counts the tracks unreachable sources listed and can't play. [telegram] is where signing in to
+ * Telegram is, `null` without Telegram.
  */
 @Composable
 fun SourcesContent(
@@ -121,10 +129,12 @@ fun SourcesContent(
     missing: Map<Locator, Int>,
     actions: SourceActions,
     onSettings: (() -> Unit)?,
+    telegram: TelegramStatus? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val local = sources.filter { it.root.isLocal }
-    val web = sources.filterNot { it.root.isLocal }
+    val chats = sources.filter { it.root is Locator.TelegramChat }
+    val web = sources.filter { !it.root.isLocal && it.root !is Locator.TelegramChat }
     val margins = LocalPageMargins.current
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -181,13 +191,14 @@ fun SourcesContent(
                 EmptyState(
                     NIcons.Sources,
                     stringResource(R.string.sources_empty),
-                    stringResource(R.string.sources_empty_hint),
+                    stringResource(if (telegram != null) R.string.sources_empty_hint_telegram else R.string.sources_empty_hint),
                     Modifier.fillParentMaxHeight(0.6f),
                 )
             }
         }
-        section(R.string.local_folders, local, scan, missing, actions)
-        section(R.string.web_playlists, web, scan, missing, actions)
+        section(R.string.local_folders, local, scan, missing, telegram, actions)
+        section(R.string.web_playlists, web, scan, missing, telegram, actions)
+        section(R.string.telegram_chats, chats, scan, missing, telegram, actions)
     }
 }
 
@@ -197,6 +208,7 @@ private fun LazyListScope.section(
     sources: List<SourceRow>,
     scan: ScanState?,
     missing: Map<Locator, Int>,
+    telegram: TelegramStatus?,
     actions: SourceActions,
 ) {
     if (sources.isEmpty()) return
@@ -217,6 +229,7 @@ private fun LazyListScope.section(
             source = source,
             shape = groupShape(index, sources.size),
             updating = scan?.libraries?.contains(source.root) == true,
+            signedOut = signedOut(source.root, telegram),
             tracks = source.tracks.toLong() + (missing[source.root] ?: 0),
             actions = actions,
             modifier = Modifier.padding(start = margins.start, end = margins.end, top = if (index > 0) 2.dp else 0.dp),
@@ -264,7 +277,8 @@ fun UpdatingCard(scan: ScanState, modifier: Modifier = Modifier) {
 
 /**
  * A source's card: its cover, name with what it is going through, how many tracks it has and
- * where it is, and its actions under ⋮.
+ * where it is, and its actions under ⋮. One that can't be reached [signedOut] of Telegram says
+ * that instead.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -272,6 +286,7 @@ private fun SourceItem(
     source: SourceRow,
     shape: RoundedCornerShape,
     updating: Boolean,
+    signedOut: Boolean,
     tracks: Long,
     actions: SourceActions,
     modifier: Modifier = Modifier,
@@ -311,7 +326,11 @@ private fun SourceItem(
                         updating -> StatusChip(stringResource(R.string.source_updating), colors.secondaryContainer, colors.onSecondaryContainer) {
                             LoadingIndicator(Modifier.size(16.dp), color = colors.onSecondaryContainer)
                         }
-                        !source.reachable -> StatusChip(stringResource(R.string.source_unreachable), colors.errorContainer, colors.onErrorContainer) {
+                        !source.reachable -> StatusChip(
+                            stringResource(if (signedOut) R.string.source_signed_out_short else R.string.source_unreachable),
+                            colors.errorContainer,
+                            colors.onErrorContainer,
+                        ) {
                             NIcon(NIcons.AlertBold, size = 14.dp, tint = colors.onErrorContainer)
                         }
                     }
@@ -342,15 +361,16 @@ private fun SourceItem(
                 tint = colors.onSurfaceVariant,
             )
             NMenu(menuOpen, { menuOpen = false }) {
-                SourceMenu(source, actions) { menuOpen = false }
+                // The list has no pencil by the name, as a source's page has: its menu renames it.
+                SourceMenu(source, actions, rename = true) { menuOpen = false }
             }
         }
     }
 }
 
-/** What ⋮ offers for one source: read it again, or take it out of the library. */
+/** What ⋮ offers for one source: read it again, [rename] it, or take it out of the library. */
 @Composable
-fun SourceMenu(source: SourceRow, actions: SourceActions, close: () -> Unit) {
+fun SourceMenu(source: SourceRow, actions: SourceActions, rename: Boolean = false, close: () -> Unit) {
     MenuItem(stringResource(R.string.update_now), NIcons.Update, {
         close()
         actions.scan(source.root, reload = false)
@@ -359,6 +379,12 @@ fun SourceMenu(source: SourceRow, actions: SourceActions, close: () -> Unit) {
         close()
         actions.scan(source.root, reload = true)
     })
+    if (rename) {
+        MenuItem(stringResource(R.string.rename), NIcons.Rename, {
+            close()
+            actions.rename(source)
+        })
+    }
     MenuDivider()
     MenuItem(stringResource(R.string.remove_from_library), NIcons.RemoveSource, {
         close()
@@ -396,7 +422,7 @@ fun SourceTile(source: SourceRow, size: Dp, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             NIcon(
-                if (source.root.isLocal) NIcons.Sources else NIcons.Web,
+                sourceIcon(source.root),
                 size = if (size > 64.dp) 44.dp else 24.dp,
                 tint = colors.onSurfaceVariant,
             )

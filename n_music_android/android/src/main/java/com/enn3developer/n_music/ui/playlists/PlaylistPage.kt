@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.PlaylistRow
@@ -91,6 +92,8 @@ import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.library.label
+import com.enn3developer.n_music.ui.library.offeredFields
+import com.enn3developer.n_music.ui.library.rememberChipsState
 import com.enn3developer.n_music.ui.library.rememberNowPlaying
 import com.enn3developer.n_music.ui.playsCount
 import com.enn3developer.n_music.ui.quantity
@@ -108,6 +111,9 @@ import com.enn3developer.n_music.ui.tracksCount
 /** The order a playlist's tracks show in: its own, or by default the newest or most played first. */
 fun playlistOrder(playlist: PlaylistRow): TrackOrder =
     if (playlist.sort.isEmpty() && playlist.rule != null) TrackOrder(TrackSort.MOST_PLAYED) else TrackOrder.of(playlist.sort)
+
+/** A playlist's tracks in its own order, as its page lists them and Play plays them. */
+fun playlistQuery(playlist: PlaylistRow): Query = Query(Filter.Playlist(playlist.id), playlistOrder(playlist).keys(playlist.id))
 
 /**
  * A playlist's page: its tile, name and details, Play and Shuffle, and its tracks in its own
@@ -164,6 +170,7 @@ fun PlaylistPage(page: Page.Playlist) {
         onMore = { app.show(Sheet.TrackActions(it.locator, page.id.takeIf { playlist?.rule == null })) },
         onRemove = { app.removeFromPlaylist(page.id, it, resources) },
         onLibrary = { app.navigator.home(Tab.LIBRARY) },
+        compact = UiPreferences.settings.collectAsStateWithLifecycle().value.compactRows,
         menu = { close ->
             if (!tracks.isNullOrEmpty()) {
                 MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
@@ -199,6 +206,7 @@ fun PlaylistContent(
     onMore: (TrackRow) -> Unit,
     onRemove: (TrackRow) -> Unit,
     onLibrary: () -> Unit,
+    compact: Boolean = false,
     menu: @Composable (close: () -> Unit) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -290,6 +298,7 @@ fun PlaylistContent(
                         onMore = { onMore(track) },
                         line = track.artist.ifEmpty { stringResource(R.string.unknown_artist) },
                         trailing = if (order.sort == TrackSort.MOST_PLAYED) playsCount(track.plays) else formatLength(track.length),
+                        compact = compact,
                     )
                 }
                 Box(Modifier.animateItem(fadeInSpec = null, placementSpec = NMotion.spatialDefault(IntOffset.VisibilityThreshold))) {
@@ -378,22 +387,23 @@ private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) 
 
 /**
  * A smart playlist's rules as chips, each opening the rules at its section: how many are set,
- * then the set ones, then the rest, but for the artist, picked from a list, and the source while
- * there is one.
+ * then the set ones, then the rest the sheet has a section for, but for the artist and the album,
+ * picked from a list.
  */
 @Composable
 private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (FilterField?) -> Unit) {
     val margins = LocalPageMargins.current
     val active = rules.active
-    val unset = FilterField.entries.filter {
-        it !in active && it != FilterField.ARTIST && (it != FilterField.SOURCE || sources.size > 1)
-    }
+    val facets by CoreRepository.facets.collectAsStateWithLifecycle()
+    val unset = offeredFields(facets, sources.size)
+        .filter { it !in active && it != FilterField.ARTIST && it != FilterField.ALBUM }
     val sourceName = { root: Locator -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
     val description = pluralStringResource(R.plurals.edit_rules, active.size, active.size)
     LazyRow(
         Modifier
             .fillMaxWidth()
             .padding(top = 16.dp),
+        state = rememberChipsState(active),
         contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

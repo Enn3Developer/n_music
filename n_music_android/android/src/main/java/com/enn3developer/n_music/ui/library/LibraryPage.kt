@@ -78,6 +78,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,6 +184,7 @@ fun LibraryPage() {
     val nowPlaying = rememberNowPlaying()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
     val sourceName: (Locator) -> String = { root -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
+    val facets by CoreRepository.facets.collectAsStateWithLifecycle()
     // A genre shows as the tracks filtered to it.
     fun showGenre(genre: GenreRow) = app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty())))
     // Turns to the tracks whenever the app shows them, from this page or another.
@@ -205,7 +207,7 @@ fun LibraryPage() {
         LibraryHeader(
             selection = selection,
             total = tracks.orEmpty().size,
-            onSearch = { app.open(Page.Search) },
+            onSearch = { app.open(Page.Search()) },
             // Beside a rail, Settings is on it.
             onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
             onEndSelection = app::endSelection,
@@ -225,6 +227,7 @@ fun LibraryPage() {
                         tracks = tracks,
                         total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
                         filters = filters,
+                        offered = offeredFields(facets, sources.size),
                         sourceName = sourceName,
                         onFilter = { app.show(Sheet.Filters(it)) },
                         onClearFilter = { app.filters = app.filters.clear(it) },
@@ -257,6 +260,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.ALBUMS),
                         sortLabel = stringResource(order.label),
                         minTile = 160.dp,
+                        columns = 2,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
@@ -286,6 +290,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.ARTISTS),
                         sortLabel = stringResource(order.label),
                         minTile = 104.dp,
+                        columns = 3,
                         rowGap = 16.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
@@ -308,6 +313,7 @@ fun LibraryPage() {
                         view = ui.view(LibraryTab.GENRES),
                         sortLabel = stringResource(order.label),
                         minTile = 160.dp,
+                        columns = 2,
                         rowGap = 18.dp,
                         onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
                         onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
@@ -538,6 +544,7 @@ fun TracksTab(
     onScan: () -> Unit,
     held: Locator? = null,
     onClearFilters: () -> Unit = {},
+    offered: List<FilterField> = FilterField.entries,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
@@ -584,7 +591,7 @@ fun TracksTab(
                 .graphicsLayer { alpha = dim }
                 .then(if (selecting) Modifier.inert() else Modifier)
         ) {
-            FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
+            FilterRow(filters, offered, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
             if (!empty && tablet) {
                 TabletSortRow(
                     tracks, total, order, view, filtered, onSort, onToggleView, onPlayAll,
@@ -667,7 +674,7 @@ fun TracksTab(
                     val grid = rememberLazyGridState(first.index)
                     FollowFirst(first) { grid.firstVisibleItemIndex }
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(104.dp),
+                        columns = AdaptiveAtLeast(104.dp, 3),
                         modifier = Modifier.fillMaxSize(),
                         state = grid,
                         contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 8.dp, bottom = bottom),
@@ -743,8 +750,25 @@ fun trackSection(track: TrackRow, sort: TrackSort): String? = when (sort) {
 }
 
 /**
+ * As many columns at least [minSize] wide as fit, as [GridCells.Adaptive] gives, but never fewer
+ * than [least]: a phone narrower than the design keeps its columns, a little narrower.
+ */
+private class AdaptiveAtLeast(private val minSize: Dp, private val least: Int) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = maxOf((availableSize + spacing) / (minSize.roundToPx() + spacing), least)
+        val cells = (availableSize - spacing * (count - 1)).coerceAtLeast(0)
+        return List(count) { cells / count + if (it < cells % count) 1 else 0 }
+    }
+
+    override fun equals(other: Any?) = other is AdaptiveAtLeast && other.minSize == minSize && other.least == least
+
+    override fun hashCode() = minSize.hashCode() * 31 + least
+}
+
+/**
  * Albums, artists or genres: their sort, view and count, then the list or the grid of
- * [minTile] wide tiles, so wider windows get more columns.
+ * [minTile] wide tiles, so wider windows get more columns, and never fewer than the design's
+ * [columns] on a phone.
  */
 @Composable
 fun <T> GroupTab(
@@ -753,6 +777,7 @@ fun <T> GroupTab(
     view: ViewMode,
     sortLabel: String,
     minTile: Dp,
+    columns: Int,
     rowGap: Dp,
     onToggleView: (ViewMode) -> Unit,
     onSort: () -> Unit,
@@ -807,7 +832,7 @@ fun <T> GroupTab(
                 val grid = rememberLazyGridState(first.index)
                 FollowFirst(first) { grid.firstVisibleItemIndex }
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minTile),
+                    columns = AdaptiveAtLeast(minTile, columns),
                     modifier = Modifier.fillMaxSize(),
                     state = grid,
                     contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 12.dp, bottom = bottom),

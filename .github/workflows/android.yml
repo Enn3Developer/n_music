@@ -22,6 +22,12 @@ on:
       ANDROID_KEY_PASSWORD:
         description: Upload key password
         required: false
+      N_MUSIC_TELEGRAM_API_ID:
+        description: N Music's Telegram API id, from my.telegram.org
+        required: false
+      N_MUSIC_TELEGRAM_API_HASH:
+        description: N Music's Telegram API hash, from my.telegram.org
+        required: false
 
 permissions:
   contents: read
@@ -75,6 +81,10 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build native library and its Kotlin bindings
+        env:
+          # Without them, as in pull requests from forks, the app leaves Telegram out.
+          N_MUSIC_TELEGRAM_API_ID: ${{ secrets.N_MUSIC_TELEGRAM_API_ID }}
+          N_MUSIC_TELEGRAM_API_HASH: ${{ secrets.N_MUSIC_TELEGRAM_API_HASH }}
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
           bash n_music_android/compile_rust_release.sh

@@ -106,6 +106,13 @@ fun Modifier.floating(shape: Shape, color: Color, radius: Dp = 18.dp, offset: Dp
 fun Modifier.floating(shape: Shape): Modifier = floating(shape, colors.shadow)
 
 /**
+ * Keeps a tap on this surface, a dialog's, a sheet's or the drawer's, from reaching the scrim
+ * beneath it, which would close it. A touch goes to the topmost node under it that takes touches,
+ * and a surface with nothing but text where the finger lands takes none.
+ */
+fun Modifier.blocksScrim(): Modifier = pointerInput(Unit) {}
+
+/**
  * The background fading out the list under floating controls, from transparent at the top to
  * the page's colour at [solidFrom] of its height.
  */

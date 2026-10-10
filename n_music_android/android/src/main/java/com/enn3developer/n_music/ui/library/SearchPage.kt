@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Filter
@@ -126,11 +127,12 @@ private const val GENRES_SHOWN = 5
 /** Tracks whose title, artists or album hold [text], by title, as search lists and plays them. */
 fun searchQuery(text: String) = Query(Filter.Search(text), listOf(SortKey(SortField.Title, false)))
 
-/** Search: a field, a chip for each kind, and what matches as one types. */
+/** Search: a field, a chip for each kind, and what matches as one types, starting from [initial]. */
 @Composable
-fun SearchPage() {
+fun SearchPage(initial: String = "") {
     val app = LocalApp.current
-    var text by rememberSaveable { mutableStateOf("") }
+    val ui by UiPreferences.settings.collectAsStateWithLifecycle()
+    var text by rememberSaveable { mutableStateOf(initial) }
     var kind by rememberSaveable { mutableStateOf(SearchKind.ALL) }
     val version by CoreRepository.version.collectAsStateWithLifecycle()
     val search = text.trim()
@@ -164,7 +166,9 @@ fun SearchPage() {
         onAlbum = { app.open(Page.Album(it.name, it.artist)) },
         onArtist = { app.open(Page.Artist(it.name)) },
         onGenre = { genre -> app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty()))) },
-        focus = true,
+        // Back at a search one played from, the results matter more than the keyboard.
+        focus = initial.isEmpty(),
+        compact = ui.compactRows,
     )
 }
 
@@ -184,6 +188,7 @@ fun SearchContent(
     onArtist: (ArtistRow) -> Unit,
     onGenre: (GenreRow) -> Unit,
     focus: Boolean = false,
+    compact: Boolean = false,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
@@ -227,6 +232,7 @@ fun SearchContent(
                             onLongClick = null,
                             onMore = { onMore(track) },
                             title = highlight(track.title, search),
+                            compact = compact,
                         )
                     }
                 }

@@ -11,7 +11,8 @@ repository = "https://github.com/Enn3Developer/n_music"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-n_music_core = { path = "../n_music_core" }
+# Telegram signs in only in builds given N Music's API credentials: see `telegram_credentials`.
+n_music_core = { path = "../n_music_core", features = ["telegram"] }
 n_event_bus = { path = "../n_event_bus" }
 uniffi = { version = "0.32", default-features = false }
 flume = "0.12"

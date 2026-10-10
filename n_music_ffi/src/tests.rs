@@ -1,5 +1,6 @@
 use super::*;
 use n_music_core::library::query::Filter;
+use n_music_core::source::telegram::{TelegramError, TelegramStatus};
 use n_music_core::source::Locator;
 use std::time::Instant;
 
@@ -50,16 +51,25 @@ fn reports_a_scanned_folder_and_answers_queries() {
         r#"{"core.library": {"libraries": []}}"#,
     )
     .unwrap();
-    let core = Core::launch(data.path(), cache.path());
+    let core = Core::launch(data.path(), cache.path(), data.path(), None);
 
     let root = Locator::Local(music.path().to_string_lossy().into_owned());
     core.send(Command::SetLibraryRoots {
         roots: vec![root.clone()],
     });
+    let mut telegram = false;
     wait_for(&core, |event| match event {
+        CoreEvent::TelegramStatusChanged { .. } => {
+            telegram = true;
+            None
+        }
         CoreEvent::LibraryRootsChanged { roots } if *roots == [root.clone()] => Some(()),
         _ => None,
     });
+    assert!(
+        !telegram,
+        "without Telegram's credentials, there is no Telegram"
+    );
 
     // Placeholders come first; the track is complete once its metadata loaded.
     let deadline = Instant::now() + WAIT;
@@ -169,7 +179,7 @@ fn plays_once_listed_when_play_comes_first() {
         serde_json::json!({ "core.library": { "libraries": [root] } }).to_string(),
     )
     .unwrap();
-    let core = Core::launch(data.path(), cache.path());
+    let core = Core::launch(data.path(), cache.path(), data.path(), None);
 
     // As a headset's Play right after launch, before the scan listed the library.
     core.send(Command::Play);
@@ -178,4 +188,81 @@ fn plays_once_listed_when_play_comes_first() {
         _ => None,
     });
     assert_eq!(title, "silence");
+}
+
+/// Where signing in to Telegram is, as the next `TelegramStatusChanged` tells it.
+fn telegram_status(core: &Core) -> (TelegramStatus, bool, Option<TelegramError>) {
+    wait_for(core, |event| match event {
+        CoreEvent::TelegramStatusChanged {
+            status,
+            busy,
+            error,
+        } => Some((status.clone(), *busy, error.clone())),
+        _ => None,
+    })
+}
+
+#[test]
+fn signs_in_to_telegram_with_commands() {
+    let data = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    std::fs::write(
+        settings_path(data.path()),
+        r#"{"core.library": {"libraries": []}}"#,
+    )
+    .unwrap();
+    let credentials = TelegramCredentials::new(Some("1"), Some("hash"));
+    let core = Core::launch(data.path(), cache.path(), private.path(), credentials);
+
+    assert_eq!(
+        telegram_status(&core),
+        (TelegramStatus::SignedOut, false, None),
+        "the core tells where signing in is as it starts"
+    );
+    assert!(private.path().join("telegram.db").exists());
+    assert!(!data.path().join("telegram.db").exists());
+
+    // A number Telegram can't have fails before anything is sent to it.
+    core.send(Command::TelegramSignIn {
+        phone: String::from("+39 12"),
+    });
+    assert_eq!(
+        telegram_status(&core),
+        (TelegramStatus::SignedOut, true, None)
+    );
+    assert_eq!(
+        telegram_status(&core),
+        (
+            TelegramStatus::SignedOut,
+            false,
+            Some(TelegramError::PhoneInvalid)
+        )
+    );
+
+    core.send(Command::FindTelegramChats {
+        query: String::from("jazz"),
+    });
+    let found = wait_for(&core, |event| match event {
+        CoreEvent::TelegramChatsFound {
+            query,
+            chats,
+            error,
+        } => Some((query.clone(), chats.len(), error.clone())),
+        _ => None,
+    });
+    assert_eq!(
+        found,
+        (String::from("jazz"), 0, Some(TelegramError::SignedOut))
+    );
+
+    core.send(Command::TelegramSignOut);
+    assert_eq!(
+        telegram_status(&core),
+        (TelegramStatus::SignedOut, true, None)
+    );
+    assert_eq!(
+        telegram_status(&core),
+        (TelegramStatus::SignedOut, false, None)
+    );
 }

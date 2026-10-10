@@ -226,6 +226,8 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
       ANDROID_KEY_ALIAS: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEY_ALIAS || '' }}
       ANDROID_KEY_PASSWORD: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_android)) && secrets.ANDROID_KEY_PASSWORD || '' }}
+      N_MUSIC_TELEGRAM_API_ID: ${{ secrets.N_MUSIC_TELEGRAM_API_ID }}
+      N_MUSIC_TELEGRAM_API_HASH: ${{ secrets.N_MUSIC_TELEGRAM_API_HASH }}
 
   publish:
     needs: [ plan, package, android ]

@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.enn3developer.n_music.R
@@ -107,6 +109,7 @@ fun DialogFrame(
                     scaleY = 0.9f + 0.1f * value
                 }
                 .background(colors.surfaceHigh, RoundedCornerShape(28.dp))
+                .blocksScrim()
                 .semantics { paneTitle = title }
                 .padding(24.dp),
         ) {
@@ -146,7 +149,8 @@ fun DialogConfirm(label: String, onClick: () -> Unit, enabled: Boolean = true, d
  * A text field outlined as the design draws it: its label sits on the outline, which thickens in
  * the primary colour while the field has focus, on [fill], the colour around it; [helper]
  * explains it underneath, in the error colour along with the outline while [error]. [focus]
- * takes the focus, and with it the keyboard, as it first shows.
+ * takes the focus, and with it the keyboard, as it first shows. Without [onDone], the keyboard's
+ * Done key closes the keyboard. A [secret] field, for a password, hides what it holds.
  */
 @Composable
 fun OutlinedField(
@@ -160,7 +164,8 @@ fun OutlinedField(
     focus: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
-    onDone: () -> Unit = {},
+    onDone: (() -> Unit)? = null,
+    secret: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     val requester = remember { FocusRequester() }
@@ -190,13 +195,21 @@ fun OutlinedField(
                 textStyle = text(16).copy(color = colors.onSurface),
                 cursorBrush = SolidColor(colors.primary),
                 keyboardOptions = KeyboardOptions(
-                    // Addresses keep their case.
-                    capitalization = if (keyboardType == KeyboardType.Uri) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
-                    autoCorrectEnabled = keyboardType != KeyboardType.Uri,
-                    keyboardType = keyboardType,
+                    // Addresses and passwords keep their case.
+                    capitalization = if (keyboardType == KeyboardType.Uri || secret) {
+                        KeyboardCapitalization.None
+                    } else {
+                        KeyboardCapitalization.Sentences
+                    },
+                    autoCorrectEnabled = keyboardType != KeyboardType.Uri && !secret,
+                    keyboardType = if (secret) KeyboardType.Password else keyboardType,
                     imeAction = imeAction,
                 ),
-                keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }),
+                visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardActions = KeyboardActions(
+                    onDone = { if (onDone != null) onDone() else defaultKeyboardAction(ImeAction.Done) },
+                    onGo = { if (onDone != null) onDone() else defaultKeyboardAction(ImeAction.Go) },
+                ),
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxWidth()

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.core.Facets
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Tag
@@ -18,7 +19,30 @@ enum class FilterField(@param:StringRes val label: Int, @param:StringRes val nam
     FORMAT(R.string.filter_format, R.string.filter_format_named),
     SOURCE(R.string.filter_source, R.string.filter_source_named),
     ARTIST(R.string.filter_artist, R.string.filter_artist_named),
+    ALBUM(R.string.filter_album, R.string.filter_album_named),
 }
+
+/** The parts the filter sheet has a section for, as [facets] and [sources] sources leave them. */
+fun offeredFields(facets: Facets, sources: Int): List<FilterField> = FilterField.entries.filter { field ->
+    when (field) {
+        FilterField.GENRE -> facets.genres.isNotEmpty()
+        FilterField.YEAR -> {
+            val first = facets.firstYear
+            val last = facets.lastYear
+            first != null && last != null && last > first
+        }
+        FilterField.FORMAT -> facets.codecs.isNotEmpty()
+        // Even one source, which a smart playlist can keep to as more come.
+        FilterField.SOURCE -> sources > 0
+        FilterField.PLAYS, FilterField.LAST_PLAYED, FilterField.ARTIST, FilterField.ALBUM -> true
+    }
+}
+
+/**
+ * An album as the library groups it: its name and its album artist, or first artist. The tracks
+ * without an album are one album, with neither.
+ */
+data class AlbumKey(val name: String?, val artist: String?)
 
 /** How often a track was played. */
 enum class PlaysFilter(val min: UInt?, val max: UInt?) {
@@ -59,6 +83,7 @@ data class TrackFilters(
     val formats: List<String> = emptyList(),
     val sources: List<Locator> = emptyList(),
     val artist: String? = null,
+    val album: AlbumKey? = null,
 ) {
     /** The parts that are set, in the chips' order. */
     val active: List<FilterField> get() = FilterField.entries.filter(::isSet)
@@ -71,6 +96,7 @@ data class TrackFilters(
         FilterField.FORMAT -> formats.isNotEmpty()
         FilterField.SOURCE -> sources.isNotEmpty()
         FilterField.ARTIST -> artist != null
+        FilterField.ALBUM -> album != null
     }
 
     fun clear(field: FilterField): TrackFilters = when (field) {
@@ -81,6 +107,7 @@ data class TrackFilters(
         FilterField.FORMAT -> copy(formats = emptyList())
         FilterField.SOURCE -> copy(sources = emptyList())
         FilterField.ARTIST -> copy(artist = null)
+        FilterField.ALBUM -> copy(album = null)
     }
 
     /** The core's filter for these: everything while none is set. */
@@ -96,6 +123,7 @@ data class TrackFilters(
             if (formats.isNotEmpty()) add(any(formats.map(Filter::Codec)))
             if (sources.isNotEmpty()) add(any(sources.map(Filter::Library)))
             artist?.let { add(Filter.Artist(it)) }
+            album?.let { add(albumFilter(it.name, it.artist)) }
         }
     )
 }
@@ -154,6 +182,7 @@ fun TrackFilters.label(field: FilterField, sourceName: (Locator) -> String): Str
         FilterField.FORMAT -> several(formatName(formats.first()), formats.size)
         FilterField.SOURCE -> several(sourceName(sources.first()), sources.size)
         FilterField.ARTIST -> artist!!
+        FilterField.ALBUM -> album!!.name ?: stringResource(R.string.no_album_short)
     }
 
 /** The first of several values, with how many more there are: Jazz +2. */

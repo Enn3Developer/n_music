@@ -216,9 +216,13 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         invalidateState()
     }
 
-    /** Keeps Wi-Fi up while a web playlist's track plays, which streams with the screen off. */
+    /**
+     * Keeps Wi-Fi up while a track from the web or Telegram plays, which streams with the screen
+     * off.
+     */
     private fun updateWifiLock() {
-        wifiLock.setStayAwake(playing && current?.track?.locator is Locator.Web)
+        val locator = current?.track?.locator
+        wifiLock.setStayAwake(playing && (locator is Locator.Web || locator is Locator.TelegramAudio))
     }
 
     private fun onFocusChanged(command: Int) {

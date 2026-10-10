@@ -18,7 +18,7 @@ sealed interface Page {
     data object Library : Page
     data object Playlists : Page
     data object Sources : Page
-    data object Search : Page
+    data class Search(val text: String = "") : Page
     data object Settings : Page
     data object Licence : Page
     data class Album(val name: String?, val artist: String?) : Page
@@ -153,7 +153,7 @@ private fun Page.encode(): String = when (this) {
     Page.Library -> "library"
     Page.Playlists -> "playlists"
     Page.Sources -> "sources"
-    Page.Search -> "search"
+    is Page.Search -> "search\u0001$text"
     Page.Settings -> "settings"
     Page.Licence -> "licence"
     is Page.Album -> "album\u0001${name.orEmpty()}\u0001${artist.orEmpty()}\u0001${name != null}\u0001${artist != null}"
@@ -168,7 +168,7 @@ private fun decodePage(text: String): Page? {
         "library" -> Page.Library
         "playlists" -> Page.Playlists
         "sources" -> Page.Sources
-        "search" -> Page.Search
+        "search" -> Page.Search(parts.getOrNull(1).orEmpty())
         "settings" -> Page.Settings
         "licence" -> Page.Licence
         "album" -> if (parts.size == 5) {

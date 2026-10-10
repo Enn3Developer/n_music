@@ -27,6 +27,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -239,15 +241,25 @@ private fun Option(label: String, hint: String?, selected: Boolean, onClick: () 
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         RadioMark(selected)
+        // The name stays whole; on a narrow phone the hint takes two lines instead.
         Text(
             label,
             style = text(16, if (selected) FontWeight.Bold else FontWeight.Medium),
             color = colors.onSurface,
             maxLines = 1,
-            modifier = Modifier.weight(1f),
+            overflow = TextOverflow.Ellipsis,
+            modifier = if (hint == null) Modifier.weight(1f) else Modifier,
         )
         if (hint != null) {
-            Text(hint, style = text(13, FontWeight.Medium, tabular = true), color = colors.onSurfaceVariant, maxLines = 1)
+            Text(
+                hint,
+                style = text(13, FontWeight.Medium, tabular = true, lineHeight = 16.sp),
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

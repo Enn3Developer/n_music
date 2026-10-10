@@ -6,6 +6,9 @@ use n_music_core::library::track::ReplayGainMode;
 use n_music_core::messages::{PlaylistSummary, Seek};
 use n_music_core::queue::{ItemId, LoopStatus};
 use n_music_core::settings::OutputDevice;
+use n_music_core::source::telegram::{
+    TelegramChatInfo, TelegramChatKind, TelegramError, TelegramStatus,
+};
 use n_music_core::source::Locator;
 
 uniffi::custom_type!(ItemId, u64, {
@@ -28,6 +31,45 @@ pub enum Locator {
     Web(String),
     TelegramChat(String),
     TelegramAudio { uri: String, name: String },
+}
+
+#[uniffi::remote(Enum)]
+pub enum TelegramStatus {
+    SignedOut,
+    CodeSent { phone: String },
+    PasswordNeeded { hint: Option<String> },
+    SignedIn { name: String },
+}
+
+#[uniffi::remote(Enum)]
+pub enum TelegramError {
+    PhoneInvalid,
+    PhoneBanned,
+    CodeInvalid,
+    PasswordInvalid,
+    SignUpRequired,
+    Wait { seconds: u32 },
+    SignedOut,
+    NotFound,
+    Offline(String),
+    Failed(String),
+}
+
+#[uniffi::remote(Record)]
+pub struct TelegramChatInfo {
+    pub locator: Locator,
+    pub title: String,
+    pub kind: TelegramChatKind,
+    pub username: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TelegramChatKind {
+    SavedMessages,
+    User,
+    Bot,
+    Group,
+    Channel,
 }
 
 #[uniffi::remote(Enum)]

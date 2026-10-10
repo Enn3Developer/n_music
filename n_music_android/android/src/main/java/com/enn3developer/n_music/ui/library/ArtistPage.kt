@@ -134,6 +134,7 @@ fun ArtistPage(page: Page.Artist) {
         onSelect = { app.select(it.locator) },
         onEndSelection = app::endSelection,
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
+        compact = ui.compactRows,
         menu = { close ->
             MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
             MenuItem(stringResource(R.string.add_to_queue), NIcons.AddToQueue, { close(); queue(next = false) })
@@ -164,6 +165,7 @@ fun ArtistContent(
     onSelect: (TrackRow) -> Unit,
     onEndSelection: () -> Unit,
     onMore: (TrackRow) -> Unit,
+    compact: Boolean = false,
     menu: @Composable (close: () -> Unit) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -273,6 +275,7 @@ fun ArtistContent(
                     },
                     onMore = { onMore(track) },
                     line = dotted(track.album, playsCount(track.plays)),
+                    compact = compact,
                 )
             }
         }

@@ -87,12 +87,14 @@ import com.enn3developer.n_music.MiniButton
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.StreamCache
+import com.enn3developer.n_music.TelegramState
 import com.enn3developer.n_music.Theme
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.UiSettings
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.PlaybackOptions
 import com.enn3developer.n_music.core.ReplayGainMode
+import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.LocalWindowLayout
@@ -110,6 +112,7 @@ import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.Segmented
 import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.components.tappable
+import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.player.fadeThrough
 import com.enn3developer.n_music.ui.sources.groupShape
 import com.enn3developer.n_music.ui.theme.Accent
@@ -142,6 +145,8 @@ interface SettingsActions {
     fun setAccent(accent: Accent)
     fun setCompactRows(compact: Boolean)
     fun setMiniButtons(buttons: List<MiniButton>)
+    fun signInToTelegram()
+    fun signOutOfTelegram()
     fun openLanguage()
     fun shareLogs()
     fun openSource()
@@ -162,9 +167,11 @@ data class SettingsState(
     val preview: PlaybackUi,
     /** How far it has played, from 0 to 1, for the preview's line. */
     val progress: () -> Float = { 0f },
+    /** Where signing in to Telegram is; `null` in builds without Telegram. */
+    val telegram: TelegramState? = null,
 )
 
-/** Playback, appearance and what N Music is, each in its cards. */
+/** Playback, the Telegram account, appearance and what N Music is, each in its cards. */
 @Composable
 fun SettingsPage() {
     val app = LocalApp.current
@@ -177,6 +184,7 @@ fun SettingsPage() {
     val loop by CoreRepository.loopStatus.collectAsStateWithLifecycle()
     val sleep by SleepTimer.state.collectAsStateWithLifecycle()
     val position by CoreRepository.position.collectAsStateWithLifecycle()
+    val telegram by CoreRepository.telegram.collectAsStateWithLifecycle()
     val seconds = rememberPlaybackSeconds(position, playing)
     val actions = remember(app) {
         object : SettingsActions {
@@ -190,6 +198,8 @@ fun SettingsPage() {
             override fun setAccent(accent: Accent) = UiPreferences.setAccent(accent)
             override fun setCompactRows(compact: Boolean) = UiPreferences.setCompactRows(compact)
             override fun setMiniButtons(buttons: List<MiniButton>) = UiPreferences.setMiniButtons(buttons)
+            override fun signInToTelegram() = app.show(AppDialog.Telegram(signInOnly = true))
+            override fun signOutOfTelegram() = app.show(AppDialog.TelegramSignOut)
             override fun openLanguage() = app.openLanguage()
             override fun shareLogs() = app.shareLogs()
             override fun openSource() = app.openLink(SOURCE_URL)
@@ -210,6 +220,7 @@ fun SettingsPage() {
                 val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
                 if (length > 0) (seconds.value / length).toFloat() else 0f
             },
+            telegram = telegram,
         ),
         actions,
     )
@@ -257,7 +268,13 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
                 SwitchCard(R.string.resume, R.string.resume_hint, state.options.resume, actions::setResume)
             }
             if (state.cache != null) {
-                item(key = "cache") { CacheCards(state.cache, actions::setCache) }
+                item(key = "cache") { CacheCards(state.cache, state.telegram != null, actions::setCache) }
+            }
+            if (state.telegram != null) {
+                item(key = "telegram") { Heading(R.string.telegram) }
+                item(key = "telegram account") {
+                    TelegramCard(state.telegram, actions::signInToTelegram, actions::signOutOfTelegram)
+                }
             }
             item(key = "appearance") { Heading(R.string.settings_appearance) }
             item(key = "theme") { ThemeCard(state.ui.theme, actions::setTheme) }
@@ -313,9 +330,9 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
 }
 
 /**
- * A tablet's settings beside its rail: the title over two columns, Playback in one and Appearance
- * and About in the other. The pane stands in for the mini player there, so it has no buttons to
- * pick.
+ * A tablet's settings beside its rail: the title over two columns, Playback and Telegram in one
+ * and Appearance and About in the other. The pane stands in for the mini player there, so it has
+ * no buttons to pick.
  */
 @Composable
 private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
@@ -343,7 +360,11 @@ private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
                     ReplayGainCard(state.options.replayGain, actions::setReplayGain)
                     CrossfadeCard(state.options.crossfade, actions::setCrossfade)
                     SwitchCard(R.string.resume, R.string.resume_hint, state.options.resume, actions::setResume)
-                    if (state.cache != null) CacheCards(state.cache, actions::setCache)
+                    if (state.cache != null) CacheCards(state.cache, state.telegram != null, actions::setCache)
+                    if (state.telegram != null) {
+                        Heading(R.string.telegram)
+                        TelegramCard(state.telegram, actions::signInToTelegram, actions::signOutOfTelegram)
+                    }
                 }
                 Column(Modifier.weight(1f)) {
                     Heading(R.string.settings_appearance, first = true)
@@ -406,8 +427,8 @@ private fun AboutButton(label: String, icon: ImageVector, onClick: () -> Unit) {
 }
 
 /**
- * A part of the settings: Playback, Appearance, About. A tablet's sit a little in from their
- * cards, and closer under them.
+ * A part of the settings: Playback, Telegram, Appearance, About. A tablet's sit a little in from
+ * their cards, and closer under them.
  */
 @Composable
 private fun Heading(title: Int, first: Boolean = false) {
@@ -627,14 +648,25 @@ private fun SwitchRow(title: String, detail: String, checked: Boolean, onChange:
     }
 }
 
-/** Caching web tracks, and how much room the copies may take. */
+/**
+ * Caching web tracks, and Telegram's in builds with [telegram], and how much room the copies may
+ * take.
+ */
 @Composable
-private fun CacheCards(cache: StreamCache, onChange: (Boolean, Long) -> Unit) {
+private fun CacheCards(cache: StreamCache, telegram: Boolean, onChange: (Boolean, Long) -> Unit) {
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Card(shape = groupShape(0, 2, 24.dp, 4.dp), gap = false) {
             SwitchRow(
                 stringResource(R.string.cache_web),
-                stringResource(if (LocalWindowLayout.current == WindowLayout.TABLET) R.string.cache_web_hint_tablet else R.string.cache_web_hint),
+                stringResource(
+                    when {
+                        telegram && tablet -> R.string.cache_web_hint_telegram_tablet
+                        telegram -> R.string.cache_web_hint_telegram
+                        tablet -> R.string.cache_web_hint_tablet
+                        else -> R.string.cache_web_hint
+                    }
+                ),
                 cache.enabled,
                 { onChange(it, cache.limit) },
                 detailSize = 13,
@@ -701,6 +733,37 @@ private fun sizeText(bytes: Long): String {
         stringResource(R.string.size_gb, shown)
     } else {
         stringResource(R.string.size_mb, megabytes.roundToInt().toString())
+    }
+}
+
+/**
+ * The Telegram account: who is signed in, what signing out keeps, and the way in or out, which
+ * waits while a step of signing in runs.
+ */
+@Composable
+private fun TelegramCard(state: TelegramState, onSignIn: () -> Unit, onSignOut: () -> Unit) {
+    val status = state.status
+    Card {
+        Column(Modifier.padding(16.dp)) {
+            CardTitle(
+                if (status is TelegramStatus.SignedIn) {
+                    stringResource(R.string.telegram_signed_in_as, status.name)
+                } else {
+                    stringResource(R.string.telegram_signed_out)
+                }
+            )
+            CardText(stringResource(R.string.telegram_account_hint), Modifier.padding(top = 4.dp))
+            PillButton(
+                stringResource(if (status is TelegramStatus.SignedIn) R.string.sign_out else R.string.sign_in),
+                if (status is TelegramStatus.SignedIn) onSignOut else onSignIn,
+                modifier = Modifier.padding(top = 14.dp),
+                style = PillStyle.OUTLINED,
+                height = 40.dp,
+                textStyle = text(14, FontWeight.Bold),
+                padding = PaddingValues(horizontal = 16.dp),
+                enabled = !state.busy,
+            )
+        }
     }
 }
 

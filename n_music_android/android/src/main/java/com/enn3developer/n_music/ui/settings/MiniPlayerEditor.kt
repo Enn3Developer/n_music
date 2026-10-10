@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,8 +50,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.LookaheadScope
@@ -164,9 +165,9 @@ private class EditorDrag {
 }
 
 /**
- * The mini player's buttons as a preview bar and a tray of the rest. Holding a button lifts it,
- * and it goes where it is let go: along the bar, into it or out of it; a tap gives the same moves
- * as a menu, and accessibility services as actions. A full bar dims the tray.
+ * The mini player's buttons as a preview bar and a tray of the rest. Holding or dragging a button
+ * lifts it, and it goes where it is let go: along the bar, into it or out of it; a tap gives the
+ * same moves as a menu, and accessibility services as actions. A full bar dims the tray.
  */
 @Composable
 fun MiniPlayerEditor(
@@ -230,19 +231,19 @@ fun MiniPlayerEditor(
         ((position.x - left) / slot).toInt().coerceIn(0, slots - 1)
     }
 
-    fun lift(button: MiniButton, at: Offset) {
+    fun lift(button: MiniButton, at: Offset, held: Boolean) {
         drag.landing = null
         drag.fromBar = button in buttons
         drag.button = button
         drag.position = at
         drag.target = targetAt(at)
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        haptics.performHapticFeedback(if (held) HapticFeedbackType.LongPress else HapticFeedbackType.GestureThresholdActivate)
         scope.launch { drag.lift.animateTo(1f, NMotion.spatialFast()) }
     }
 
-    fun follow(by: Offset) {
-        drag.position += by
-        val target = targetAt(drag.position)
+    fun follow(to: Offset) {
+        drag.position = to
+        val target = targetAt(to)
         if (target != drag.target) {
             drag.target = target
             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
@@ -287,22 +288,24 @@ fun MiniPlayerEditor(
                     pressed = button
                     val from = down.position - (bounds[button]?.topLeft ?: Offset.Zero)
                     scope.launch { fill.press(from, hold) }
-                    var held = true
-                    val up = withTimeoutOrNull(hold) {
-                        waitForUpOrCancellation().also { held = false }
+                    // Held still, it lifts once the fill is full; moved, it lifts at once, before
+                    // the page can take the finger for a scroll.
+                    var finger = down.position
+                    val press = withTimeoutOrNull(hold) {
+                        awaitPress(down.id, down.position, viewConfiguration.touchSlop) { finger = it }
                     }
-                    when {
-                        up != null -> {
+                    when (press) {
+                        Press.TAP -> {
                             scope.launch { fill.release() }
                             menuFor = button
                         }
-                        // A scroll took the finger before it held.
-                        !held -> scope.launch { fill.cancel() }
+                        Press.TAKEN -> scope.launch { fill.cancel() }
                         else -> {
-                            lift(button, down.position)
+                            lift(button, finger, held = press == null)
                             scope.launch { fill.release() }
+                            // Where the finger is, not how far it went: the button stays under it.
                             val finished = drag(down.id) { change ->
-                                follow(change.positionChange())
+                                follow(change.position)
                                 change.consume()
                             }
                             if (finished) {
@@ -438,6 +441,35 @@ fun MiniPlayerEditor(
         }
         val chip = dragged ?: drag.landing
         if (chip != null) Lifted(chip, preview, drag, bounds, fill, fillColor)
+    }
+}
+
+/** How a press on a button ended before it was held. */
+private enum class Press {
+    /** The finger let go: a tap. */
+    TAP,
+
+    /** The finger moved off as far as a drag. */
+    MOVE,
+
+    /** Another gesture took the finger. */
+    TAKEN,
+}
+
+/**
+ * Waits for pointer [id], down at [start], to let go, to move [slop] from there, which it takes
+ * for itself, or to be taken; [onMove] hears where it is meanwhile.
+ */
+private suspend fun AwaitPointerEventScope.awaitPress(id: PointerId, start: Offset, slop: Float, onMove: (Offset) -> Unit): Press {
+    while (true) {
+        val change = awaitPointerEvent().changes.firstOrNull { it.id == id } ?: return Press.TAKEN
+        if (change.isConsumed) return Press.TAKEN
+        if (change.changedToUp()) return Press.TAP
+        onMove(change.position)
+        if ((change.position - start).getDistance() > slop) {
+            change.consume()
+            return Press.MOVE
+        }
     }
 }
 

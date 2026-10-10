@@ -88,6 +88,7 @@
     <string name="filter_format">Format</string>
     <string name="filter_source">Source</string>
     <string name="filter_artist">Artist</string>
+    <string name="filter_album">Album</string>
     <!-- The parts of the filters as "Change the %s filter" names them. -->
     <string name="filter_genre_named">genre</string>
     <string name="filter_year_named">year</string>
@@ -96,6 +97,7 @@
     <string name="filter_format_named">format</string>
     <string name="filter_source_named">source</string>
     <string name="filter_artist_named">artist</string>
+    <string name="filter_album_named">album</string>
     <string name="change_filter">Change the %1$s filter</string>
     <string name="clear_filter">Clear the %1$s filter</string>
     <string name="see_all">See all %1$s</string>
@@ -121,10 +123,13 @@
     <string name="played_not_in_month_chip">Not played in a month</string>
     <string name="played_not_in_year_chip">Not played in a year</string>
     <string name="any_artist">Any artist</string>
+    <string name="any_album">Any album</string>
     <string name="no_genre_short">No genre</string>
+    <string name="no_album_short">No album</string>
     <string name="more_values">%1$s +%2$d</string>
     <string name="search_genres">Search genres</string>
     <string name="search_artists">Search artists</string>
+    <string name="search_albums">Search albums</string>
     <string name="clear_search">Clear search</string>
     <string name="show_tracks_counting">Show tracks</string>
     <plurals name="show_tracks">
@@ -340,6 +345,8 @@
     <string name="close_menu">Close menu</string>
     <string name="rename_playlist">Rename playlist</string>
     <string name="more_playlist_actions">More playlist actions</string>
+    <string name="play_playlist">Play %1$s</string>
+    <string name="shuffle_playlist">Shuffle %1$s</string>
     <string name="delete_playlist">Delete playlist</string>
     <string name="delete_playlist_title">Delete “%1$s”?</string>
     <string name="delete_playlist_hint">Its tracks stay in your library.</string>
@@ -387,6 +394,7 @@
     <string name="rule_album_artist_is_not">Album artist isn’t %1$s</string>
     <string name="rule_album_is">Album is %1$s</string>
     <string name="rule_album_is_not">Album isn’t %1$s</string>
+    <string name="rule_album_by">Album is %1$s by %2$s</string>
     <string name="rule_format_is">Format is %1$s</string>
     <string name="rule_format_is_not">Format isn’t %1$s</string>
     <string name="rule_no_genre">Has no genre</string>
@@ -468,6 +476,8 @@
     <string name="cache_web">Cache web tracks</string>
     <string name="cache_web_hint">Saves the tracks you play from web playlists on this phone, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
     <string name="cache_web_hint_tablet">Saves the tracks you play from web playlists on this tablet, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
+    <string name="cache_web_hint_telegram">Saves the tracks you play from web playlists and Telegram chats on this phone, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
+    <string name="cache_web_hint_telegram_tablet">Saves the tracks you play from web playlists and Telegram chats on this tablet, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
     <string name="cache_size">Cache size</string>
     <string name="cache_used">%1$s of %2$s used.</string>
     <string name="cache_size_description">Cache size: %1$s</string>
@@ -543,6 +553,8 @@
     <string name="web_playlists">Web playlists</string>
     <string name="source_updating">Updating…</string>
     <string name="source_unreachable">Can’t be reached</string>
+    <string name="source_signed_out">Signed out of Telegram</string>
+    <string name="source_signed_out_short">Signed out</string>
     <string name="more_for_source">More actions for %1$s</string>
     <string name="add_source">Add source</string>
     <string name="update_library">Update library</string>
@@ -552,6 +564,7 @@
     <string name="remove_from_library">Remove from library</string>
     <string name="sources_empty">No sources yet</string>
     <string name="sources_empty_hint">Add a folder on this phone or a web playlist, and its music fills the library.</string>
+    <string name="sources_empty_hint_telegram">Add a folder on this phone, a web playlist or a Telegram chat, and its music fills the library.</string>
     <string name="internal_storage">Internal storage</string>
     <string name="sd_card">SD card</string>
     <string name="add_a_source">Add a source</string>
@@ -567,6 +580,55 @@
     <string name="youtube_hint">Your playlists and liked music</string>
     <string name="deezer" translatable="false">Deezer</string>
     <string name="deezer_hint">Your favourites and playlists</string>
+    <string name="telegram" translatable="false">Telegram</string>
+    <string name="telegram_hint">Music sent in a chat, group or channel</string>
+    <string name="telegram_chat">Telegram chat</string>
+    <string name="telegram_chats">Telegram chats</string>
+    <string name="telegram_sign_in">Sign in to Telegram</string>
+    <string name="add_telegram_chat">Add a Telegram chat</string>
+    <string name="telegram_phone_message">Enter the phone number of your Telegram account, starting with its country code. Telegram sends a code to sign in with.</string>
+    <string name="phone_number">Phone number</string>
+    <string name="telegram_phone_example">Like +1 234 567 8900</string>
+    <string name="telegram_send_code">Send code</string>
+    <string name="telegram_code_message">Telegram sent a code to %1$s, in the Telegram app or by SMS.</string>
+    <string name="code">Code</string>
+    <string name="telegram_password_message">Your account has a password. Enter it to finish signing in.</string>
+    <string name="password">Password</string>
+    <string name="telegram_password_hint">Hint: %1$s</string>
+    <string name="sign_in">Sign in</string>
+    <string name="telegram_other_number">Use another number</string>
+    <string name="telegram_waiting">Waiting…</string>
+    <string name="telegram_pick_message">Signed in as %1$s. Pick a chat: the music sent in it becomes a source.</string>
+    <string name="telegram_search">Search, @name or t.me link</string>
+    <string name="telegram_searching">Looking…</string>
+    <string name="telegram_no_match">No chat matches. Find a public channel by its @name or t.me link.</string>
+    <string name="telegram_no_chats">No chats yet.</string>
+    <string name="telegram_pick_hint">Music sent as files counts too. Updating the source reads the chat again.</string>
+    <string name="telegram_saved_messages">Saved Messages</string>
+    <string name="telegram_kind_saved">Your own chat</string>
+    <string name="telegram_kind_user">Private chat</string>
+    <string name="telegram_kind_bot">Bot</string>
+    <string name="telegram_kind_group">Group</string>
+    <string name="telegram_kind_channel">Channel</string>
+    <string name="telegram_error_phone_invalid">Telegram doesn’t know that number. Check it starts with its country code.</string>
+    <string name="telegram_error_phone_banned">Telegram banned that number.</string>
+    <string name="telegram_error_code_invalid">That code isn’t right, or it expired.</string>
+    <string name="telegram_error_password_invalid">That password isn’t right.</string>
+    <string name="telegram_error_sign_up_required">That number has no Telegram account. Make one in a Telegram app first.</string>
+    <plurals name="telegram_error_wait">
+        <item quantity="one">Too many attempts. Try again in %1$s minute.</item>
+        <item quantity="other">Too many attempts. Try again in %1$s minutes.</item>
+    </plurals>
+    <string name="telegram_error_signed_out">You were signed out of Telegram. Sign in again.</string>
+    <string name="telegram_error_not_found">Telegram couldn’t find it.</string>
+    <string name="telegram_error_offline">Telegram can’t be reached right now.</string>
+    <string name="telegram_error_failed">Telegram said: %1$s</string>
+    <string name="telegram_signed_in_as">Signed in as %1$s</string>
+    <string name="telegram_signed_out">Not signed in</string>
+    <string name="telegram_account_hint">Music in your Telegram chats plays from Telegram. Signing out keeps your Telegram sources: they play again once you sign back in.</string>
+    <string name="sign_out">Sign out</string>
+    <string name="telegram_sign_out_title">Sign out of Telegram?</string>
+    <string name="telegram_sign_out_message">Your Telegram sources stay in the library, and play again once you sign back in.</string>
     <string name="add_web_playlist">Add a web playlist</string>
     <string name="add_web_playlist_hint">The address of an M3U or PLS playlist. Its tracks stream from the web, and with Cache web tracks on, the ones you play also work offline.</string>
     <string name="address">Address</string>
@@ -586,12 +648,21 @@
         <item quantity="one">Its %1$s track leaves the library. The playlist at %2$s stays as it is.</item>
         <item quantity="other">Its %1$s tracks leave the library. The playlist at %2$s stays as it is.</item>
     </plurals>
+    <plurals name="remove_source_telegram">
+        <item quantity="one">Its %1$s track leaves the library. The chat on Telegram stays as it is.</item>
+        <item quantity="other">Its %1$s tracks leave the library. The chat on Telegram stays as it is.</item>
+    </plurals>
     <string name="removed_source">Removed %1$s</string>
     <plurals name="source_unreachable_hint">
         <item quantity="one">%1$s didn’t answer. The %2$s track saved on this phone still plays.</item>
         <item quantity="other">%1$s didn’t answer. The %2$s tracks saved on this phone still play.</item>
     </plurals>
     <string name="source_unreachable_none">%1$s didn’t answer, and none of its tracks are saved on this phone.</string>
+    <plurals name="source_signed_out_hint">
+        <item quantity="one">Sign in to play its tracks from Telegram. The %1$s track saved on this phone still plays.</item>
+        <item quantity="other">Sign in to play its tracks from Telegram. The %1$s tracks saved on this phone still play.</item>
+    </plurals>
+    <string name="source_signed_out_none">Sign in to play its tracks from Telegram. None of them are saved on this phone.</string>
     <string name="try_again">Try again</string>
     <string name="saved_on_phone">saved on this phone</string>
     <string name="not_saved">not saved</string>

@@ -94,6 +94,18 @@ fun albumFilter(name: String?, artist: String?): Filter = when {
     else -> Filter.All(listOf(Filter.Album(name), Filter.Any(listOf(Filter.AlbumArtist(artist), Filter.Artist(artist)))))
 }
 
+/** The album [filter] keeps, as [albumFilter] writes it; `null` for any other filter. */
+fun albumOf(filter: Filter): AlbumKey? {
+    if (filter is Filter.Untagged && filter.v1 == Tag.ALBUM) return AlbumKey(null, null)
+    val parts = (filter as? Filter.All)?.v1?.takeIf { it.size == 2 } ?: return null
+    val name = (parts[0] as? Filter.Album)?.v1 ?: return null
+    val by = parts[1]
+    if (by is Filter.Untagged && by.v1 == Tag.ARTIST) return AlbumKey(name, null)
+    val either = (by as? Filter.Any)?.v1?.takeIf { it.size == 2 } ?: return null
+    val artist = (either[0] as? Filter.AlbumArtist)?.v1
+    return if (artist != null && artist == (either[1] as? Filter.Artist)?.v1) AlbumKey(name, artist) else null
+}
+
 /** An album's page: its cover and details, Play and Shuffle, and its tracks in disc order. */
 @Composable
 fun AlbumPage(page: Page.Album) {
