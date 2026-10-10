@@ -98,7 +98,7 @@ fun ButtonSurface(
 
 /**
  * Play and Shuffle side by side, joined: [large] for a page's header, small beside the sort
- * control where Shuffle shows only its icon but on a tablet, whose wider row names both.
+ * control where Shuffle shows only its icon.
  */
 @Composable
 fun PlayShuffle(
@@ -109,40 +109,8 @@ fun PlayShuffle(
     playLabel: String = stringResource(R.string.play),
     playDescription: String? = null,
     shuffleDescription: String? = null,
-    named: Boolean = false,
 ) {
-    if (named) {
-        Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ButtonSurface(
-                onClick = onPlay,
-                shape = NShapes.first(20.dp, 6.dp),
-                container = colors.primaryContainer,
-                content = colors.onPrimaryContainer,
-                modifier = Modifier
-                    .height(40.dp)
-                    .described(playDescription),
-                padding = PaddingValues(start = 14.dp, end = 18.dp),
-            ) {
-                NIcon(NIcons.Play, size = 18.dp)
-                Box(Modifier.width(8.dp))
-                Text(playLabel, style = text(14, FontWeight.Bold, tabular = true), maxLines = 1)
-            }
-            ButtonSurface(
-                onClick = onShuffle,
-                shape = NShapes.last(20.dp, 6.dp),
-                container = colors.secondaryContainer,
-                content = colors.onSecondaryContainer,
-                modifier = Modifier
-                    .height(40.dp)
-                    .described(shuffleDescription),
-                padding = PaddingValues(start = 14.dp, end = 18.dp),
-            ) {
-                NIcon(NIcons.Shuffle, size = 18.dp)
-                Box(Modifier.width(8.dp))
-                Text(stringResource(R.string.shuffle), style = text(14, FontWeight.Bold), maxLines = 1)
-            }
-        }
-    } else if (large) {
+    if (large) {
         Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ButtonSurface(
                 onClick = onPlay,
@@ -200,6 +168,55 @@ fun PlayShuffle(
             ) {
                 NIcon(NIcons.Shuffle, size = 20.dp)
             }
+        }
+    }
+}
+
+/**
+ * Play and Shuffle side by side, joined and both named: beside a tablet's sort control, or a
+ * little larger in a tablet page's [header].
+ */
+@Composable
+fun NamedPlayShuffle(
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    modifier: Modifier = Modifier,
+    header: Boolean = false,
+    playDescription: String? = null,
+    shuffleDescription: String? = null,
+) {
+    val height = if (header) 44.dp else 40.dp
+    val padding = if (header) PaddingValues(start = 16.dp, end = 22.dp) else PaddingValues(start = 14.dp, end = 18.dp)
+    val icon = if (header) 20.dp else 18.dp
+    val style = text(if (header) 15 else 14, FontWeight.Bold)
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ButtonSurface(
+            onClick = onPlay,
+            shape = NShapes.first(height / 2, 6.dp),
+            container = colors.primaryContainer,
+            content = colors.onPrimaryContainer,
+            modifier = Modifier
+                .height(height)
+                .described(playDescription),
+            padding = padding,
+        ) {
+            NIcon(NIcons.Play, size = icon)
+            Box(Modifier.width(8.dp))
+            Text(stringResource(R.string.play), style = style, maxLines = 1)
+        }
+        ButtonSurface(
+            onClick = onShuffle,
+            shape = NShapes.last(height / 2, 6.dp),
+            container = colors.secondaryContainer,
+            content = colors.onSecondaryContainer,
+            modifier = Modifier
+                .height(height)
+                .described(shuffleDescription),
+            padding = padding,
+        ) {
+            NIcon(NIcons.Shuffle, size = icon)
+            Box(Modifier.width(8.dp))
+            Text(stringResource(R.string.shuffle), style = style, maxLines = 1)
         }
     }
 }

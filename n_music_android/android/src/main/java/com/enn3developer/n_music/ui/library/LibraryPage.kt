@@ -114,6 +114,7 @@ import com.enn3developer.n_music.ui.components.GenreItem
 import com.enn3developer.n_music.ui.components.GenreTile
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
+import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
 import com.enn3developer.n_music.ui.components.barSwap
@@ -669,10 +670,9 @@ private fun TabletSortRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        PlayShuffle(
+        NamedPlayShuffle(
             onPlay = { onPlayAll(false) },
             onShuffle = { onPlayAll(true) },
-            named = true,
             playDescription = stringResource(if (filtered) R.string.play_matching else R.string.play_all, count),
             shuffleDescription = stringResource(if (filtered) R.string.shuffle_matching else R.string.shuffle_all, count),
         )

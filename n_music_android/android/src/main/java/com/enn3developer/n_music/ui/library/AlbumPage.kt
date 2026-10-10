@@ -2,9 +2,12 @@ package com.enn3developer.n_music.ui.library
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -27,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.enn3developer.n_music.CoreRepository
@@ -44,10 +48,12 @@ import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.LocalPageMargins
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Selection
 import com.enn3developer.n_music.ui.Snack
+import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.bottomPadding
 import com.enn3developer.n_music.ui.components.AlbumTrackItem
 import com.enn3developer.n_music.ui.components.Cover
@@ -55,6 +61,7 @@ import com.enn3developer.n_music.ui.components.MenuDivider
 import com.enn3developer.n_music.ui.components.MenuItem
 import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NMenu
+import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PageBar
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBar
@@ -167,6 +174,7 @@ fun AlbumContent(
     val rows = tracks.orEmpty()
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     // A disc's header shows only on albums of several discs.
     val discs = rows.mapNotNull { it.discNumber }.distinct().size > 1
     var menuOpen by remember { mutableStateOf(false) }
@@ -188,90 +196,176 @@ fun AlbumContent(
                 }
             }
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
-            item(key = "header") {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    val shape = RoundedCornerShape(24.dp)
-                    Cover(album?.cover, Modifier.size(216.dp).floating(shape), shape = shape)
-                    Text(
-                        album?.let { albumName(it) } ?: name ?: stringResource(R.string.no_album),
-                        style = text(26, FontWeight.ExtraBold, 32.sp, (-0.4).sp),
-                        color = colors.onSurface,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 20.dp),
-                    )
-                    val artist = album?.artist
-                    if (artist != null && onArtist != null) {
-                        Text(
-                            artist,
-                            style = text(16, FontWeight.SemiBold),
-                            color = colors.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .margins(top = 8.dp, bottom = 12.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .tappable(onArtist, role = Role.Button)
-                                .padding(horizontal = 8.dp, vertical = 12.dp),
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // A tablet sets the cover beside the album's details and lists the tracks in a table,
+            // while the page is wide enough for them.
+            val wide = tablet && maxWidth >= TrackTableWidth
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
+                if (wide) {
+                    item(key = "header") {
+                        TabletAlbumHeader(
+                            album, name, onArtist, onPlayAll,
+                            Modifier.padding(start = margins.start, end = margins.end, top = 4.dp),
                         )
                     }
-                    if (album != null) {
-                        Text(
-                            dotted(
-                                stringResource(R.string.album_kind),
-                                album.year?.toString(),
-                                tracksCount(album.tracks),
-                                formatDuration(album.length),
-                            ),
-                            style = text(13, tabular = true),
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
+                    item(key = "columns") {
+                        AlbumTableHeader(Modifier.padding(start = margins.start, end = margins.end, top = 20.dp))
+                    }
+                } else {
+                    item(key = "header") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            val shape = RoundedCornerShape(24.dp)
+                            Cover(album?.cover, Modifier.size(216.dp).floating(shape), shape = shape)
+                            Text(
+                                album?.let { albumName(it) } ?: name ?: stringResource(R.string.no_album),
+                                style = text(26, FontWeight.ExtraBold, 32.sp, (-0.4).sp),
+                                color = colors.onSurface,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 20.dp),
+                            )
+                            val artist = album?.artist
+                            if (artist != null && onArtist != null) {
+                                Text(
+                                    artist,
+                                    style = text(16, FontWeight.SemiBold),
+                                    color = colors.primary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .margins(top = 8.dp, bottom = 12.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .tappable(onArtist, role = Role.Button)
+                                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                                )
+                            }
+                            if (album != null) {
+                                Text(
+                                    dotted(
+                                        stringResource(R.string.album_kind),
+                                        album.year?.toString(),
+                                        tracksCount(album.tracks),
+                                        formatDuration(album.length),
+                                    ),
+                                    style = text(13, tabular = true),
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                    item(key = "play") {
+                        PlayShuffle(
+                            onPlay = { onPlayAll(false) },
+                            onShuffle = { onPlayAll(true) },
+                            modifier = Modifier.padding(start = margins.start, end = margins.end, top = 18.dp, bottom = 10.dp),
                         )
                     }
                 }
-            }
-            item(key = "play") {
-                PlayShuffle(
-                    onPlay = { onPlayAll(false) },
-                    onShuffle = { onPlayAll(true) },
-                    modifier = Modifier.padding(start = margins.start, end = margins.end, top = 18.dp, bottom = 10.dp),
-                )
-            }
-            var disc: UInt? = null
-            for (track in rows) {
-                if (discs && track.discNumber != disc) {
-                    disc = track.discNumber
-                    val number = disc
-                    item(key = "disc $number") {
-                        Text(
-                            number?.let { stringResource(R.string.disc, it.toInt()) } ?: stringResource(R.string.disc_unknown),
-                            style = text(16, FontWeight.Bold),
-                            color = colors.onSurface,
-                            modifier = Modifier.padding(start = margins.start, end = margins.end, top = 14.dp, bottom = 6.dp),
-                        )
+                var disc: UInt? = null
+                for (track in rows) {
+                    if (discs && track.discNumber != disc) {
+                        disc = track.discNumber
+                        val number = disc
+                        item(key = "disc $number") {
+                            Text(
+                                number?.let { stringResource(R.string.disc, it.toInt()) } ?: stringResource(R.string.disc_unknown),
+                                style = text(16, FontWeight.Bold),
+                                color = colors.onSurface,
+                                modifier = Modifier.padding(start = margins.start, end = margins.end, top = 14.dp, bottom = 6.dp),
+                            )
+                        }
                     }
-                }
-                item(key = track.locator.key) {
-                    val state = nowPlaying.state(track).copy(
-                        selected = selection?.contains(track.locator) == true,
-                        held = track.locator == held,
-                    )
-                    AlbumTrackItem(
-                        track,
-                        state,
-                        onClick = { if (selection != null) onSelect(track) else onPlay(track) },
-                        onLongClick = {
+                    item(key = track.locator.key) {
+                        val state = nowPlaying.state(track).copy(
+                            selected = selection?.contains(track.locator) == true,
+                            held = track.locator == held,
+                        )
+                        val onClick = { if (selection != null) onSelect(track) else onPlay(track) }
+                        val onLongClick = {
                             if (selection == null) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSelect(track)
-                        },
-                        onMore = { onMore(track) },
-                    )
+                        }
+                        if (wide) {
+                            AlbumTableRow(
+                                track,
+                                state,
+                                onClick,
+                                onLongClick,
+                                onMore = { onMore(track) },
+                                modifier = Modifier.padding(start = margins.start, end = margins.end),
+                            )
+                        } else {
+                            AlbumTrackItem(track, state, onClick, onLongClick, onMore = { onMore(track) })
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A tablet's album header: the cover, and beside it what the page is, the album's name, its
+ * artist, a line of details, then Play and Shuffle.
+ */
+@Composable
+private fun TabletAlbumHeader(
+    album: AlbumRow?,
+    name: String?,
+    onArtist: (() -> Unit)?,
+    onPlayAll: (shuffle: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        val shape = RoundedCornerShape(24.dp)
+        Cover(album?.cover, Modifier.size(188.dp).floating(shape), shape = shape)
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.album_kind), style = text(13, FontWeight.Bold), color = colors.onSurfaceVariant)
+            Text(
+                album?.let { albumName(it) } ?: name ?: stringResource(R.string.no_album),
+                style = text(32, FontWeight.ExtraBold, 38.sp, (-0.6).sp),
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            val artist = album?.artist
+            if (artist != null && onArtist != null) {
+                Text(
+                    artist,
+                    style = text(16, FontWeight.Bold),
+                    color = colors.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .margins(top = 8.dp, bottom = 12.dp, start = 8.dp, end = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .tappable(onArtist, role = Role.Button)
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                )
+            }
+            if (album != null) {
+                Text(
+                    dotted(album.year?.toString(), tracksCount(album.tracks), formatDuration(album.length)),
+                    style = text(14, tabular = true),
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            NamedPlayShuffle(
+                onPlay = { onPlayAll(false) },
+                onShuffle = { onPlayAll(true) },
+                header = true,
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
     }
 }

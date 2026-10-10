@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -29,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalPageMargins
+import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
+import com.enn3developer.n_music.ui.components.PlayingBars
 import com.enn3developer.n_music.ui.components.TrackCover
 import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.tappable
@@ -48,6 +53,7 @@ val TrackTableWidth = 560.dp
 val AlbumColumnWidth = 720.dp
 
 private val AlbumColumn = 180.dp
+private val TrackNumberColumn = 32.dp
 private val NumberColumn = 48.dp
 private val MoreColumn = 40.dp
 private val ColumnGap = 16.dp
@@ -169,6 +175,92 @@ fun TrackTableRow(
             stringResource(R.string.more_for, track.title),
             onMore,
             size = 48.dp,
+            iconSize = 20.dp,
+            tint = colors.onSurfaceVariant,
+            modifier = Modifier.width(MoreColumn),
+        )
+    }
+}
+
+/** An album's table's column names, over a line: #, Title, Plays and Time. */
+@Composable
+fun AlbumTableHeader(modifier: Modifier = Modifier) {
+    val line = colors.outlineVariant
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(33.dp)
+            .drawBehind { drawRect(line, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx())) }
+            .padding(bottom = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ColumnGap),
+    ) {
+        ColumnName(R.string.column_number, Modifier.width(TrackNumberColumn), TextAlign.Center)
+        ColumnName(R.string.column_title, Modifier.weight(1f))
+        ColumnName(R.string.column_plays, Modifier.width(NumberColumn), TextAlign.End)
+        ColumnName(R.string.column_time, Modifier.width(NumberColumn), TextAlign.End)
+        Spacer(Modifier.width(MoreColumn))
+    }
+}
+
+/**
+ * A track's row in an album's table: its number, the moving bars while it plays or a check while
+ * picked, then its title, plays, length and ⋮.
+ */
+@Composable
+fun AlbumTableRow(
+    track: TrackRow,
+    state: TrackState,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background by animateColorAsState(
+        when {
+            state.selected || state.held -> colors.surfaceHigh
+            state.current -> colors.tint
+            else -> Color.Transparent
+        },
+        NMotion.effectsDefault(),
+        label = "row",
+    )
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(background)
+            .tappable(onClick, onLongClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ColumnGap),
+    ) {
+        Box(Modifier.width(TrackNumberColumn), contentAlignment = Alignment.Center) {
+            when {
+                state.selected -> NIcon(NIcons.CheckBold, size = 20.dp, tint = colors.primary)
+                state.current -> PlayingBars(color = colors.primary, animate = state.playing)
+                else -> Text(
+                    track.trackNumber?.toString().orEmpty(),
+                    style = text(14, tabular = true),
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            track.title,
+            style = text(15, FontWeight.SemiBold),
+            color = if (state.current) colors.primary else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        NumberCell(formatCount(track.plays), colors.onSurfaceVariant)
+        NumberCell(formatLength(track.length), colors.onSurfaceVariant)
+        NIconButton(
+            NIcons.More,
+            stringResource(R.string.more_for, track.title),
+            onMore,
+            size = 44.dp,
             iconSize = 20.dp,
             tint = colors.onSurfaceVariant,
             modifier = Modifier.width(MoreColumn),

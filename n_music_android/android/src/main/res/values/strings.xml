@@ -66,6 +66,7 @@
     <string name="sort_longest_first">Longest first</string>
 
     <!-- The columns of a tablet's track tables -->
+    <string name="column_number">#</string>
     <string name="column_title">Title</string>
     <string name="column_album">Album</string>
     <string name="column_year">Year</string>
