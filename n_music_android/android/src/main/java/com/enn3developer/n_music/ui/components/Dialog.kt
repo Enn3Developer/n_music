@@ -146,7 +146,8 @@ fun DialogConfirm(label: String, onClick: () -> Unit, enabled: Boolean = true, d
  * A text field outlined as the design draws it: its label sits on the outline, which thickens in
  * the primary colour while the field has focus, on [fill], the colour around it; [helper]
  * explains it underneath, in the error colour along with the outline while [error]. [focus]
- * takes the focus, and with it the keyboard, as it first shows.
+ * takes the focus, and with it the keyboard, as it first shows. Without [onDone], the keyboard's
+ * Done key closes the keyboard.
  */
 @Composable
 fun OutlinedField(
@@ -160,7 +161,7 @@ fun OutlinedField(
     focus: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
-    onDone: () -> Unit = {},
+    onDone: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val requester = remember { FocusRequester() }
@@ -196,7 +197,10 @@ fun OutlinedField(
                     keyboardType = keyboardType,
                     imeAction = imeAction,
                 ),
-                keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (onDone != null) onDone() else defaultKeyboardAction(ImeAction.Done) },
+                    onGo = { if (onDone != null) onDone() else defaultKeyboardAction(ImeAction.Go) },
+                ),
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxWidth()
