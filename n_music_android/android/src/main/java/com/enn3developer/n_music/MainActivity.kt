@@ -101,8 +101,8 @@ class MainActivity : AppCompatActivity(), AppHost {
     }
 
     /**
-     * Gathers N Music's logs, its crash reports too, into one file, oldest first, and offers it
-     * to the apps that take text, for a bug report.
+     * Gathers N Music's logs, its crash reports and what Android logged for it into one file,
+     * oldest first, and offers it to the apps that take text, for a bug report.
      */
     override fun shareLogs() {
         lifecycleScope.launch {
@@ -135,11 +135,43 @@ class MainActivity : AppCompatActivity(), AppHost {
                 writer.appendLine("=== ${log.name} ===")
                 log.bufferedReader().use { it.copyTo(writer) }
             }
+            // A panic the core printed but could not save, or one before its log opened, and
+            // the app's own crashes, are only there.
+            val android = androidLog()
+            if (android.isNotEmpty()) {
+                writer.appendLine()
+                writer.appendLine("=== logcat ===")
+                android.forEach(writer::appendLine)
+            }
         }
         gathered
     } catch (error: IOException) {
         Log.e("n_music", "Could not gather the logs", error)
         null
+    }
+
+    /**
+     * The app's lines in Android's log and its crash log, from this process and the ones before
+     * it, but for the core's copies of what its log files have. Android shows an app only its
+     * own lines.
+     */
+    private fun androidLog(): List<String> {
+        val logcat = try {
+            ProcessBuilder("logcat", "-d", "-v", "threadtime", "-b", "main", "-b", "crash")
+                .redirectErrorStream(true)
+                .start()
+        } catch (error: IOException) {
+            Log.w("n_music", "Could not read logcat", error)
+            return emptyList()
+        }
+        return try {
+            logcat.inputStream.bufferedReader().useLines { lines -> lines.filterNot(::inLogFiles).toList() }
+        } catch (error: IOException) {
+            Log.w("n_music", "Could not read logcat", error)
+            emptyList()
+        } finally {
+            logcat.destroy()
+        }
     }
 
     /** Android's own screen for the app's language, from Android 13. */
@@ -193,4 +225,19 @@ class MainActivity : AppCompatActivity(), AppHost {
             }
         }
     }
+}
+
+/** A logcat line in its threadtime format: when, process, thread, priority, tag, and the text. */
+private val LOGCAT_LINE = Regex("""^\S+\s+\S+\s+\d+\s+\d+\s+[VDIWEFS]\s+(.*?)\s*: (.*)$""")
+
+/** How the core's logger starts a line: `[2026-10-10 11:13:15.159129 +00:00]`. */
+private val LOGGER_LINE = Regex("""^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ [+-]\d{2}:\d{2}] """)
+
+/**
+ * [line] of logcat is the core logger's copy of a line its log files have, which its stderr
+ * sends to logcat as well.
+ */
+internal fun inLogFiles(line: String): Boolean {
+    val (tag, text) = LOGCAT_LINE.find(line)?.destructured ?: return false
+    return tag == "RustStdoutStderr" && LOGGER_LINE.containsMatchIn(text)
 }

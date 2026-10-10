@@ -101,7 +101,10 @@ in English only for now.
   the wake lock held, are worse than Android starting the app again.
 - Rust's stdout and stderr show in logcat under the tag `RustStdoutStderr`, as they did in the
   Slint app: a copy of every log line, and panic messages. The log files stay in
-  `<external files>/config`.
+  `<external files>/config`, beside `n_music_panic.log`, where the core saves a report of each
+  panic. Share logs in Settings sends them as one file, followed by the app's lines from logcat
+  without the logger's copies. Those carry a panic the core couldn't save, one from before its
+  log opened, and the app's own crashes.
 
 ## Background playback
 
