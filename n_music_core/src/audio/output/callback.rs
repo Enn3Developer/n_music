@@ -82,11 +82,17 @@ impl SharedState {
         let consumed = self.consumed.load(Ordering::Acquire);
         let discarded = self.discard_until.load(Ordering::Relaxed);
         let queued = produced.saturating_sub(consumed.max(discarded)) as usize;
-        let device_ns = self
-            .device_until_ns
-            .load(Ordering::Relaxed)
-            .saturating_sub(self.now_ns());
-        queued / channels + (device_ns as f64 * rate as f64 / 1_000_000_000.0).ceil() as usize
+        let device_ns = self.device_left().as_nanos() as f64;
+        queued / channels + (device_ns * rate as f64 / 1_000_000_000.0).ceil() as usize
+    }
+
+    /// How long the device still plays what the callback handed it.
+    pub(super) fn device_left(&self) -> WallDuration {
+        WallDuration::from_nanos(
+            self.device_until_ns
+                .load(Ordering::Relaxed)
+                .saturating_sub(self.now_ns()),
+        )
     }
 }
 

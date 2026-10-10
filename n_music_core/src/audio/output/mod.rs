@@ -7,6 +7,11 @@
 //! pausing act in the callback and seeking discards the queue, so its size only buys
 //! robustness against stalls and fewer wakeups.
 //!
+//! The device's own buffer is another matter. A paused stream keeps what the device was handed
+//! and has not played, and plays it once resumed, whatever track comes next. PulseAudio,
+//! WASAPI, ALSA and AAudio all keep it. So the stream pauses only once the device has played
+//! the fade-out.
+//!
 //! Started from [symphonia-play's `output.rs`](https://github.com/pdeljanov/Symphonia/blob/master/symphonia-play/src/output.rs)
 //! by [Philip Deljanov](https://github.com/pdeljanov).
 
@@ -76,6 +81,9 @@ impl AudioOutputError {
 const RAMP: WallDuration = WallDuration::from_millis(10);
 /// Longest wait for a fade-out, in case the callback stopped coming.
 const FADE_TIMEOUT: WallDuration = WallDuration::from_millis(100);
+/// Longest wait for the device to play a fade-out before the stream pauses, long enough for
+/// Bluetooth. A device further behind plays what is left once resumed.
+const PLAY_OUT_TIMEOUT: WallDuration = WallDuration::from_millis(500);
 const STALL_TIMEOUT: WallDuration = WallDuration::from_secs(2);
 pub const DEVICE_CHECK_INTERVAL: WallDuration = WallDuration::from_millis(500);
 /// Audio queued ahead of the device. The writer refills it once half is played.
@@ -313,6 +321,15 @@ impl Output {
         }
     }
 
+    /// Waits for the device to play what the callback handed it, the fade-out last, so a
+    /// paused stream keeps only silence.
+    fn play_out(&self) {
+        let left = self.state.device_left().min(PLAY_OUT_TIMEOUT);
+        if !left.is_zero() {
+            std::thread::sleep(left);
+        }
+    }
+
     /// Frames ever written.
     pub fn produced_frames(&self) -> u64 {
         self.produced / self.format.channels as u64
@@ -341,7 +358,8 @@ impl Output {
         }
     }
 
-    /// Pausing fades out first; resuming fades back in.
+    /// Pausing fades out first and pauses the stream once the fade-out was heard; resuming
+    /// fades back in.
     pub fn set_paused(&mut self, paused: bool) -> Result<()> {
         if paused == self.paused {
             return Ok(());
@@ -351,6 +369,7 @@ impl Output {
             .store(self.state.now_ns(), Ordering::Relaxed);
         if paused {
             self.fade_out();
+            self.play_out();
             self.stream.pause()?;
         } else {
             self.state.muted.store(false, Ordering::Relaxed);
