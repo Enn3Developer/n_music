@@ -46,6 +46,7 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.bottomPadding
@@ -124,6 +125,7 @@ fun SourcesContent(
     var menuOpen by remember { mutableStateOf(false) }
     val local = sources.filter { it.root.isLocal }
     val web = sources.filterNot { it.root.isLocal }
+    val margins = LocalPageMargins.current
     LazyColumn(
         Modifier.fillMaxSize(),
         // The last row scrolls clear of the add button.
@@ -158,7 +160,7 @@ fun SourcesContent(
             }
         }
         item(key = "title") {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+            Column(Modifier.padding(start = margins.start, end = margins.end, bottom = 12.dp)) {
                 Text(stringResource(R.string.sources_title), style = NType.headline, color = colors.onSurface)
                 Text(
                     dotted(
@@ -172,7 +174,7 @@ fun SourcesContent(
             }
         }
         if (scan != null) {
-            item(key = "scan") { UpdatingCard(scan, Modifier.padding(horizontal = 16.dp)) }
+            item(key = "scan") { UpdatingCard(scan, Modifier.padding(start = margins.start, end = margins.end)) }
         }
         if (sources.isEmpty()) {
             item(key = "empty") {
@@ -199,8 +201,9 @@ private fun LazyListScope.section(
 ) {
     if (sources.isEmpty()) return
     item(key = "section $title") {
+        val margins = LocalPageMargins.current
         Row(
-            Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
+            Modifier.padding(start = margins.start + 4.dp, end = margins.end + 4.dp, top = 18.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -209,13 +212,14 @@ private fun LazyListScope.section(
         }
     }
     itemsIndexed(sources, key = { _, source -> "source " + source.root.hashCode() }) { index, source ->
+        val margins = LocalPageMargins.current
         SourceItem(
             source = source,
             shape = groupShape(index, sources.size),
             updating = scan?.libraries?.contains(source.root) == true,
             tracks = source.tracks.toLong() + (missing[source.root] ?: 0),
             actions = actions,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (index > 0) 2.dp else 0.dp),
+            modifier = Modifier.padding(start = margins.start, end = margins.end, top = if (index > 0) 2.dp else 0.dp),
         )
     }
 }

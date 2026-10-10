@@ -46,6 +46,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Selection
@@ -167,6 +168,7 @@ fun ArtistContent(
     val haptics = LocalHapticFeedback.current
     val rows = tracks.orEmpty()
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
     val title = artist?.let { artistName(it) } ?: name ?: stringResource(R.string.no_artist)
     var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
@@ -212,14 +214,14 @@ fun ArtistContent(
                 PlayShuffle(
                     onPlay = { onPlayAll(false) },
                     onShuffle = { onPlayAll(true) },
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp),
+                    modifier = Modifier.padding(start = margins.start, end = margins.end, top = 18.dp),
                 )
             }
             if (albums.isNotEmpty()) {
                 item(key = "albums") {
                     Column(Modifier.padding(top = 22.dp)) {
                         Row(
-                            Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                            Modifier.padding(start = margins.start, end = margins.end, bottom = 10.dp),
                             verticalAlignment = Alignment.Bottom,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
@@ -232,7 +234,7 @@ fun ArtistContent(
                             )
                         }
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            contentPadding = PaddingValues(start = margins.start, end = margins.end),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(albums, key = { "${it.name}\u0000${it.artist}" }) { album ->
@@ -246,7 +248,7 @@ fun ArtistContent(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 2.dp),
+                        .padding(start = margins.start, end = margins.endLess(8.dp), top = 14.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(

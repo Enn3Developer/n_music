@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -45,6 +47,22 @@ fun windowLayout(width: Dp, height: Dp): WindowLayout = when {
 }
 
 val LocalWindowLayout = staticCompositionLocalOf { WindowLayout.PHONE }
+
+/** The room a page leaves between its content and its sides. */
+@Immutable
+data class PageMargins(val start: Dp, val end: Dp) {
+    /** The start margin less [inset], the room a control's own padding already keeps. */
+    fun startLess(inset: Dp): Dp = (start - inset).coerceAtLeast(0.dp)
+
+    /** The end margin less [inset], the room a control's own padding already keeps. */
+    fun endLess(inset: Dp): Dp = (end - inset).coerceAtLeast(0.dp)
+}
+
+/**
+ * The margins of the page showing: 16 dp on a phone, 24 dp beside a rail or a drawer, and none
+ * at the start beside a tablet's rail, whose own width keeps the room.
+ */
+val LocalPageMargins = compositionLocalOf { PageMargins(16.dp, 16.dp) }
 
 /** [content] laid out for the space it fills, the whole window for the app. */
 @Composable

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.VisibilityThreshold
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.Locator
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.components.ActiveChip
 import com.enn3developer.n_music.ui.components.ButtonSurface
 import com.enn3developer.n_music.ui.components.NChip
@@ -44,9 +45,10 @@ fun FilterRow(
     modifier: Modifier = Modifier,
 ) {
     val active = filters.active
+    val margins = LocalPageMargins.current
     LazyRow(
         modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "filters") {

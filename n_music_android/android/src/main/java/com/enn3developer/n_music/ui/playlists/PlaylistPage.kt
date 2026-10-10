@@ -55,6 +55,7 @@ import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.PlaylistTrack
@@ -202,6 +203,7 @@ fun PlaylistContent(
     val haptics = LocalHapticFeedback.current
     val rows = tracks.orEmpty()
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
     val smart = playlist?.rule != null
     // Rules the filter sections can show, or null when only the desktop edits them.
     val rules = remember(playlist?.rule) { playlist?.rule?.let(::rulesOf) }
@@ -257,12 +259,12 @@ fun PlaylistContent(
                     PlayShuffle(
                         onPlay = { onPlayAll(false) },
                         onShuffle = { onPlayAll(true) },
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (smart) 14.dp else 16.dp),
+                        modifier = Modifier.padding(start = margins.start, end = margins.end, top = if (smart) 14.dp else 16.dp),
                     )
                 }
                 item(key = "sort") {
                     Row(
-                        Modifier.padding(start = 6.dp, end = 16.dp, top = if (smart) 6.dp else 8.dp, bottom = if (smart) 4.dp else 2.dp),
+                        Modifier.padding(start = margins.startLess(10.dp), end = margins.end, top = if (smart) 6.dp else 8.dp, bottom = if (smart) 4.dp else 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         SortControl(stringResource(order.sort.label), onSort)
@@ -309,10 +311,11 @@ private fun Rules(playlist: PlaylistRow, rules: TrackFilters?, sources: List<Sou
 /** The tile, kind, name with its pencil, and what the playlist holds. */
 @Composable
 private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) {
+    val margins = LocalPageMargins.current
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            .padding(start = margins.start, end = margins.end, top = 4.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -378,6 +381,7 @@ private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) 
  */
 @Composable
 private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (FilterField?) -> Unit) {
+    val margins = LocalPageMargins.current
     val active = rules.active
     val unset = FilterField.entries.filter {
         it !in active && it != FilterField.ARTIST && (it != FilterField.SOURCE || sources.size > 1)
@@ -388,7 +392,7 @@ private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (Fi
         Modifier
             .fillMaxWidth()
             .padding(top = 16.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(start = margins.start, end = margins.end),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "count") {
@@ -437,10 +441,11 @@ private fun RuleChip(label: String, set: Boolean, onClick: () -> Unit) {
 /** Rules only the desktop app can edit, listed in words with a lock. */
 @Composable
 private fun LockedRules(rule: Filter) {
+    val margins = LocalPageMargins.current
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+            .padding(start = margins.start, end = margins.end, top = 16.dp)
             .background(colors.surfaceLow, RoundedCornerShape(20.dp))
             .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
     ) {

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -94,10 +95,12 @@ import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Selection
+import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.bottomPadding
 import com.enn3developer.n_music.ui.components.AlbumItem
 import com.enn3developer.n_music.ui.components.AlbumTile
@@ -319,16 +322,22 @@ fun LibraryPage() {
     }
 }
 
-/** The library's search field, which opens Search, with Settings at its end when [onSettings] is set. */
+/**
+ * The library's search field, which opens Search, with Settings at its end when [onSettings] is
+ * set. A tablet's is no wider than 520 dp, and sits a little higher.
+ */
 @Composable
 fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val margins = LocalPageMargins.current
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     Box(
         modifier
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+            .padding(start = margins.start, end = margins.end, top = if (tablet) 4.dp else 8.dp, bottom = 8.dp)
     ) {
         Row(
             Modifier
+                .then(if (tablet) Modifier.widthIn(max = 520.dp) else Modifier)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(28.dp))
@@ -357,13 +366,24 @@ fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modi
     }
 }
 
+/** How wide the library's tabs are: the phone's share the row, wider windows' keep to their size. */
+@Composable
+fun libraryTabWidth(): Dp? = when (LocalWindowLayout.current) {
+    WindowLayout.PHONE -> null
+    WindowLayout.TABLET -> 120.dp
+    else -> 112.dp
+}
+
 /**
  * The library's tabs. The indicator and the labels follow the pages as they move, so they
  * never drift apart. They read the pages' position while drawing: a swipe redraws the row
- * without composing it again.
+ * without composing it again. Tabs [tabWidth] wide start from the page's margin, less 12 dp;
+ * the line under them ends at the margin beside a tablet's rail.
  */
 @Composable
-fun LibraryTabs(pager: PagerState, modifier: Modifier = Modifier, tabWidth: Dp? = null) {
+fun LibraryTabs(pager: PagerState, modifier: Modifier = Modifier, tabWidth: Dp? = libraryTabWidth()) {
+    val margins = LocalPageMargins.current
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     val scope = rememberCoroutineScope()
     // Each label's left edge and width in the row, to place the indicator under them.
     val labels = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
@@ -371,10 +391,12 @@ fun LibraryTabs(pager: PagerState, modifier: Modifier = Modifier, tabWidth: Dp? 
     val primary = colors.primary
     val quiet = colors.onSurfaceVariant
     val line = colors.outlineVariant
+    val start = if (tabWidth != null) margins.startLess(12.dp) else 0.dp
     // 48 dp of tabs over a 1 dp line, as the design draws its border under the row.
     Row(
         modifier
             .fillMaxWidth()
+            .padding(end = if (tablet) margins.end else 0.dp)
             .height(49.dp)
             .drawBehind {
                 val bottom = size.height - 1.dp.toPx()
@@ -387,7 +409,8 @@ fun LibraryTabs(pager: PagerState, modifier: Modifier = Modifier, tabWidth: Dp? 
                 val fraction = position - position.toInt()
                 val extra = 4.dp.toPx()
                 val height = 3.dp.toPx()
-                val left = from.first + (to.first - from.first) * fraction - extra
+                // The labels are placed inside the row's start padding; the line is drawn outside it.
+                val left = start.toPx() + from.first + (to.first - from.first) * fraction - extra
                 val width = from.second + (to.second - from.second) * fraction + 2 * extra
                 val corner = CornerRadius(height)
                 drawPath(
@@ -404,6 +427,7 @@ fun LibraryTabs(pager: PagerState, modifier: Modifier = Modifier, tabWidth: Dp? 
                 )
             }
             .padding(bottom = 1.dp)
+            .padding(start = start)
     ) {
         titles.forEachIndexed { index, title ->
             val near by remember(pager, index) { derivedStateOf { pager.distanceTo(index) < 0.5f } }
@@ -464,6 +488,8 @@ fun TracksTab(
     onClearFilters: () -> Unit = {},
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
+    val wide = LocalWindowLayout.current.rail
     val haptics = LocalHapticFeedback.current
     val selecting = selection != null
     // While selecting, the filters and what plays dim and stop answering.
@@ -481,7 +507,7 @@ fun TracksTab(
             enter = expandVertically(NMotion.spatialDefault()) + fadeIn(NMotion.effectsDefault()),
             exit = shrinkVertically(NMotion.spatialDefault()) + fadeOut(NMotion.effectsFast()),
         ) {
-            building?.let { BuildingCard(it, onScan, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) }
+            building?.let { BuildingCard(it, onScan, Modifier.padding(start = margins.start, end = margins.end, top = 12.dp)) }
         }
         val filtered = filters.active.isNotEmpty()
         // Nothing listed once the library is read: none at all, or none the filters keep.
@@ -503,7 +529,7 @@ fun TracksTab(
         ) {
             FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
             if (!empty) Row(
-                Modifier.padding(start = 6.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                Modifier.padding(start = margins.startLess(10.dp), end = margins.end, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // The sort's name gives way first when the row runs short.
@@ -561,8 +587,8 @@ fun TracksTab(
                     columns = GridCells.Adaptive(104.dp),
                     modifier = Modifier.fillMaxSize(),
                     state = grid,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottom),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 8.dp, bottom = bottom),
+                    horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(rows, key = { it.locator.key }) { track ->
@@ -611,6 +637,8 @@ fun <T> GroupTab(
     tile: @Composable (T) -> Unit,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
+    val wide = LocalWindowLayout.current.rail
     val rows = items.orEmpty()
     val sectionAt = { index: Int -> rows.getOrNull(index)?.let(section) }
     if (items != null && items.isEmpty()) {
@@ -625,7 +653,7 @@ fun <T> GroupTab(
     }
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.padding(start = 6.dp, end = 16.dp, top = 8.dp),
+            Modifier.padding(start = margins.startLess(10.dp), end = margins.end, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -654,8 +682,8 @@ fun <T> GroupTab(
                     columns = GridCells.Adaptive(minTile),
                     modifier = Modifier.fillMaxSize(),
                     state = grid,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = margins.start, end = margins.end, top = 12.dp, bottom = bottom),
+                    horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 12.dp),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     items(rows, key = key) { tile(it) }

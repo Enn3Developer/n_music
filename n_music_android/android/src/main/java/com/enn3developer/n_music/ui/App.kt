@@ -459,7 +459,18 @@ private fun MainLayout(navigator: Navigator) {
                     .fillMaxHeight()
             ) {
                 Box(covered) {
-                    CompositionLocalProvider(LocalBottomSpace provides bottomSpace) {
+                    // The rail's side follows the drawer as it widens.
+                    val start by animateDpAsState(
+                        when {
+                            !rail -> 16.dp
+                            tablet && !ui.drawer -> 0.dp
+                            else -> 24.dp
+                        },
+                        NMotion.spatialDefault(),
+                        label = "margin",
+                    )
+                    val margins = PageMargins(start, if (rail) 24.dp else 16.dp)
+                    CompositionLocalProvider(LocalBottomSpace provides bottomSpace, LocalPageMargins provides margins) {
                         PageHost(navigator)
                     }
                 }

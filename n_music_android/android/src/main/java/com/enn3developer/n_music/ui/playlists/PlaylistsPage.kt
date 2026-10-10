@@ -35,6 +35,7 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
@@ -83,6 +84,7 @@ fun PlaylistsContent(
     onSettings: (() -> Unit)?,
 ) {
     val smart = playlists.count { it.rule != null }
+    val margins = LocalPageMargins.current
     LazyColumn(
         Modifier.fillMaxSize(),
         // The last row scrolls clear of the new playlist button.
@@ -104,7 +106,7 @@ fun PlaylistsContent(
             }
         }
         item(key = "title") {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) {
+            Column(Modifier.padding(start = margins.start, end = margins.end, bottom = 10.dp)) {
                 Text(stringResource(R.string.playlists_title), style = NType.headline, color = colors.onSurface)
                 Text(
                     dotted(
@@ -136,12 +138,13 @@ fun PlaylistsContent(
 /** A playlist's row: its tile, name and what it holds. */
 @Composable
 private fun PlaylistItem(playlist: PlaylistRow, current: Boolean, playing: Boolean, onClick: () -> Unit) {
+    val margins = LocalPageMargins.current
     Row(
         Modifier
             .fillMaxWidth()
             .height(72.dp)
             .tappable(onClick)
-            .padding(horizontal = 16.dp),
+            .padding(start = margins.start, end = margins.end),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {

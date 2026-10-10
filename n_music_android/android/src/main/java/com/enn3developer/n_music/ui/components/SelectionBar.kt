@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
@@ -56,10 +57,11 @@ import com.enn3developer.n_music.ui.theme.text
  */
 @Composable
 fun SelectionBar(count: Int, total: Int, onClose: () -> Unit, onSelectAll: () -> Unit, modifier: Modifier = Modifier) {
+    val margins = LocalPageMargins.current
     Box(
         modifier
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+            .padding(start = margins.start, end = margins.end, top = 8.dp, bottom = 8.dp)
     ) {
         Row(
             Modifier

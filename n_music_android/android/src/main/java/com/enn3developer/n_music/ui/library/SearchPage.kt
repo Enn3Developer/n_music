@@ -72,6 +72,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.bottomPadding
@@ -185,13 +186,14 @@ fun SearchContent(
     focus: Boolean = false,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
     val search = text.trim()
     Column(Modifier.fillMaxSize()) {
         SearchBar(text, onText, onBack, focus)
         Row(
             Modifier
                 .horizontalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                .padding(start = margins.start, end = margins.end, top = 12.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             for (option in SearchKind.entries) {
@@ -233,7 +235,7 @@ fun SearchContent(
                     if (all) {
                         item(key = "album row") {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                contentPadding = PaddingValues(start = margins.start, end = margins.end),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(results.albums, key = { "${it.name}\u0000${it.artist}" }) { album ->
@@ -252,7 +254,7 @@ fun SearchContent(
                     if (all) {
                         item(key = "artist row") {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                contentPadding = PaddingValues(start = margins.start, end = margins.end),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 items(results.artists, key = { it.name.toString() }) { artist ->
@@ -291,6 +293,7 @@ fun SearchContent(
 private fun SearchBar(text: String, onText: (String) -> Unit, onBack: () -> Unit, focus: Boolean) {
     val keyboard = LocalSoftwareKeyboardController.current
     val requester = remember { FocusRequester() }
+    val margins = LocalPageMargins.current
     if (focus) {
         LaunchedEffect(Unit) { requester.requestFocus() }
     }
@@ -304,7 +307,7 @@ private fun SearchBar(text: String, onText: (String) -> Unit, onBack: () -> Unit
             Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .padding(horizontal = 4.dp),
+                .padding(start = margins.startLess(12.dp), end = margins.endLess(12.dp)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -342,10 +345,11 @@ private fun SectionHeader(
     more: Int? = null,
     onMore: () -> Unit = {},
 ) {
+    val margins = LocalPageMargins.current
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 8.dp, top = top, bottom = bottom)
+            .padding(start = margins.start, end = margins.endLess(8.dp), top = top, bottom = bottom)
             .then(if (more != null) Modifier.height(40.dp) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -395,12 +399,13 @@ private fun FoundArtist(artist: ArtistRow, search: String, onClick: () -> Unit) 
 
 @Composable
 private fun FoundGenre(genre: GenreRow, search: String, onClick: () -> Unit) {
+    val margins = LocalPageMargins.current
     Row(
         Modifier
             .fillMaxWidth()
             .height(56.dp)
             .tappable(onClick)
-            .padding(horizontal = 16.dp),
+            .padding(start = margins.start, end = margins.end),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {

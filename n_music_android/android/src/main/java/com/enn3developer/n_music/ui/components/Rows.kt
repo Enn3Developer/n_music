@@ -41,6 +41,7 @@ import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.GenreRow
 import com.enn3developer.n_music.core.TrackRow
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatLength
 import com.enn3developer.n_music.ui.theme.NIcons
@@ -91,6 +92,7 @@ fun TrackItem(
         TrackCover(track, state, coverModifier, if (compact) 40.dp else 48.dp)
     },
 ) {
+    val margins = LocalPageMargins.current
     val background by animateColorAsState(
         when {
             state.selected || state.held -> colors.surfaceHigh
@@ -107,7 +109,8 @@ fun TrackItem(
             .background(background)
             // One that can't play takes no taps.
             .then(if (muted) Modifier else Modifier.tappable(onClick, onLongClick))
-            .padding(start = 16.dp, end = 4.dp),
+            // The ⋮ sits 12 dp into the page's margin.
+            .padding(start = margins.start, end = margins.end - 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 14.dp),
     ) {
@@ -336,12 +339,13 @@ fun GroupItem(
     onLongClick: (() -> Unit)? = null,
     picture: @Composable (Modifier) -> Unit,
 ) {
+    val margins = LocalPageMargins.current
     Row(
         modifier
             .fillMaxWidth()
             .height(72.dp)
             .tappable(onClick, onLongClick)
-            .padding(start = 16.dp, end = 24.dp),
+            .padding(start = margins.start, end = margins.end + 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -486,6 +490,7 @@ fun AlbumTrackItem(
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val margins = LocalPageMargins.current
     val background by animateColorAsState(
         when {
             state.selected || state.held -> colors.surfaceHigh
@@ -501,7 +506,7 @@ fun AlbumTrackItem(
             .height(56.dp)
             .background(background)
             .tappable(onClick, onLongClick)
-            .padding(start = 16.dp, end = 4.dp),
+            .padding(start = margins.start, end = margins.end - 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

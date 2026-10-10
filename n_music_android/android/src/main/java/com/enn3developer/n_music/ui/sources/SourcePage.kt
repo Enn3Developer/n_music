@@ -46,6 +46,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.bottomPadding
@@ -145,6 +146,7 @@ fun SourceContent(
     onMore: (TrackRow) -> Unit,
 ) {
     val rows = tracks.orEmpty()
+    val margins = LocalPageMargins.current
     val down = source?.reachable == false
     var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
@@ -170,7 +172,7 @@ fun SourceContent(
                     Unreachable(source.root, rows.size) { actions.scan(source.root, reload = false) }
                 }
             } else if (scan != null && rows.isEmpty()) {
-                item(key = "scan") { UpdatingCard(scan, Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) }
+                item(key = "scan") { UpdatingCard(scan, Modifier.padding(start = margins.start, end = margins.end, top = 16.dp)) }
             }
             if (rows.isNotEmpty()) {
                 item(key = "play") {
@@ -178,7 +180,7 @@ fun SourceContent(
                     PlayShuffle(
                         onPlay = { onPlayAll(false) },
                         onShuffle = { onPlayAll(true) },
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (down) 14.dp else 16.dp),
+                        modifier = Modifier.padding(start = margins.start, end = margins.end, top = if (down) 14.dp else 16.dp),
                         playDescription = if (down) {
                             pluralStringResource(R.plurals.play_saved, quantity(count), formatCount(count))
                         } else {
@@ -195,7 +197,7 @@ fun SourceContent(
                     item(key = "gap") { Box(Modifier.padding(top = 6.dp)) }
                 } else {
                     item(key = "sort") {
-                        Row(Modifier.padding(start = 6.dp, end = 16.dp, top = 8.dp, bottom = 2.dp)) {
+                        Row(Modifier.padding(start = margins.startLess(10.dp), end = margins.end, top = 8.dp, bottom = 2.dp)) {
                             SortControl(stringResource(order.sort.label), onSort)
                         }
                     }
@@ -253,11 +255,12 @@ private fun artist(track: TrackRow): String = track.artist.ifEmpty { stringResou
 /** The tile, kind, name with its pencil, how much it holds and where it is. */
 @Composable
 private fun Header(source: SourceRow, tracks: Long, onRename: () -> Unit) {
+    val margins = LocalPageMargins.current
     val down = !source.reachable
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 4.dp),
+            .padding(start = margins.start, end = margins.end, top = 4.dp),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -314,10 +317,11 @@ private fun Header(source: SourceRow, tracks: Long, onRename: () -> Unit) {
  */
 @Composable
 private fun Unreachable(root: Locator, saved: Int, onRetry: () -> Unit) {
+    val margins = LocalPageMargins.current
     val host = (root as? Locator.Web)?.v1?.let(::webHost) ?: sourcePlace(root)
     Column(
         Modifier
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
+            .padding(start = margins.start, end = margins.end, top = 16.dp)
             .fillMaxWidth()
             .background(colors.errorContainer, RoundedCornerShape(20.dp))
             .semantics { liveRegion = LiveRegionMode.Polite }

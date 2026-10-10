@@ -17,18 +17,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 
 /** A page's bar under the status bar: Back, and the page's [actions] at its end. */
 @Composable
 fun PageBar(onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    val margins = LocalPageMargins.current
     Row(
         modifier
             .windowInsetsPadding(WindowInsets.statusBars)
             .fillMaxWidth()
             .height(64.dp)
-            .padding(horizontal = 4.dp),
+            // The buttons' own 12 dp make up the rest of the page's margins.
+            .padding(start = margins.startLess(12.dp), end = margins.endLess(12.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         NIconButton(NIcons.Back, stringResource(R.string.back), onBack, tint = colors.onSurface)

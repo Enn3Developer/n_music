@@ -43,6 +43,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
+import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.Origin
 import com.enn3developer.n_music.ui.Page
 import com.enn3developer.n_music.ui.Selection
@@ -165,6 +166,7 @@ fun AlbumContent(
     val haptics = LocalHapticFeedback.current
     val rows = tracks.orEmpty()
     val bottom = bottomPadding(LocalBottomSpace.current)
+    val margins = LocalPageMargins.current
     // A disc's header shows only on albums of several discs.
     val discs = rows.mapNotNull { it.discNumber }.distinct().size > 1
     var menuOpen by remember { mutableStateOf(false) }
@@ -236,7 +238,7 @@ fun AlbumContent(
                 PlayShuffle(
                     onPlay = { onPlayAll(false) },
                     onShuffle = { onPlayAll(true) },
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
+                    modifier = Modifier.padding(start = margins.start, end = margins.end, top = 18.dp, bottom = 10.dp),
                 )
             }
             var disc: UInt? = null
@@ -249,7 +251,7 @@ fun AlbumContent(
                             number?.let { stringResource(R.string.disc, it.toInt()) } ?: stringResource(R.string.disc_unknown),
                             style = text(16, FontWeight.Bold),
                             color = colors.onSurface,
-                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+                            modifier = Modifier.padding(start = margins.start, end = margins.end, top = 14.dp, bottom = 6.dp),
                         )
                     }
                 }
