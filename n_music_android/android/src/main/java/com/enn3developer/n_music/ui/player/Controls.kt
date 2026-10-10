@@ -26,14 +26,17 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
@@ -42,6 +45,7 @@ import com.enn3developer.n_music.ui.components.PlaybackActions
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
+import kotlin.math.roundToInt
 
 /**
  * How big the player's buttons are, with their icons, and how they share a row: [spread] across
@@ -69,7 +73,10 @@ data class ControlSizes(
     }
 }
 
-/** The player's buttons: shuffle, previous, play or pause, next and repeat. */
+/**
+ * The player's buttons: shuffle, previous, play or pause, next and repeat. Where they don't fit,
+ * on a phone narrower than the design's, they shrink together.
+ */
 @Composable
 fun PlayerControls(
     playing: Boolean,
@@ -80,7 +87,7 @@ fun PlayerControls(
     sizes: ControlSizes = ControlSizes.Phone,
 ) {
     Row(
-        modifier,
+        modifier.shrinkToFit(),
         horizontalArrangement = if (sizes.spread) Arrangement.SpaceBetween else Arrangement.spacedBy(sizes.gap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -109,6 +116,27 @@ fun PlayerControls(
             actions::cycleRepeat,
             sizes,
         )
+    }
+}
+
+/**
+ * Lays a row out as wide as it needs and, when the room it has is narrower, scales it down to
+ * fit, keeping its buttons' shapes and gaps, rather than leaving the last button what is left.
+ */
+private fun Modifier.shrinkToFit(): Modifier = layout { measurable, constraints ->
+    val natural = measurable.maxIntrinsicWidth(constraints.maxHeight)
+    if (!constraints.hasBoundedWidth || natural <= constraints.maxWidth) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val scale = constraints.maxWidth.toFloat() / natural
+    val placeable = measurable.measure(constraints.copy(minWidth = natural, maxWidth = natural))
+    layout(constraints.maxWidth, constraints.constrainHeight((placeable.height * scale).roundToInt())) {
+        placeable.placeWithLayer(0, 0) {
+            scaleX = scale
+            scaleY = scale
+            transformOrigin = TransformOrigin(0f, 0f)
+        }
     }
 }
 
