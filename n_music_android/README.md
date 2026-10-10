@@ -24,6 +24,20 @@ Then, from this folder:
 `android/build/generated/uniffi`. Gradle compiles both into the app, so run the script again
 whenever the Rust side changes. `compile_rust_release.sh` does the same with the release profile.
 
+### Telegram
+
+Signing in to Telegram needs N Music's API credentials, as on the desktop. Register an app at
+[my.telegram.org](https://my.telegram.org) and pass its id and hash when building the native
+library:
+
+```shell
+N_MUSIC_TELEGRAM_API_ID=12345 N_MUSIC_TELEGRAM_API_HASH=0123456789abcdef ./compile_rust.sh
+```
+
+Without them the app builds and runs with Telegram left out, and Add source, the welcome page
+and Settings don't offer it. The release workflow takes them from the `N_MUSIC_TELEGRAM_API_ID`
+and `N_MUSIC_TELEGRAM_API_HASH` secrets.
+
 ## Screens
 
 The app follows the N Music Android design: Material 3 Expressive, the Figtree typeface,
@@ -35,9 +49,12 @@ graphite surfaces and a choice of accent colours. It has:
 - the mini player, which opens into the now playing page, with the queue, a sleep timer that
   fades playback out, and Android's output switcher
 - playlists, plain and smart, with rules, sorting and removals you can undo
-- sources: local folders and web playlists, a page for each, and the first run's welcome
-- settings for playback, the theme and accent, the mini player's buttons and the language, and
-  the about page
+- sources: local folders, web playlists and Telegram chats, a page for each, and the first
+  run's welcome
+- signing in to Telegram a step at a time, then picking a chat to add from a search of the
+  account's chats
+- settings for playback, the Telegram account, the theme and accent, the mini player's buttons
+  and the language, and the about page
 - the player and Shuffle everything home screen widgets, and the media notification
 - layouts for foldables and tablets: a rail or a drawer, the queue beside the player, a now
   playing pane, and tracks in a table
@@ -74,6 +91,11 @@ in English only for now.
   state. The Compose screens collect those flows, and so does `NPlayer`.
 - `NPlayer` is a Media3 `SimpleBasePlayer` that mirrors the core for the media session. It
   never decodes audio.
+- The core signs in to Telegram and searches its chats on its own threads, and reports each step
+  as an event. `CoreRepository.telegram` holds where signing in is, and stays `null` in a build
+  without Telegram, which is how the screens know to leave it out. The core keeps the session in
+  `noBackupFilesDir`. The session signs in as the user, so it stays in the app's private storage
+  and out of Android's backups.
 - If the bus thread panics, the core ends the process, and `CoreRepository` does the same if
   `nextEvent` ever returns nothing. Screens and a notification stuck on a core that is gone, with
   the wake lock held, are worse than Android starting the app again.
@@ -119,11 +141,11 @@ made public:
 - `AudioBecomingNoisyManager` pauses when headphones are unplugged, also while paused for a call,
   so the music does not come back on the speaker after it. Without it the core would follow the
   device change and carry on through the speaker.
-- `WifiLockManager` holds a Wi-Fi lock while a track from a web playlist plays, as ExoPlayer does
-  in its network wake mode. Up to Android 13 that keeps Wi-Fi out of power save with the screen
-  off. From Android 14, asking for the `WIFI_MODE_FULL_HIGH_PERF` lock Media3 uses gets a
-  low-latency lock instead, which only holds while the screen is on and the app is in the
-  foreground.
+- `WifiLockManager` holds a Wi-Fi lock while a track from a web playlist or a Telegram chat
+  plays, as ExoPlayer does in its network wake mode. Up to Android 13 that keeps Wi-Fi out of
+  power save with the screen off. From Android 14, asking for the `WIFI_MODE_FULL_HIGH_PERF` lock
+  Media3 uses gets a low-latency lock instead, which only holds while the screen is on and the
+  app is in the foreground.
 
 ### Suspend
 
@@ -180,6 +202,8 @@ card's play button reaches `NPlayer` the way a headset's play key does.
   start the foreground service with the app in the background.
 - How System UI draws the media notification, with its shuffle and repeat buttons.
 - That the Wi-Fi lock keeps a web track streaming with the screen off on Android 11 to 13.
+- Signing in to Telegram and streaming a chat's tracks. Both need a build with N Music's
+  credentials and Telegram's servers within reach.
 
 ## References
 
