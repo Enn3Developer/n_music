@@ -26,21 +26,43 @@ whenever the Rust side changes. `compile_rust_release.sh` does the same with the
 
 ## Screens
 
-The app is moving to the N Music Android design: Material 3 Expressive, the Figtree typeface,
-graphite surfaces and a choice of accent colours. So far it has the library's four tabs, the mini
-player and the navigation bar. The other pages show their name until they land.
+The app follows the N Music Android design: Material 3 Expressive, the Figtree typeface,
+graphite surfaces and a choice of accent colours. It has:
 
-The app's own settings, like the theme, the accent and each list's view and sort, stay in the
-core's settings file, in the `android.ui` section the Slint app used, so its theme carries over.
-The strings are Android resources in `android/src/main/res/values`.
+- the library's Tracks, Albums, Artists and Genres tabs, each as a list or a grid, with sorts,
+  filters, a fast scroller, search, and album and artist pages
+- selection: a long press picks tracks to play next, queue or add to a playlist
+- the mini player, which opens into the now playing page, with the queue, a sleep timer that
+  fades playback out, and Android's output switcher
+- playlists, plain and smart, with rules, sorting and removals you can undo
+- sources: local folders and web playlists, a page for each, and the first run's welcome
+- settings for playback, the theme and accent, the mini player's buttons and the language, and
+  the about page
+- the player and Shuffle everything home screen widgets, and the media notification
+- layouts for foldables and tablets: a rail or a drawer, the queue beside the player, a now
+  playing pane, and tracks in a table
+
+Each area has its package under `ui`: `library`, `player`, `playlists`, `sources` and
+`settings`, with `sheets` and `dialogs` for what they open. `ui/components` holds the pieces
+they share. `ui/theme` holds the colours, type, shapes and icons, and `NMotion`, the springs
+every animation runs on: Material 3 Expressive's six, plus one without bounce for screen-sized
+edges. The long-press fill, the bars beside the playing track and the seek bar's wave run on a
+clock instead. With Android's Remove animations setting on, every animation jumps to its end and
+the wave stands still.
+
+The app's own settings, like the theme, the accent, the mini player's buttons and each list's
+view and sort, stay in the core's settings file, in the `android.ui` section the Slint app used,
+so its theme carries over. The strings are Android resources in `android/src/main/res/values`.
 
 ## How Kotlin reaches the core
 
 - `n_music_ffi` exports the core with UniFFI. `Core.start` reads the settings and starts the core
   services on their own bus thread, which opens the library database and the saved session, so
   the main thread does not wait for them. `Core.send` emits the message a `Command` stands for,
-  and `Core.nextEvent` suspends until the core announces something. `tracks` and `count` read the
-  library directly, off the bus, like the desktop's worker.
+  and `Core.nextEvent` suspends until the core announces something. `tracks`, `count` and the
+  lists of albums, artists, genres, playlists and sources read the library directly, off the
+  bus, like the desktop's worker. `playbackOptions` and `setting` read the settings file, for
+  what the core announces no event for.
 - A `KotlinBridge` subscriber copies each event into a `CoreEvent` and queues it, so the bus
   thread never waits on Kotlin. A scan reports every track it reads; the bridge folds those into
   one `LibraryChanged` until Kotlin takes it.
@@ -135,8 +157,8 @@ whoever asks.
 
 ### Not done yet
 
-- Resume is off by default in the core's settings, and this app has no settings screen yet. The
-  core also has no event that reports the setting, which a toggle would need.
+- Resume is off by default in the core's settings, so a killed process comes back with nothing
+  queued until the Resume switch in Settings is on.
 - From Android 15 an audio focus request fails unless the app is on top or runs a foreground
   service. Playback from the app is on top. Playback from a headset or the notification with
   the app in the background asks for focus once the core plays, after Media3 started the
