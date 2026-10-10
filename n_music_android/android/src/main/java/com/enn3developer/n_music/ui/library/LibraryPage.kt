@@ -183,6 +183,7 @@ fun LibraryPage() {
     val nowPlaying = rememberNowPlaying()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
     val sourceName: (Locator) -> String = { root -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
+    val facets by CoreRepository.facets.collectAsStateWithLifecycle()
     // A genre shows as the tracks filtered to it.
     fun showGenre(genre: GenreRow) = app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty())))
     // Turns to the tracks whenever the app shows them, from this page or another.
@@ -225,6 +226,7 @@ fun LibraryPage() {
                         tracks = tracks,
                         total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
                         filters = filters,
+                        offered = offeredFields(facets, sources.size),
                         sourceName = sourceName,
                         onFilter = { app.show(Sheet.Filters(it)) },
                         onClearFilter = { app.filters = app.filters.clear(it) },
@@ -538,6 +540,7 @@ fun TracksTab(
     onScan: () -> Unit,
     held: Locator? = null,
     onClearFilters: () -> Unit = {},
+    offered: List<FilterField> = FilterField.entries,
 ) {
     val bottom = bottomPadding(LocalBottomSpace.current)
     val margins = LocalPageMargins.current
@@ -584,7 +587,7 @@ fun TracksTab(
                 .graphicsLayer { alpha = dim }
                 .then(if (selecting) Modifier.inert() else Modifier)
         ) {
-            FilterRow(filters, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
+            FilterRow(filters, offered, sourceName, onFilter, onClearFilter, Modifier.padding(top = 12.dp))
             if (!empty && tablet) {
                 TabletSortRow(
                     tracks, total, order, view, filtered, onSort, onToggleView, onPlayAll,

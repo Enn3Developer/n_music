@@ -33,12 +33,13 @@ import com.enn3developer.n_music.ui.theme.text
 
 /**
  * The tracks' filter chips: Filters, which opens the filter sheet, then a chip for each part that
- * is set, then one for each that is not. A chip opens the sheet at its part; the cross on a set
- * one clears it.
+ * is set, then one for each of the [offered] ones that is not. A chip opens the sheet at its part;
+ * the cross on a set one clears it.
  */
 @Composable
 fun FilterRow(
     filters: TrackFilters,
+    offered: List<FilterField>,
     sourceName: (Locator) -> String,
     onOpen: (FilterField?) -> Unit,
     onClear: (FilterField) -> Unit,
@@ -96,7 +97,7 @@ fun FilterRow(
                 ),
             )
         }
-        items(FilterField.entries - active.toSet(), key = { "unset " + it.name }) { field ->
+        items(offered - active.toSet(), key = { "unset " + it.name }) { field ->
             NChip(
                 stringResource(field.label),
                 { onOpen(field) },

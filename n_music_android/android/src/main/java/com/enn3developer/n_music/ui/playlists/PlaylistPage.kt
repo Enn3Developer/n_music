@@ -91,6 +91,7 @@ import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.library.label
+import com.enn3developer.n_music.ui.library.offeredFields
 import com.enn3developer.n_music.ui.library.rememberNowPlaying
 import com.enn3developer.n_music.ui.playsCount
 import com.enn3developer.n_music.ui.quantity
@@ -378,16 +379,15 @@ private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) 
 
 /**
  * A smart playlist's rules as chips, each opening the rules at its section: how many are set,
- * then the set ones, then the rest, but for the artist, picked from a list, and the source while
- * there is one.
+ * then the set ones, then the rest the sheet has a section for, but for the artist, picked from a
+ * list.
  */
 @Composable
 private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (FilterField?) -> Unit) {
     val margins = LocalPageMargins.current
     val active = rules.active
-    val unset = FilterField.entries.filter {
-        it !in active && it != FilterField.ARTIST && (it != FilterField.SOURCE || sources.size > 1)
-    }
+    val facets by CoreRepository.facets.collectAsStateWithLifecycle()
+    val unset = offeredFields(facets, sources.size).filter { it !in active && it != FilterField.ARTIST }
     val sourceName = { root: Locator -> sources.find { it.root == root }?.name ?: defaultSourceName(root) }
     val description = pluralStringResource(R.plurals.edit_rules, active.size, active.size)
     LazyRow(

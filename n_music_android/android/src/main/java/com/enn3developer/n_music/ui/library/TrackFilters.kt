@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.enn3developer.n_music.R
+import com.enn3developer.n_music.core.Facets
 import com.enn3developer.n_music.core.Filter
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Tag
@@ -18,6 +19,21 @@ enum class FilterField(@param:StringRes val label: Int, @param:StringRes val nam
     FORMAT(R.string.filter_format, R.string.filter_format_named),
     SOURCE(R.string.filter_source, R.string.filter_source_named),
     ARTIST(R.string.filter_artist, R.string.filter_artist_named),
+}
+
+/** The parts the filter sheet has a section for, as [facets] and [sources] sources leave them. */
+fun offeredFields(facets: Facets, sources: Int): List<FilterField> = FilterField.entries.filter { field ->
+    when (field) {
+        FilterField.GENRE -> facets.genres.isNotEmpty()
+        FilterField.YEAR -> {
+            val first = facets.firstYear
+            val last = facets.lastYear
+            first != null && last != null && last > first
+        }
+        FilterField.FORMAT -> facets.codecs.isNotEmpty()
+        FilterField.SOURCE -> sources > 1
+        FilterField.PLAYS, FilterField.LAST_PLAYED, FilterField.ARTIST -> true
+    }
 }
 
 /** How often a track was played. */
