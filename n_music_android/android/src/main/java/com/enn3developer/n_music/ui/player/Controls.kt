@@ -229,7 +229,10 @@ private fun SqueezeButton(
             corner.animateTo(radius.value, NMotion.spatialDefault())
         }
     }
-    LaunchedEffect(pressed) { wash.animateTo(if (pressed) pressAlpha else 0f, NMotion.effectsFast()) }
+    // The wash comes on as fast as the press and fades out more slowly.
+    LaunchedEffect(pressed) {
+        wash.animateTo(if (pressed) pressAlpha else 0f, if (pressed) NMotion.effectsFast() else NMotion.effectsDefault())
+    }
     Box(
         Modifier
             .size(width, height)
