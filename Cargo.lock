@@ -2705,7 +2705,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_core"
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 dependencies = [
  "audiopus",
  "cpal",
@@ -2741,7 +2741,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_desktop"
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 dependencies = [
  "bitflags",
  "cxx",
@@ -2761,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_ffi"
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 dependencies = [
  "flume",
  "jni",
@@ -2777,7 +2777,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_media_notification"
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 dependencies = [
  "block2",
  "dispatch2",
@@ -2795,7 +2795,7 @@ dependencies = [
 
 [[package]]
 name = "n_music_uniffi_bindgen"
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 dependencies = [
  "uniffi",
 ]
