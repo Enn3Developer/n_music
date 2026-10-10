@@ -44,8 +44,9 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
 /**
- * How one of the lists is sorted: a radio for each way. Picking one sorts the list and closes the
- * sheet; the chosen way of a list of tracks carries its direction, which flips in place.
+ * How one of the lists is sorted: a radio for each way. Picking one sorts the list. The chosen
+ * way of a list of tracks carries its direction, which flips in place, so that sheet stays open
+ * until the chosen way is tapped again; the others close on a pick.
  */
 @Composable
 fun SortSheet(list: SortedList, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
@@ -58,8 +59,7 @@ fun SortSheet(list: SortedList, open: Boolean, onDismissRequest: () -> Unit, onG
                 for (sort in TrackSort.library) {
                     val chosen = order.sort == sort
                     SortOption(stringResource(sort.label), chosen, onClick = {
-                        if (!chosen) UiPreferences.setSort(list.stored, TrackOrder(sort).stored)
-                        onDismissRequest()
+                        if (chosen) onDismissRequest() else UiPreferences.setSort(list.stored, TrackOrder(sort).stored)
                     }) {
                         if (chosen) {
                             ReverseButton(stringResource(if (order.reversed) sort.backward else sort.forward)) {
@@ -84,8 +84,8 @@ fun SortSheet(list: SortedList, open: Boolean, onDismissRequest: () -> Unit, onG
 
 /**
  * How playlist [id]'s tracks are sorted, kept with the playlist: by when they were added too,
- * for a plain one. Picking a way sorts it and closes the sheet; the chosen way's direction flips
- * in place.
+ * for a plain one. Picking a way sorts it, and the sheet stays open for its direction, which
+ * flips in place, until the chosen way is tapped again.
  */
 @Composable
 fun PlaylistSortSheet(id: Long, open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) {
@@ -100,8 +100,7 @@ fun PlaylistSortSheet(id: Long, open: Boolean, onDismissRequest: () -> Unit, onG
             for (sort in options) {
                 val chosen = order.sort == sort
                 SortOption(stringResource(sort.label), chosen, onClick = {
-                    if (!chosen) sortBy(TrackOrder(sort))
-                    onDismissRequest()
+                    if (chosen) onDismissRequest() else sortBy(TrackOrder(sort))
                 }) {
                     if (chosen) {
                         ReverseButton(stringResource(if (order.reversed) sort.backward else sort.forward)) {
