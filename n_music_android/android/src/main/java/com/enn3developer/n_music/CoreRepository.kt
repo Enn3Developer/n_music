@@ -24,6 +24,9 @@ import com.enn3developer.n_music.core.ReplayGainMode
 import com.enn3developer.n_music.core.Seek
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.core.Summary
+import com.enn3developer.n_music.core.TelegramChatInfo
+import com.enn3developer.n_music.core.TelegramError
+import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.core.libraryQuery
@@ -72,6 +75,26 @@ data class ScanState(val libraries: List<Locator>, val found: Long, val read: Lo
 
 /** The copies of streamed tracks: on or off, how much they may take and take now, in bytes. */
 data class StreamCache(val enabled: Boolean, val limit: Long, val used: Long)
+
+/**
+ * Where signing in to Telegram is: its [status], whether a step runs, and why the last one that
+ * ended failed. [ended] counts the steps that ended since launch, so a screen tells the answer
+ * to its own request from an older one.
+ */
+data class TelegramState(
+    val status: TelegramStatus,
+    val busy: Boolean,
+    val error: TelegramError?,
+    val ended: Int,
+)
+
+/** The Telegram chats a search for [query] found, or why it found none: the [serial]th answer. */
+data class TelegramChats(
+    val query: String,
+    val chats: List<TelegramChatInfo>,
+    val error: TelegramError?,
+    val serial: Int,
+)
 
 /**
  * A scan as reported: the tracks it listed and how many of those it still had to read, as of the
@@ -179,6 +202,19 @@ object CoreRepository {
     /** The genres, formats and years the filters offer. */
     val facets: StateFlow<Facets> = _facets.asStateFlow()
 
+    private val _telegram = MutableStateFlow<TelegramState?>(null)
+
+    /**
+     * Where signing in to Telegram is; `null` while there is no Telegram, as in a build without
+     * N Music's Telegram credentials.
+     */
+    val telegram: StateFlow<TelegramState?> = _telegram.asStateFlow()
+
+    private val _telegramChats = MutableStateFlow<TelegramChats?>(null)
+
+    /** What the last search for Telegram chats found. */
+    val telegramChats: StateFlow<TelegramChats?> = _telegramChats.asStateFlow()
+
     private val _options = MutableStateFlow(PlaybackOptions(ReplayGainMode.OFF, false, 0.0))
 
     /** ReplayGain, resuming and crossfade. */
@@ -204,7 +240,8 @@ object CoreRepository {
         if (::core.isInitialized) return
         // Where the Slint app kept its data, so settings, the library and the session carry over.
         dataDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "config")
-        core = Core.start(dataDir.path, context.cacheDir.path)
+        // The Telegram session signs in as the user: it stays in private storage, out of backups.
+        core = Core.start(dataDir.path, context.cacheDir.path, context.noBackupFilesDir.path)
         _options.value = core.playbackOptions()
         scope.launch { readEvents() }
         scope.launch { countChanges() }
@@ -366,6 +403,17 @@ object CoreRepository {
                 )
                 is CoreEvent.OutputDevices -> _outputDevices.value = event.devices
                 is CoreEvent.ScanFinished -> _version.value++
+                is CoreEvent.TelegramStatusChanged -> {
+                    val before = _telegram.value
+                    val ended = (before?.ended ?: 0) + if (before?.busy == true && !event.busy) 1 else 0
+                    _telegram.value = TelegramState(event.status, event.busy, event.error, ended)
+                }
+                is CoreEvent.TelegramChatsFound -> _telegramChats.value = TelegramChats(
+                    event.query,
+                    event.chats,
+                    event.error,
+                    (_telegramChats.value?.serial ?: 0) + 1,
+                )
             }
         }
     }

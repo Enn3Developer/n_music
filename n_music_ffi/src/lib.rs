@@ -28,6 +28,7 @@ use n_music_core::library::reader::read_info;
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::library::LibraryPaths;
 use n_music_core::settings::{JsonFileStorage, PlaybackSettings, Section, SettingsStorage};
+use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
 use n_music_core::source::{Locator, Providers};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
@@ -70,16 +71,24 @@ impl Core {
     /// Starts the core, once per process: later calls return the core already running.
     ///
     /// `data_dir` keeps what the user creates (settings, the library database, logs);
-    /// `cache_dir` what can be rebuilt (covers, copies of streamed tracks). On Android,
-    /// `NativeLibrary.init` must have run first.
+    /// `cache_dir` what can be rebuilt (covers, copies of streamed tracks); `private_dir` what
+    /// signs in as the user, the Telegram session, so it belongs where no other app and no
+    /// backup reaches. On Android, `NativeLibrary.init` must have run first.
     ///
-    /// Only the settings are read before this returns. The services open the library database
-    /// and the saved session on the bus thread, so the main thread can call this; commands sent
-    /// meanwhile wait for them.
+    /// Only the settings are read before this returns. The services open the library database,
+    /// the saved session and the Telegram session on the bus thread, so the main thread can call
+    /// this; commands sent meanwhile wait for them.
     #[uniffi::constructor]
-    pub fn start(data_dir: String, cache_dir: String) -> Arc<Self> {
-        CORE.get_or_init(|| Arc::new(Core::launch(Path::new(&data_dir), Path::new(&cache_dir))))
-            .clone()
+    pub fn start(data_dir: String, cache_dir: String, private_dir: String) -> Arc<Self> {
+        CORE.get_or_init(|| {
+            Arc::new(Core::launch(
+                Path::new(&data_dir),
+                Path::new(&cache_dir),
+                Path::new(&private_dir),
+                telegram_credentials(),
+            ))
+        })
+        .clone()
     }
 
     /// Sends `command` to the core. It never blocks, so the main thread can call it.
@@ -297,7 +306,14 @@ impl Core {
         }
     }
 
-    fn launch(data_dir: &Path, cache_dir: &Path) -> Self {
+    /// Starts the core, signing in to Telegram as `telegram`, when given, with the session kept
+    /// in `private_dir`.
+    fn launch(
+        data_dir: &Path,
+        cache_dir: &Path,
+        private_dir: &Path,
+        telegram: Option<TelegramCredentials>,
+    ) -> Self {
         for dir in [data_dir, cache_dir] {
             if let Err(error) = std::fs::create_dir_all(dir) {
                 eprintln!("Could not create {}: {error}", dir.display());
@@ -320,6 +336,7 @@ impl Core {
             writer: writer.clone(),
             storage: storage.clone(),
             providers: providers(),
+            telegram: telegram.map(|credentials| (private_dir.to_path_buf(), credentials)),
             data_dir: data_dir.to_path_buf(),
             cache_dir: cache_dir.to_path_buf(),
             library: library.clone(),
@@ -363,6 +380,8 @@ struct Services {
     writer: EventWriter,
     storage: Arc<JsonFileStorage>,
     providers: Providers,
+    /// Where the Telegram session is kept, and what N Music is to Telegram.
+    telegram: Option<(PathBuf, TelegramCredentials)>,
     data_dir: PathBuf,
     cache_dir: PathBuf,
     library: Arc<OnceLock<Library>>,
@@ -380,11 +399,15 @@ impl Services {
             #[cfg(target_os = "android")]
             android::attach_current_thread();
             let mut app = App::new(JobControl::new(self.writer.clone()));
+            let providers = match self.telegram {
+                Some((dir, credentials)) => with_telegram(self.providers, &dir, credentials),
+                None => self.providers,
+            };
             let engine = Engine::start(
                 &mut app,
                 &self.writer,
                 self.storage,
-                self.providers,
+                providers,
                 &self.data_dir,
                 &self.cache_dir,
             );
@@ -416,6 +439,27 @@ impl Services {
 
 fn settings_path(data_dir: &Path) -> PathBuf {
     data_dir.join("settings.json")
+}
+
+/// What N Music is to Telegram, when the build was given its API id and hash: without them, it
+/// can't sign in, and there is no Telegram.
+fn telegram_credentials() -> Option<TelegramCredentials> {
+    TelegramCredentials::new(
+        option_env!("N_MUSIC_TELEGRAM_API_ID"),
+        option_env!("N_MUSIC_TELEGRAM_API_HASH"),
+    )
+}
+
+/// `providers` with the Telegram account whose session is kept in `dir`. The engine then signs
+/// in and out of it on the bus.
+fn with_telegram(providers: Providers, dir: &Path, credentials: TelegramCredentials) -> Providers {
+    match TelegramAccount::open(dir, credentials) {
+        Ok(account) => providers.with_telegram(Arc::new(account)),
+        Err(error) => {
+            log::error!("Could not open the Telegram session: {error}");
+            providers
+        }
+    }
 }
 
 #[cfg(target_os = "android")]
