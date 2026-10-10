@@ -16,8 +16,10 @@ import androidx.media3.common.util.Clock
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.WakeLockManager
+import androidx.media3.common.util.WifiLockManager
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.ItemId
+import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
 import com.enn3developer.n_music.core.Seek
@@ -42,7 +44,7 @@ import kotlin.math.abs
  *
  * It also does what ExoPlayer does for itself: holds audio focus while playing, pauses when the
  * output becomes noisy (headphones unplugged) and keeps the CPU awake while playing, so the
- * native decoder keeps up with the screen off.
+ * native decoder keeps up with the screen off, and Wi-Fi too while a web track streams.
  */
 @OptIn(UnstableApi::class)
 class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
@@ -105,6 +107,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         Clock.DEFAULT,
     )
     private val wakeLock = WakeLockManager(context, Looper.getMainLooper(), Clock.DEFAULT)
+    private val wifiLock = WifiLockManager(context, Looper.getMainLooper(), Clock.DEFAULT)
 
     private var playing = false
         set(value) {
@@ -148,6 +151,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
                 .build()
         )
         wakeLock.setEnabled(true)
+        wifiLock.setEnabled(true)
         scope.launch { CoreRepository.playing.collect(::onPlaying) }
         scope.launch { CoreRepository.queue.collect(::onQueue) }
         scope.launch { CoreRepository.current.collect(::onCurrent) }
@@ -208,7 +212,13 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
             }
         }
         wakeLock.setStayAwake(playing)
+        updateWifiLock()
         invalidateState()
+    }
+
+    /** Keeps Wi-Fi up while a web playlist's track plays, which streams with the screen off. */
+    private fun updateWifiLock() {
+        wifiLock.setStayAwake(playing && current?.track?.locator is Locator.Web)
     }
 
     private fun onFocusChanged(command: Int) {
@@ -247,6 +257,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         if (current === this.current) return
         if (current?.item != this.current?.item) length = 0.0
         this.current = current
+        updateWifiLock()
         updateCurrent()
     }
 
@@ -422,6 +433,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         focus.release()
         noisy.setEnabled(false)
         wakeLock.setEnabled(false)
+        wifiLock.setEnabled(false)
         return Futures.immediateVoidFuture()
     }
 
