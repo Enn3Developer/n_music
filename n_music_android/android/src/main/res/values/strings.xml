@@ -467,6 +467,7 @@
     <string name="resume_hint">Reopens the last queue and position when N\u00A0Music starts.</string>
     <string name="cache_web">Cache web tracks</string>
     <string name="cache_web_hint">Saves the tracks you play from web playlists on this phone, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
+    <string name="cache_web_hint_tablet">Saves the tracks you play from web playlists on this tablet, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
     <string name="cache_size">Cache size</string>
     <string name="cache_used">%1$s of %2$s used.</string>
     <string name="cache_size_description">Cache size: %1$s</string>
@@ -522,6 +523,11 @@
     <string name="licence">Licence</string>
     <string name="licence_hint">Free software under the GPL-3.0 licence.</string>
     <string name="made_by">Made by Enn3DevPlayer and others</string>
+    <!-- The version, and who made the app, on one line on a tablet's About card -->
+    <string name="app_version_by">Version %1$s · made by Enn3DevPlayer and others</string>
+    <string name="share_logs_short">Share logs</string>
+    <string name="source_code_short">Source code</string>
+    <string name="licence_named">Licence · GPL-3.0</string>
     <string name="licence_intro">N\u00A0Music is free software: you can share it and change it under the terms of the GNU General Public License, version 3, as the Free Software Foundation published it. It comes with no warranty.</string>
     <string name="licence_font">Figtree, its typeface, is under the SIL Open Font License, version 1.1.</string>
 

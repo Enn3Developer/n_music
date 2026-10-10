@@ -6,38 +6,43 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,9 +52,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -63,7 +75,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,7 +92,11 @@ import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.PlaybackOptions
 import com.enn3developer.n_music.core.ReplayGainMode
 import com.enn3developer.n_music.ui.LocalApp
+import com.enn3developer.n_music.ui.LocalPageMargins
+import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.Page
+import com.enn3developer.n_music.ui.PageMargins
+import com.enn3developer.n_music.ui.WindowLayout
 import com.enn3developer.n_music.ui.components.MenuItem
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.NIconButton
@@ -99,6 +115,7 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Where the source code lives. */
@@ -198,6 +215,11 @@ fun SettingsPage() {
 /** The page itself, for [state]. */
 @Composable
 fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyListState = rememberLazyListState()) {
+    if (LocalWindowLayout.current == WindowLayout.TABLET) {
+        TabletSettings(state, actions)
+        return
+    }
+    val margins = LocalPageMargins.current
     var miniOpen by rememberSaveable { mutableStateOf(false) }
     // Once the big title has gone up, the bar carries it.
     val scrolled by remember(list) {
@@ -221,7 +243,7 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
                     color = colors.onSurface,
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(start = 16.dp, end = 16.dp, top = 4.dp)
+                        .padding(start = margins.start, end = margins.end, top = 4.dp)
                         .semantics { heading() },
                 )
             }
@@ -272,7 +294,7 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
                 .background(bar)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .height(64.dp)
-                .padding(horizontal = 4.dp),
+                .padding(start = margins.startLess(12.dp), end = margins.endLess(12.dp)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -287,16 +309,120 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
     }
 }
 
-/** A part of the settings: Playback, Appearance, About. */
+/**
+ * A tablet's settings beside its rail: the title over two columns, Playback in one and Appearance
+ * and About in the other. The pane stands in for the mini player there, so it has no buttons to
+ * pick.
+ */
+@Composable
+private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
+    val margins = LocalPageMargins.current
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical))
+            .padding(start = margins.start + 8.dp, end = margins.end + 8.dp, top = 4.dp, bottom = 24.dp),
+    ) {
+        Text(
+            stringResource(R.string.settings),
+            style = text(32, FontWeight.ExtraBold, 40.sp, (-0.6).sp),
+            color = colors.onSurface,
+            modifier = Modifier
+                .padding(8.dp)
+                .semantics { heading() },
+        )
+        // The columns keep the page's margins; their cards fill them.
+        CompositionLocalProvider(LocalPageMargins provides PageMargins(0.dp, 0.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Heading(R.string.settings_playback, first = true)
+                    ReplayGainCard(state.options.replayGain, actions::setReplayGain)
+                    CrossfadeCard(state.options.crossfade, actions::setCrossfade)
+                    SwitchCard(R.string.resume, R.string.resume_hint, state.options.resume, actions::setResume)
+                    if (state.cache != null) CacheCards(state.cache, actions::setCache)
+                }
+                Column(Modifier.weight(1f)) {
+                    Heading(R.string.settings_appearance, first = true)
+                    ThemeCard(state.ui.theme, actions::setTheme)
+                    AccentCard(state.ui.accent, state.wallpaper, actions::setAccent)
+                    SwitchCard(R.string.compact_rows, R.string.compact_rows_hint, state.ui.compactRows, actions::setCompactRows)
+                    RowCard(NIcons.Language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
+                        NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+                    }
+                    Heading(R.string.settings_about)
+                    AboutCard(state.version, actions)
+                }
+            }
+        }
+    }
+}
+
+/** A tablet's one card about the app: its icon, name, version and makers, then the logs, code and licence. */
+@Composable
+private fun AboutCard(version: String, actions: SettingsActions) {
+    Card {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                AppLogo(48.dp, corner = 14.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.app_name), style = text(17, FontWeight.ExtraBold), color = colors.onSurface)
+                    Text(
+                        stringResource(R.string.app_version_by, version),
+                        style = text(14, tabular = true),
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 1.dp),
+                    )
+                }
+            }
+            FlowRow(
+                Modifier.padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AboutButton(stringResource(R.string.share_logs_short), NIcons.Share, actions::shareLogs)
+                AboutButton(stringResource(R.string.source_code_short), NIcons.Code, actions::openSource)
+                AboutButton(stringResource(R.string.licence_named), NIcons.Info, actions::openLicence)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+    PillButton(
+        label,
+        onClick,
+        style = PillStyle.OUTLINED,
+        height = 40.dp,
+        icon = icon,
+        textStyle = text(14, FontWeight.Bold),
+        padding = PaddingValues(start = 12.dp, end = 14.dp),
+        outline = colors.outlineVariant,
+    )
+}
+
+/**
+ * A part of the settings: Playback, Appearance, About. A tablet's sit a little in from their
+ * cards, and closer under them.
+ */
 @Composable
 private fun Heading(title: Int, first: Boolean = false) {
+    val margins = LocalPageMargins.current
+    val tablet = LocalWindowLayout.current == WindowLayout.TABLET
+    val inset = if (tablet) 8.dp else 0.dp
     Text(
         stringResource(title),
         style = text(14, FontWeight.Bold),
         color = colors.primary,
         modifier = Modifier
             // Cards keep 12 dp below them already.
-            .padding(start = 16.dp, end = 16.dp, top = if (first) 12.dp else 20.dp, bottom = 12.dp)
+            .padding(
+                start = margins.start + inset,
+                end = margins.end + inset,
+                top = if (first || tablet) 12.dp else 20.dp,
+                bottom = 12.dp,
+            )
             .semantics { heading() },
     )
 }
@@ -309,9 +435,10 @@ private fun Card(
     gap: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val margins = LocalPageMargins.current
     Column(
         modifier
-            .padding(start = 16.dp, end = 16.dp, bottom = if (gap) 12.dp else 0.dp)
+            .padding(start = margins.start, end = margins.end, bottom = if (gap) 12.dp else 0.dp)
             .fillMaxWidth()
             .clip(shape)
             .background(colors.surfaceLow),
@@ -383,14 +510,10 @@ private fun CrossfadeCard(seconds: Double, onChange: (Int) -> Unit) {
     val off = stringResource(R.string.crossfade_off)
     val value = if (shown == 0) off else stringResource(R.string.crossfade_seconds, shown)
     val spoken = if (shown == 0) off else pluralStringResource(R.plurals.crossfade_value, shown, shown)
-    val interaction = remember { MutableInteractionSource() }
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = colors.primary,
-        activeTrackColor = colors.primary,
-        inactiveTrackColor = colors.secondaryContainer,
-        activeTickColor = colors.onPrimary,
-        inactiveTickColor = colors.onSecondaryContainer,
-    )
+    val active = colors.primary
+    val inactive = colors.secondaryContainer
+    val activeDot = colors.onPrimary
+    val inactiveDot = colors.onSecondaryContainer
     Card {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
@@ -398,6 +521,8 @@ private fun CrossfadeCard(seconds: Double, onChange: (Int) -> Unit) {
                 Text(value, style = text(16, FontWeight.ExtraBold, tabular = true), color = colors.primary)
             }
             CardText(stringResource(R.string.crossfade_hint), Modifier.padding(top = 4.dp))
+            // Material's slider takes the touches and speaks the value; the track is drawn as the
+            // design has it, the thumb at its share of the whole width.
             Slider(
                 value = dragged ?: seconds.toFloat(),
                 onValueChange = { dragged = it },
@@ -407,27 +532,15 @@ private fun CrossfadeCard(seconds: Double, onChange: (Int) -> Unit) {
                 },
                 valueRange = 0f..CROSSFADE_MAX.toFloat(),
                 steps = CROSSFADE_MAX / CROSSFADE_STEP - 1,
-                interactionSource = interaction,
-                colors = sliderColors,
-                thumb = {
-                    SliderDefaults.Thumb(interaction, colors = sliderColors, thumbSize = DpSize(4.dp, 44.dp))
-                },
-                track = { state ->
-                    SliderDefaults.Track(
-                        state,
-                        Modifier.height(16.dp),
-                        colors = sliderColors,
-                        // Off has no tick: the track starts there.
-                        drawTick = { offset, color ->
-                            if (offset.x > 8.dp.toPx()) drawCircle(color, radius = 2.dp.toPx(), center = offset)
-                        },
-                        thumbTrackGapSize = 6.dp,
-                        trackInsideCornerSize = 3.dp,
-                    )
-                },
+                thumb = { Spacer(Modifier.size(4.dp, 44.dp)) },
+                track = { Spacer(Modifier.fillMaxWidth().height(16.dp)) },
                 modifier = Modifier
                     .padding(top = 10.dp)
                     .height(44.dp)
+                    .drawBehind {
+                        val fraction = (dragged ?: seconds.toFloat()) / CROSSFADE_MAX
+                        drawCrossfade(fraction, CROSSFADE_MAX / CROSSFADE_STEP, active, inactive, activeDot, inactiveDot)
+                    }
                     .semantics { stateDescription = spoken },
             )
             Row(Modifier.padding(top = 4.dp)) {
@@ -440,6 +553,49 @@ private fun CrossfadeCard(seconds: Double, onChange: (Int) -> Unit) {
 }
 
 private fun Float.roundToStep(): Int = (this / CROSSFADE_STEP).roundToInt() * CROSSFADE_STEP
+
+/**
+ * The crossfade's track at [fraction] of the way: the active part, a gap, the thumb, a gap and the
+ * rest, with a dot at each of the [steps] but the first. The last dot keeps clear of the rounded
+ * end; the one under the thumb hides.
+ */
+private fun DrawScope.drawCrossfade(
+    fraction: Float,
+    steps: Int,
+    active: Color,
+    inactive: Color,
+    activeDot: Color,
+    inactiveDot: Color,
+) {
+    val width = size.width
+    val thumb = 2.dp.toPx()
+    // Half the thumb and 5 dp of space each side of it.
+    val gap = 7.dp.toPx()
+    // The slider takes 48 dp to be touched; the 44 dp thumb and 16 dp track keep to its middle.
+    val middle = size.height / 2
+    val top = middle - 8.dp.toPx()
+    val bottom = middle + 8.dp.toPx()
+    val outer = CornerRadius(8.dp.toPx())
+    val inner = CornerRadius(3.dp.toPx())
+    val rtl = layoutDirection == LayoutDirection.Rtl
+    scale(if (rtl) -1f else 1f, 1f) {
+        val at = (fraction.coerceIn(0f, 1f) * width).coerceIn(thumb, width - thumb)
+        if (at - gap > 0) {
+            val part = RoundRect(Rect(0f, top, at - gap, bottom), topLeft = outer, bottomLeft = outer, topRight = inner, bottomRight = inner)
+            drawPath(Path().apply { addRoundRect(part) }, active)
+        }
+        if (at + gap < width) {
+            val part = RoundRect(Rect(at + gap, top, width, bottom), topLeft = inner, bottomLeft = inner, topRight = outer, bottomRight = outer)
+            drawPath(Path().apply { addRoundRect(part) }, inactive)
+        }
+        for (step in 1..steps) {
+            val x = if (step == steps) width - 8.dp.toPx() else step.toFloat() / steps * width
+            if (abs(x - at) < gap) continue
+            drawCircle(if (x < at) activeDot else inactiveDot, 2.dp.toPx(), Offset(x, middle))
+        }
+        drawRoundRect(active, Offset(at - thumb, middle - 22.dp.toPx()), Size(2 * thumb, 44.dp.toPx()), CornerRadius(thumb))
+    }
+}
 
 /** A setting that is on or off: its name and what it does beside its switch. */
 @Composable
@@ -475,7 +631,7 @@ private fun CacheCards(cache: StreamCache, onChange: (Boolean, Long) -> Unit) {
         Card(shape = groupShape(0, 2, 24.dp, 4.dp), gap = false) {
             SwitchRow(
                 stringResource(R.string.cache_web),
-                stringResource(R.string.cache_web_hint),
+                stringResource(if (LocalWindowLayout.current == WindowLayout.TABLET) R.string.cache_web_hint_tablet else R.string.cache_web_hint),
                 cache.enabled,
                 { onChange(it, cache.limit) },
                 detailSize = 13,
