@@ -44,7 +44,8 @@ The app follows the N Music Android design: Material 3 Expressive, the Figtree t
 graphite surfaces and a choice of accent colours. It has:
 
 - the library's Tracks, Albums, Artists and Genres tabs, each as a list or a grid, with sorts,
-  filters, a fast scroller, search, and album and artist pages
+  filters, a fast scroller, search, and album and artist pages. The header with search leaves
+  as a list scrolls down and comes back as soon as it scrolls up
 - selection: a long press picks tracks to play next, queue or add to a playlist
 - the mini player, which opens into the now playing page, with the queue, a sleep timer that
   fades playback out, and Android's output switcher. Dragging along its line seeks

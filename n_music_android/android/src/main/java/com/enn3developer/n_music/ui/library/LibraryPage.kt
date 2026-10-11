@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -111,6 +112,7 @@ import com.enn3developer.n_music.ui.components.AlbumItem
 import com.enn3developer.n_music.ui.components.AlbumTile
 import com.enn3developer.n_music.ui.components.ArtistItem
 import com.enn3developer.n_music.ui.components.ArtistTile
+import com.enn3developer.n_music.ui.components.CollapsingBar
 import com.enn3developer.n_music.ui.components.EmptyState
 import com.enn3developer.n_music.ui.components.FastScroller
 import com.enn3developer.n_music.ui.components.FollowFirst
@@ -131,7 +133,9 @@ import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.TrackTile
 import com.enn3developer.n_music.ui.components.ViewSwitch
 import com.enn3developer.n_music.ui.components.WavyProgress
+import com.enn3developer.n_music.ui.components.collapsing
 import com.enn3developer.n_music.ui.components.inert
+import com.enn3developer.n_music.ui.components.rememberCollapsingBar
 import com.enn3developer.n_music.ui.components.rememberScrolled
 import com.enn3developer.n_music.ui.components.sectionLetter
 import com.enn3developer.n_music.ui.dotted
@@ -203,7 +207,17 @@ fun LibraryPage() {
     BackHandler(selection != null) { app.endSelection() }
     // Selecting belongs to the Tracks tab.
     LaunchedEffect(pager.currentPage) { app.endSelection() }
-    Column(Modifier.fillMaxSize()) {
+    // The header leaves as a list scrolls down and comes back as it scrolls up. The selection's
+    // bar takes its place, so it stays while selecting.
+    val header = rememberCollapsingBar(pinned = selection != null)
+    // A page with nothing to scroll couldn't bring it back: it comes back with each tab, and as
+    // the filters leave no tracks.
+    LaunchedEffect(pager.settledPage, tracks?.isEmpty() == true) { header.show() }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .nestedScroll(header.connection)
+    ) {
         LibraryHeader(
             selection = selection,
             total = tracks.orEmpty().size,
@@ -212,6 +226,7 @@ fun LibraryPage() {
             onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
             onEndSelection = app::endSelection,
             onSelectAll = { selection?.addAll(tracks.orEmpty().map { it.locator }) },
+            bar = header,
         )
         LibraryTabs(pager)
         HorizontalPager(
@@ -342,7 +357,7 @@ fun SearchHeader(onSearch: () -> Unit, onSettings: (() -> Unit)?, modifier: Modi
 /**
  * The library's header: its search field, or the selection bar in its place while selecting.
  * The pill stays, taking the selection's colour as the first cover turns, while what it holds
- * fades through.
+ * fades through. It collapses under the status bar as [bar] has it.
  */
 @Composable
 internal fun LibraryHeader(
@@ -352,6 +367,7 @@ internal fun LibraryHeader(
     onSettings: (() -> Unit)?,
     onEndSelection: () -> Unit,
     onSelectAll: () -> Unit,
+    bar: CollapsingBar? = null,
 ) {
     val selecting = selection != null
     val pill by animateColorAsState(
@@ -360,7 +376,7 @@ internal fun LibraryHeader(
         label = "pill",
     )
     val drift = barDrift()
-    HeaderPill({ pill }) {
+    HeaderPill({ pill }, bar = bar) {
         AnimatedContent(selecting, transitionSpec = { barSwap(targetState, drift) }, label = "header") { shown ->
             if (shown) {
                 SelectionBarContent(selection?.count ?: 0, total, onEndSelection, onSelectAll)
@@ -371,14 +387,23 @@ internal fun LibraryHeader(
     }
 }
 
-/** The pill the library's header sits on, in [color]. */
+/**
+ * The pill the library's header sits on, in [color]. With a [bar], it collapses as the bar has
+ * it, under the status bar, whose room stays.
+ */
 @Composable
-private fun HeaderPill(color: () -> Color, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun HeaderPill(
+    color: () -> Color,
+    modifier: Modifier = Modifier,
+    bar: CollapsingBar? = null,
+    content: @Composable () -> Unit,
+) {
     val margins = LocalPageMargins.current
     val tablet = LocalWindowLayout.current == WindowLayout.TABLET
     Box(
         modifier
             .windowInsetsPadding(WindowInsets.statusBars)
+            .then(if (bar != null) Modifier.collapsing(bar) else Modifier)
             .padding(start = margins.start, end = margins.end, top = if (tablet) 4.dp else 8.dp, bottom = 8.dp)
     ) {
         Box(
