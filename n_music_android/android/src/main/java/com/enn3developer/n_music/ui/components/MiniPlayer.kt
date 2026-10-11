@@ -117,7 +117,13 @@ data class PlaybackUi(
 /** What the mini player and the player ask of playback. */
 interface PlaybackActions {
     fun togglePause()
+
+    /** A previous button: the track over past its first 3 seconds, else the one before. */
     fun previous()
+
+    /** Plays the track before this one however far into it playback is, as a swipe back does. */
+    fun skipBack()
+
     fun next()
     fun toggleShuffle()
     fun cycleRepeat()
@@ -199,7 +205,8 @@ fun MiniPlayer(
                     if (far) {
                         val forward = (if (abs(velocity) > 1200f) velocity else swipe) < 0
                         direction = if (forward) 1 else -1
-                        if (forward) actions.next() else actions.previous()
+                        // Another track either way, even partway through this one.
+                        if (forward) actions.next() else actions.skipBack()
                     }
                     back[0] = coroutineContext.job
                     animate(swipe, 0f, animationSpec = NMotion.spatialDefault()) { value, _ -> swipe = value }

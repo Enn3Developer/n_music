@@ -33,6 +33,7 @@ pub enum Command {
         before: Option<ItemId>,
     },
     PlayPrevious,
+    SkipBack,
     PlayNext,
     TogglePause,
     Pause,
@@ -149,6 +150,7 @@ impl Command {
                 writer.emit(messages::MoveCurrent { item, before })
             }
             Command::PlayPrevious => writer.emit(messages::PlayPrevious),
+            Command::SkipBack => writer.emit(messages::SkipBack),
             Command::PlayNext => writer.emit(messages::PlayNext),
             Command::TogglePause => writer.emit(messages::TogglePause),
             Command::Pause => writer.emit(messages::Pause),

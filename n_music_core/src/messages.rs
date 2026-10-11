@@ -45,7 +45,12 @@ pub struct MoveCurrent {
     pub item: ItemId,
     pub before: Option<ItemId>,
 }
+/// What a previous button does: past the current track's first 3 seconds it starts the track
+/// over, and before that it plays the item before it, as [`SkipBack`] does.
 pub struct PlayPrevious;
+/// Plays the item before the current one, however far into the current one playback is. At the
+/// very start that is the current item again, or the last one when looping the context.
+pub struct SkipBack;
 pub struct PlayNext;
 pub struct TogglePause;
 pub struct Pause;
@@ -271,6 +276,7 @@ messages!(
     MoveUpcoming,
     MoveCurrent,
     PlayPrevious,
+    SkipBack,
     PlayNext,
     TogglePause,
     Pause,

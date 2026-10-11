@@ -7,7 +7,7 @@ use crate::messages::{
     LoopStatusChanged, MoveCurrent, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play,
     PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
     SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
-    ShuffleChanged, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
+    ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
     TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
@@ -96,6 +96,17 @@ impl Handle<PlayPrevious> for QueuePlayer {
         if self.loaded && self.current_time().position > 3.0 {
             self.player.seek_to(0.0);
         } else if let Some(item) = self.session.previous(&self.loop_status) {
+            self.play(item, ctx, out);
+        }
+    }
+}
+
+impl Handle<SkipBack> for QueuePlayer {
+    fn handle(&mut self, _msg: &SkipBack, ctx: &Ctx, out: &mut Outbox) {
+        if ctx.shutting_down {
+            return;
+        }
+        if let Some(item) = self.session.previous(&self.loop_status) {
             self.play(item, ctx, out);
         }
     }

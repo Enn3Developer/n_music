@@ -287,6 +287,7 @@ private class Controller(
 object CorePlayback : PlaybackActions {
     override fun togglePause() = CoreRepository.send(Command.TogglePause)
     override fun previous() = CoreRepository.send(Command.PlayPrevious)
+    override fun skipBack() = CoreRepository.send(Command.SkipBack)
     override fun next() = CoreRepository.send(Command.PlayNext)
     override fun toggleShuffle() = CoreRepository.send(Command.ToggleShuffle)
     // Off, all, one, like the notification's button.

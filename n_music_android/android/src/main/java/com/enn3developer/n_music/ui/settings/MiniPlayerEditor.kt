@@ -127,6 +127,7 @@ private val CHIP_TRAY_CORNER = TRAY_CORNER * 56f / 48f
 private object Preview : PlaybackActions {
     override fun togglePause() {}
     override fun previous() {}
+    override fun skipBack() {}
     override fun next() {}
     override fun toggleShuffle() {}
     override fun cycleRepeat() {}
