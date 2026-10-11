@@ -2,7 +2,7 @@ package com.enn3developer.n_music.ui.components
 
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -37,10 +37,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -77,7 +77,8 @@ import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.job
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -164,8 +165,11 @@ fun MiniPlayer(
 ) {
     val shape = miniShape(bar)
     val track = ui.track ?: return
-    val scope = rememberCoroutineScope()
-    val swipe = remember { Animatable(0f) }
+    // How far the finger moved the track sideways. Each move adds to it as it comes in, so the
+    // way back starts where the finger let go and no move applied late cuts it short.
+    var swipe by remember { mutableFloatStateOf(0f) }
+    // The way back, which the next drag stops.
+    val back = remember { arrayOfNulls<Job>(1) }
     var width by remember { mutableIntStateOf(1) }
     // Which way the last skip went, so the new track comes in from the other side.
     var direction by remember { mutableIntStateOf(1) }
@@ -187,16 +191,18 @@ fun MiniPlayer(
             // The gestures reach a little below the mini player, for its line.
             .margins(bottom = SeekReach)
             .draggable(
-                rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } },
+                rememberDraggableState { delta -> swipe += delta },
                 Orientation.Horizontal,
+                onDragStarted = { back[0]?.cancel() },
                 onDragStopped = { velocity ->
-                    val far = abs(swipe.value) > width / 3f || abs(velocity) > 1200f
+                    val far = abs(swipe) > width / 3f || abs(velocity) > 1200f
                     if (far) {
-                        val forward = (if (abs(velocity) > 1200f) velocity else swipe.value) < 0
+                        val forward = (if (abs(velocity) > 1200f) velocity else swipe) < 0
                         direction = if (forward) 1 else -1
                         if (forward) actions.next() else actions.previous()
                     }
-                    swipe.animateTo(0f, NMotion.spatialDefault())
+                    back[0] = coroutineContext.job
+                    animate(swipe, 0f, animationSpec = NMotion.spatialDefault()) { value, _ -> swipe = value }
                 },
             )
             .then(if (pull != null) Modifier.pullUp(pull) else Modifier)
@@ -246,7 +252,7 @@ fun MiniPlayer(
             actions = actions,
             onOpen = onOpen,
             direction = { direction },
-            offset = { swipe.value },
+            offset = { swipe },
             bar = bar,
             position = position,
             trailing = trailing,
