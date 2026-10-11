@@ -22,7 +22,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.ConnectionResult
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.MediaLibraryService
-import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.enn3developer.n_music.widget.Widgets
@@ -106,7 +105,7 @@ class PlaybackService : MediaLibraryService() {
         setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_NEVER)
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this).build().apply {
-                setSmallIcon(R.drawable.ic_notification)
+                setSmallIcon(R.drawable.ic_launcher_monochrome)
             }
         )
         val sessionActivity = PendingIntent.getActivity(
@@ -248,7 +247,7 @@ class PlaybackService : MediaLibraryService() {
                 .build()
         )
         val notification = NotificationCompat.Builder(this, channel)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentTitle(getString(R.string.app_name))
             .setSilent(true)
             .build()
