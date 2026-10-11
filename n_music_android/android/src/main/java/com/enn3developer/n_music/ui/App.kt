@@ -100,7 +100,6 @@ import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.SelectionActions
 import com.enn3developer.n_music.ui.components.SnackbarHost
 import com.enn3developer.n_music.ui.components.Tab
-import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.dialogs.DialogHost
 import com.enn3developer.n_music.ui.library.AlbumPage
@@ -111,6 +110,7 @@ import com.enn3developer.n_music.ui.library.TrackFilters
 import com.enn3developer.n_music.ui.player.NowPlayingPane
 import com.enn3developer.n_music.ui.player.PlayerHost
 import com.enn3developer.n_music.ui.player.PlayerTransition
+import com.enn3developer.n_music.ui.player.rememberPlaybackClock
 import com.enn3developer.n_music.ui.playlists.PlaylistPage
 import com.enn3developer.n_music.ui.playlists.PlaylistsPage
 import com.enn3developer.n_music.ui.settings.LicencePage
@@ -406,7 +406,7 @@ private fun MainLayout(navigator: Navigator) {
     val playlists by CoreRepository.playlists.collectAsStateWithLifecycle()
     val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
     val sleep by SleepTimer.state.collectAsStateWithLifecycle()
-    val seconds = rememberPlaybackSeconds(position, playing)
+    val clock = rememberPlaybackClock(position, playing)
     val app = LocalApp.current
     val resources = LocalResources.current
 
@@ -559,13 +559,12 @@ private fun MainLayout(navigator: Navigator) {
                         ) {
                             MiniPlayer(
                                 ui = PlaybackUi(current?.track, playing, shuffle, loop, sleep != null),
-                                progress = {
-                                    val length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0
-                                    if (length > 0) (seconds.value / length).toFloat() else 0f
-                                },
+                                seconds = { clock.seconds },
+                                length = position.length.takeIf { it > 0 } ?: current?.track?.length ?: 0.0,
                                 buttons = ui.miniButtons,
                                 actions = app.playback,
                                 onOpen = app::openPlayer,
+                                onSeek = clock::seek,
                                 pull = pull,
                                 bar = rail,
                                 modifier = Modifier

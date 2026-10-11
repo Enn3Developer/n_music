@@ -92,7 +92,6 @@ import com.enn3developer.n_music.ui.components.SnackbarHost
 import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.miniProgress
 import com.enn3developer.n_music.ui.components.miniShape
-import com.enn3developer.n_music.ui.components.rememberPlaybackSeconds
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.QueuePanel
 import com.enn3developer.n_music.ui.sheets.Sheet
@@ -374,13 +373,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     val queue by CoreRepository.queue.collectAsStateWithLifecycle()
     val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
     val details = rememberLibrary<TrackDetails?>(null, track.locator) { CoreRepository.details(track.locator) }
-    val seconds = rememberPlaybackSeconds(position, playing)
-    // A seek sent and not yet applied: what the player shows meanwhile.
-    val pending = remember { mutableStateOf<Pair<ULong, Double>?>(null) }
-    LaunchedEffect(position) {
-        val seek = pending.value
-        if (seek != null && position.seek >= seek.first) pending.value = null
-    }
+    val clock = rememberPlaybackClock(position, playing)
     val skips = remember { SkipTracker() }
     skips.update(now.item, queue)
     val ui = PlayerUi(
@@ -398,7 +391,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     val latestTrack by rememberUpdatedState(track)
     val latestOrigin by rememberUpdatedState(origin)
     val onClose by rememberUpdatedState(close)
-    val actions = remember(app) {
+    val actions = remember(app, clock) {
         object : PlayerActions, PlaybackActions by app.playback {
             override fun close() = onClose()
 
@@ -412,9 +405,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
 
             override fun openAlbum() = app.open(albumOf(latestTrack))
 
-            override fun seek(seconds: Double) {
-                pending.value = CoreRepository.seek(seconds) to seconds
-            }
+            override fun seek(seconds: Double) = clock.seek(seconds)
 
             override fun openQueue() = app.show(Sheet.Queue)
         }
@@ -422,7 +413,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     return LivePlayback(
         ui = ui,
         queue = queue.filterNot { app.removals.hides(QueuedItem(it.item)) },
-        seconds = { pending.value?.second ?: seconds.value },
+        seconds = { clock.seconds },
         length = position.length.takeIf { it > 0 } ?: track.length,
         skip = { skips.way },
         actions = actions,

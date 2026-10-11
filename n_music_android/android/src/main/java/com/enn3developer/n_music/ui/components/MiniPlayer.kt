@@ -3,6 +3,7 @@ package com.enn3developer.n_music.ui.components
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -10,8 +11,12 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,11 +34,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -63,6 +71,8 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.dotted
+import com.enn3developer.n_music.ui.formatLength
+import com.enn3developer.n_music.ui.formatPosition
 import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
@@ -125,18 +135,28 @@ interface PullGesture {
     fun end(velocity: Float)
 }
 
+/** How far below the mini player its line still takes a finger, into the room under it. */
+private val SeekReach = 8.dp
+
+/** How far up from the mini player's bottom edge a drag along it seeks, rather than skips. */
+private val SeekStrip = 16.dp
+
 /**
  * The mini player above the navigation: the playing track and its [buttons]. Tapping it opens
  * the player and swiping it up pulls the player open through [pull]; swiping it sideways skips.
+ * Dragging along its line, from its bottom edge or just below it, seeks once let go; meanwhile
+ * the line thickens and follows the finger, and the time it is at shows in the artist's place.
  * Beside a rail it is a [bar]: taller, naming the album too, with Play filled in.
  */
 @Composable
 fun MiniPlayer(
     ui: PlaybackUi,
-    progress: () -> Float,
+    seconds: () -> Double,
+    length: Double,
     buttons: List<MiniButton>,
     actions: PlaybackActions,
     onOpen: () -> Unit,
+    onSeek: (Double) -> Unit,
     modifier: Modifier = Modifier,
     pull: PullGesture? = null,
     bar: Boolean = false,
@@ -149,15 +169,23 @@ fun MiniPlayer(
     var width by remember { mutableIntStateOf(1) }
     // Which way the last skip went, so the new track comes in from the other side.
     var direction by remember { mutableIntStateOf(1) }
+    // Where the finger holds the line, from 0 to 1, while it drags along it.
+    var held by remember { mutableStateOf<Float?>(null) }
+    val latestLength by rememberUpdatedState(length)
+    val seek by rememberUpdatedState(onSeek)
+    val holding by remember { derivedStateOf { held != null } }
+    val thickness by animateDpAsState(if (holding) 6.dp else 3.dp, NMotion.spatialFast(), label = "line")
+    // The time changes once a second, not every frame.
+    val heldAt by remember(length) { derivedStateOf { held?.let { (it * length).toLong() } } }
+    val position = heldAt?.let {
+        stringResource(R.string.position_slash_length, formatPosition(it.toDouble()), formatLength(length))
+    }
+    val inset = if (bar) 16.dp else 12.dp
     Box(
         modifier
             .fillMaxWidth()
-            .height(if (bar) 72.dp else 64.dp)
-            .floating(shape)
-            .clip(shape)
-            .background(colors.surfaceHigh)
-            .onSizeChanged { width = it.width }
-            .miniProgress(progress, inset = if (bar) 16.dp else 12.dp)
+            // The gestures reach a little below the mini player, for its line.
+            .margins(bottom = SeekReach)
             .draggable(
                 rememberDraggableState { delta -> scope.launch { swipe.snapTo(swipe.value + delta) } },
                 Orientation.Horizontal,
@@ -171,7 +199,44 @@ fun MiniPlayer(
                     swipe.animateTo(0f, NMotion.spatialDefault())
                 },
             )
-            .then(if (pull != null) Modifier.pullUp(pull) else Modifier),
+            .then(if (pull != null) Modifier.pullUp(pull) else Modifier)
+            // After the swipe and the pull, so a drag along the line reaches it first. Another
+            // track ends the drag: it was along the last one's line.
+            .pointerInput(track.locator, inset) {
+                val strip = (SeekStrip + SeekReach).toPx()
+                // The line runs between these, as miniProgress draws it.
+                val start = inset.toPx()
+                fun at(x: Float) = ((x - start) / (size.width - 2 * start)).coerceIn(0f, 1f)
+                awaitEachGesture {
+                    // The row and its buttons take the press, and keep it if this doesn't drag.
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (latestLength <= 0 || down.position.y < size.height - strip) return@awaitEachGesture
+                    val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
+                        ?: return@awaitEachGesture
+                    held = at(drag.position.x)
+                    try {
+                        val done = horizontalDrag(drag.id) { change ->
+                            held = at(change.position.x)
+                            change.consume()
+                        }
+                        val last = held
+                        if (done && last != null) seek(last * latestLength)
+                    } finally {
+                        held = null
+                    }
+                }
+            }
+            .padding(bottom = SeekReach)
+            .height(if (bar) 72.dp else 64.dp)
+            .floating(shape)
+            .clip(shape)
+            .background(colors.surfaceHigh)
+            .onSizeChanged { width = it.width }
+            .miniProgress(
+                { held ?: if (length > 0) (seconds() / length).toFloat() else 0f },
+                inset = inset,
+                thickness = { thickness },
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
         MiniPlayerRow(
@@ -183,6 +248,7 @@ fun MiniPlayer(
             direction = { direction },
             offset = { swipe.value },
             bar = bar,
+            position = position,
             trailing = trailing,
         )
     }
@@ -191,17 +257,21 @@ fun MiniPlayer(
 /** The mini player's corners: a [bar]'s are rounder. */
 fun miniShape(bar: Boolean) = RoundedCornerShape(if (bar) 20.dp else 16.dp)
 
-/** The mini player's progress, a line along its bottom edge, [inset] from its sides. */
+/**
+ * The mini player's progress, a line along its bottom edge, [inset] from its sides and
+ * [thickness] high.
+ */
 @Composable
-fun Modifier.miniProgress(progress: () -> Float, inset: Dp = 12.dp): Modifier {
+fun Modifier.miniProgress(progress: () -> Float, inset: Dp = 12.dp, thickness: () -> Dp = { 3.dp }): Modifier {
     val line = colors.outlineVariant
     val fill = colors.primary
     return drawBehind {
         val inset = inset.toPx()
-        val thickness = 3.dp.toPx()
+        val thickness = thickness().toPx()
         val top = size.height - thickness
         val width = size.width - 2 * inset
-        val radius = CornerRadius(2.dp.toPx())
+        // 2 dp on the 3 dp line.
+        val radius = CornerRadius(thickness * 2 / 3)
         drawRoundRect(line, Offset(inset, top), Size(width, thickness), radius)
         drawRoundRect(fill, Offset(inset, top), Size(width * progress().coerceIn(0f, 1f), thickness), radius)
     }
@@ -228,7 +298,7 @@ private fun Modifier.pullUp(pull: PullGesture): Modifier = pointerInput(pull) {
 /**
  * What the mini player holds: the track with its cover, which [showCover] can leave out, and the
  * [buttons]. A new track slides in from the side the last skip went, [direction]. A [bar] has
- * the bigger cover, and the album after the artist.
+ * the bigger cover, and the album after the artist. A [position] shows in the artist's place.
  */
 @Composable
 fun MiniPlayerRow(
@@ -242,6 +312,7 @@ fun MiniPlayerRow(
     offset: () -> Float = { 0f },
     showCover: Boolean = true,
     bar: Boolean = false,
+    position: String? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     Row(
@@ -298,8 +369,8 @@ fun MiniPlayerRow(
                     )
                     val artist = shown.artist.ifEmpty { stringResource(R.string.unknown_artist) }
                     Text(
-                        if (bar) dotted(artist, shown.album) else artist,
-                        style = text(13),
+                        position ?: if (bar) dotted(artist, shown.album) else artist,
+                        style = text(13, tabular = position != null),
                         color = colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

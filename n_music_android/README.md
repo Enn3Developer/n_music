@@ -47,7 +47,7 @@ graphite surfaces and a choice of accent colours. It has:
   filters, a fast scroller, search, and album and artist pages
 - selection: a long press picks tracks to play next, queue or add to a playlist
 - the mini player, which opens into the now playing page, with the queue, a sleep timer that
-  fades playback out, and Android's output switcher
+  fades playback out, and Android's output switcher. Dragging along its line seeks
 - playlists, plain and smart, with rules, sorting and removals you can undo. Each row in the
   list plays or shuffles its playlist, and its menu queues, renames or deletes it
 - sources: local folders, web playlists and Telegram chats, a page for each, and the first

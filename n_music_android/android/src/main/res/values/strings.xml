@@ -284,6 +284,8 @@
     <string name="origin_search">“%1$s”</string>
     <string name="played_count">Played %1$d×</string>
     <string name="position_of">Position %1$s of %2$s</string>
+    <!-- The mini player while its line is dragged: where it would seek to / the length. -->
+    <string name="position_slash_length">%1$s / %2$s</string>
     <string name="this_phone">This phone</string>
     <string name="this_tablet">This tablet</string>
     <string name="output_headphones">Headphones</string>
