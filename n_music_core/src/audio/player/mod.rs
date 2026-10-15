@@ -8,6 +8,7 @@ mod successor;
 
 use super::output::Output;
 use crate::library::track::ReplayGainMode;
+use crate::messages::SleepFade;
 use crate::queue::ItemId;
 use crate::source::{Locator, Providers};
 use crate::TrackTime;
@@ -27,6 +28,7 @@ pub struct Player {
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
     crossfade: Duration,
+    sleep: Option<SleepFade>,
     /// The device stream, kept open between tracks. A running task holds the lock.
     output: Arc<Mutex<Option<Output>>>,
 }
@@ -41,6 +43,7 @@ impl Player {
             control: None,
             progress_interval: None,
             crossfade: Duration::ZERO,
+            sleep: None,
             output: Arc::new(Mutex::new(None)),
         }
     }
@@ -139,6 +142,13 @@ impl Player {
             control.set_crossfade(crossfade);
         }
     }
+    /// Fades playback out as a sleep timer ends, see [`crate::messages::SetSleepFade`].
+    pub fn set_sleep_fade(&mut self, sleep: Option<SleepFade>) {
+        self.sleep = sleep;
+        if let Some(control) = &self.control {
+            control.set_sleep_fade(sleep);
+        }
+    }
     /// The track to play once the running one ends, see [`Next`].
     pub fn set_next(&self, next: Option<Next>) {
         if let Some(control) = &self.control {
@@ -156,6 +166,7 @@ impl Player {
         let control = PlaybackControl::new(self.volume, self.device.clone(), self.offload);
         control.set_progress_interval(self.progress_interval);
         control.set_crossfade(self.crossfade);
+        control.set_sleep_fade(self.sleep);
         self.control = Some(control.clone());
         PlaybackTask {
             source: Some((PlaybackSource { providers, locator }, item)),

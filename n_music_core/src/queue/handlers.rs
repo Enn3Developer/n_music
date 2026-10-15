@@ -6,9 +6,9 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     LoopStatusChanged, MoveCurrent, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play,
     PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
-    ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
-    TracksEnumerated, VolumeChanged,
+    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetSleepFade,
+    SetVolume, ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle,
+    TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
 use n_event_bus::{Ctx, EventWriter, Handle, Job, JobToken, Outbox, ShutdownRequested};
@@ -355,6 +355,14 @@ impl Handle<SetOffload> for QueuePlayer {
         if !ctx.shutting_down {
             self.player.set_offload(msg.0);
             self.settings.update(|settings| settings.offload = msg.0);
+        }
+    }
+}
+
+impl Handle<SetSleepFade> for QueuePlayer {
+    fn handle(&mut self, msg: &SetSleepFade, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.player.set_sleep_fade(msg.0);
         }
     }
 }

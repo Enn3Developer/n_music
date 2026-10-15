@@ -173,8 +173,10 @@ what cpal's could not:
 
 An offloaded stream is deep: what it was handed is committed. Pausing stops the hardware where it
 is, seeking flushes what it holds, and the stream starts only once the queue holds what the
-hardware asks for at once, so its first request isn't padded with silence. Volume changes,
-the sleep timer's fade among them, act in the stream callback and are heard that much later.
+hardware asks for at once, so its first request isn't padded with silence. Fades in the stream
+callback would be heard seconds late, so the sleep timer's fade is applied by the core as it
+queues audio, by when each frame will be heard, and queued audio is queued again when the fade
+changes. That works the same with or without offload.
 
 ### Suspend
 
@@ -236,7 +238,7 @@ card's play button reaches `NPlayer` the way a headset's play key does.
 - That `dumpsys media.audio_flinger` shows N Music's track on the deep buffer output, and on an
   Android 16 phone with offload, on the offload one. The log names the mode each stream got.
 - Offloaded playback: how much each callback asks for and whether the queue covers it, pausing
-  and seeking, and gapless and crossfaded track changes.
+  and seeking, gapless and crossfaded track changes, and the sleep timer's fade landing on time.
 - Playing on with the device changing under the stream: headphones, Bluetooth, the output
   switcher. AAudio disconnects some streams, and the core opens another.
 

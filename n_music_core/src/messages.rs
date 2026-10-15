@@ -6,6 +6,7 @@ use crate::source::telegram::{TelegramChatInfo, TelegramError, TelegramStatus};
 use crate::source::Locator;
 use crate::{Track, TrackTime};
 use n_event_bus::Message;
+use std::time::{Duration, Instant};
 
 macro_rules! messages {
     ($($msg:ty),+ $(,)?) => {
@@ -95,6 +96,38 @@ pub struct SetCrossfade(pub f64);
 /// Lets the platform play from a deep hardware buffer where it can, like offloaded playback on
 /// Android 16, so the processor sleeps between refills. The output opens again to apply it.
 pub struct SetOffload(pub bool);
+/// Fades playback out to silence as a sleep timer ends, or (`None`) plays at full volume again.
+/// The fade is applied as audio is queued, so it is heard on time however much the device holds;
+/// audio already queued is queued again when a change reaches it. Pausing stays the caller's.
+pub struct SetSleepFade(pub Option<SleepFade>);
+
+/// A fade to silence that ends at [`Self::end`], over [`Self::length`] before it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SleepFade {
+    pub end: Instant,
+    pub length: Duration,
+}
+
+impl SleepFade {
+    /// When the fade starts.
+    pub fn start(&self) -> Instant {
+        self.end.checked_sub(self.length).unwrap_or(self.end)
+    }
+
+    /// The gain at `seconds` after [`Self::start`]: 1 before it, 0 from the end on, and falling
+    /// on a square curve in between, which sounds even.
+    pub fn gain(&self, seconds: f64) -> f32 {
+        let length = self.length.as_secs_f64();
+        if seconds <= 0.0 {
+            1.0
+        } else if seconds >= length {
+            0.0
+        } else {
+            let left = (length - seconds) / length;
+            (left * left) as f32
+        }
+    }
+}
 
 pub struct PlaybackChanged(pub bool);
 /// The current item, with what the library knows about its track. Sent again when the
@@ -298,6 +331,7 @@ messages!(
     SetResume,
     SetCrossfade,
     SetOffload,
+    SetSleepFade,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,
@@ -325,3 +359,23 @@ messages!(
     RenameLibrary,
     LibraryRenamed,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sleep_fade_falls_on_a_square_curve() {
+        let end = Instant::now() + Duration::from_secs(60);
+        let fade = SleepFade {
+            end,
+            length: Duration::from_secs(10),
+        };
+        assert_eq!(fade.start(), end - Duration::from_secs(10));
+        assert_eq!(fade.gain(-1.0), 1.0);
+        assert_eq!(fade.gain(0.0), 1.0);
+        assert!((fade.gain(5.0) - 0.25).abs() < 1e-6);
+        assert_eq!(fade.gain(10.0), 0.0);
+        assert_eq!(fade.gain(30.0), 0.0);
+    }
+}

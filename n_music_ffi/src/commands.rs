@@ -7,6 +7,7 @@ use n_music_core::messages::{self, Seek};
 use n_music_core::queue::{ItemId, LoopStatus};
 use n_music_core::settings::OutputDevice;
 use n_music_core::source::Locator;
+use std::time::{Duration, Instant};
 
 /// A command for the core. Each variant is the message of the same name in
 /// `n_music_core::messages`, which documents it.
@@ -70,6 +71,12 @@ pub enum Command {
     },
     SetOffload {
         enabled: bool,
+    },
+    /// The sleep timer's fade ends `ends_in_ms` from now, after `fade_ms` of fading; `None` plays
+    /// at full volume again. An end already past is now.
+    SetSleepFade {
+        ends_in_ms: Option<i64>,
+        fade_ms: u64,
     },
     CreatePlaylist {
         name: String,
@@ -171,6 +178,15 @@ impl Command {
             Command::SetResume { enabled } => writer.emit(messages::SetResume(enabled)),
             Command::SetCrossfade { seconds } => writer.emit(messages::SetCrossfade(seconds)),
             Command::SetOffload { enabled } => writer.emit(messages::SetOffload(enabled)),
+            Command::SetSleepFade {
+                ends_in_ms,
+                fade_ms,
+            } => writer.emit(messages::SetSleepFade(ends_in_ms.map(|ends_in| {
+                messages::SleepFade {
+                    end: Instant::now() + Duration::from_millis(ends_in.max(0) as u64),
+                    length: Duration::from_millis(fade_ms),
+                }
+            }))),
             Command::CreatePlaylist {
                 name,
                 rule,

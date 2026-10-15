@@ -1,6 +1,7 @@
 //! The state a playback task shares with the queue side.
 
 use super::Next;
+use crate::messages::SleepFade;
 use crate::TrackTime;
 use std::sync::{Arc, Mutex};
 use std::thread::Thread;
@@ -28,6 +29,7 @@ struct State {
     next: Option<Next>,
     /// How long the track fades into the next; zero hands over without a gap.
     crossfade: Duration,
+    sleep: Option<SleepFade>,
     /// The task's thread, woken on every change.
     thread: Option<Thread>,
 }
@@ -47,6 +49,7 @@ pub(super) struct Controls {
     pub(super) progress_interval: Option<Duration>,
     pub(super) next: Option<Next>,
     pub(super) crossfade: Duration,
+    pub(super) sleep: Option<SleepFade>,
 }
 
 impl PlaybackControl {
@@ -67,6 +70,7 @@ impl PlaybackControl {
             progress_interval: None,
             next: None,
             crossfade: Duration::ZERO,
+            sleep: None,
             thread: None,
         })))
     }
@@ -120,6 +124,14 @@ impl PlaybackControl {
 
     pub(super) fn set_crossfade(&self, crossfade: Duration) {
         self.update(|state| state.crossfade = crossfade);
+    }
+
+    pub(super) fn set_sleep_fade(&self, sleep: Option<SleepFade>) {
+        self.update(|state| state.sleep = sleep);
+    }
+
+    pub(super) fn sleep_fade(&self) -> Option<SleepFade> {
+        self.0.lock().unwrap().sleep
     }
 
     pub(super) fn seek(&self, seconds: f64) -> u64 {
@@ -205,6 +217,7 @@ impl PlaybackControl {
             progress_interval: state.progress_interval,
             next: state.next.clone(),
             crossfade: state.crossfade,
+            sleep: state.sleep,
         }
     }
 

@@ -7,6 +7,7 @@ use super::decoding::{Decoded, Decoding, PlaybackSource};
 use super::successor::Successor;
 use super::{Failure, Next, PlaybackEvent};
 use crate::library::track::ReplayGainMode;
+use crate::messages::SleepFade;
 use crate::TrackTime;
 use std::io;
 use std::time::{Duration, Instant};
@@ -62,6 +63,11 @@ struct Pending {
 impl Pending {
     fn is_empty(&self) -> bool {
         self.samples.is_empty()
+    }
+
+    /// Frames converted and not queued yet.
+    fn unwritten(&self, channels: usize) -> usize {
+        self.samples.len().saturating_sub(self.offset) / channels
     }
 
     fn clear(&mut self) {
@@ -137,6 +143,10 @@ struct Playback<'a, E: FnMut(PlaybackEvent)> {
     time: TrackTime,
     /// How long the current track fades into the next.
     crossfade: Duration,
+    /// The sleep timer's fade, applied to audio as it is decoded.
+    sleep: Option<SleepFade>,
+    /// A change of the sleep fade reached queued audio: it is decoded again from what is heard.
+    requeue: bool,
 }
 
 impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
@@ -156,6 +166,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             }
         }
         let paused = control.is_paused();
+        let sleep = control.sleep_fade();
         let length = current.length;
         // A stream kept from the previous track has already played frames.
         let timeline = Timeline {
@@ -195,6 +206,8 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
                 length,
             },
             crossfade: Duration::ZERO,
+            sleep,
+            requeue: false,
         }
     }
 
@@ -206,7 +219,8 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
                 return Ok(false);
             }
             let pause_changed = self.apply(&controls);
-            let rewind = self.check_output(controls.reload_output)?;
+            let rewind =
+                self.check_output(controls.reload_output)? | std::mem::take(&mut self.requeue);
             self.seek(controls.seek, rewind)?;
             self.time.length = self.current.length;
             self.update_successor(controls.next);
@@ -251,6 +265,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         let changed = controls.version != self.version;
         self.version = controls.version;
         self.crossfade = controls.crossfade;
+        self.update_sleep(controls.sleep);
         if self.recovery.error.is_none() {
             self.recovery.error = self
                 .output
@@ -580,7 +595,61 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             self.draining = true;
         }
         self.mix_fade(format, start);
+        self.fade_to_sleep(format, start);
         Ok(())
+    }
+
+    /// Takes a new sleep fade. Queued audio was faded for the old one: when either one reaches
+    /// it, it is queued again from what is heard.
+    fn update_sleep(&mut self, sleep: Option<SleepFade>) {
+        if sleep == self.sleep {
+            return;
+        }
+        let old = std::mem::replace(&mut self.sleep, sleep);
+        let Some(output) = self.output.as_ref() else {
+            return;
+        };
+        let format = output.format();
+        let ahead = output.pending_frames() + self.pending.unwritten(format.channels);
+        if ahead == 0 {
+            return;
+        }
+        let queued_until =
+            Instant::now() + Duration::from_secs_f64(ahead as f64 / f64::from(format.rate));
+        let reaches =
+            |fade: Option<SleepFade>| fade.is_some_and(|fade| fade.start() < queued_until);
+        if reaches(old) || reaches(sleep) {
+            // Rewinds to what is heard now, not at the last report.
+            self.follow_position();
+            self.requeue = true;
+        }
+    }
+
+    /// Fades the samples decoded from `start` as the sleep fade asks, by when each will be heard.
+    fn fade_to_sleep(&mut self, format: OutputFormat, start: usize) {
+        let Some(fade) = self.sleep else {
+            return;
+        };
+        let Some(output) = self.output.as_ref() else {
+            return;
+        };
+        let channels = format.channels;
+        let rate = f64::from(format.rate);
+        let unwritten = start.saturating_sub(self.pending.offset) / channels;
+        let ahead = (output.pending_frames() + unwritten) as f64 / rate;
+        let heard = Instant::now() + Duration::from_secs_f64(ahead);
+        // From the fade's start to when the first new frame is heard, negative before it.
+        let from_start = match heard.checked_duration_since(fade.start()) {
+            Some(after) => after.as_secs_f64(),
+            None => -fade.start().duration_since(heard).as_secs_f64(),
+        };
+        fade_samples(
+            &mut self.pending.samples[start..],
+            channels,
+            rate,
+            &fade,
+            from_start,
+        );
     }
 
     /// Starts fading into the successor once the current track is within the crossfade of its
@@ -674,5 +743,64 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         if fade.done >= fade.frames {
             handover.fade = None;
         }
+    }
+}
+
+/// Fades `samples` as `fade` asks, their first frame heard `from_start` seconds after the fade
+/// starts, negative before it.
+fn fade_samples(
+    samples: &mut [f32],
+    channels: usize,
+    rate: f64,
+    fade: &SleepFade,
+    from_start: f64,
+) {
+    let frames = samples.len() / channels;
+    if from_start + frames as f64 / rate <= 0.0 {
+        return;
+    }
+    for (index, frame) in samples.chunks_exact_mut(channels).enumerate() {
+        let gain = fade.gain(from_start + index as f64 / rate);
+        if gain < 1.0 {
+            for sample in frame {
+                *sample *= gain;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sleep_fade_spans_the_frames_heard_in_it() {
+        let fade = SleepFade {
+            end: Instant::now() + Duration::from_secs(10),
+            length: Duration::from_secs(1),
+        };
+        // 10 frames a second, stereo: half a second before the fade, then a second of fading.
+        let mut samples = vec![1.0; 2 * 20];
+        fade_samples(&mut samples, 2, 10.0, &fade, -0.5);
+        let gains: Vec<f32> = samples.chunks(2).map(|frame| frame[0]).collect();
+        assert!(gains[..6].iter().all(|&gain| gain == 1.0), "{gains:?}");
+        assert!((gains[10] - 0.25).abs() < 1e-6, "{gains:?}");
+        assert!(
+            gains[6..16].windows(2).all(|pair| pair[1] < pair[0]),
+            "{gains:?}"
+        );
+        assert!(gains[15..].iter().all(|&gain| gain == 0.0), "{gains:?}");
+        assert!(samples.chunks(2).all(|frame| frame[0] == frame[1]));
+    }
+
+    #[test]
+    fn audio_heard_before_the_fade_is_left_alone() {
+        let fade = SleepFade {
+            end: Instant::now(),
+            length: Duration::from_secs(10),
+        };
+        let mut samples = vec![0.5; 8];
+        fade_samples(&mut samples, 2, 10.0, &fade, -1.0);
+        assert_eq!(samples, vec![0.5; 8]);
     }
 }

@@ -318,6 +318,13 @@ object CoreRepository {
         send(Command.SetOffload(enabled))
     }
 
+    /**
+     * Fades playback out to silence [endsInMs] from now, over [fadeMs] before that; `null` plays
+     * at full volume again. The core fades audio as it queues it, so the fade lands on time
+     * however much the output holds.
+     */
+    fun setSleepFade(endsInMs: Long?, fadeMs: Long) = send(Command.SetSleepFade(endsInMs, fadeMs.toULong()))
+
     /** The outputs AudioManager lists now, for the core to play on: AAudio can't list them. */
     fun setOutputDevices(devices: List<AndroidOutput>) = core.setOutputDevices(devices)
 

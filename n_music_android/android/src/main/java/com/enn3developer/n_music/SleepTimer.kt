@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlin.math.abs
 
 /** What a sleep timer waits for. */
 sealed interface SleepMode {
@@ -37,7 +38,8 @@ data class SleepState(
 
 /**
  * The sleep timer, for the whole process, so it runs on with the screen off: playback fades out
- * over its last 10 seconds, then pauses, and the volume comes back for the next time it plays.
+ * over its last 10 seconds, then pauses, and plays at full volume the next time. The core fades
+ * the audio as it queues it, so the fade lands on time however much the output holds.
  */
 object SleepTimer {
     /** How long the fade out takes. */
@@ -46,7 +48,13 @@ object SleepTimer {
     /** How close to the end a track pauses, so the next one never starts. */
     private const val MARGIN_MS = 150L
 
-    /** Where the volume before a fade is kept while it fades, in case the process ends meanwhile. */
+    /**
+     * How far the end may move before the core hears of it: a track's end shifts a little with
+     * every position, and a new end reaching queued audio queues it again.
+     */
+    private const val RESEND_MS = 250L
+
+    /** Where older versions kept the volume before their fade, while it faded. */
     private const val KEY = "android.sleep"
 
     private val scope = MainScope()
@@ -54,10 +62,10 @@ object SleepTimer {
     val state: StateFlow<SleepState?> = _state.asStateFlow()
     private var job: Job? = null
 
-    /** The volume before the fade, to put back once paused. */
-    private var volume: Double? = null
+    /** When the fade the core has ends, in [SystemClock.elapsedRealtime] milliseconds. */
+    private var fadeEnd: Long? = null
 
-    /** Puts back the volume a fade left lowered when the process ended during it. */
+    /** Puts back the volume an older version's fade left lowered when the process ended. */
     fun recover() {
         val stored = CoreRepository.setting(KEY)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
         if (!stored.has("volume")) return
@@ -82,7 +90,7 @@ object SleepTimer {
 
     fun cancel() {
         job?.cancel()
-        restoreVolume()
+        clearFade()
         _state.value = null
     }
 
@@ -138,37 +146,34 @@ object SleepTimer {
                         stop()
                         return@launch
                     }
-                    left != null && left <= FADE_MS -> fade(left)
-                    else -> restoreVolume()
+                    left != null -> fadeBy(now + left - MARGIN_MS, now)
+                    // Not on the queue's last track yet. A paused track keeps its fade.
+                    CoreRepository.playing.value -> clearFade()
                 }
                 delay(if (left != null && left <= FADE_MS + 1_000) 100 else 500)
             }
         }
     }
 
-    /** Lowers the volume to where it is [left] milliseconds from the end of the fade. */
-    private fun fade(left: Long) {
-        val full = volume ?: CoreRepository.volume.value.also {
-            volume = it
-            CoreRepository.setSetting(KEY, JSONObject().put("volume", it).toString())
-        }
-        val share = (left.toDouble() / FADE_MS).coerceIn(0.0, 1.0)
-        // Squared, so the fade sounds even to the ear rather than dropping off at the end.
-        CoreRepository.send(Command.SetVolume(full * share * share))
+    /** Has the core fade playback out to silence by [end], when playback pauses. */
+    private fun fadeBy(end: Long, now: Long) {
+        val sent = fadeEnd
+        if (sent != null && abs(end - sent) < RESEND_MS) return
+        fadeEnd = end
+        CoreRepository.setSleepFade(end - now, FADE_MS)
     }
 
-    private fun restoreVolume() {
-        val full = volume ?: return
-        volume = null
-        CoreRepository.send(Command.SetVolume(full))
-        CoreRepository.setSetting(KEY, "{}")
+    private fun clearFade() {
+        if (fadeEnd == null) return
+        fadeEnd = null
+        CoreRepository.setSleepFade(null, FADE_MS)
     }
 
     private suspend fun stop() {
         CoreRepository.send(Command.Pause)
-        // The pause comes first, so the volume coming back is not heard.
+        // The pause comes first, so the audio queued again at full volume is not heard.
         delay(300)
-        restoreVolume()
+        clearFade()
         _state.value = null
     }
 }

@@ -14,9 +14,9 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     MoveCurrent, MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
     PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
-    SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded,
-    TrackPlayed, TracksEnumerated,
+    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetSleepFade,
+    SetVolume, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged,
+    TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
@@ -504,6 +504,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<SetResume>();
         reg.on::<SetCrossfade>();
         reg.on::<SetOffload>();
+        reg.on::<SetSleepFade>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);
