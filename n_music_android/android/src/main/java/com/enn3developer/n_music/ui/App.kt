@@ -487,7 +487,8 @@ private fun MainLayout(navigator: Navigator) {
                         NMotion.spatialDefault(),
                         label = "margin",
                     )
-                    val margins = PageMargins(start, if (rail) 24.dp else 16.dp)
+                    // The spring overshoots on its way to 0 dp, and padding can't be negative.
+                    val margins = PageMargins(start.coerceAtLeast(0.dp), if (rail) 24.dp else 16.dp)
                     CompositionLocalProvider(LocalBottomSpace provides bottomSpace, LocalPageMargins provides margins) {
                         PageHost(navigator)
                     }
