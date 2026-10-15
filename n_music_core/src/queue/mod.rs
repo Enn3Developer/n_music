@@ -14,9 +14,9 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     MoveCurrent, MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
     PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume, SkipBack,
-    TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded, TrackPlayed,
-    TracksEnumerated,
+    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
+    SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged, TrackMetadataLoaded,
+    TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
 use crate::source::{Locator, Providers};
@@ -111,7 +111,7 @@ impl QueuePlayer {
         library: Library,
         paths: LibraryPaths,
     ) -> Self {
-        let (volume, loop_status, shuffle, replay_gain, device, resume, crossfade) = {
+        let (volume, loop_status, shuffle, replay_gain, device, resume, crossfade, offload) = {
             let saved = settings.get();
             (
                 saved.volume.clamp(0.0, 1.0),
@@ -121,11 +121,13 @@ impl QueuePlayer {
                 saved.output_device.as_ref().map(|device| device.id.clone()),
                 saved.resume,
                 saved.crossfade,
+                saved.offload,
             )
         };
         let mut player = Player::new(volume as f32, replay_gain, device);
         player.set_progress_interval(Some(PROGRESS_INTERVAL));
         player.set_crossfade(crossfade_duration(crossfade));
+        player.set_offload(offload);
 
         let (session, restored, finished) = resume
             .then(|| restore(&paths))
@@ -501,6 +503,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<SetReplayGain>();
         reg.on::<SetResume>();
         reg.on::<SetCrossfade>();
+        reg.on::<SetOffload>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();
         PlaybackJob::subscribe(reg);

@@ -24,7 +24,6 @@ once_cell = "1.21"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rtrb = "0.4"
-cpal = { version = "0.18", features = ["pulseaudio"] }
 dasp = "0.11"
 multitag = "0.4"
 n_event_bus = { path = "../n_event_bus" }
@@ -51,3 +50,10 @@ glass_pumpkin = { version = "=2.0.0-rc0", optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"
+cpal = { version = "0.18", features = ["pulseaudio"] }
+
+# Android plays through AAudio directly: cpal's backend can't ask for power-saving or offloaded
+# streams. Usage and content type need API 28; the app's minimum is 30.
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = { version = "0.9", default-features = false, features = ["audio", "api-level-28"] }
+libc = "0.2"

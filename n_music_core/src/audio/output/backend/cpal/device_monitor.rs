@@ -1,6 +1,8 @@
 //! Follows the device the stream should be on, where streams stay on the device they opened.
 
-use cpal::traits::DeviceTrait;
+use super::super::{BackendError, ErrorKind};
+use crate::audio::output::DEVICE_CHECK_INTERVAL;
+use ::cpal::traits::DeviceTrait;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -15,11 +17,9 @@ pub(super) struct DeviceMonitor {
 impl DeviceMonitor {
     /// Watches a stream on `current`, `chosen` being the device asked for.
     pub(super) fn new(
-        current: cpal::DeviceId,
-        chosen: Option<cpal::DeviceId>,
-    ) -> super::Result<Self> {
-        use super::DEVICE_CHECK_INTERVAL;
-
+        current: ::cpal::DeviceId,
+        chosen: Option<::cpal::DeviceId>,
+    ) -> Result<Self, BackendError> {
         let changed = Arc::new(AtomicBool::new(false));
         let stopped = Arc::new(AtomicBool::new(false));
         let changed_thread = changed.clone();
@@ -27,7 +27,7 @@ impl DeviceMonitor {
         let worker = std::thread::Builder::new()
             .name("audio-device-monitor".into())
             .spawn(move || {
-                let Ok(host) = cpal::host_from_id(current.host()) else {
+                let Ok(host) = ::cpal::host_from_id(current.host()) else {
                     changed_thread.store(true, Ordering::Relaxed);
                     return;
                 };
@@ -48,9 +48,7 @@ impl DeviceMonitor {
                     }
                 }
             })
-            .map_err(|error| {
-                cpal::Error::with_message(cpal::ErrorKind::ResourceExhausted, error.to_string())
-            })?;
+            .map_err(|error| BackendError::new(ErrorKind::Other, error.to_string()))?;
         Ok(Self {
             changed,
             stopped,

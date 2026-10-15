@@ -122,6 +122,9 @@ pub struct PlaybackSettings {
     pub resume: bool,
     /// Seconds each track fades into the next over; 0 plays them back to back, without a gap.
     pub crossfade: f64,
+    /// The platform may play from a deep hardware buffer where it can, like offloaded playback
+    /// on Android 16.
+    pub offload: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -134,6 +137,7 @@ impl Default for PlaybackSettings {
             output_device: None,
             resume: false,
             crossfade: 0.0,
+            offload: true,
         }
     }
 }

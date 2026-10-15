@@ -11,6 +11,8 @@ struct State {
     volume: f32,
     /// The device chosen to play on.
     device: Option<String>,
+    /// The output may play from a deep hardware buffer.
+    offload: bool,
     paused: bool,
     reload_output: bool,
     seek: Option<(Time, u64)>,
@@ -48,10 +50,11 @@ pub(super) struct Controls {
 }
 
 impl PlaybackControl {
-    pub(super) fn new(volume: f32, device: Option<String>) -> Self {
+    pub(super) fn new(volume: f32, device: Option<String>, offload: bool) -> Self {
         Self(Arc::new(Mutex::new(State {
             volume,
             device,
+            offload,
             paused: false,
             reload_output: false,
             seek: None,
@@ -92,6 +95,15 @@ impl PlaybackControl {
     /// The device chosen to play on.
     pub(super) fn output_device(&self) -> Option<String> {
         self.0.lock().unwrap().device.clone()
+    }
+
+    pub(super) fn set_offload(&self, offload: bool) {
+        self.update(|state| state.offload = offload);
+    }
+
+    /// The output may play from a deep hardware buffer.
+    pub(super) fn offload(&self) -> bool {
+        self.0.lock().unwrap().offload
     }
 
     pub(super) fn set_volume(&self, volume: f32) {

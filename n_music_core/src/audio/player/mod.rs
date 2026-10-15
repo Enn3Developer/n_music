@@ -22,6 +22,8 @@ pub struct Player {
     replay_gain: ReplayGainMode,
     /// The device chosen to play on, see [`Output::open`].
     device: Option<String>,
+    /// The output may play from a deep hardware buffer, see [`Output::open`].
+    offload: bool,
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
     crossfade: Duration,
@@ -35,6 +37,7 @@ impl Player {
             volume,
             replay_gain,
             device,
+            offload: true,
             control: None,
             progress_interval: None,
             crossfade: Duration::ZERO,
@@ -66,6 +69,17 @@ impl Player {
         self.device = device.clone();
         if let Some(control) = &self.control {
             control.set_output_device(device);
+        }
+        self.reload_output();
+    }
+    /// Lets the output play from a deep hardware buffer where it can; it opens again to apply.
+    pub fn set_offload(&mut self, offload: bool) {
+        if offload == self.offload {
+            return;
+        }
+        self.offload = offload;
+        if let Some(control) = &self.control {
+            control.set_offload(offload);
         }
         self.reload_output();
     }
@@ -139,7 +153,7 @@ impl Player {
         item: ItemId,
     ) -> PlaybackTask {
         self.end_current();
-        let control = PlaybackControl::new(self.volume, self.device.clone());
+        let control = PlaybackControl::new(self.volume, self.device.clone(), self.offload);
         control.set_progress_interval(self.progress_interval);
         control.set_crossfade(self.crossfade);
         self.control = Some(control.clone());

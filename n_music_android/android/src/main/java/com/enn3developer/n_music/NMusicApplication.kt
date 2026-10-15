@@ -44,6 +44,7 @@ class NMusicApplication : Application() {
         // process.
         NativeLibrary.init(this)
         CoreRepository.start(this)
+        OutputDevices.start(this)
         UiPreferences.load()
         PlayingFrom.load()
         SleepTimer.recover()

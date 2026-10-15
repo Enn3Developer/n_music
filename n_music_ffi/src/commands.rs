@@ -68,6 +68,9 @@ pub enum Command {
     SetCrossfade {
         seconds: f64,
     },
+    SetOffload {
+        enabled: bool,
+    },
     CreatePlaylist {
         name: String,
         rule: Option<Filter>,
@@ -167,6 +170,7 @@ impl Command {
             Command::SetReplayGain { mode } => writer.emit(messages::SetReplayGain(mode)),
             Command::SetResume { enabled } => writer.emit(messages::SetResume(enabled)),
             Command::SetCrossfade { seconds } => writer.emit(messages::SetCrossfade(seconds)),
+            Command::SetOffload { enabled } => writer.emit(messages::SetOffload(enabled)),
             Command::CreatePlaylist {
                 name,
                 rule,

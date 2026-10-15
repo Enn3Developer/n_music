@@ -400,6 +400,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         match Output::open(
             output_volume(volume),
             self.control.output_device().as_deref(),
+            self.control.offload(),
         ) {
             Ok(opened) => {
                 opened.attach();

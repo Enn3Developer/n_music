@@ -9,6 +9,8 @@ pub(crate) mod player;
 mod raw;
 
 pub(crate) use output::output_devices;
+#[cfg(target_os = "android")]
+pub use output::{set_devices as set_android_outputs, AndroidOutput};
 
 use crate::library::track::ReplayGain;
 use crate::source::{Locator, OpenedStream, StreamProvider};

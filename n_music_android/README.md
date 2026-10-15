@@ -87,8 +87,13 @@ in English only for now.
   thread never waits on Kotlin. A scan reports every track it reads; the bridge folds those into
   one `LibraryChanged` until Kotlin takes it.
 - `NativeLibrary.init(context)` is the one hand-written JNI call left. It hands the JVM and the
-  application context to the native side: cpal needs them to list output devices, and the
-  Storage Access Framework provider needs them to read the picked folder.
+  application context to the native side, where the Storage Access Framework provider needs them
+  to read the picked folder.
+- `OutputDevices` lists the outputs with `AudioManager` for the whole process and hands them to
+  the core with `Core.setOutputDevices`, since AAudio can't list them. Each comes with its
+  AAudio id and a key that stays the same across connections, its type and address. The core
+  plays on the chosen one while it is there, and opens its output again whenever the list
+  changes, as when headphones connect.
 - `CoreRepository` reads `nextEvent` in one loop and keeps a `StateFlow` for each piece of
   state. The Compose screens collect those flows, and so does `NPlayer`.
 - `NPlayer` is a Media3 `SimpleBasePlayer` that mirrors the core for the media session. It
@@ -152,6 +157,25 @@ made public:
   Media3 uses gets a low-latency lock instead, which only holds while the screen is on and the
   app is in the foreground.
 
+### The audio output
+
+On Android the core plays through AAudio directly, with the `ndk` crate; cpal is not compiled
+in. `n_music_core/src/audio/output/backend` has a backend per platform, and Android's asks for
+what cpal's could not:
+
+- The power-saving path, AAudio's `PERFORMANCE_MODE_POWER_SAVING`. AAudio routes it to the deep
+  buffer mixer, which wakes the processor less often than the default mixer. The default mode
+  only gets there on phones that set `audio.deep_buffer.media`.
+- From Android 16, with Save battery while playing on in Settings, an offloaded stream first:
+  `PERFORMANCE_MODE_POWER_SAVING_OFFLOADED`. The phone's audio hardware then takes seconds of
+  audio at a time and the processor sleeps in between. A phone that can't offload opens the
+  stream on another path, and the core takes the power-saving one instead.
+
+An offloaded stream is deep: what it was handed is committed. Pausing stops the hardware where it
+is, seeking flushes what it holds, and the stream starts only once the queue holds what the
+hardware asks for at once, so its first request isn't padded with silence. Volume changes,
+the sleep timer's fade among them, act in the stream callback and are heard that much later.
+
 ### Suspend
 
 Once playback stops and the service leaves the foreground, the process is an ordinary cached
@@ -209,6 +233,12 @@ card's play button reaches `NPlayer` the way a headset's play key does.
 - That the Wi-Fi lock keeps a web track streaming with the screen off on Android 11 to 13.
 - Signing in to Telegram and streaming a chat's tracks. Both need a build with N Music's
   credentials and Telegram's servers within reach.
+- That `dumpsys media.audio_flinger` shows N Music's track on the deep buffer output, and on an
+  Android 16 phone with offload, on the offload one. The log names the mode each stream got.
+- Offloaded playback: how much each callback asks for and whether the queue covers it, pausing
+  and seeking, and gapless and crossfaded track changes.
+- Playing on with the device changing under the stream: headphones, Bluetooth, the output
+  switcher. AAudio disconnects some streams, and the core opens another.
 
 ## References
 
@@ -218,3 +248,5 @@ card's play button reaches `NPlayer` the way a headset's play key does.
 - [Playback resumption](https://developer.android.com/media/media3/session/background-playback#resumption)
 - [WifiManager's lock modes](https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_HIGH_PERF)
 - [Cached apps freezer](https://source.android.com/docs/core/perf/cached-apps-freezer)
+- [AAudio](https://developer.android.com/ndk/guides/audio/aaudio/aaudio)
+- [AAudio's performance modes, in `AAudio.h`](https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/media/libaaudio/include/aaudio/AAudio.h)

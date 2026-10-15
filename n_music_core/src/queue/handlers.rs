@@ -6,7 +6,7 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     LoopStatusChanged, MoveCurrent, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play,
     PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
+    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetVolume,
     ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackMetadataLoaded,
     TracksEnumerated, VolumeChanged,
 };
@@ -346,6 +346,15 @@ impl Handle<SetCrossfade> for QueuePlayer {
             self.player.set_crossfade(super::crossfade_duration(msg.0));
             self.settings
                 .update(|settings| settings.crossfade = msg.0.max(0.0));
+        }
+    }
+}
+
+impl Handle<SetOffload> for QueuePlayer {
+    fn handle(&mut self, msg: &SetOffload, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.player.set_offload(msg.0);
+            self.settings.update(|settings| settings.offload = msg.0);
         }
     }
 }

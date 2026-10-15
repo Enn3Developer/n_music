@@ -1,7 +1,7 @@
 //! The audio output: one long-lived stream to the chosen or the default device, fed with f32
 //! frames in the device's own rate and channel layout. The stream callback applies the volume
 //! (ramped, so changes, pauses and seeks do not click), soft-clips and converts to the device's
-//! sample type.
+//! sample type. [`backend`] opens the stream on what the platform has.
 //!
 //! The writer keeps the queue full. Nothing waits for queued audio to play out: volume and
 //! pausing act in the callback and seeking discards the queue, so its size only buys
@@ -12,17 +12,24 @@
 //! WASAPI, ALSA and AAudio all keep it. So the stream pauses only once the device has played
 //! the fade-out.
 //!
+//! A deep stream, like offloaded playback on Android, holds seconds of audio, too much to wait
+//! for. Pausing it stops the device where it is, and seeking flushes what it holds. It starts
+//! only once the queue holds what the device asks for at once, so its first request isn't
+//! filled with silence.
+//!
 //! Started from [symphonia-play's `output.rs`](https://github.com/pdeljanov/Symphonia/blob/master/symphonia-play/src/output.rs)
 //! by [Philip Deljanov](https://github.com/pdeljanov).
 
+mod backend;
 mod callback;
-mod device_monitor;
 mod dsp;
 
+#[cfg(target_os = "android")]
+pub use backend::{set_devices, AndroidOutput};
+
 use crate::settings::OutputDevice;
-use callback::{Callback, OutputSample, SharedState};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use device_monitor::DeviceMonitor;
+use backend::{Backend, BackendError, ErrorKind, Platform, Request, Shape, Stream};
+use callback::{Renderer, SharedState};
 use rtrb::{Producer, RingBuffer};
 use std::result;
 use std::sync::atomic::Ordering;
@@ -39,7 +46,7 @@ pub struct OutputFormat {
 #[derive(Debug)]
 pub enum AudioOutputError {
     StreamClosedError,
-    Backend(cpal::Error),
+    Backend(BackendError),
 }
 
 pub type Result<T> = result::Result<T, AudioOutputError>;
@@ -55,8 +62,8 @@ impl std::fmt::Display for AudioOutputError {
 
 impl std::error::Error for AudioOutputError {}
 
-impl From<cpal::Error> for AudioOutputError {
-    fn from(error: cpal::Error) -> Self {
+impl From<BackendError> for AudioOutputError {
+    fn from(error: BackendError) -> Self {
         Self::Backend(error)
     }
 }
@@ -65,14 +72,7 @@ impl AudioOutputError {
     pub fn is_recoverable(&self) -> bool {
         match self {
             Self::StreamClosedError => true,
-            Self::Backend(error) => matches!(
-                error.kind(),
-                cpal::ErrorKind::DeviceBusy
-                    | cpal::ErrorKind::DeviceNotAvailable
-                    | cpal::ErrorKind::HostUnavailable
-                    | cpal::ErrorKind::StreamInvalidated
-                    | cpal::ErrorKind::BackendError
-            ),
+            Self::Backend(error) => error.is_recoverable(),
         }
     }
 }
@@ -84,41 +84,18 @@ const FADE_TIMEOUT: WallDuration = WallDuration::from_millis(100);
 /// Longest wait for the device to play a fade-out before the stream pauses, long enough for
 /// Bluetooth. A device further behind plays what is left once resumed.
 const PLAY_OUT_TIMEOUT: WallDuration = WallDuration::from_millis(500);
+/// A stream whose callback stopped coming for this long is taken for dead. A deep stream gets
+/// twice what its device holds on top, as it asks for more only that often.
 const STALL_TIMEOUT: WallDuration = WallDuration::from_secs(2);
 pub const DEVICE_CHECK_INTERVAL: WallDuration = WallDuration::from_millis(500);
 /// Audio queued ahead of the device. The writer refills it once half is played.
 const QUEUE: WallDuration = WallDuration::from_millis(500);
-/// The device's period: what pause and seek fades wait for, as queued audio is not.
-const PERIOD: WallDuration = WallDuration::from_millis(10);
+/// The most a deep stream queues: what its device asks for at once, plus [`QUEUE`].
+const DEEP_QUEUE_LIMIT: WallDuration = WallDuration::from_secs(30);
 
 /// The devices the output can play on, as the system lists them.
 pub(crate) fn output_devices() -> Vec<OutputDevice> {
-    let devices = match cpal::default_host().output_devices() {
-        Ok(devices) => devices,
-        Err(error) => {
-            log::warn!("Could not list the output devices: {error}");
-            return vec![];
-        }
-    };
-    devices
-        .filter_map(|device| {
-            let id = device.id().ok()?;
-            let name = device
-                .description()
-                .map_or_else(|_| id.id().to_string(), |about| about.name().to_string());
-            Some(OutputDevice {
-                id: id.to_string(),
-                name,
-            })
-        })
-        .collect()
-}
-
-/// The device to play on: `chosen` while it is there, else the default.
-fn device(host: &cpal::Host, chosen: Option<&cpal::DeviceId>) -> Option<cpal::Device> {
-    chosen
-        .and_then(|id| host.device_by_id(id))
-        .or_else(|| host.default_output_device())
+    Platform::devices()
 }
 
 /// The stream to the output device. Writing never blocks: callers wait with
@@ -126,122 +103,84 @@ fn device(host: &cpal::Host, chosen: Option<&cpal::DeviceId>) -> Option<cpal::De
 pub struct Output {
     format: OutputFormat,
     producer: Producer<f32>,
-    stream: cpal::Stream,
+    stream: <Platform as Backend>::Stream,
     state: Arc<SharedState>,
     /// Samples ever written.
     produced: u64,
     /// The queue's size in samples.
     capacity: usize,
     paused: bool,
-    monitor: Option<DeviceMonitor>,
+    /// See [`Shape::deep`].
+    deep: bool,
+    /// A deep stream waits for the queue to hold this many samples before it starts.
+    prime: usize,
+    /// A deep stream that was opened or flushed and has not started yet.
+    priming: bool,
+    stall_timeout: WallDuration,
 }
 
 impl Output {
-    /// Opens `chosen`, an [`OutputDevice::id`], while it is there, else the default device, in
-    /// its default configuration, playing at `volume`.
-    pub fn open(volume: f32, chosen: Option<&str>) -> Result<Self> {
-        let host = cpal::default_host();
-        let chosen = chosen.and_then(|id| {
-            id.parse::<cpal::DeviceId>()
-                .inspect_err(|error| log::warn!("Ignoring the output device {id:?}: {error}"))
-                .ok()
-        });
-        let device = self::device(&host, chosen.as_ref())
-            .ok_or_else(|| cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable))?;
-        if let Some(chosen) = &chosen {
-            if device.id().ok().as_ref() != Some(chosen) {
-                log::info!("Output device {chosen} is not there, playing on the default");
-            }
-        }
-        let config = device.default_output_config()?;
-        let watch = match host.id() {
-            // CPAL's PulseAudio backend targets a concrete sink and doesn't watch defaults.
-            // WASAPI/CoreAudio supply native notifications; AAudio also has the Android bridge.
-            #[cfg(any(
-                target_os = "linux",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "netbsd"
-            ))]
-            cpal::HostId::PulseAudio => true,
-            // A chosen device is watched everywhere, to get back to it.
-            _ => chosen.is_some(),
-        };
-        let monitor = if watch {
-            Some(DeviceMonitor::new(device.id()?, chosen)?)
-        } else {
-            None
-        };
-
-        match config.sample_format() {
-            cpal::SampleFormat::F32 => Self::build::<f32>(&device, &config, monitor, volume),
-            cpal::SampleFormat::I32 => Self::build::<i32>(&device, &config, monitor, volume),
-            cpal::SampleFormat::I16 => Self::build::<i16>(&device, &config, monitor, volume),
-            cpal::SampleFormat::U16 => Self::build::<u16>(&device, &config, monitor, volume),
-            format => Err(cpal::Error::with_message(
-                cpal::ErrorKind::UnsupportedConfig,
-                format!("Unsupported output sample format: {format}"),
-            )
-            .into()),
-        }
-    }
-
-    fn build<T: OutputSample>(
-        device: &cpal::Device,
-        config: &cpal::SupportedStreamConfig,
-        monitor: Option<DeviceMonitor>,
-        volume: f32,
-    ) -> Result<Self> {
-        let format = OutputFormat {
-            rate: config.sample_rate(),
-            channels: usize::from(config.channels()),
-        };
-        let period = ((format.rate as f64 * PERIOD.as_secs_f64()) as u32).max(1);
-        let buffer_size = match config.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, max } => {
-                cpal::BufferSize::Fixed(period.clamp(*min, *max))
-            }
-            cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Default,
-        };
-        let frames = ((format.rate as f64 * QUEUE.as_secs_f64()) as usize).max(1);
-        let stream_config = cpal::StreamConfig {
-            channels: config.channels(),
-            sample_rate: config.sample_rate(),
-            buffer_size,
-        };
-        let capacity = frames * format.channels;
-        let (producer, consumer) = RingBuffer::new(capacity);
+    /// Opens `device`, an [`OutputDevice::id`], while it is there, else the default device, in
+    /// its default configuration, playing at `volume`. `offload` lets the platform play from a
+    /// deep hardware buffer where it can.
+    pub fn open(volume: f32, device: Option<&str>, offload: bool) -> Result<Self> {
         let state = Arc::new(SharedState::new(volume));
-        // A callback never gets more than the whole queue, so mixing never allocates.
-        let mut callback = Callback::<T>::new(consumer, state.clone(), format, frames);
-        let error_state = state.clone();
-        let stream = device.build_output_stream(
-            stream_config,
-            move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
-                let timestamp = info.timestamp();
-                callback.render(data, timestamp.playback.duration_since(timestamp.callback));
-            },
-            move |err| error_state.stream_error(err.kind()),
-            Some(STALL_TIMEOUT),
-        )?;
-        stream.play()?;
-        log::debug!(
-            "Opened audio output: {} Hz, {} channels, {:?}",
-            format.rate,
-            format.channels,
-            config.sample_format()
-        );
-
-        Ok(Self {
+        let request = Request {
+            device,
+            offload,
+            state: state.clone(),
+        };
+        let mut queue = None;
+        let opened = Platform::open(&request, |shape| {
+            let frames = queue_frames(shape);
+            let (producer, consumer) = RingBuffer::new(frames * shape.format.channels);
+            queue = Some(producer);
+            // A callback never gets more than the queue, so mixing never allocates.
+            Renderer::new(consumer, state.clone(), shape.format, frames)
+        })?;
+        let producer = queue.ok_or_else(|| {
+            BackendError::new(ErrorKind::Other, "The audio backend opened no queue")
+        })?;
+        let Shape {
+            format,
+            deep,
+            device_frames,
+        } = opened.shape;
+        let capacity = producer.slots();
+        // What the device asks for at once, as far as the queue can hold it.
+        let device_frames = device_frames.min(capacity / format.channels);
+        let device = WallDuration::from_secs_f64(device_frames as f64 / f64::from(format.rate));
+        let mut output = Self {
             format,
             producer,
-            stream,
+            stream: opened.stream,
             state,
             produced: 0,
             capacity,
             paused: false,
-            monitor,
-        })
+            deep,
+            prime: device_frames * format.channels,
+            priming: deep,
+            stall_timeout: if deep {
+                STALL_TIMEOUT + device * 2
+            } else {
+                STALL_TIMEOUT
+            },
+        };
+        if !deep {
+            output.stream.play()?;
+        }
+        log::info!(
+            "Opened audio output: {} Hz, {} channels{}",
+            format.rate,
+            format.channels,
+            if deep {
+                format!(", deep, {device_frames} frames at once")
+            } else {
+                String::new()
+            }
+        );
+        Ok(output)
     }
 
     pub fn format(&self) -> OutputFormat {
@@ -272,7 +211,21 @@ impl Output {
         let count = room / self.format.channels * self.format.channels;
         let (written, _) = self.producer.push_partial_slice(&samples[..count]);
         self.produced += written.len() as u64;
+        if self.priming && self.queued() >= self.prime {
+            self.start()?;
+        }
         Ok(written.len())
+    }
+
+    /// Starts a deep stream that was waiting for its queue to fill.
+    fn start(&mut self) -> Result<()> {
+        self.priming = false;
+        self.state
+            .heartbeat_ns
+            .store(self.state.now_ns(), Ordering::Relaxed);
+        self.state.release_device();
+        self.stream.play()?;
+        Ok(())
     }
 
     /// Parks the attached thread until half the queue is free, or `timeout`. Anyone holding
@@ -282,10 +235,25 @@ impl Output {
         self.park(low + 1, || self.queued() <= low, timeout);
     }
 
-    /// Parks the attached thread until everything queued was handed to the device, or
-    /// `timeout`.
-    pub fn wait_drained(&self, timeout: WallDuration) {
-        self.park(1, || self.queued() == 0, timeout);
+    /// Parks the attached thread until everything queued was played, or `timeout`. A deep
+    /// stream still filling its queue starts: nothing more comes.
+    pub fn wait_drained(&mut self, timeout: WallDuration) {
+        if self.priming && !self.paused {
+            if let Err(error) = self.start() {
+                log::warn!("Could not start the audio output: {error}");
+                self.state.fail();
+                return;
+            }
+        }
+        if self.queued() > 0 {
+            self.park(1, || self.queued() == 0, timeout);
+            return;
+        }
+        // Handed over: only the device is left, and no callback says when it played that.
+        let left = self.state.device_left().min(timeout);
+        if !left.is_zero() {
+            std::thread::park_timeout(left);
+        }
     }
 
     fn park(&self, wake_below: usize, done: impl Fn() -> bool, timeout: WallDuration) {
@@ -347,8 +315,22 @@ impl Output {
             .saturating_sub(self.pending_frames() as u64)
     }
 
-    /// Fades out, then drops everything queued.
+    /// Fades out, then drops everything queued. A deep stream drops what its device holds too,
+    /// and starts again once the queue is refilled.
     pub fn discard_queued(&mut self) {
+        if self.deep {
+            let flushed = self.stream.flush();
+            self.state
+                .discard_until
+                .store(self.produced, Ordering::Release);
+            self.state.clear_device();
+            self.priming = true;
+            if let Err(error) = flushed {
+                log::warn!("Could not flush the audio output: {error}");
+                self.state.fail();
+            }
+            return;
+        }
         self.fade_out();
         self.state
             .discard_until
@@ -359,7 +341,7 @@ impl Output {
     }
 
     /// Pausing fades out first and pauses the stream once the fade-out was heard; resuming
-    /// fades back in.
+    /// fades back in. A deep stream pauses where its device is.
     pub fn set_paused(&mut self, paused: bool) -> Result<()> {
         if paused == self.paused {
             return Ok(());
@@ -368,12 +350,25 @@ impl Output {
             .heartbeat_ns
             .store(self.state.now_ns(), Ordering::Relaxed);
         if paused {
-            self.fade_out();
-            self.play_out();
-            self.stream.pause()?;
+            if !self.deep {
+                self.fade_out();
+                self.play_out();
+            }
+            if !self.priming {
+                self.stream.pause()?;
+            }
+            self.state.hold_device();
         } else {
-            self.state.muted.store(false, Ordering::Relaxed);
-            self.stream.play()?;
+            if !self.deep {
+                self.state.muted.store(false, Ordering::Relaxed);
+            }
+            if !self.priming {
+                self.state.release_device();
+                self.stream.play()?;
+            } else if self.queued() >= self.prime {
+                self.paused = false;
+                return self.start();
+            }
         }
         self.paused = paused;
         Ok(())
@@ -382,17 +377,59 @@ impl Output {
     pub fn check_health(&self) -> Result<()> {
         if self.state.failed.load(Ordering::Relaxed)
             || self.producer.is_abandoned()
-            || self.monitor.as_ref().is_some_and(DeviceMonitor::changed)
+            || self.stream.moved()
             || (!self.paused
+                && !self.priming
                 && self
                     .state
                     .now_ns()
                     .saturating_sub(self.state.heartbeat_ns.load(Ordering::Relaxed))
-                    > STALL_TIMEOUT.as_nanos() as u64)
+                    > self.stall_timeout.as_nanos() as u64)
         {
             Err(AudioOutputError::StreamClosedError)
         } else {
             Ok(())
         }
+    }
+}
+
+/// How many frames to queue for a stream of `shape`.
+fn queue_frames(shape: &Shape) -> usize {
+    let rate = f64::from(shape.format.rate);
+    let frames = (rate * QUEUE.as_secs_f64()) as usize;
+    let frames = if shape.deep {
+        frames
+            .saturating_add(shape.device_frames)
+            .min((rate * DEEP_QUEUE_LIMIT.as_secs_f64()) as usize)
+    } else {
+        frames
+    };
+    frames.max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shape(deep: bool, device_frames: usize) -> Shape {
+        Shape {
+            format: OutputFormat {
+                rate: 48_000,
+                channels: 2,
+            },
+            deep,
+            device_frames,
+        }
+    }
+
+    #[test]
+    fn a_shallow_stream_queues_half_a_second() {
+        assert_eq!(queue_frames(&shape(false, 480)), 24_000);
+    }
+
+    #[test]
+    fn a_deep_stream_queues_what_its_device_asks_for_on_top() {
+        assert_eq!(queue_frames(&shape(true, 4 * 48_000)), 24_000 + 4 * 48_000);
+        assert_eq!(queue_frames(&shape(true, 600 * 48_000)), 30 * 48_000);
     }
 }

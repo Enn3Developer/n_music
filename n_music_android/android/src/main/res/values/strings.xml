@@ -475,6 +475,8 @@
     </plurals>
     <string name="resume">Resume where you left off</string>
     <string name="resume_hint">Reopens the last queue and position when N\u00A0Music starts.</string>
+    <string name="offload">Save battery while playing</string>
+    <string name="offload_hint">Lets the phone’s audio chip play several seconds at a time while the processor sleeps. Turn it off if playback stutters or won’t start.</string>
     <string name="cache_web">Cache web tracks</string>
     <string name="cache_web_hint">Saves the tracks you play from web playlists on this phone, so they play again without downloading, even offline. When space runs out, the most played stay.</string>
     <string name="cache_web_hint_tablet">Saves the tracks you play from web playlists on this tablet, so they play again without downloading, even offline. When space runs out, the most played stay.</string>

@@ -92,6 +92,9 @@ pub struct SetResume(pub bool);
 /// Fades each track into the next over this many seconds; 0 plays them back to back, without a
 /// gap. Applies from the next change of track.
 pub struct SetCrossfade(pub f64);
+/// Lets the platform play from a deep hardware buffer where it can, like offloaded playback on
+/// Android 16, so the processor sleeps between refills. The output opens again to apply it.
+pub struct SetOffload(pub bool);
 
 pub struct PlaybackChanged(pub bool);
 /// The current item, with what the library knows about its track. Sent again when the
@@ -294,6 +297,7 @@ messages!(
     SetReplayGain,
     SetResume,
     SetCrossfade,
+    SetOffload,
     PlaybackChanged,
     TrackChanged,
     VolumeChanged,

@@ -64,6 +64,20 @@ pub struct PlaybackOptions {
     pub resume: bool,
     /// Seconds each track fades into the next over; 0 plays them back to back.
     pub crossfade: f64,
+    /// Playback may be offloaded to a hardware buffer, on Android 16 phones that have one.
+    pub offload: bool,
+}
+
+/// An output AudioManager lists: AAudio can't list them itself.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct AndroidOutput {
+    /// `AudioDeviceInfo.getId()`, which AAudio opens the device by. It changes each time the
+    /// device connects.
+    pub id: i32,
+    /// Tells the device apart across connections and launches; it is the device's id in
+    /// `OutputDevices` and `SetOutputDevice`.
+    pub key: String,
+    pub name: String,
 }
 
 #[uniffi::export]
@@ -273,7 +287,28 @@ impl Core {
             replay_gain: settings.replay_gain,
             resume: settings.resume,
             crossfade: settings.crossfade,
+            offload: settings.offload,
         }
+    }
+
+    /// The outputs there are to play on, as AudioManager lists them now: the core plays on the
+    /// one chosen while it is there, and opens the output again whenever they change.
+    pub fn set_output_devices(&self, devices: Vec<AndroidOutput>) {
+        #[cfg(target_os = "android")]
+        n_music_core::set_android_outputs(
+            devices
+                .into_iter()
+                .map(|device| n_music_core::AndroidOutput {
+                    id: device.id,
+                    key: device.key,
+                    name: device.name,
+                })
+                .collect(),
+        );
+        #[cfg(not(target_os = "android"))]
+        drop(devices);
+        self.writer
+            .emit(n_music_core::messages::OutputDeviceChanged);
     }
 
     /// The settings section `key` as JSON, or `None` when nothing is stored under it. The

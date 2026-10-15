@@ -131,6 +131,9 @@ private const val SOURCE_URL = "https://github.com/Enn3Developer/n_music"
 private const val CROSSFADE_MAX = 12
 private const val CROSSFADE_STEP = 2
 
+/** Offloaded playback came with Android 16: before, streams take the power-saving path anyway. */
+private val OffloadAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA
+
 /** What the cache of web tracks may take, in bytes. */
 private val CACHE_LIMITS = listOf(256L, 512L, 1024L, 2048L, 5120L, 10240L).map { it * 1024 * 1024 }
 
@@ -140,6 +143,7 @@ interface SettingsActions {
     fun setReplayGain(mode: ReplayGainMode)
     fun setCrossfade(seconds: Int)
     fun setResume(resume: Boolean)
+    fun setOffload(offload: Boolean)
     fun setCache(enabled: Boolean, limit: Long)
     fun setTheme(theme: Theme)
     fun setAccent(accent: Accent)
@@ -192,6 +196,7 @@ fun SettingsPage() {
             override fun setReplayGain(mode: ReplayGainMode) = CoreRepository.setReplayGain(mode)
             override fun setCrossfade(seconds: Int) = CoreRepository.setCrossfade(seconds.toDouble())
             override fun setResume(resume: Boolean) = CoreRepository.setResume(resume)
+            override fun setOffload(offload: Boolean) = CoreRepository.setOffload(offload)
             override fun setCache(enabled: Boolean, limit: Long) =
                 CoreRepository.send(Command.SetStreamCache(enabled, limit.toULong()))
             override fun setTheme(theme: Theme) = UiPreferences.setTheme(theme)
@@ -266,6 +271,11 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
             item(key = "crossfade") { CrossfadeCard(state.options.crossfade, actions::setCrossfade) }
             item(key = "resume") {
                 SwitchCard(R.string.resume, R.string.resume_hint, state.options.resume, actions::setResume)
+            }
+            if (OffloadAvailable) {
+                item(key = "offload") {
+                    SwitchCard(R.string.offload, R.string.offload_hint, state.options.offload, actions::setOffload)
+                }
             }
             if (state.cache != null) {
                 item(key = "cache") { CacheCards(state.cache, state.telegram != null, actions::setCache) }
@@ -360,6 +370,9 @@ private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
                     ReplayGainCard(state.options.replayGain, actions::setReplayGain)
                     CrossfadeCard(state.options.crossfade, actions::setCrossfade)
                     SwitchCard(R.string.resume, R.string.resume_hint, state.options.resume, actions::setResume)
+                    if (OffloadAvailable) {
+                        SwitchCard(R.string.offload, R.string.offload_hint, state.options.offload, actions::setOffload)
+                    }
                     if (state.cache != null) CacheCards(state.cache, state.telegram != null, actions::setCache)
                     if (state.telegram != null) {
                         Heading(R.string.telegram)

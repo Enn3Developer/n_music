@@ -3,6 +3,7 @@ package com.enn3developer.n_music
 import android.content.Context
 import android.os.SystemClock
 import com.enn3developer.n_music.core.AlbumRow
+import com.enn3developer.n_music.core.AndroidOutput
 import com.enn3developer.n_music.core.ArtistRow
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Core
@@ -215,9 +216,9 @@ object CoreRepository {
     /** What the last search for Telegram chats found. */
     val telegramChats: StateFlow<TelegramChats?> = _telegramChats.asStateFlow()
 
-    private val _options = MutableStateFlow(PlaybackOptions(ReplayGainMode.OFF, false, 0.0))
+    private val _options = MutableStateFlow(PlaybackOptions(ReplayGainMode.OFF, false, 0.0, true))
 
-    /** ReplayGain, resuming and crossfade. */
+    /** ReplayGain, resuming, crossfade and offload. */
     val options: StateFlow<PlaybackOptions> = _options.asStateFlow()
 
     private val _rejections = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -311,6 +312,14 @@ object CoreRepository {
         _options.value = _options.value.copy(crossfade = seconds)
         send(Command.SetCrossfade(seconds))
     }
+
+    fun setOffload(enabled: Boolean) {
+        _options.value = _options.value.copy(offload = enabled)
+        send(Command.SetOffload(enabled))
+    }
+
+    /** The outputs AudioManager lists now, for the core to play on: AAudio can't list them. */
+    fun setOutputDevices(devices: List<AndroidOutput>) = core.setOutputDevices(devices)
 
     /** The settings section [key] as JSON, from the core's settings file. */
     fun setting(key: String): String? = core.setting(key)

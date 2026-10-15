@@ -1,11 +1,12 @@
-//! The stream callback, on the device's realtime thread: it must never block or allocate.
+//! What the stream callback does, on the device's realtime thread: it must never block or
+//! allocate. Backends call [`Renderer::render`] from their own callback, in the sample type their
+//! stream uses.
 
 use super::dsp::{dither, soft_clip};
 use super::{OutputFormat, RAMP};
 use dasp::sample::FromSample;
 use dasp::Sample;
 use rtrb::Consumer;
-use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::Thread;
@@ -20,6 +21,10 @@ pub(super) struct SharedState {
     pub(super) discard_until: AtomicU64,
     /// When the device will have played what the callback handed it.
     device_until_ns: AtomicU64,
+    /// The stream is paused with audio left in the device: [`Self::held_ns`] of it, which no
+    /// clock runs down until it plays again.
+    holding: AtomicBool,
+    held_ns: AtomicU64,
     /// When the callback last ran.
     pub(super) heartbeat_ns: AtomicU64,
     pub(super) failed: AtomicBool,
@@ -42,6 +47,8 @@ impl SharedState {
             consumed: AtomicU64::new(0),
             discard_until: AtomicU64::new(0),
             device_until_ns: AtomicU64::new(0),
+            holding: AtomicBool::new(false),
+            held_ns: AtomicU64::new(0),
             heartbeat_ns: AtomicU64::new(0),
             failed: AtomicBool::new(false),
             volume: AtomicU32::new(volume.to_bits()),
@@ -56,15 +63,14 @@ impl SharedState {
         self.origin.elapsed().as_nanos() as u64
     }
 
-    pub(super) fn stream_error(&self, kind: cpal::ErrorKind) {
-        match kind {
-            // CPAL already rerouted the stream, or only failed to boost its priority. An xrun
-            // is a glitch the device recovers from by itself.
-            cpal::ErrorKind::DeviceChanged
-            | cpal::ErrorKind::RealtimeDenied
-            | cpal::ErrorKind::Xrun => {}
-            _ => self.failed.store(true, Ordering::Relaxed),
-        }
+    /// The stream broke for good: the writer opens another.
+    pub(super) fn fail(&self) {
+        self.failed.store(true, Ordering::Relaxed);
+        self.wake();
+    }
+
+    /// The stream glitched and plays on, as after an underrun or once the system rerouted it.
+    pub(super) fn glitch(&self) {
         self.wake();
     }
 
@@ -88,17 +94,46 @@ impl SharedState {
 
     /// How long the device still plays what the callback handed it.
     pub(super) fn device_left(&self) -> WallDuration {
+        if self.holding.load(Ordering::Acquire) {
+            return WallDuration::from_nanos(self.held_ns.load(Ordering::Relaxed));
+        }
         WallDuration::from_nanos(
             self.device_until_ns
                 .load(Ordering::Relaxed)
                 .saturating_sub(self.now_ns()),
         )
     }
+
+    /// The stream pauses with what the device holds kept in it: its clock stops until
+    /// [`Self::release_device`].
+    pub(super) fn hold_device(&self) {
+        if self.holding.load(Ordering::Acquire) {
+            return;
+        }
+        self.held_ns
+            .store(self.device_left().as_nanos() as u64, Ordering::Relaxed);
+        self.holding.store(true, Ordering::Release);
+    }
+
+    /// The stream plays again: what the device held plays out from now.
+    pub(super) fn release_device(&self) {
+        if !self.holding.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        let held = self.held_ns.load(Ordering::Relaxed);
+        self.device_until_ns
+            .store(self.now_ns().saturating_add(held), Ordering::Relaxed);
+    }
+
+    /// The device dropped what it held.
+    pub(super) fn clear_device(&self) {
+        self.held_ns.store(0, Ordering::Relaxed);
+        self.device_until_ns.store(self.now_ns(), Ordering::Relaxed);
+    }
 }
 
-pub(super) trait OutputSample:
-    cpal::SizedSample + Sample + FromSample<f32> + Send + 'static
-{
+/// A sample type a stream can play.
+pub(super) trait OutputSample: Sample + FromSample<f32> + Send + 'static {
     /// One least significant bit, the dither amplitude; 0 when the format needs no dither.
     const LSB: f32;
 }
@@ -119,7 +154,9 @@ impl OutputSample for u16 {
     const LSB: f32 = 1.0 / 32768.0;
 }
 
-pub(super) struct Callback<T> {
+/// Turns what is queued into what the device plays: applies the volume (ramped, so changes,
+/// pauses and seeks do not click), soft-clips and converts to the stream's sample type.
+pub(super) struct Renderer {
     consumer: Consumer<f32>,
     consumed: u64,
     state: Arc<SharedState>,
@@ -133,11 +170,10 @@ pub(super) struct Callback<T> {
     step: f32,
     clip_mem: Vec<f32>,
     noise: u32,
-    sample: PhantomData<T>,
 }
 
-impl<T: OutputSample> Callback<T> {
-    /// A callback for `consumer`, with room to mix `frames` frames.
+impl Renderer {
+    /// A renderer for `consumer`, with room to mix `frames` frames.
     pub(super) fn new(
         consumer: Consumer<f32>,
         state: Arc<SharedState>,
@@ -155,11 +191,12 @@ impl<T: OutputSample> Callback<T> {
             step: 1.0 / (RAMP.as_secs_f32() * format.rate as f32).max(1.0),
             clip_mem: vec![0.0; format.channels],
             noise: 0x9E37_79B9,
-            sample: PhantomData,
         }
     }
 
-    pub(super) fn render(&mut self, data: &mut [T], playback_delay: WallDuration) {
+    /// Fills `data` with what is queued, silence where nothing is. `playback_delay` is how long
+    /// until the device plays the first frame of `data`.
+    pub(super) fn render<T: OutputSample>(&mut self, data: &mut [T], playback_delay: WallDuration) {
         let state = &*self.state;
         let now = state.now_ns();
         state.heartbeat_ns.store(now, Ordering::Relaxed);
@@ -234,5 +271,78 @@ impl<T: OutputSample> Callback<T> {
         {
             state.wake();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rtrb::RingBuffer;
+
+    const FORMAT: OutputFormat = OutputFormat {
+        rate: 1000,
+        channels: 2,
+    };
+
+    /// A renderer over a queue holding `frames` frames of full scale.
+    fn queued(frames: usize) -> (Renderer, Arc<SharedState>, u64) {
+        let (mut producer, consumer) = RingBuffer::new(1000);
+        let samples = vec![1.0; frames * FORMAT.channels];
+        let (pushed, _) = producer.push_partial_slice(&samples);
+        assert_eq!(pushed.len(), samples.len());
+        let state = Arc::new(SharedState::new(1.0));
+        let renderer = Renderer::new(consumer, state.clone(), FORMAT, 500);
+        (renderer, state, samples.len() as u64)
+    }
+
+    #[test]
+    fn what_the_device_holds_counts_as_pending() {
+        let (mut renderer, state, produced) = queued(20);
+        let mut data = [0.0f32; 20];
+        renderer.render(&mut data, WallDuration::from_millis(100));
+        // 10 frames are left queued, and the device plays 100 ms, then the 10 frames it got.
+        let pending = state.pending_frames(produced, FORMAT.channels, FORMAT.rate);
+        assert!((115..=120).contains(&pending), "{pending}");
+    }
+
+    #[test]
+    fn a_held_device_keeps_its_audio_until_released() {
+        let (mut renderer, state, _) = queued(20);
+        let mut data = [0.0f32; 20];
+        renderer.render(&mut data, WallDuration::from_millis(100));
+        state.hold_device();
+        let held = state.device_left();
+        std::thread::sleep(WallDuration::from_millis(30));
+        assert_eq!(state.device_left(), held);
+        state.release_device();
+        let left = state.device_left();
+        assert!(
+            left <= held && left + WallDuration::from_millis(20) > held,
+            "{left:?} of {held:?}"
+        );
+        state.clear_device();
+        assert_eq!(state.device_left(), WallDuration::ZERO);
+    }
+
+    #[test]
+    fn clearing_a_held_device_leaves_nothing_to_play() {
+        let (mut renderer, state, _) = queued(20);
+        let mut data = [0.0f32; 20];
+        renderer.render(&mut data, WallDuration::from_millis(100));
+        state.hold_device();
+        state.clear_device();
+        assert_eq!(state.device_left(), WallDuration::ZERO);
+        state.release_device();
+        assert_eq!(state.device_left(), WallDuration::ZERO);
+    }
+
+    #[test]
+    fn renders_into_integer_streams_with_silence_past_the_queue() {
+        let (mut renderer, _, _) = queued(5);
+        let mut data = [0i16; 20];
+        renderer.render(&mut data, WallDuration::ZERO);
+        // The volume ramps up from silence, then the queue runs out.
+        assert!(data[..10].iter().any(|&sample| sample > 0), "{data:?}");
+        assert!(data[10..].iter().all(|&sample| sample == 0), "{data:?}");
     }
 }
