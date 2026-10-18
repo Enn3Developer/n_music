@@ -176,7 +176,7 @@ object Widgets {
                 else -> track.artist.ifEmpty { context.getString(R.string.unknown_artist) }
             },
         )
-        views.setImageViewResource(R.id.widget_play_icon, if (state.playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play)
+        views.setImageViewResource(R.id.widget_play_icon, if (state.playing) R.drawable.ic_pause else R.drawable.ic_play)
         views.setContentDescription(R.id.widget_play, context.getString(if (state.playing) R.string.pause else R.string.play))
 
         val side = coverSide(width, height)
@@ -318,7 +318,7 @@ private fun cover(context: Context, track: TrackRow?, side: Int, colors: NColors
     } else {
         paint.color = colors.surfaceHighest.toArgb()
         canvas.drawRoundRect(bounds, radius, radius, paint)
-        val disc = ContextCompat.getDrawable(context, R.drawable.ic_widget_album)?.mutate()
+        val disc = ContextCompat.getDrawable(context, R.drawable.ic_album)?.mutate()
         if (disc != null) {
             val icon = (size * 0.42f).roundToInt()
             val start = (size - icon) / 2

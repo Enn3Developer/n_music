@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.sheets
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
@@ -34,7 +34,6 @@ import com.enn3developer.n_music.ui.components.inSideSheet
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.sources.addSource
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -97,10 +96,10 @@ fun AddSourceSheet(
             }
         },
     ) {
-        SourceKind(NIcons.Sources, stringResource(R.string.local_folder), stringResource(R.string.local_folder_hint), onFolder)
-        SourceKind(NIcons.Web, stringResource(R.string.web_playlist), stringResource(R.string.web_playlist_hint), onWeb)
+        SourceKind(R.drawable.ic_sources, stringResource(R.string.local_folder), stringResource(R.string.local_folder_hint), onFolder)
+        SourceKind(R.drawable.ic_web, stringResource(R.string.web_playlist), stringResource(R.string.web_playlist_hint), onWeb)
         if (onTelegram != null) {
-            SourceKind(NIcons.Telegram, stringResource(R.string.telegram_chat), stringResource(R.string.telegram_hint), onTelegram)
+            SourceKind(R.drawable.ic_telegram, stringResource(R.string.telegram_chat), stringResource(R.string.telegram_hint), onTelegram)
         }
         Box(
             Modifier
@@ -117,7 +116,7 @@ fun AddSourceSheet(
 
 /** A kind of source the sheet adds: its icon, name, what it is, and the way on. */
 @Composable
-fun SourceKind(icon: ImageVector, name: String, detail: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SourceKind(@DrawableRes icon: Int, name: String, detail: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
@@ -139,7 +138,7 @@ fun SourceKind(icon: ImageVector, name: String, detail: String, onClick: () -> U
             Text(name, style = text(16, FontWeight.Bold), color = colors.onSurface)
             Text(detail, style = text(14), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
         }
-        NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -162,7 +161,7 @@ private fun Later(name: String, detail: String) {
                 .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            NIcon(NIcons.Later, tint = quiet)
+            NIcon(R.drawable.ic_later, tint = quiet)
         }
         Column(Modifier.weight(1f)) {
             Text(name, style = text(16, FontWeight.SemiBold), color = colors.onSurfaceVariant)

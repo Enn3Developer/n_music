@@ -48,7 +48,6 @@ import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.formatPosition
 import com.enn3developer.n_music.ui.quantity
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import kotlinx.coroutines.delay
@@ -157,7 +156,7 @@ fun SleepTimerSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        NIcon(NIcons.SleepTimer, size = 16.dp, tint = colors.onSecondaryContainer)
+                        NIcon(R.drawable.ic_sleep_timer, size = 16.dp, tint = colors.onSecondaryContainer)
                         Text(
                             stringResource(R.string.sleep_left, left),
                             style = text(14, FontWeight.Bold, tabular = true),

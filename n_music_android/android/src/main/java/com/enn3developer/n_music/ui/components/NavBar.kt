@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -25,22 +26,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
 /** The app's three places. */
-enum class Tab(val icon: ImageVector, val label: Int) {
-    LIBRARY(NIcons.Library, R.string.nav_library),
-    PLAYLISTS(NIcons.Playlist, R.string.nav_playlists),
-    SOURCES(NIcons.Sources, R.string.nav_sources),
+enum class Tab(@param:DrawableRes val icon: Int, val label: Int) {
+    LIBRARY(R.drawable.ic_library, R.string.nav_library),
+    PLAYLISTS(R.drawable.ic_playlist, R.string.nav_playlists),
+    SOURCES(R.drawable.ic_sources, R.string.nav_sources),
 }
 
 /** The bottom bar of phones: [Tab]s with their pill indicator. */
@@ -76,7 +75,7 @@ fun NavBar(
 /** A destination: its icon in a pill that fills in when selected, and its label under it. */
 @Composable
 fun NavItem(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,

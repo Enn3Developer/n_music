@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 
@@ -61,6 +61,6 @@ fun CheckMark(on: Boolean, modifier: Modifier = Modifier) {
             .border(2.dp, edge, shape),
         contentAlignment = Alignment.Center,
     ) {
-        NIcon(NIcons.CheckBold, Modifier.scale(check), size = 18.dp, tint = colors.onPrimary)
+        NIcon(R.drawable.ic_check_bold, Modifier.scale(check), size = 18.dp, tint = colors.onPrimary)
     }
 }

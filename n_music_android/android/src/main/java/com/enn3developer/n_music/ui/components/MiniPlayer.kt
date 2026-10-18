@@ -51,7 +51,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
@@ -73,7 +72,6 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatLength
 import com.enn3developer.n_music.ui.formatPosition
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -441,18 +439,18 @@ fun MiniPlayerButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackAction
 
 /** A mini player button's icon, what it says, and what it does. */
 @Composable
-fun miniButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackActions): Triple<ImageVector, String, () -> Unit> =
+fun miniButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackActions): Triple<Int, String, () -> Unit> =
     when (button) {
-        MiniButton.SHUFFLE -> Triple(NIcons.Shuffle, stringResource(R.string.shuffle), actions::toggleShuffle)
-        MiniButton.PREVIOUS -> Triple(NIcons.Previous, stringResource(R.string.previous), actions::previous)
+        MiniButton.SHUFFLE -> Triple(R.drawable.ic_shuffle, stringResource(R.string.shuffle), actions::toggleShuffle)
+        MiniButton.PREVIOUS -> Triple(R.drawable.ic_previous, stringResource(R.string.previous), actions::previous)
         MiniButton.PLAY_PAUSE -> if (ui.playing) {
-            Triple(NIcons.Pause, stringResource(R.string.pause), actions::togglePause)
+            Triple(R.drawable.ic_pause, stringResource(R.string.pause), actions::togglePause)
         } else {
-            Triple(NIcons.Play, stringResource(R.string.play), actions::togglePause)
+            Triple(R.drawable.ic_play, stringResource(R.string.play), actions::togglePause)
         }
-        MiniButton.NEXT -> Triple(NIcons.Next, stringResource(R.string.next), actions::next)
+        MiniButton.NEXT -> Triple(R.drawable.ic_next, stringResource(R.string.next), actions::next)
         MiniButton.REPEAT -> Triple(
-            if (ui.loop == LoopStatus.FILE) NIcons.RepeatOne else NIcons.Repeat,
+            if (ui.loop == LoopStatus.FILE) R.drawable.ic_repeat_one else R.drawable.ic_repeat,
             stringResource(
                 when (ui.loop) {
                     LoopStatus.OFF -> R.string.repeat_off
@@ -462,6 +460,6 @@ fun miniButton(button: MiniButton, ui: PlaybackUi, actions: PlaybackActions): Tr
             ),
             actions::cycleRepeat,
         )
-        MiniButton.OUTPUT -> Triple(NIcons.Output, stringResource(R.string.output), actions::openOutput)
-        MiniButton.SLEEP_TIMER -> Triple(NIcons.SleepTimer, stringResource(R.string.sleep_timer), actions::openSleepTimer)
+        MiniButton.OUTPUT -> Triple(R.drawable.ic_output, stringResource(R.string.output), actions::openOutput)
+        MiniButton.SLEEP_TIMER -> Triple(R.drawable.ic_sleep_timer, stringResource(R.string.sleep_timer), actions::openSleepTimer)
     }

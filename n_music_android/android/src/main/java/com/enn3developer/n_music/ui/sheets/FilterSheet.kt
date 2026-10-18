@@ -97,7 +97,6 @@ import com.enn3developer.n_music.ui.playlists.rulesOf
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.rememberLibraryRead
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -492,7 +491,7 @@ private fun Sections(
                             height = 32.dp,
                             textStyle = text(13, FontWeight.Bold),
                             padding = PaddingValues(start = 10.dp, end = 4.dp),
-                            trailing = NIcons.Open,
+                            trailing = R.drawable.ic_open,
                         )
                     }
                 },
@@ -647,7 +646,7 @@ private fun PickerEntry(field: FilterField, picked: String, onClick: () -> Unit)
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f),
         )
-        NIcon(NIcons.Open, size = 20.dp, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_open, size = 20.dp, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -790,7 +789,7 @@ private fun Picker(
                 .padding(start = 12.dp, end = 24.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NIconButton(NIcons.Back, stringResource(R.string.back), onBack, tint = colors.onSurface)
+            NIconButton(R.drawable.ic_back, stringResource(R.string.back), onBack, tint = colors.onSurface)
             Text(title, style = text(18, FontWeight.Bold), color = colors.onSurface)
         }
         SearchField(search, onSearch, hint, Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 8.dp))

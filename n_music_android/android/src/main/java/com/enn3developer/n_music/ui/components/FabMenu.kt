@@ -1,6 +1,7 @@
 package com.enn3developer.n_music.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -23,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -34,14 +34,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import com.enn3developer.n_music.R
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 
 /** One of a [FabMenu]'s choices. */
-data class FabItem(val icon: ImageVector, val label: String, val onClick: () -> Unit)
+data class FabItem(@param:DrawableRes val icon: Int, val label: String, val onClick: () -> Unit)
 
 /** How much bigger the + is as the ×, for its arms to reach the corners of the close icon. */
 private const val CROSS_SCALE = 1.21f
@@ -156,7 +155,7 @@ private fun FabButton(expand: Float, open: Boolean, description: String, onClick
     ) {
         // The + turned an eighth of the way round is the ×.
         NIcon(
-            NIcons.Add,
+            R.drawable.ic_add,
             Modifier.graphicsLayer {
                 rotationZ = 45f * expand
                 val scale = 1f + (CROSS_SCALE - 1f) * expand
@@ -199,7 +198,7 @@ private fun FabMenuItem(item: FabItem, shown: Float, enabled: Boolean, onClick: 
 
 /** A floating button with its [label] beside its [icon], for a page's main action. */
 @Composable
-fun ExtendedFab(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ExtendedFab(@DrawableRes icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(16.dp)
     ButtonSurface(
         onClick = onClick,

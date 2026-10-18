@@ -22,10 +22,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.theme.LogoMark
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -123,10 +122,10 @@ private fun Placeholder(kind: CoverPlaceholder) {
             )
 
             else -> {
-                val icon: ImageVector = when (kind) {
-                    CoverPlaceholder.ARTIST -> NIcons.Artist
-                    CoverPlaceholder.PLAYLIST -> NIcons.Playlist
-                    else -> NIcons.Album
+                val icon = when (kind) {
+                    CoverPlaceholder.ARTIST -> R.drawable.ic_artist
+                    CoverPlaceholder.PLAYLIST -> R.drawable.ic_playlist
+                    else -> R.drawable.ic_album
                 }
                 NIcon(icon, size = maxWidth * 0.42f, tint = colors.onSurfaceQuiet)
             }

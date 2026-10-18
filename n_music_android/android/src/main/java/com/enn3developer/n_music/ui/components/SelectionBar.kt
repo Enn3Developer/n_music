@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.formatCount
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -87,7 +86,7 @@ fun SelectionBarContent(count: Int, total: Int, onClose: () -> Unit, onSelectAll
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CompositionLocalProvider(LocalContentColor provides colors.onSecondaryContainer) {
-            NIconButton(NIcons.Close, stringResource(R.string.stop_selecting), onClose)
+            NIconButton(R.drawable.ic_close, stringResource(R.string.stop_selecting), onClose)
             RollingText(
                 pluralStringResource(R.plurals.selected_count, count, formatCount(count)),
                 count,
@@ -97,7 +96,7 @@ fun SelectionBarContent(count: Int, total: Int, onClose: () -> Unit, onSelectAll
                     .weight(1f)
                     .padding(start = 8.dp),
             )
-            NIconButton(NIcons.SelectAll, stringResource(R.string.select_all, formatCount(total)), onSelectAll)
+            NIconButton(R.drawable.ic_select_all, stringResource(R.string.select_all, formatCount(total)), onSelectAll)
         }
     }
 }

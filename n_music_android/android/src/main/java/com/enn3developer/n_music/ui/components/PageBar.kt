@@ -21,7 +21,6 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.WindowLayout
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 
 /** A page's bar under the status bar: Back, and the page's [actions] at its end. A tablet's is lower. */
@@ -38,7 +37,7 @@ fun PageBar(onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composa
             .padding(start = margins.startLess(12.dp), end = margins.endLess(12.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        NIconButton(NIcons.Back, stringResource(R.string.back), onBack, tint = colors.onSurface)
+        NIconButton(R.drawable.ic_back, stringResource(R.string.back), onBack, tint = colors.onSurface)
         Spacer(Modifier.weight(1f))
         actions()
     }

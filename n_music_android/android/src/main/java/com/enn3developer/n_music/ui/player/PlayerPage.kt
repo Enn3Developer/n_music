@@ -98,7 +98,6 @@ import com.enn3developer.n_music.ui.components.floating
 import com.enn3developer.n_music.ui.components.margins
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.dotted
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
@@ -503,7 +502,7 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        NIconButton(NIcons.Collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
+        NIconButton(R.drawable.ic_collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
         val playingFrom = stringResource(R.string.playing_from)
         val origin = ui.origin?.let { dotted(it, if (ui.shuffle) stringResource(R.string.shuffled) else null) }
         Column(
@@ -538,7 +537,7 @@ private fun TopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier) {
             }
         }
         NIconButton(
-            NIcons.More,
+            R.drawable.ic_more,
             stringResource(R.string.more_for, ui.track.title),
             actions::openMore,
             tint = colors.onSurface,
@@ -559,7 +558,7 @@ private fun SideTopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        NIconButton(NIcons.Collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
+        NIconButton(R.drawable.ic_collapse, stringResource(R.string.close_player), actions::close, tint = colors.onSurface)
         val origin = ui.origin
         val muted = colors.onSurfaceVariant
         val strong = colors.onSurface
@@ -602,7 +601,7 @@ private fun SideTopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier)
             }
         }
         NIconButton(
-            NIcons.Output,
+            R.drawable.ic_output,
             stringResource(R.string.output_named, ui.output),
             actions::openOutput,
             iconSize = 22.dp,
@@ -622,10 +621,10 @@ private fun SideTopBar(ui: PlayerUi, actions: PlayerActions, modifier: Modifier)
             if (sleep != null) {
                 Box(Modifier.size(40.dp).background(colors.secondaryContainer, CircleShape))
             }
-            NIcon(NIcons.SleepTimer, size = 22.dp, tint = if (sleep != null) colors.onSecondaryContainer else muted)
+            NIcon(R.drawable.ic_sleep_timer, size = 22.dp, tint = if (sleep != null) colors.onSecondaryContainer else muted)
         }
         NIconButton(
-            NIcons.More,
+            R.drawable.ic_more,
             stringResource(R.string.more_for, ui.track.title),
             actions::openMore,
             tint = colors.onSurface,
@@ -661,7 +660,7 @@ private fun QueueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        NIcon(NIcons.PlayNext, size = 18.dp, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_play_next, size = 18.dp, tint = colors.onSurfaceVariant)
         Text(stringResource(R.string.queue), style = text(13, FontWeight.SemiBold), color = colors.onSurfaceVariant, maxLines = 1)
     }
 }
@@ -794,7 +793,7 @@ internal fun OutputChip(name: String, onClick: () -> Unit, small: Boolean = fals
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {
-        NIcon(NIcons.Output, size = 18.dp, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_output, size = 18.dp, tint = colors.onSurfaceVariant)
         Text(name, style = text(13, FontWeight.SemiBold), color = colors.onSurfaceVariant, maxLines = 1)
     }
 }
@@ -827,7 +826,7 @@ internal fun SleepChip(sleep: Sleep?, onClick: () -> Unit, small: Boolean = fals
         horizontalArrangement = Arrangement.spacedBy(if (small) 6.dp else 8.dp),
     ) {
         val tint = if (left != null) colors.onSecondaryContainer else colors.onSurfaceVariant
-        NIcon(NIcons.SleepTimer, size = 18.dp, tint = tint)
+        NIcon(R.drawable.ic_sleep_timer, size = 18.dp, tint = tint)
         Text(
             left ?: stringResource(R.string.sleep_timer),
             style = text(13, if (left != null) FontWeight.Bold else FontWeight.SemiBold, tabular = true),
@@ -903,7 +902,7 @@ private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier, skip
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            NIcon(NIcons.Expand, size = 20.dp, tint = muted)
+            NIcon(R.drawable.ic_expand, size = 20.dp, tint = muted)
         }
         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }

@@ -41,7 +41,6 @@ import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.components.trackLine
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.formatLength
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -171,7 +170,7 @@ fun TrackTableRow(
         NumberCell(formatCount(track.plays), quiet)
         NumberCell(formatLength(track.length), quiet)
         NIconButton(
-            NIcons.More,
+            R.drawable.ic_more,
             stringResource(R.string.more_for, track.title),
             onMore,
             size = 48.dp,
@@ -237,7 +236,7 @@ fun AlbumTableRow(
     ) {
         Box(Modifier.width(TrackNumberColumn), contentAlignment = Alignment.Center) {
             when {
-                state.selected -> NIcon(NIcons.CheckBold, size = 20.dp, tint = colors.primary)
+                state.selected -> NIcon(R.drawable.ic_check_bold, size = 20.dp, tint = colors.primary)
                 state.current -> PlayingBars(color = colors.primary, animate = state.playing)
                 else -> Text(
                     track.trackNumber?.toString().orEmpty(),
@@ -257,7 +256,7 @@ fun AlbumTableRow(
         NumberCell(formatCount(track.plays), colors.onSurfaceVariant)
         NumberCell(formatLength(track.length), colors.onSurfaceVariant)
         NIconButton(
-            NIcons.More,
+            R.drawable.ic_more,
             stringResource(R.string.more_for, track.title),
             onMore,
             size = 44.dp,

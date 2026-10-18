@@ -39,7 +39,6 @@ import com.enn3developer.n_music.ui.library.TrackOrder
 import com.enn3developer.n_music.ui.library.TrackSort
 import com.enn3developer.n_music.ui.playlists.playlistOrder
 import com.enn3developer.n_music.ui.rememberLibrary
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -162,7 +161,7 @@ private fun ReverseButton(direction: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        NIcon(NIcons.Reverse, size = 18.dp, tint = colors.onSurface)
+        NIcon(R.drawable.ic_reverse, size = 18.dp, tint = colors.onSurface)
         Text(direction, style = text(13, FontWeight.Bold), color = colors.onSurface)
     }
 }

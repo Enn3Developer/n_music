@@ -64,7 +64,6 @@ import com.enn3developer.n_music.ui.enqueue
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.formatWhen
 import com.enn3developer.n_music.ui.quantity
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -95,22 +94,22 @@ fun PlaylistsPage() {
         onSettings = { app.open(Page.Settings) }.takeUnless { LocalWindowLayout.current.rail },
         menu = { playlist, close ->
             if (playlist.tracks > 0u) {
-                MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, {
+                MenuItem(stringResource(R.string.play_next), R.drawable.ic_play_next, {
                     close()
                     app.queuePlaylist(playlist, next = true, resources)
                 })
-                MenuItem(stringResource(R.string.add_to_queue), NIcons.AddToQueue, {
+                MenuItem(stringResource(R.string.add_to_queue), R.drawable.ic_add_to_queue, {
                     close()
                     app.queuePlaylist(playlist, next = false, resources)
                 })
             }
             // The list has no pencil by the name, as a playlist's page has: its menu renames it.
-            MenuItem(stringResource(R.string.rename), NIcons.Rename, {
+            MenuItem(stringResource(R.string.rename), R.drawable.ic_rename, {
                 close()
                 app.show(AppDialog.RenamePlaylist(playlist.id, playlist.name))
             })
             MenuDivider()
-            MenuItem(stringResource(R.string.delete_playlist), NIcons.Remove, {
+            MenuItem(stringResource(R.string.delete_playlist), R.drawable.ic_remove, {
                 close()
                 app.show(AppDialog.DeletePlaylist(playlist.id, playlist.name))
             }, danger = true)
@@ -169,7 +168,7 @@ fun PlaylistsContent(
                 horizontalArrangement = Arrangement.End,
             ) {
                 if (onSettings != null) {
-                    NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                    NIconButton(R.drawable.ic_settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
                 }
             }
         }
@@ -190,7 +189,7 @@ fun PlaylistsContent(
         if (playlists.isEmpty()) {
             item(key = "empty") {
                 EmptyState(
-                    NIcons.Playlist,
+                    R.drawable.ic_playlist,
                     stringResource(R.string.playlists_empty),
                     stringResource(R.string.playlists_empty_hint),
                     Modifier.fillParentMaxHeight(0.7f),
@@ -275,7 +274,7 @@ private fun PlaylistItem(
             }
             Box {
                 NIconButton(
-                    NIcons.More,
+                    R.drawable.ic_more,
                     stringResource(R.string.more_for, playlist.name),
                     { menuOpen = true },
                     size = 48.dp,
@@ -314,7 +313,7 @@ fun PlaylistTile(playlist: PlaylistRow, size: Dp) {
             contentAlignment = Alignment.Center,
         ) {
             NIcon(
-                if (big) NIcons.FilterThin else NIcons.Filter,
+                if (big) R.drawable.ic_filter_thin else R.drawable.ic_filter,
                 size = if (big) 44.dp else 24.dp,
                 tint = colors.onSecondaryContainer,
             )
@@ -328,7 +327,7 @@ fun PlaylistTile(playlist: PlaylistRow, size: Dp) {
             contentAlignment = Alignment.Center,
         ) {
             NIcon(
-                if (big) NIcons.PlaylistThin else NIcons.Playlist,
+                if (big) R.drawable.ic_playlist_thin else R.drawable.ic_playlist,
                 size = if (big) 44.dp else 24.dp,
                 tint = colors.onSurfaceVariant,
             )

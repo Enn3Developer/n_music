@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.sheets
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -46,7 +46,6 @@ import com.enn3developer.n_music.ui.formatLength
 import com.enn3developer.n_music.ui.trackFormat
 import com.enn3developer.n_music.ui.formatWhen
 import com.enn3developer.n_music.ui.rememberLibrary
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -185,15 +184,15 @@ fun TrackActionsSheet(
         },
     ) {
         Line(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
-        Action(NIcons.PlayNext, stringResource(R.string.play_next), onPlayNext)
-        Action(NIcons.AddToQueue, stringResource(R.string.add_to_queue), onQueue)
-        Action(NIcons.Playlist, stringResource(R.string.add_to_playlist), onAddToPlaylist, opens = true)
+        Action(R.drawable.ic_play_next, stringResource(R.string.play_next), onPlayNext)
+        Action(R.drawable.ic_add_to_queue, stringResource(R.string.add_to_queue), onQueue)
+        Action(R.drawable.ic_playlist, stringResource(R.string.add_to_playlist), onAddToPlaylist, opens = true)
         Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        Action(NIcons.Album, stringResource(R.string.go_to_album), onAlbum)
-        Action(NIcons.Artist, stringResource(R.string.go_to_artist), onArtist)
+        Action(R.drawable.ic_album, stringResource(R.string.go_to_album), onAlbum)
+        Action(R.drawable.ic_artist, stringResource(R.string.go_to_artist), onArtist)
         if (onRemove != null) {
             Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            Action(NIcons.Remove, stringResource(R.string.remove_from_playlist), onRemove, danger = true)
+            Action(R.drawable.ic_remove, stringResource(R.string.remove_from_playlist), onRemove, danger = true)
         }
     }
 }
@@ -224,7 +223,7 @@ private fun Line(modifier: Modifier) {
  * that takes something away.
  */
 @Composable
-private fun Action(icon: ImageVector, label: String, onClick: () -> Unit, opens: Boolean = false, danger: Boolean = false) {
+private fun Action(@DrawableRes icon: Int, label: String, onClick: () -> Unit, opens: Boolean = false, danger: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -241,6 +240,6 @@ private fun Action(icon: ImageVector, label: String, onClick: () -> Unit, opens:
             color = if (danger) colors.error else colors.onSurface,
             modifier = Modifier.weight(1f),
         )
-        if (opens) NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+        if (opens) NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
     }
 }

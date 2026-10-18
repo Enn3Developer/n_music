@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,12 +18,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import com.enn3developer.n_music.ui.theme.NIcons
+import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -47,7 +47,7 @@ fun NMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable 
  * icon, [checked] puts a check in its place on the one picked.
  */
 @Composable
-fun MenuItem(label: String, icon: ImageVector?, onClick: () -> Unit, danger: Boolean = false, checked: Boolean = false) {
+fun MenuItem(label: String, @DrawableRes icon: Int?, onClick: () -> Unit, danger: Boolean = false, checked: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -59,7 +59,7 @@ fun MenuItem(label: String, icon: ImageVector?, onClick: () -> Unit, danger: Boo
     ) {
         when {
             icon != null -> NIcon(icon, size = 20.dp, tint = if (danger) colors.error else colors.onSurfaceVariant)
-            checked -> NIcon(NIcons.Check, size = 20.dp, tint = colors.primary)
+            checked -> NIcon(R.drawable.ic_check, size = 20.dp, tint = colors.primary)
             else -> Box(Modifier.size(20.dp))
         }
         Text(

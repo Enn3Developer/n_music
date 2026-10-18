@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.sheets
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.background
@@ -51,7 +52,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -110,7 +110,6 @@ import com.enn3developer.n_music.ui.player.openOrigin
 import com.enn3developer.n_music.ui.player.originName
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.removeQueued
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -428,7 +427,7 @@ private fun ShuffleToggle(on: Boolean, onClick: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        NIcon(NIcons.Shuffle, size = 20.dp, tint = if (on) colors.onSecondaryContainer else colors.onSurface)
+        NIcon(R.drawable.ic_shuffle, size = 20.dp, tint = if (on) colors.onSecondaryContainer else colors.onSurface)
     }
 }
 
@@ -664,7 +663,7 @@ private fun QueueList(
 }
 
 /** One of a row's long-press actions; [danger] takes something away. */
-private data class RowAction(val label: String, val icon: ImageVector, val danger: Boolean = false, val run: () -> Unit)
+private data class RowAction(val label: String, @param:DrawableRes val icon: Int, val danger: Boolean = false, val run: () -> Unit)
 
 /**
  * What a long press offers for the row at [index]: moving it a place, playing it next, or
@@ -682,19 +681,19 @@ private fun moves(
     val current = kind == Kind.CURRENT
     return buildList {
         if (kind == Kind.UPCOMING && index - 1 > firstMovable) {
-            add(RowAction(stringResource(R.string.move_up), NIcons.Expand) { actions.move(row, false, rows[index - 1].item) })
+            add(RowAction(stringResource(R.string.move_up), R.drawable.ic_expand) { actions.move(row, false, rows[index - 1].item) })
         }
         if (kind != Kind.PLAYED && index < rows.lastIndex) {
-            add(RowAction(stringResource(R.string.move_down), NIcons.Collapse) { actions.move(row, current, rows.getOrNull(index + 2)?.item) })
+            add(RowAction(stringResource(R.string.move_down), R.drawable.ic_collapse) { actions.move(row, current, rows.getOrNull(index + 2)?.item) })
         }
         when {
             kind == Kind.PLAYED ->
-                add(RowAction(stringResource(R.string.play_next), NIcons.PlayNext) { actions.playAgain(row) })
+                add(RowAction(stringResource(R.string.play_next), R.drawable.ic_play_next) { actions.playAgain(row) })
             kind == Kind.UPCOMING && index - 1 > firstMovable ->
-                add(RowAction(stringResource(R.string.play_next), NIcons.PlayNext) { actions.move(row, false, rows[firstMovable + 1].item) })
+                add(RowAction(stringResource(R.string.play_next), R.drawable.ic_play_next) { actions.move(row, false, rows[firstMovable + 1].item) })
         }
         if (kind == Kind.UPCOMING && row.queued) {
-            add(RowAction(stringResource(R.string.remove_from_queue), NIcons.Remove, danger = true) { actions.remove(row) })
+            add(RowAction(stringResource(R.string.remove_from_queue), R.drawable.ic_remove, danger = true) { actions.remove(row) })
         }
     }
 }
@@ -859,7 +858,7 @@ private fun QueueItem(
                         .clearAndSetSemantics {},
                     contentAlignment = Alignment.Center,
                 ) {
-                    NIcon(NIcons.Drag, tint = lerp(muted, accent, lift().coerceIn(0f, 1f)))
+                    NIcon(R.drawable.ic_drag, tint = lerp(muted, accent, lift().coerceIn(0f, 1f)))
                 }
             }
         }

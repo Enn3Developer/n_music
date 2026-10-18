@@ -78,7 +78,6 @@ import com.enn3developer.n_music.ui.formatDuration
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
@@ -148,15 +147,15 @@ fun AlbumPage(page: Page.Album) {
         onEndSelection = app::endSelection,
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
         menu = { close ->
-            MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
-            MenuItem(stringResource(R.string.add_to_queue), NIcons.AddToQueue, { close(); queue(next = false) })
-            MenuItem(stringResource(R.string.add_to_playlist), NIcons.Playlist, {
+            MenuItem(stringResource(R.string.play_next), R.drawable.ic_play_next, { close(); queue(next = true) })
+            MenuItem(stringResource(R.string.add_to_queue), R.drawable.ic_add_to_queue, { close(); queue(next = false) })
+            MenuItem(stringResource(R.string.add_to_playlist), R.drawable.ic_playlist, {
                 close()
                 tracks?.let { app.show(Sheet.AddToPlaylist(it.map(TrackRow::locator))) }
             })
             if (page.artist != null) {
                 MenuDivider()
-                MenuItem(stringResource(R.string.go_to_artist), NIcons.Artist, {
+                MenuItem(stringResource(R.string.go_to_artist), R.drawable.ic_artist, {
                     close()
                     app.open(Page.Artist(page.artist))
                 })
@@ -200,7 +199,7 @@ fun AlbumContent(
                 PageBar(onBack) {
                     Box {
                         NIconButton(
-                            NIcons.More,
+                            R.drawable.ic_more,
                             stringResource(R.string.more_for, name ?: stringResource(R.string.no_album)),
                             { menuOpen = true },
                             tint = colors.onSurface,

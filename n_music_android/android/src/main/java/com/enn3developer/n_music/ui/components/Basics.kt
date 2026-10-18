@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -38,7 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.input.pointer.pointerInput
@@ -52,16 +53,19 @@ import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
-/** An icon of the design's set at [size], in the content colour unless [tint] says otherwise. */
+/**
+ * An icon of the design's set, one of the `ic_` vector drawables, at [size], in the content colour
+ * unless [tint] says otherwise.
+ */
 @Composable
 fun NIcon(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     modifier: Modifier = Modifier,
     size: Dp = 24.dp,
     tint: Color = LocalContentColor.current,
     contentDescription: String? = null,
 ) {
-    Icon(icon, contentDescription, modifier.size(size), tint = tint)
+    Icon(painterResource(icon), contentDescription, modifier.size(size), tint = tint)
 }
 
 /**
@@ -70,7 +74,7 @@ fun NIcon(
  */
 @Composable
 fun NIconButton(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     contentDescription: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

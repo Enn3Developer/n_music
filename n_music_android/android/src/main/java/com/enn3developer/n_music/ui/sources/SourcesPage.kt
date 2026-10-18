@@ -66,7 +66,6 @@ import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -152,20 +151,20 @@ fun SourcesContent(
                 horizontalArrangement = Arrangement.End,
             ) {
                 Box {
-                    NIconButton(NIcons.More, stringResource(R.string.library_actions), { menuOpen = true }, tint = colors.onSurfaceVariant)
+                    NIconButton(R.drawable.ic_more, stringResource(R.string.library_actions), { menuOpen = true }, tint = colors.onSurfaceVariant)
                     NMenu(menuOpen, { menuOpen = false }) {
-                        MenuItem(stringResource(R.string.update_library), NIcons.Update, {
+                        MenuItem(stringResource(R.string.update_library), R.drawable.ic_update, {
                             menuOpen = false
                             actions.scan(null, reload = false)
                         })
-                        MenuItem(stringResource(R.string.reload_all_metadata), NIcons.Tag, {
+                        MenuItem(stringResource(R.string.reload_all_metadata), R.drawable.ic_tag, {
                             menuOpen = false
                             actions.scan(null, reload = true)
                         })
                     }
                 }
                 if (onSettings != null) {
-                    NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+                    NIconButton(R.drawable.ic_settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
                 }
             }
         }
@@ -189,7 +188,7 @@ fun SourcesContent(
         if (sources.isEmpty()) {
             item(key = "empty") {
                 EmptyState(
-                    NIcons.Sources,
+                    R.drawable.ic_sources,
                     stringResource(R.string.sources_empty),
                     stringResource(if (telegram != null) R.string.sources_empty_hint_telegram else R.string.sources_empty_hint),
                     Modifier.fillParentMaxHeight(0.6f),
@@ -331,7 +330,7 @@ private fun SourceItem(
                             colors.errorContainer,
                             colors.onErrorContainer,
                         ) {
-                            NIcon(NIcons.AlertBold, size = 14.dp, tint = colors.onErrorContainer)
+                            NIcon(R.drawable.ic_alert_bold, size = 14.dp, tint = colors.onErrorContainer)
                         }
                     }
                 }
@@ -353,7 +352,7 @@ private fun SourceItem(
         }
         Box {
             NIconButton(
-                NIcons.More,
+                R.drawable.ic_more,
                 stringResource(R.string.more_for_source, name),
                 { menuOpen = true },
                 size = 44.dp,
@@ -371,22 +370,22 @@ private fun SourceItem(
 /** What ⋮ offers for one source: read it again, [rename] it, or take it out of the library. */
 @Composable
 fun SourceMenu(source: SourceRow, actions: SourceActions, rename: Boolean = false, close: () -> Unit) {
-    MenuItem(stringResource(R.string.update_now), NIcons.Update, {
+    MenuItem(stringResource(R.string.update_now), R.drawable.ic_update, {
         close()
         actions.scan(source.root, reload = false)
     })
-    MenuItem(stringResource(R.string.reload_metadata), NIcons.Tag, {
+    MenuItem(stringResource(R.string.reload_metadata), R.drawable.ic_tag, {
         close()
         actions.scan(source.root, reload = true)
     })
     if (rename) {
-        MenuItem(stringResource(R.string.rename), NIcons.Rename, {
+        MenuItem(stringResource(R.string.rename), R.drawable.ic_rename, {
             close()
             actions.rename(source)
         })
     }
     MenuDivider()
-    MenuItem(stringResource(R.string.remove_from_library), NIcons.RemoveSource, {
+    MenuItem(stringResource(R.string.remove_from_library), R.drawable.ic_remove_source, {
         close()
         actions.remove(source)
     }, danger = true)

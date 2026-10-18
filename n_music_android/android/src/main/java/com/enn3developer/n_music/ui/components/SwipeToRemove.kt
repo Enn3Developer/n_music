@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -87,7 +86,7 @@ fun SwipeToRemove(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         ) {
-            NIcon(NIcons.Remove, size = 20.dp, tint = colors.onErrorContainer)
+            NIcon(R.drawable.ic_remove, size = 20.dp, tint = colors.onErrorContainer)
             Text(remove, style = text(14, FontWeight.Bold), color = colors.onErrorContainer)
         }
         val sliding = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)

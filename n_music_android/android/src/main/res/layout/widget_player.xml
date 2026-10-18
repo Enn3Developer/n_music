@@ -89,8 +89,11 @@
                     android:layout_height="48dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/previous"
-                    android:scaleType="center"
-                    android:src="@drawable/ic_widget_previous" />
+                    android:paddingHorizontal="11dp"
+                    android:paddingVertical="13dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_previous"
+                    android:tint="@color/widget_on" />
 
                 <FrameLayout
                     android:id="@+id/widget_play"
@@ -114,7 +117,8 @@
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
                         android:importantForAccessibility="no"
-                        android:src="@drawable/ic_widget_play" />
+                        android:src="@drawable/ic_play"
+                        android:tint="@color/widget_on_pill" />
                 </FrameLayout>
 
                 <ImageView
@@ -123,8 +127,11 @@
                     android:layout_height="48dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/next"
-                    android:scaleType="center"
-                    android:src="@drawable/ic_widget_next" />
+                    android:paddingHorizontal="11dp"
+                    android:paddingVertical="13dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_next"
+                    android:tint="@color/widget_on" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>

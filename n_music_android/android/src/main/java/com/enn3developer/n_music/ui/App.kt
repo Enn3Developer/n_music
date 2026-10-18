@@ -120,7 +120,6 @@ import com.enn3developer.n_music.ui.sources.SourcesPage
 import com.enn3developer.n_music.ui.sources.WelcomePage
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.SheetHost
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NTheme
 import com.enn3developer.n_music.ui.theme.colors
@@ -581,7 +580,7 @@ private fun MainLayout(navigator: Navigator) {
                             ) {
                                 if (rail) {
                                     NIconButton(
-                                        NIcons.PlayNext,
+                                        R.drawable.ic_play_next,
                                         stringResource(R.string.open_queue),
                                         { app.show(Sheet.Queue) },
                                         tint = colors.onSurfaceVariant,
@@ -635,11 +634,11 @@ private fun MainLayout(navigator: Navigator) {
                     onOpenChange = { newOpen = it },
                     description = stringResource(R.string.new_playlist_menu),
                     items = listOf(
-                        FabItem(NIcons.Playlist, stringResource(R.string.new_playlist)) {
+                        FabItem(R.drawable.ic_playlist, stringResource(R.string.new_playlist)) {
                             app.show(AppDialog.NewPlaylist(emptyList()))
                         },
                         // The library's filters carry over.
-                        FabItem(NIcons.Filter, stringResource(R.string.new_smart_playlist)) {
+                        FabItem(R.drawable.ic_filter, stringResource(R.string.new_smart_playlist)) {
                             app.show(Sheet.SmartPlaylist(null, start = app.filters))
                         },
                     ),
@@ -658,7 +657,7 @@ private fun MainLayout(navigator: Navigator) {
                     exit = scaleOut(NMotion.effectsFast(), targetScale = 0.6f, transformOrigin = TransformOrigin(1f, 1f)) +
                         fadeOut(NMotion.effectsFast()),
                 ) {
-                    ExtendedFab(NIcons.Add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
+                    ExtendedFab(R.drawable.ic_add, stringResource(R.string.add_source), { app.show(Sheet.AddSource) })
                 }
             }
             // A tablet shows what plays beside the pages, but for Settings.

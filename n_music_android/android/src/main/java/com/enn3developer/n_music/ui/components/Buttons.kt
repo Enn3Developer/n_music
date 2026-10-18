@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -38,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ViewMode
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
@@ -122,7 +121,7 @@ fun PlayShuffle(
                     .height(48.dp)
                     .described(playDescription),
             ) {
-                NIcon(NIcons.Play, size = 20.dp)
+                NIcon(R.drawable.ic_play, size = 20.dp)
                 Box(Modifier.width(8.dp))
                 Text(playLabel, style = text(15, FontWeight.Bold))
             }
@@ -136,7 +135,7 @@ fun PlayShuffle(
                     .height(48.dp)
                     .described(shuffleDescription),
             ) {
-                NIcon(NIcons.Shuffle, size = 20.dp)
+                NIcon(R.drawable.ic_shuffle, size = 20.dp)
                 Box(Modifier.width(8.dp))
                 Text(stringResource(R.string.shuffle), style = text(15, FontWeight.Bold))
             }
@@ -153,7 +152,7 @@ fun PlayShuffle(
                     .described(playDescription),
                 padding = PaddingValues(start = 12.dp, end = 16.dp),
             ) {
-                NIcon(NIcons.Play, size = 18.dp)
+                NIcon(R.drawable.ic_play, size = 18.dp)
                 Box(Modifier.width(6.dp))
                 Text(playLabel, style = text(14, FontWeight.Bold, tabular = true), maxLines = 1)
             }
@@ -166,7 +165,7 @@ fun PlayShuffle(
                     .size(48.dp, 40.dp)
                     .described(shuffleDescription ?: stringResource(R.string.shuffle)),
             ) {
-                NIcon(NIcons.Shuffle, size = 20.dp)
+                NIcon(R.drawable.ic_shuffle, size = 20.dp)
             }
         }
     }
@@ -195,7 +194,7 @@ fun PlayShuffleIcons(
                 .size(44.dp, 40.dp)
                 .described(playDescription),
         ) {
-            NIcon(NIcons.Play, size = 20.dp)
+            NIcon(R.drawable.ic_play, size = 20.dp)
         }
         ButtonSurface(
             onClick = onShuffle,
@@ -206,7 +205,7 @@ fun PlayShuffleIcons(
                 .size(44.dp, 40.dp)
                 .described(shuffleDescription),
         ) {
-            NIcon(NIcons.Shuffle, size = 20.dp)
+            NIcon(R.drawable.ic_shuffle, size = 20.dp)
         }
     }
 }
@@ -239,7 +238,7 @@ fun NamedPlayShuffle(
                 .described(playDescription),
             padding = padding,
         ) {
-            NIcon(NIcons.Play, size = icon)
+            NIcon(R.drawable.ic_play, size = icon)
             Box(Modifier.width(8.dp))
             Text(stringResource(R.string.play), style = style, maxLines = 1)
         }
@@ -253,7 +252,7 @@ fun NamedPlayShuffle(
                 .described(shuffleDescription),
             padding = padding,
         ) {
-            NIcon(NIcons.Shuffle, size = icon)
+            NIcon(R.drawable.ic_shuffle, size = icon)
             Box(Modifier.width(8.dp))
             Text(stringResource(R.string.shuffle), style = style, maxLines = 1)
         }
@@ -277,7 +276,7 @@ fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifie
         modifier = modifier.height(40.dp),
         padding = PaddingValues(start = start, end = 8.dp),
     ) {
-        NIcon(NIcons.Sort, size = 18.dp, tint = colors.primary)
+        NIcon(R.drawable.ic_sort, size = 18.dp, tint = colors.primary)
         Box(Modifier.width(6.dp))
         Text(
             label,
@@ -287,7 +286,7 @@ fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifie
             modifier = Modifier.weight(1f, fill = false),
         )
         Box(Modifier.width(6.dp))
-        NIcon(NIcons.Collapse, size = 18.dp, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_collapse, size = 18.dp, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -327,10 +326,10 @@ fun ViewSwitch(mode: ViewMode, onToggle: () -> Unit, modifier: Modifier = Modifi
         )
         Row(Modifier.fillMaxHeight()) {
             Box(Modifier.size(26.dp, 30.dp), contentAlignment = Alignment.Center) {
-                NIcon(NIcons.ListView, size = 18.dp, tint = listInk)
+                NIcon(R.drawable.ic_list_view, size = 18.dp, tint = listInk)
             }
             Box(Modifier.size(26.dp, 30.dp), contentAlignment = Alignment.Center) {
-                NIcon(NIcons.GridView, size = 18.dp, tint = gridInk)
+                NIcon(R.drawable.ic_grid_view, size = 18.dp, tint = gridInk)
             }
         }
     }
@@ -346,7 +345,7 @@ fun TextAction(
     height: Dp = 40.dp,
     textStyle: TextStyle = text(14, FontWeight.Bold),
     padding: PaddingValues = PaddingValues(horizontal = 12.dp),
-    trailing: ImageVector? = null,
+    @DrawableRes trailing: Int? = null,
 ) {
     ButtonSurface(
         onClick = onClick,
@@ -373,9 +372,9 @@ fun NChip(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     check: Boolean = true,
-    leading: ImageVector? = null,
+    @DrawableRes leading: Int? = null,
     leadingTint: Color? = null,
-    trailing: ImageVector? = null,
+    @DrawableRes trailing: Int? = null,
     bold: Boolean = false,
     role: Role = Role.Checkbox,
 ) {
@@ -385,7 +384,7 @@ fun NChip(
         label = "chip",
     )
     val ink = if (selected) colors.onSecondaryContainer else colors.onSurface
-    val icon = leading ?: if (selected && check) NIcons.Check else null
+    val icon = leading ?: if (selected && check) R.drawable.ic_check else null
     ButtonSurface(
         onClick = onClick,
         shape = NShapes.chip,
@@ -449,7 +448,7 @@ fun ActiveChip(
                 Text(label, style = text(14, FontWeight.Bold), maxLines = 1)
             }
             NIconButton(
-                NIcons.Close,
+                R.drawable.ic_close,
                 clearDescription,
                 onClear,
                 size = 32.dp,
@@ -473,7 +472,7 @@ fun PillButton(
     modifier: Modifier = Modifier,
     style: PillStyle = PillStyle.FILLED,
     height: Dp = 48.dp,
-    icon: ImageVector? = null,
+    @DrawableRes icon: Int? = null,
     iconSize: Dp = 18.dp,
     textStyle: TextStyle = text(15, FontWeight.Bold),
     padding: PaddingValues = PaddingValues(horizontal = 24.dp),
@@ -579,7 +578,7 @@ fun <T> Segmented(
                     .semantics { this.selected = picked },
             ) {
                 if (picked) {
-                    NIcon(NIcons.Check, size = checkSize)
+                    NIcon(R.drawable.ic_check, size = checkSize)
                     Box(Modifier.width(if (checkSize < 18.dp) 4.dp else 6.dp))
                 }
                 Text(
@@ -601,7 +600,7 @@ fun NSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: M
         onCheckedChange = onCheckedChange,
         modifier = modifier,
         thumbContent = if (checked) {
-            { NIcon(NIcons.CheckBold, size = 16.dp, tint = colors.primary) }
+            { NIcon(R.drawable.ic_check_bold, size = 16.dp, tint = colors.primary) }
         } else {
             null
         },

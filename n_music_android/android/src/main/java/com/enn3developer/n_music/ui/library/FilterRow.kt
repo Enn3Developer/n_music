@@ -32,7 +32,6 @@ import com.enn3developer.n_music.ui.components.ActiveChip
 import com.enn3developer.n_music.ui.components.ButtonSurface
 import com.enn3developer.n_music.ui.components.NChip
 import com.enn3developer.n_music.ui.components.NIcon
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
@@ -65,7 +64,7 @@ fun FilterRow(
                 NChip(
                     stringResource(R.string.filters),
                     { onOpen(null) },
-                    leading = NIcons.Filter,
+                    leading = R.drawable.ic_filter,
                     leadingTint = colors.primary,
                     role = Role.Button,
                 )
@@ -82,7 +81,7 @@ fun FilterRow(
                     padding = PaddingValues(start = 8.dp, end = 10.dp),
                     arrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    NIcon(NIcons.Filter, size = 18.dp)
+                    NIcon(R.drawable.ic_filter, size = 18.dp)
                     BasicText(
                         active.size.toString(),
                         style = text(14, FontWeight.Bold, tabular = true).copy(color = colors.onSecondaryContainer),
@@ -109,7 +108,7 @@ fun FilterRow(
             NChip(
                 stringResource(field.label),
                 { onOpen(field) },
-                trailing = NIcons.Collapse,
+                trailing = R.drawable.ic_collapse,
                 role = Role.Button,
                 modifier = Modifier.animateItem(
                     fadeInSpec = NMotion.effectsDefault(),

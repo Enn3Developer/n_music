@@ -1,9 +1,9 @@
 package com.enn3developer.n_music.ui.sources
 
 import android.net.Uri
+import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import com.enn3developer.n_music.CoreRepository
@@ -13,17 +13,17 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.core.defaultSourceName
-import com.enn3developer.n_music.ui.theme.NIcons
 
 /** A source on this phone, rather than one streamed from the web or Telegram. */
 val Locator.isLocal: Boolean
     get() = this is Locator.Local || this is Locator.DocumentTree
 
 /** What kind of source [root] is, as an icon: a folder, a link or Telegram's plane. */
-fun sourceIcon(root: Locator): ImageVector = when {
-    root.isLocal -> NIcons.Sources
-    root is Locator.TelegramChat -> NIcons.Telegram
-    else -> NIcons.Web
+@DrawableRes
+fun sourceIcon(root: Locator): Int = when {
+    root.isLocal -> R.drawable.ic_sources
+    root is Locator.TelegramChat -> R.drawable.ic_telegram
+    else -> R.drawable.ic_web
 }
 
 /** What kind of source [root] is, in words. */

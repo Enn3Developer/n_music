@@ -3,10 +3,13 @@ package com.enn3developer.n_music.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
@@ -24,20 +27,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathMeasure
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -55,12 +55,12 @@ import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.LocalPageMargins
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatLength
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
+import kotlinx.coroutines.delay
 
 /**
  * How a track shows in lists: playing, picked while selecting, [held] while its ⋮ sheet is
@@ -160,7 +160,7 @@ fun TrackItem(
             Spacer(Modifier.width(44.dp))
         } else {
             NIconButton(
-                NIcons.More,
+                R.drawable.ic_more,
                 stringResource(R.string.more_for, track.title),
                 onMore,
                 size = 48.dp,
@@ -222,35 +222,24 @@ fun TrackCover(track: TrackRow, state: TrackState, modifier: Modifier = Modifier
 }
 
 /**
- * The bold check, its stroke drawing in on effects default [delay] ms from now, or drawn
- * already when [delay] is `null`.
+ * The bold check, its stroke drawing in [delay] ms from now, or drawn already when [delay] is
+ * `null`.
  */
+@OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 private fun DrawnCheck(size: Dp, color: Color, delay: Long?) {
-    val drawn = remember { Animatable(if (delay == null) 1f else 0f) }
+    var drawn by remember { mutableStateOf(delay == null) }
     LaunchedEffect(Unit) {
-        if (delay != null) drawn.animateTo(1f, NMotion.effectsDefault<Float>().delayed(delay))
+        if (delay != null) {
+            delay(delay)
+            drawn = true
+        }
     }
-    Spacer(
-        Modifier
-            .size(size)
-            .drawWithCache {
-                val unit = this.size.width / 24f
-                // The bold check's path on the 24 dp grid, as NIcons.CheckBold draws it.
-                val check = Path().apply {
-                    moveTo(5f * unit, 12.5f * unit)
-                    lineTo(9.5f * unit, 17f * unit)
-                    lineTo(19f * unit, 7.5f * unit)
-                }
-                val measure = PathMeasure().apply { setPath(check, false) }
-                val part = Path()
-                val stroke = Stroke(2.6f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                onDrawBehind {
-                    part.reset()
-                    measure.getSegment(0f, measure.length * drawn.value, part, true)
-                    drawPath(part, color, style = stroke)
-                }
-            }
+    Icon(
+        rememberAnimatedVectorPainter(AnimatedImageVector.animatedVectorResource(R.drawable.avd_check_draw), atEnd = drawn),
+        contentDescription = null,
+        modifier = Modifier.size(size),
+        tint = color,
     )
 }
 
@@ -282,7 +271,7 @@ fun TrackTile(
                         .background(colors.primary.copy(alpha = 0.85f), shape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    NIcon(NIcons.CheckBold, size = 32.dp, tint = colors.onPrimary)
+                    NIcon(R.drawable.ic_check_bold, size = 32.dp, tint = colors.onPrimary)
                 }
             }
         }
@@ -305,7 +294,7 @@ fun TrackTile(
                 )
             }
             NIconButton(
-                NIcons.More,
+                R.drawable.ic_more,
                 stringResource(R.string.more_for, track.title),
                 onMore,
                 size = 44.dp,
@@ -585,7 +574,7 @@ fun AlbumTrackItem(
     ) {
         Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
             when {
-                state.selected -> NIcon(NIcons.CheckBold, size = 20.dp, tint = colors.primary)
+                state.selected -> NIcon(R.drawable.ic_check_bold, size = 20.dp, tint = colors.primary)
                 state.current -> PlayingBars(color = colors.primary, animate = state.playing)
                 else -> Text(
                     track.trackNumber?.toString().orEmpty(),
@@ -607,7 +596,7 @@ fun AlbumTrackItem(
             Text(length, style = text(13, tabular = true), color = colors.onSurfaceVariant)
         }
         NIconButton(
-            NIcons.More,
+            R.drawable.ic_more,
             stringResource(R.string.more_for, track.title),
             onMore,
             size = 48.dp,

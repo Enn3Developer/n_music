@@ -101,7 +101,6 @@ import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.rememberLibraryRead
 import com.enn3developer.n_music.ui.removeFromPlaylist
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
@@ -173,11 +172,11 @@ fun PlaylistPage(page: Page.Playlist) {
         compact = UiPreferences.settings.collectAsStateWithLifecycle().value.compactRows,
         menu = { close ->
             if (!tracks.isNullOrEmpty()) {
-                MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
-                MenuItem(stringResource(R.string.add_to_queue), NIcons.AddToQueue, { close(); queue(next = false) })
+                MenuItem(stringResource(R.string.play_next), R.drawable.ic_play_next, { close(); queue(next = true) })
+                MenuItem(stringResource(R.string.add_to_queue), R.drawable.ic_add_to_queue, { close(); queue(next = false) })
                 MenuDivider()
             }
-            MenuItem(stringResource(R.string.delete_playlist), NIcons.Remove, {
+            MenuItem(stringResource(R.string.delete_playlist), R.drawable.ic_remove, {
                 close()
                 playlist?.let { app.show(AppDialog.DeletePlaylist(it.id, it.name)) }
             }, danger = true)
@@ -225,7 +224,7 @@ fun PlaylistContent(
             } else {
                 PageBar(onBack) {
                     Box {
-                        NIconButton(NIcons.More, stringResource(R.string.more_playlist_actions), { menuOpen = true }, tint = colors.onSurface)
+                        NIconButton(R.drawable.ic_more, stringResource(R.string.more_playlist_actions), { menuOpen = true }, tint = colors.onSurface)
                         NMenu(menuOpen, { menuOpen = false }) { menu { menuOpen = false } }
                     }
                 }
@@ -237,7 +236,7 @@ fun PlaylistContent(
             if (smart) Rules(playlist, rules, sources, onRules)
             if (smart) {
                 EmptyState(
-                    NIcons.Filter,
+                    R.drawable.ic_filter,
                     stringResource(R.string.smart_empty),
                     stringResource(R.string.smart_empty_hint),
                     Modifier.weight(1f),
@@ -245,7 +244,7 @@ fun PlaylistContent(
                 )
             } else {
                 EmptyState(
-                    NIcons.Playlist,
+                    R.drawable.ic_playlist,
                     stringResource(R.string.playlist_empty),
                     stringResource(R.string.playlist_empty_hint),
                     Modifier.weight(1f),
@@ -356,7 +355,7 @@ private fun Header(playlist: PlaylistRow, smart: Boolean, onRename: () -> Unit) 
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 NIconButton(
-                    NIcons.Rename,
+                    R.drawable.ic_rename,
                     stringResource(R.string.rename_playlist),
                     onRename,
                     size = 40.dp,
@@ -419,7 +418,7 @@ private fun RuleChips(rules: TrackFilters, sources: List<SourceRow>, onOpen: (Fi
                 padding = PaddingValues(start = 8.dp, end = 10.dp),
                 arrangement = Arrangement.spacedBy(4.dp),
             ) {
-                NIcon(NIcons.Filter, size = 18.dp)
+                NIcon(R.drawable.ic_filter, size = 18.dp)
                 Text(active.size.toString(), style = text(14, FontWeight.Bold, tabular = true))
             }
         }
@@ -447,7 +446,7 @@ private fun RuleChip(label: String, set: Boolean, onClick: () -> Unit) {
         arrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(label, style = text(14, if (set) FontWeight.Bold else FontWeight.SemiBold), maxLines = 1)
-        NIcon(NIcons.Collapse, size = 18.dp, tint = if (set) colors.onSecondaryContainer else colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_collapse, size = 18.dp, tint = if (set) colors.onSecondaryContainer else colors.onSurfaceVariant)
     }
 }
 
@@ -469,7 +468,7 @@ private fun LockedRules(rule: Filter) {
                 color = colors.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            NIcon(NIcons.Locked, size = 18.dp, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_locked, size = 18.dp, tint = colors.onSurfaceVariant)
         }
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (line in ruleLines(rule)) {

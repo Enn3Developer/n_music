@@ -144,7 +144,6 @@ import com.enn3developer.n_music.ui.formatDuration
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -440,11 +439,11 @@ private fun SearchContent(onSearch: () -> Unit, onSettings: (() -> Unit)?) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            NIcon(NIcons.Search, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_search, tint = colors.onSurfaceVariant)
             Text(hint, style = text(16), color = colors.onSurfaceVariant, maxLines = 1)
         }
         if (onSettings != null) {
-            NIconButton(NIcons.Settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
+            NIconButton(R.drawable.ic_settings, stringResource(R.string.settings), onSettings, tint = colors.onSurfaceVariant)
         }
     }
 }
@@ -603,7 +602,7 @@ fun TracksTab(
         val empty = tracks != null && tracks.isEmpty() && building == null
         if (empty && !filtered) {
             EmptyState(
-                NIcons.Library,
+                R.drawable.ic_library,
                 stringResource(R.string.library_empty),
                 stringResource(R.string.library_empty_hint),
                 action = stringResource(R.string.open_sources),
@@ -648,7 +647,7 @@ fun TracksTab(
         }
         if (empty) {
             EmptyState(
-                NIcons.Filter,
+                R.drawable.ic_filter,
                 stringResource(R.string.filters_nothing),
                 stringResource(R.string.filters_nothing_hint),
                 action = stringResource(R.string.clear_filters),
@@ -819,7 +818,7 @@ fun <T> GroupTab(
     val sectionAt = { index: Int -> rows.getOrNull(index)?.let(section) }
     if (items != null && items.isEmpty()) {
         EmptyState(
-            NIcons.Library,
+            R.drawable.ic_library,
             stringResource(R.string.library_empty),
             stringResource(R.string.library_empty_hint),
             action = stringResource(R.string.open_sources),

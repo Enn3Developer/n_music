@@ -46,7 +46,6 @@ import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
@@ -167,7 +166,7 @@ fun AddToPlaylistSheet(
                     .background(colors.secondaryContainer, RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                NIcon(NIcons.Add, tint = colors.onSecondaryContainer)
+                NIcon(R.drawable.ic_add, tint = colors.onSecondaryContainer)
             }
             Text(stringResource(R.string.new_playlist_item), style = text(16, FontWeight.SemiBold), color = colors.onSurface)
         }
@@ -215,7 +214,7 @@ fun AddToPlaylistSheet(
             Modifier.padding(start = 24.dp, end = 24.dp, top = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            NIcon(NIcons.Filter, size = 18.dp, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_filter, size = 18.dp, tint = colors.onSurfaceVariant)
             Text(
                 stringResource(R.string.add_to_playlist_hint),
                 style = text(13, lineHeight = 16.sp),

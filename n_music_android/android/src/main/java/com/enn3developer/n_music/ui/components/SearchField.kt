@@ -20,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -45,7 +44,7 @@ fun SearchField(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        NIcon(NIcons.Search, size = 20.dp, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_search, size = 20.dp, tint = colors.onSurfaceVariant)
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) {
                 Text(hint, style = text(16), color = colors.onSurfaceVariant, maxLines = 1)
@@ -62,7 +61,7 @@ fun SearchField(
         }
         if (value.isNotEmpty()) {
             NIconButton(
-                NIcons.Close,
+                R.drawable.ic_close,
                 stringResource(R.string.clear_search),
                 { onValueChange("") },
                 size = 40.dp,

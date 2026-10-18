@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.dialogs
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -64,7 +64,6 @@ import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.dotted
 import com.enn3developer.n_music.ui.sources.WelcomeDraft
 import com.enn3developer.n_music.ui.sources.addSource
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import kotlinx.coroutines.delay
@@ -400,11 +399,12 @@ private fun kindLabel(kind: TelegramChatKind): Int = when (kind) {
     TelegramChatKind.CHANNEL -> R.string.telegram_kind_channel
 }
 
-private fun kindIcon(kind: TelegramChatKind): ImageVector = when (kind) {
-    TelegramChatKind.SAVED_MESSAGES -> NIcons.Saved
-    TelegramChatKind.USER, TelegramChatKind.BOT -> NIcons.Artist
-    TelegramChatKind.GROUP -> NIcons.Group
-    TelegramChatKind.CHANNEL -> NIcons.Telegram
+@DrawableRes
+private fun kindIcon(kind: TelegramChatKind): Int = when (kind) {
+    TelegramChatKind.SAVED_MESSAGES -> R.drawable.ic_saved
+    TelegramChatKind.USER, TelegramChatKind.BOT -> R.drawable.ic_artist
+    TelegramChatKind.GROUP -> R.drawable.ic_group
+    TelegramChatKind.CHANNEL -> R.drawable.ic_telegram
 }
 
 /** Why a request to Telegram failed, the way people say it. */

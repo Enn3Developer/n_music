@@ -1,6 +1,7 @@
 package com.enn3developer.n_music.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
@@ -41,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -55,7 +55,6 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ScanState
 import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.ui.formatCount
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -120,7 +119,7 @@ fun NavRail(
                 .semantics { contentDescription = menu },
             contentAlignment = Alignment.Center,
         ) {
-            NIcon(NIcons.Menu, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_menu, tint = colors.onSurfaceVariant)
         }
         for (tab in Tab.entries) {
             NavItem(
@@ -134,7 +133,7 @@ fun NavRail(
         }
         Spacer(Modifier.weight(1f))
         NavItem(
-            NIcons.Settings,
+            R.drawable.ic_settings,
             stringResource(R.string.settings),
             selected = place.settings,
             onClick = actions::openSettings,
@@ -176,7 +175,7 @@ fun NavDrawer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            NIconButton(NIcons.MenuOpen, closeLabel, onClose, tint = colors.onSurfaceVariant)
+            NIconButton(R.drawable.ic_menu_open, closeLabel, onClose, tint = colors.onSurfaceVariant)
             Text(
                 stringResource(R.string.app_name),
                 style = text(18, FontWeight.ExtraBold, letterSpacing = (-0.2).sp),
@@ -205,7 +204,7 @@ fun NavDrawer(
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            NIconButton(NIcons.Add, stringResource(R.string.new_playlist), actions::newPlaylist, size = 40.dp, tint = colors.onSurfaceVariant)
+            NIconButton(R.drawable.ic_add, stringResource(R.string.new_playlist), actions::newPlaylist, size = 40.dp, tint = colors.onSurfaceVariant)
         }
         // The playlists scroll between the destinations and Settings when they run long.
         Column(
@@ -227,7 +226,7 @@ fun NavDrawer(
             scan?.let { ScanNote(it, actions::openScan, Modifier.padding(top = 8.dp)) }
         }
         DrawerItem(
-            NIcons.Settings,
+            R.drawable.ic_settings,
             stringResource(R.string.settings),
             selected = place.settings,
             onClick = actions::openSettings,
@@ -240,7 +239,7 @@ fun NavDrawer(
 /** One of the drawer's destinations: a pill, filled while [selected]. */
 @Composable
 private fun DrawerItem(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -282,7 +281,7 @@ private fun PlaylistLink(playlist: PlaylistRow, playing: Boolean, animate: Boole
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        NIcon(if (playlist.rule != null) NIcons.Filter else NIcons.Playlist, size = 20.dp, tint = colors.onSurfaceVariant)
+        NIcon(if (playlist.rule != null) R.drawable.ic_filter else R.drawable.ic_playlist, size = 20.dp, tint = colors.onSurfaceVariant)
         Text(
             playlist.name,
             style = text(14, FontWeight.Medium),

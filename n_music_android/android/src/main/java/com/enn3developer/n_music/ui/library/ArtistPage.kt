@@ -74,7 +74,6 @@ import com.enn3developer.n_music.ui.playsCount
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
@@ -136,9 +135,9 @@ fun ArtistPage(page: Page.Artist) {
         onMore = { app.show(Sheet.TrackActions(it.locator)) },
         compact = ui.compactRows,
         menu = { close ->
-            MenuItem(stringResource(R.string.play_next), NIcons.PlayNext, { close(); queue(next = true) })
-            MenuItem(stringResource(R.string.add_to_queue), NIcons.AddToQueue, { close(); queue(next = false) })
-            MenuItem(stringResource(R.string.add_to_playlist), NIcons.Playlist, {
+            MenuItem(stringResource(R.string.play_next), R.drawable.ic_play_next, { close(); queue(next = true) })
+            MenuItem(stringResource(R.string.add_to_queue), R.drawable.ic_add_to_queue, { close(); queue(next = false) })
+            MenuItem(stringResource(R.string.add_to_playlist), R.drawable.ic_playlist, {
                 close()
                 tracks?.let { app.show(Sheet.AddToPlaylist(it.map(TrackRow::locator))) }
             })
@@ -182,7 +181,7 @@ fun ArtistContent(
             } else {
                 PageBar(onBack) {
                     Box {
-                        NIconButton(NIcons.More, stringResource(R.string.more_for, title), { menuOpen = true }, tint = colors.onSurface)
+                        NIconButton(R.drawable.ic_more, stringResource(R.string.more_for, title), { menuOpen = true }, tint = colors.onSurface)
                         NMenu(menuOpen, { menuOpen = false }) { menu { menuOpen = false } }
                     }
                 }

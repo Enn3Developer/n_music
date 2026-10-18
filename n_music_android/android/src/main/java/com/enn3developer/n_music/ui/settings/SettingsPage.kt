@@ -1,6 +1,7 @@
 package com.enn3developer.n_music.ui.settings
 
 import android.os.Build
+import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -64,7 +65,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -117,7 +117,6 @@ import com.enn3developer.n_music.ui.player.fadeThrough
 import com.enn3developer.n_music.ui.sources.groupShape
 import com.enn3developer.n_music.ui.theme.Accent
 import com.enn3developer.n_music.ui.theme.AppLogo
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NType
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
@@ -296,8 +295,8 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
                 MiniPlayerCard(state.ui.miniButtons, state.preview, state.progress, miniOpen, { miniOpen = !miniOpen }, actions::setMiniButtons)
             }
             item(key = "language") {
-                RowCard(NIcons.Language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
-                    NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+                RowCard(R.drawable.ic_language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
+                    NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
                 }
             }
             item(key = "about") { Heading(R.string.settings_about) }
@@ -328,7 +327,7 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            NIconButton(NIcons.Back, stringResource(R.string.back), actions::back, tint = colors.onSurface)
+            NIconButton(R.drawable.ic_back, stringResource(R.string.back), actions::back, tint = colors.onSurface)
             Text(
                 stringResource(R.string.settings),
                 style = text(22, FontWeight.Bold, 28.sp),
@@ -384,8 +383,8 @@ private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
                     ThemeCard(state.ui.theme, actions::setTheme)
                     AccentCard(state.ui.accent, state.wallpaper, actions::setAccent)
                     SwitchCard(R.string.compact_rows, R.string.compact_rows_hint, state.ui.compactRows, actions::setCompactRows)
-                    RowCard(NIcons.Language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
-                        NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+                    RowCard(R.drawable.ic_language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
+                        NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
                     }
                     Heading(R.string.settings_about)
                     AboutCard(state.version, actions)
@@ -417,16 +416,16 @@ private fun AboutCard(version: String, actions: SettingsActions) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AboutButton(stringResource(R.string.share_logs_short), NIcons.Share, actions::shareLogs)
-                AboutButton(stringResource(R.string.source_code_short), NIcons.Code, actions::openSource)
-                AboutButton(stringResource(R.string.licence_named), NIcons.Info, actions::openLicence)
+                AboutButton(stringResource(R.string.share_logs_short), R.drawable.ic_share, actions::shareLogs)
+                AboutButton(stringResource(R.string.source_code_short), R.drawable.ic_code, actions::openSource)
+                AboutButton(stringResource(R.string.licence_named), R.drawable.ic_info, actions::openLicence)
             }
         }
     }
 }
 
 @Composable
-private fun AboutButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun AboutButton(label: String, @DrawableRes icon: Int, onClick: () -> Unit) {
     PillButton(
         label,
         onClick,
@@ -719,7 +718,7 @@ private fun CacheCards(cache: StreamCache, telegram: Boolean, onChange: (Boolean
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(limit, style = text(15, FontWeight.Bold, tabular = true), color = colors.onSurface)
-                        NIcon(NIcons.Collapse, size = 20.dp, tint = colors.onSurfaceVariant)
+                        NIcon(R.drawable.ic_collapse, size = 20.dp, tint = colors.onSurfaceVariant)
                     }
                     NMenu(open, { open = false }) {
                         for (option in CACHE_LIMITS) {
@@ -879,7 +878,7 @@ private fun Swatch(accent: Accent, selected: Boolean, onClick: () -> Unit) {
                 }
             }
         }
-        if (selected) NIcon(NIcons.CheckBold, size = 20.dp, tint = accent.onFill)
+        if (selected) NIcon(R.drawable.ic_check_bold, size = 20.dp, tint = accent.onFill)
     }
 }
 
@@ -897,7 +896,7 @@ private fun wallpaperQuarters(): List<Color> {
 
 /** A card that leads somewhere: its icon, name and value, and [trailing] at its end. */
 @Composable
-private fun RowCard(icon: ImageVector, title: String, detail: String?, onClick: () -> Unit, trailing: @Composable RowScope.() -> Unit) {
+private fun RowCard(@DrawableRes icon: Int, title: String, detail: String?, onClick: () -> Unit, trailing: @Composable RowScope.() -> Unit) {
     Card {
         Row(
             Modifier
@@ -955,7 +954,7 @@ private fun LogsCard(onShare: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            NIcon(NIcons.Logs, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_logs, tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f)) {
                 CardTitle(stringResource(R.string.logs))
                 Text(stringResource(R.string.logs_hint), style = text(14), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
@@ -967,7 +966,7 @@ private fun LogsCard(onShare: () -> Unit) {
                 modifier = Modifier.semantics { contentDescription = description },
                 style = PillStyle.OUTLINED,
                 height = 40.dp,
-                icon = NIcons.Share,
+                icon = R.drawable.ic_share,
                 textStyle = text(14, FontWeight.Bold),
                 padding = PaddingValues(start = 10.dp, end = 14.dp),
             )
@@ -988,9 +987,9 @@ private fun Links(onSource: () -> Unit, onLicence: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                NIcon(NIcons.Code, tint = colors.onSurfaceVariant)
+                NIcon(R.drawable.ic_code, tint = colors.onSurfaceVariant)
                 Text(stringResource(R.string.source_code), style = text(16, FontWeight.SemiBold), color = colors.onSurface, modifier = Modifier.weight(1f))
-                NIcon(NIcons.External, size = 20.dp, tint = colors.onSurfaceVariant)
+                NIcon(R.drawable.ic_external, size = 20.dp, tint = colors.onSurfaceVariant)
             }
         }
         Card(shape = groupShape(1, 2, 24.dp, 4.dp), gap = false) {
@@ -1002,12 +1001,12 @@ private fun Links(onSource: () -> Unit, onLicence: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                NIcon(NIcons.Info, tint = colors.onSurfaceVariant)
+                NIcon(R.drawable.ic_info, tint = colors.onSurfaceVariant)
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.licence), style = text(16, FontWeight.SemiBold), color = colors.onSurface)
                     Text(stringResource(R.string.licence_hint), style = text(14), color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
                 }
-                NIcon(NIcons.Open, size = 20.dp, tint = colors.onSurfaceVariant)
+                NIcon(R.drawable.ic_open, size = 20.dp, tint = colors.onSurfaceVariant)
             }
         }
     }
@@ -1034,7 +1033,7 @@ private fun MiniPlayerCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            NIcon(NIcons.MiniPlayer, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_mini_player, tint = colors.onSurfaceVariant)
             Column(Modifier.weight(1f)) {
                 CardTitle(stringResource(R.string.mini_player_buttons))
                 // It changes over as buttons go in, the way they went: on as one is added, back
@@ -1049,7 +1048,7 @@ private fun MiniPlayerCard(
                     Text(buttonsLine(shown), style = text(14), color = colors.onSurfaceVariant)
                 }
             }
-            NIcon(if (open) NIcons.Expand else NIcons.Collapse, tint = colors.onSurfaceVariant)
+            NIcon(if (open) R.drawable.ic_expand else R.drawable.ic_collapse, tint = colors.onSurfaceVariant)
         }
         if (open) MiniPlayerEditor(buttons, preview, progress, onChange)
     }

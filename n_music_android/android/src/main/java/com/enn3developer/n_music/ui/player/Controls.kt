@@ -1,8 +1,12 @@
 package com.enn3developer.n_music.ui.player
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -25,10 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -42,7 +45,6 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.ui.components.NIcon
 import com.enn3developer.n_music.ui.components.PlaybackActions
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import kotlin.math.roundToInt
@@ -92,18 +94,18 @@ fun PlayerControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ToggleButton(
-            NIcons.Shuffle,
+            R.drawable.ic_shuffle,
             stringResource(R.string.shuffle),
             stringResource(if (shuffle) R.string.toggle_on else R.string.toggle_off),
             shuffle,
             actions::toggleShuffle,
             sizes,
         )
-        SkipButton(NIcons.Previous, stringResource(R.string.previous), actions::previous, sizes)
+        SkipButton(R.drawable.ic_previous, stringResource(R.string.previous), actions::previous, sizes)
         PlayPauseButton(playing, actions::togglePause, sizes)
-        SkipButton(NIcons.Next, stringResource(R.string.next), actions::next, sizes)
+        SkipButton(R.drawable.ic_next, stringResource(R.string.next), actions::next, sizes)
         ToggleButton(
-            if (loop == LoopStatus.FILE) NIcons.RepeatOne else NIcons.Repeat,
+            if (loop == LoopStatus.FILE) R.drawable.ic_repeat_one else R.drawable.ic_repeat,
             stringResource(R.string.repeat),
             stringResource(
                 when (loop) {
@@ -142,7 +144,7 @@ private fun Modifier.shrinkToFit(): Modifier = layout { measurable, constraints 
 
 /** Shuffle or repeat: a round button, filled while [on]. */
 @Composable
-private fun ToggleButton(icon: ImageVector, label: String, state: String, on: Boolean, onClick: () -> Unit, sizes: ControlSizes) {
+private fun ToggleButton(@DrawableRes icon: Int, label: String, state: String, on: Boolean, onClick: () -> Unit, sizes: ControlSizes) {
     val fill by animateColorAsState(if (on) colors.secondaryContainer else Color.Transparent, NMotion.effectsDefault(), label = "fill")
     val tint by animateColorAsState(if (on) colors.onSecondaryContainer else colors.onSurfaceVariant, NMotion.effectsDefault(), label = "tint")
     Box(
@@ -163,7 +165,7 @@ private fun ToggleButton(icon: ImageVector, label: String, state: String, on: Bo
 
 /** Previous or next: a square-ish button whose corners square up further while pressed. */
 @Composable
-private fun SkipButton(icon: ImageVector, label: String, onClick: () -> Unit, sizes: ControlSizes) {
+private fun SkipButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit, sizes: ControlSizes) {
     SqueezeButton(
         width = sizes.skip,
         height = sizes.skip,
@@ -183,13 +185,11 @@ private fun SkipButton(icon: ImageVector, label: String, onClick: () -> Unit, si
  * Play or pause: rounded while playing, a pill while paused, and squarer while pressed. Its two
  * bars fold into a triangle as it pauses.
  */
+@OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, sizes: ControlSizes) {
-    // 0 shows the bars of Pause, 1 the triangle of Play.
-    val morph = remember { Animatable(if (playing) 0f else 1f) }
-    LaunchedEffect(playing) { morph.animateTo(if (playing) 0f else 1f, NMotion.effectsDefault()) }
-    val tint = colors.onPrimaryContainer
-    val path = remember { Path() }
+    // Starts at the bars of Pause and ends at the triangle of Play.
+    val morph = AnimatedImageVector.animatedVectorResource(R.drawable.avd_pause_to_play)
     SqueezeButton(
         width = sizes.playWidth,
         height = sizes.playHeight,
@@ -201,33 +201,14 @@ private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit, sizes: Contro
         label = stringResource(if (playing) R.string.pause else R.string.play),
         onClick = onClick,
     ) {
-        Canvas(Modifier.size(sizes.playIcon)) {
-            val scale = size.width / 24f
-            val t = morph.value
-            path.reset()
-            for (shape in 0 until 2) {
-                for (corner in 0 until 4) {
-                    val index = shape * 8 + corner * 2
-                    val x = (PauseShape[index] + (PlayShape[index] - PauseShape[index]) * t) * scale
-                    val y = (PauseShape[index + 1] + (PlayShape[index + 1] - PauseShape[index + 1]) * t) * scale
-                    if (corner == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                path.close()
-            }
-            drawPath(path, tint)
-        }
+        Icon(
+            rememberAnimatedVectorPainter(morph, atEnd = !playing),
+            contentDescription = null,
+            modifier = Modifier.size(sizes.playIcon),
+            tint = colors.onPrimaryContainer,
+        )
     }
 }
-
-/** Pause's two bars and Play's triangle in two halves, as four corners each on the 24 grid. */
-private val PauseShape = floatArrayOf(
-    6.5f, 5f, 10.5f, 5f, 10.5f, 19f, 6.5f, 19f,
-    13.5f, 5f, 17.5f, 5f, 17.5f, 19f, 13.5f, 19f,
-)
-private val PlayShape = floatArrayOf(
-    8f, 5f, 13.5f, 8.5f, 13.5f, 15.5f, 8f, 19f,
-    13.5f, 8.5f, 19f, 12f, 19f, 12f, 13.5f, 15.5f,
-)
 
 /**
  * A filled button whose corners go from [radius] to [pressedRadius] while pressed, under a

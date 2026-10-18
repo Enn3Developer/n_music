@@ -92,7 +92,6 @@ import com.enn3developer.n_music.ui.components.PlaybackUi
 import com.enn3developer.n_music.ui.components.holdFill
 import com.enn3developer.n_music.ui.components.miniButton
 import com.enn3developer.n_music.ui.components.miniProgress
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -367,18 +366,18 @@ fun MiniPlayerEditor(
                                     NMenu(menuFor == entry, { menuFor = null }) {
                                         val index = buttons.indexOf(entry)
                                         if (index > 0) {
-                                            MenuItem(stringResource(R.string.mini_move_left), NIcons.Back, {
+                                            MenuItem(stringResource(R.string.mini_move_left), R.drawable.ic_back, {
                                                 menuFor = null
                                                 move(entry, -1)
                                             })
                                         }
                                         if (index in 0 until buttons.lastIndex) {
-                                            MenuItem(stringResource(R.string.mini_move_right), NIcons.Open, {
+                                            MenuItem(stringResource(R.string.mini_move_right), R.drawable.ic_open, {
                                                 menuFor = null
                                                 move(entry, 1)
                                             })
                                         }
-                                        MenuItem(stringResource(R.string.mini_take_out), NIcons.RemoveSource, {
+                                        MenuItem(stringResource(R.string.mini_take_out), R.drawable.ic_remove_source, {
                                             menuFor = null
                                             change(buttons - entry)
                                         })
@@ -428,7 +427,7 @@ fun MiniPlayerEditor(
                                         onAdd = { change(buttons + button) },
                                     )
                                     NMenu(menuFor == button, { menuFor = null }) {
-                                        MenuItem(stringResource(R.string.mini_add), NIcons.Add, {
+                                        MenuItem(stringResource(R.string.mini_add), R.drawable.ic_add, {
                                             menuFor = null
                                             change(buttons + button)
                                         })
@@ -632,13 +631,13 @@ private fun TrayButton(
 
 /** A button's icon away from playback's state: repeat as repeat, play/pause as play. */
 private fun trayIcon(button: MiniButton) = when (button) {
-    MiniButton.SHUFFLE -> NIcons.Shuffle
-    MiniButton.PREVIOUS -> NIcons.Previous
-    MiniButton.PLAY_PAUSE -> NIcons.Play
-    MiniButton.NEXT -> NIcons.Next
-    MiniButton.REPEAT -> NIcons.Repeat
-    MiniButton.OUTPUT -> NIcons.Output
-    MiniButton.SLEEP_TIMER -> NIcons.SleepTimer
+    MiniButton.SHUFFLE -> R.drawable.ic_shuffle
+    MiniButton.PREVIOUS -> R.drawable.ic_previous
+    MiniButton.PLAY_PAUSE -> R.drawable.ic_play
+    MiniButton.NEXT -> R.drawable.ic_next
+    MiniButton.REPEAT -> R.drawable.ic_repeat
+    MiniButton.OUTPUT -> R.drawable.ic_output
+    MiniButton.SLEEP_TIMER -> R.drawable.ic_sleep_timer
 }
 
 /** The dashed outline where a held button would land: round in the bar, [corner] in the tray. */

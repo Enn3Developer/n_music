@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.sources
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,7 +43,6 @@ import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.dialogs.AppDialog
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.theme.AppLogo
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 
@@ -121,10 +120,10 @@ fun WelcomeContent(
             )
             Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val kinds = if (onTelegram != null) 3 else 2
-                Option(NIcons.Sources, R.string.local_folder, R.string.local_folder_hint, groupShape(0, kinds), onFolder)
-                Option(NIcons.Web, R.string.web_playlist, R.string.web_playlist_hint, groupShape(1, kinds), onWeb)
+                Option(R.drawable.ic_sources, R.string.local_folder, R.string.local_folder_hint, groupShape(0, kinds), onFolder)
+                Option(R.drawable.ic_web, R.string.web_playlist, R.string.web_playlist_hint, groupShape(1, kinds), onWeb)
                 if (onTelegram != null) {
-                    Option(NIcons.Telegram, R.string.telegram_chat, R.string.telegram_hint, groupShape(2, kinds), onTelegram)
+                    Option(R.drawable.ic_telegram, R.string.telegram_chat, R.string.telegram_hint, groupShape(2, kinds), onTelegram)
                 }
             }
             if (sources.isNotEmpty()) {
@@ -159,7 +158,7 @@ fun WelcomeContent(
 
 /** A kind of source to add: its icon, name and what it is, as one card of a group. */
 @Composable
-private fun Option(icon: ImageVector, name: Int, detail: Int, shape: RoundedCornerShape, onClick: () -> Unit) {
+private fun Option(@DrawableRes icon: Int, name: Int, detail: Int, shape: RoundedCornerShape, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -190,7 +189,7 @@ private fun Option(icon: ImageVector, name: Int, detail: Int, shape: RoundedCorn
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        NIcon(NIcons.Open, tint = colors.onSurfaceVariant)
+        NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
     }
 }
 
@@ -232,6 +231,6 @@ private fun Added(source: DraftSource, shape: RoundedCornerShape, onRemove: () -
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        NIconButton(NIcons.Close, stringResource(R.string.remove_source_named, name), onRemove, tint = colors.onSurfaceVariant)
+        NIconButton(R.drawable.ic_close, stringResource(R.string.remove_source_named, name), onRemove, tint = colors.onSurfaceVariant)
     }
 }

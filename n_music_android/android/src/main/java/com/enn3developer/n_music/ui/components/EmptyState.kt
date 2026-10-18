@@ -1,5 +1,6 @@
 package com.enn3developer.n_music.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -28,7 +28,7 @@ import com.enn3developer.n_music.ui.theme.text
  */
 @Composable
 fun EmptyState(
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     title: String,
     message: String,
     modifier: Modifier = Modifier,

@@ -93,7 +93,6 @@ import com.enn3developer.n_music.ui.components.genreName
 import com.enn3developer.n_music.ui.components.tappable
 import com.enn3developer.n_music.ui.formatCount
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
@@ -208,7 +207,7 @@ fun SearchContent(
         when {
             results == null -> Spacer(Modifier.weight(1f))
             results.empty -> EmptyState(
-                NIcons.Search,
+                R.drawable.ic_search,
                 stringResource(R.string.search_nothing),
                 stringResource(R.string.search_nothing_hint),
                 bottom = 40.dp,
@@ -317,7 +316,7 @@ private fun SearchBar(text: String, onText: (String) -> Unit, onBack: () -> Unit
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            NIconButton(NIcons.Back, stringResource(R.string.close_search), onBack, tint = colors.onSurface)
+            NIconButton(R.drawable.ic_back, stringResource(R.string.close_search), onBack, tint = colors.onSurface)
             val hint = stringResource(R.string.search_library)
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (text.isEmpty()) Text(hint, style = text(18), color = colors.onSurfaceVariant, maxLines = 1)
@@ -336,7 +335,7 @@ private fun SearchBar(text: String, onText: (String) -> Unit, onBack: () -> Unit
                 )
             }
             if (text.isNotEmpty()) {
-                NIconButton(NIcons.Close, stringResource(R.string.clear_search), { onText("") }, tint = colors.onSurfaceVariant)
+                NIconButton(R.drawable.ic_close, stringResource(R.string.clear_search), { onText("") }, tint = colors.onSurfaceVariant)
             }
         }
     }
@@ -421,7 +420,7 @@ private fun FoundGenre(genre: GenreRow, search: String, onClick: () -> Unit) {
                 .background(colors.surfaceHigh, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            NIcon(NIcons.Genre, size = 20.dp, tint = colors.onSurfaceVariant)
+            NIcon(R.drawable.ic_tag, size = 20.dp, tint = colors.onSurfaceVariant)
         }
         Text(
             highlight(genreName(genre), search),

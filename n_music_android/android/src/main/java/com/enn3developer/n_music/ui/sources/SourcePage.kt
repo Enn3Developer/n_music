@@ -73,7 +73,6 @@ import com.enn3developer.n_music.ui.library.rememberNowPlaying
 import com.enn3developer.n_music.ui.quantity
 import com.enn3developer.n_music.ui.rememberLibrary
 import com.enn3developer.n_music.ui.sheets.Sheet
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
@@ -166,7 +165,7 @@ fun SourceContent(
             if (source != null) {
                 Box {
                     NIconButton(
-                        NIcons.More,
+                        R.drawable.ic_more,
                         stringResource(R.string.more_for_source, source.title),
                         { menuOpen = true },
                         tint = colors.onSurface,
@@ -258,7 +257,7 @@ fun SourceContent(
                                 .background(colors.surfaceHigh, RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            NIcon(NIcons.Later, size = 22.dp, tint = colors.onSurfaceQuiet)
+                            NIcon(R.drawable.ic_later, size = 22.dp, tint = colors.onSurfaceQuiet)
                         }
                     },
                 )
@@ -303,7 +302,7 @@ private fun Header(source: SourceRow, tracks: Long, onRename: () -> Unit) {
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 NIconButton(
-                    NIcons.Rename,
+                    R.drawable.ic_rename,
                     stringResource(R.string.rename_source),
                     onRename,
                     size = 40.dp,
@@ -346,7 +345,7 @@ private fun Unreachable(root: Locator, saved: Int, signedOut: Boolean, onAction:
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            NIcon(NIcons.Info, size = 20.dp, tint = colors.onErrorContainer)
+            NIcon(R.drawable.ic_info, size = 20.dp, tint = colors.onErrorContainer)
             Text(
                 stringResource(if (signedOut) R.string.source_signed_out else R.string.source_unreachable),
                 style = text(15, FontWeight.Bold),

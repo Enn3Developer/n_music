@@ -42,11 +42,12 @@
 
             <ImageView
                 android:id="@+id/widget_shuffle_icon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
                 android:layout_gravity="center"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_widget_shuffle" />
+                android:src="@drawable/ic_shuffle"
+                android:tint="@color/widget_on_pill" />
         </FrameLayout>
 
         <LinearLayout

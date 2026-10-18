@@ -97,7 +97,6 @@ import com.enn3developer.n_music.ui.sheets.QueuePanel
 import com.enn3developer.n_music.ui.sheets.Sheet
 import com.enn3developer.n_music.ui.sheets.albumOf
 import com.enn3developer.n_music.ui.sheets.rememberClock
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
@@ -603,7 +602,7 @@ fun PlayerOverlay(
             ) {
                 if (bar) {
                     Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                        NIcon(NIcons.PlayNext, tint = colors.onSurfaceVariant)
+                        NIcon(R.drawable.ic_play_next, tint = colors.onSurfaceVariant)
                     }
                 }
             }

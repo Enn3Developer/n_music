@@ -63,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ui.LocalWindowLayout
 import com.enn3developer.n_music.ui.WindowLayout
-import com.enn3developer.n_music.ui.theme.NIcons
 import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
@@ -99,7 +98,7 @@ val inSideSheet: Boolean
 @Composable
 fun SheetClose() {
     val close = LocalSideSheet.current ?: return
-    NIconButton(NIcons.Close, stringResource(R.string.close), close, tint = colors.onSurface)
+    NIconButton(R.drawable.ic_close, stringResource(R.string.close), close, tint = colors.onSurface)
 }
 
 /**
