@@ -188,7 +188,7 @@ fun TrackActionsSheet(
         Action(R.drawable.ic_add_to_queue, stringResource(R.string.add_to_queue), onQueue)
         Action(R.drawable.ic_playlist, stringResource(R.string.add_to_playlist), onAddToPlaylist, opens = true)
         Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        Action(R.drawable.ic_album, stringResource(R.string.go_to_album), onAlbum)
+        Action(R.drawable.ic_launcher_monochrome, stringResource(R.string.go_to_album), onAlbum)
         Action(R.drawable.ic_artist, stringResource(R.string.go_to_artist), onArtist)
         if (onRemove != null) {
             Line(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))

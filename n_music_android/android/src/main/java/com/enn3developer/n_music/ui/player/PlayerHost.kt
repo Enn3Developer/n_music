@@ -3,9 +3,16 @@ package com.enn3developer.n_music.ui.player
 import android.os.Build
 import android.view.RoundedCorner
 import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
@@ -25,6 +32,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +52,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -60,6 +71,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -106,6 +118,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 
 /** How dark the scrim over the app gets behind the open player. */
 private const val SCRIM = 0.5f
@@ -419,6 +435,8 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     )
 }
 
+enum class QueueState { Closed, Open }
+
 /**
  * The player over the app while any of it shows: its scrim, the container growing out of the
  * mini player with the player in it, and the cover on its flight.
@@ -431,6 +449,9 @@ fun PlayerHost(transition: PlayerTransition) {
     val now = current
     LaunchedEffect(now == null) { if (now == null) transition.close() }
     if (now == null) return
+    val queue = remember { AnchoredDraggableState(QueueState.Closed) }
+
+    LaunchedEffect(transition.isOpen) { if (!transition.isOpen) queue.animateTo(QueueState.Closed) }
 
     val app = LocalApp.current
     val settings by UiPreferences.settings.collectAsStateWithLifecycle()
@@ -457,7 +478,21 @@ fun PlayerHost(transition: PlayerTransition) {
         snack = app.snack.takeIf { app.sheet == null },
         onSnackTimeout = app::dismissSnack,
         onSnackAction = app::snackAction,
+        queue = queue,
     )
+}
+
+private class RevealShape(val rect: Rect, val radius: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+        Outline.Rounded(
+            RoundRect(
+                rect,
+                topLeft = CornerRadius(radius),
+                topRight = CornerRadius(radius),
+                bottomRight = CornerRadius.Zero,
+                bottomLeft = CornerRadius.Zero,
+            )
+        )
 }
 
 /**
@@ -477,9 +512,68 @@ fun PlayerOverlay(
     snack: Pair<Long, Snack>?,
     onSnackTimeout: (Long) -> Unit,
     onSnackAction: (Long) -> Unit,
+    queue: AnchoredDraggableState<QueueState>,
 ) {
     val track = ui.track
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var height by remember { mutableFloatStateOf(0f) }
+    val flick = with(density) { FlickSpeed.toPx() }
+
+    val queueFling = AnchoredDraggableDefaults.flingBehavior(
+        queue,
+        positionalThreshold = { d -> if (queue.settledValue == QueueState.Closed) d * 0.3f else d * 0.7f },
+        animationSpec = NMotion.spatialDefault(PRECISION),
+    )
+    val queueDrag = Modifier.anchoredDraggable(queue, Orientation.Vertical, flingBehavior = queueFling)
+
+    var overlayPos by remember { mutableStateOf(Offset.Zero) }
+    var upNextInRoot by remember { mutableStateOf(Rect.Zero) }
+    val upNext by remember { derivedStateOf { upNextInRoot.translate(-overlayPos) } }
+    LaunchedEffect(upNext.top, height) {
+        if (height > 0f && upNextInRoot != Rect.Zero) {
+            queue.updateAnchors(
+                DraggableAnchors {
+                    QueueState.Open at 0f
+                    QueueState.Closed at upNext.top
+                },
+                queue.targetValue,
+            )
+        }
+    }
+
+    val queueShown by remember {
+        derivedStateOf {
+            val closed = queue.anchors.positionOf(QueueState.Closed)
+            !closed.isNaN() && queue.offset < closed - 0.5f
+        }
+    }
+
+    val queueScroll = remember(queue) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+                if (source == NestedScrollSource.UserInput && available.y < 0f && queue.offset > 0f) {
+                    Offset(0f, queue.dispatchRawDelta(available.y))
+                } else Offset.Zero
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+                if (source == NestedScrollSource.UserInput && available.y > 0f) {
+                    Offset(0f, queue.dispatchRawDelta(available.y))
+                } else Offset.Zero
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (queue.offset <= 0f) return Velocity.Zero
+                val p = queue.progress(QueueState.Closed, QueueState.Open)
+                val open = available.y < -flick || (p > 0.3f && available.y < flick)
+                queue.animateTo(if (open) QueueState.Open else QueueState.Closed)
+                return available
+            }
+        }
+    }
+    val queueP: () -> Float = {
+        if (queue.offset.isNaN()) 0f
+        else queue.progress(QueueState.Closed, QueueState.Open)
+    }
     // Beside a rail, the mini player is the taller bar.
     val bar = LocalWindowLayout.current.rail
     val view = LocalView.current
@@ -488,9 +582,14 @@ fun PlayerOverlay(
     val pageColor = colors.background
     val nowPlaying = stringResource(R.string.now_playing)
     var slot by remember { mutableStateOf<Rect?>(null) }
+    val upNextRadius = with(density) { 28.dp.toPx() }
 
     BoxWithConstraints(
         Modifier
+            .onSizeChanged {
+                height = it.height.toFloat()
+            }
+            .onGloballyPositioned { overlayPos = it.positionInRoot() }
             .fillMaxSize()
             // Nothing under the player takes touches while any of it shows.
             .pointerInput(Unit) {}
@@ -550,6 +649,7 @@ fun PlayerOverlay(
                     val flick = FlickSpeed.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        if (queueShown) return@awaitEachGesture
                         val moving = transition.expand.isRunning || transition.cover.isRunning ||
                             transition.drag.isRunning || transition.squeeze.isRunning
                         if (moving) transition.hold(down.position)
@@ -625,6 +725,9 @@ fun PlayerOverlay(
                 coverShown = { !transition.flying },
                 onCoverPlaced = { slot = it },
                 queue = { QueuePanel(it) },
+                upNextDrag = queueDrag,
+                onUpNext = { scope.launch { queue.animateTo(QueueState.Open) } },
+                onUpNextPlaced = { upNextInRoot = it }
             )
             // The cover on its flight between the mini player's and its place.
             val landing = slot
@@ -666,6 +769,38 @@ fun PlayerOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = with(density) { navInset.toDp() } + 52.dp + 8.dp),
         )
+        if (queueShown) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 0.4f * queue.progress(QueueState.Closed, QueueState.Open) }
+                    .background(Color.Black)
+            )
+            QueuePanel(
+                Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, queue.requireOffset().roundToInt()) }
+                    .graphicsLayer {
+                        val off = queue.requireOffset()
+                        val p = queue.progress(QueueState.Closed, QueueState.Open)
+                        clip = true
+                        shape = RevealShape(
+                            Rect(
+                                left = lerp(upNext.left, 0f, p),
+                                top = 0f,
+                                right = lerp(upNext.right, size.width, p),
+                                bottom = lerp(upNext.bottom, size.height + off, p) - off,
+                            ),
+                            radius = lerp(upNextRadius, 0f, p),
+                        )
+                    }
+                    .background(colors.surfaceLow)
+                    .then(queueDrag)
+                    .nestedScroll(queueScroll),
+                progress = queueP,
+                header = { UpNextContent(ui.next, skip) },
+            )
+        }
 
         // Back shrinks the player as a drag would, and closes it once let go.
         PredictiveBackHandler(transition.isOpen) { progress ->
@@ -683,6 +818,9 @@ fun PlayerOverlay(
                 transition.open()
                 throw cancelled
             }
+        }
+        BackHandler(queue.targetValue == QueueState.Open) {
+            scope.launch { queue.animateTo(QueueState.Closed) }
         }
     }
 }

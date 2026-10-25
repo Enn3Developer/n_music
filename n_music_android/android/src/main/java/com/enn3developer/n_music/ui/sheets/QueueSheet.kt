@@ -154,9 +154,27 @@ fun QueueSheet(open: Boolean, onDismissRequest: () -> Unit, onGone: () -> Unit) 
 
 /** The play session beside a foldable's player, as the sheet shows it, but for shuffle, which the player has. */
 @Composable
-fun QueuePanel(modifier: Modifier = Modifier) {
-    LiveQueue(onLeave = {}) { entries, current, playing, shuffle, loop, origin, actions ->
-        QueuePanel(entries, current, playing, shuffle, loop, origin, actions, modifier)
+fun QueuePanel(
+    modifier: Modifier = Modifier,
+    progress: () -> Float = { 1f },
+    header: @Composable () -> Unit = {},
+) {
+    Box(modifier) {
+        LiveQueue(onLeave = {}) { entries, current, playing, shuffle, loop, origin, actions ->
+            QueuePanel(
+                entries, current, playing, shuffle, loop, origin, actions,
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = ((progress() - 0.1f) / 0.3f).coerceIn(0f, 1f) },
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .graphicsLayer { alpha = (1f - progress() / 0.25f).coerceIn(0f, 1f) }
+        ) {
+            header()
+        }
     }
 }
 

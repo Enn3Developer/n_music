@@ -318,7 +318,7 @@ private fun cover(context: Context, track: TrackRow?, side: Int, colors: NColors
     } else {
         paint.color = colors.surfaceHighest.toArgb()
         canvas.drawRoundRect(bounds, radius, radius, paint)
-        val disc = ContextCompat.getDrawable(context, R.drawable.ic_album)?.mutate()
+        val disc = ContextCompat.getDrawable(context, R.drawable.ic_launcher_monochrome)?.mutate()
         if (disc != null) {
             val icon = (size * 0.42f).roundToInt()
             val start = (size - icon) / 2

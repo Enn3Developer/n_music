@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -125,7 +124,7 @@ private fun Placeholder(kind: CoverPlaceholder) {
                 val icon = when (kind) {
                     CoverPlaceholder.ARTIST -> R.drawable.ic_artist
                     CoverPlaceholder.PLAYLIST -> R.drawable.ic_playlist
-                    else -> R.drawable.ic_album
+                    else -> R.drawable.ic_launcher_monochrome
                 }
                 NIcon(icon, size = maxWidth * 0.42f, tint = colors.onSurfaceQuiet)
             }
