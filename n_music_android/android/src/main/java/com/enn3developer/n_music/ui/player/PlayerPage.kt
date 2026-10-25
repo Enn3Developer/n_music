@@ -15,9 +15,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,10 +54,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -104,6 +102,7 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.trackFormat
+
 
 /** The player's parts, in the order they come in as it opens. */
 enum class PlayerGroup { TOP_BAR, TITLE, SEEK, CONTROLS, CHIPS, UP_NEXT }
@@ -221,6 +220,9 @@ fun PlayerContent(
     coverShown: () -> Boolean = { true },
     onCoverPlaced: (Rect) -> Unit = {},
     queue: @Composable (Modifier) -> Unit = {},
+    upNextDrag: Modifier = Modifier,
+    onUpNext: () -> Unit = actions::openQueue,
+    onUpNextPlaced: (Rect) -> Unit = {},
 ) {
     val root = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val paused = rememberPaused(ui.playing)
@@ -389,11 +391,13 @@ fun PlayerContent(
                 }
                 UpNext(
                     ui.next,
-                    actions::openQueue,
+                    onUpNext,
+                    upNextDrag,
                     Modifier
                         .align(Alignment.BottomCenter)
                         .then(group(PlayerGroup.UP_NEXT)),
                     skip,
+                    onUpNextPlaced,
                 )
             }
         }
@@ -841,23 +845,9 @@ internal fun SleepChip(sleep: Sleep?, onClick: () -> Unit, small: Boolean = fals
  * swipe down is left to the player, which closes.
  */
 @Composable
-private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier, skip: () -> Int) {
-    val description = stringResource(R.string.open_queue)
+internal fun UpNextContent(next: TrackRow?, skip: () -> Int, modifier: Modifier = Modifier) {
     Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .background(colors.surfaceLow)
-            .pointerInput(onOpen) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
-                        if (over < 0) change.consume()
-                    }?.let { onOpen() }
-                }
-            }
-            .tappable(onOpen)
-            .semantics { contentDescription = description },
+        modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -906,4 +896,27 @@ private fun UpNext(next: TrackRow?, onOpen: () -> Unit, modifier: Modifier, skip
         }
         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
+}
+
+@Composable
+private fun UpNext(
+    next: TrackRow?,
+    onOpen: () -> Unit,
+    drag: Modifier,
+    modifier: Modifier,
+    skip: () -> Int,
+    onPlaced: (Rect) -> Unit = {},
+) {
+    val description = stringResource(R.string.open_queue)
+    UpNextContent (
+        next,
+        skip,
+        modifier = modifier
+            .onGloballyPositioned { onPlaced(it.boundsInRoot()) }
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(colors.surfaceLow)
+            .then(drag)
+            .tappable(onOpen)
+            .semantics { contentDescription = description }
+    )
 }
