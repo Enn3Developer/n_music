@@ -124,7 +124,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 
 /** How dark the scrim over the app gets behind the open player. */
-const val SCRIM = 0.5f
+private const val SCRIM = 0.5f
 
 /** How small a drag down makes the player, around the finger. */
 private const val SQUEEZED = 0.95f
