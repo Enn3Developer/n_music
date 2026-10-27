@@ -128,7 +128,7 @@ impl Default for AppStateRust {
             reduce_motion: false,
             hidden_columns: QStringList::default(),
             show_hidden_folders: false,
-            discord_presence: true,
+            discord_presence: false,
             window_width: size.width as i32,
             window_height: size.height as i32,
             window_maximized: size.maximized,

@@ -45,7 +45,7 @@ impl Default for UiSettings {
             reduce_motion: false,
             hidden_columns: Vec::new(),
             show_hidden_folders: false,
-            discord_presence: true,
+            discord_presence: false,
         }
     }
 }

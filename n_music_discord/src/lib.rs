@@ -1,12 +1,4 @@
 //! Discord Rich Presence: the track playing, its cover and its progress on the user's profile.
-//!
-//! The crate is a bus subscriber, so hosts only have to register it:
-//!
-//! ```no_run
-//! # fn example(app: &mut n_event_bus::App) {
-//! app.register_subscriber(n_music_discord::DiscordPresence::new(true));
-//! # }
-//! ```
 
 mod cover;
 mod presence;
