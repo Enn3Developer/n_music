@@ -19,6 +19,7 @@ n_event_bus = { path = "../n_event_bus" }
 bitflags = "2"
 log = "0.4"
 n_music_media_notification = { path = "../n_music_media_notification" }
+n_music_discord = { path = "../n_music_discord" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sys-locale = "0.3"

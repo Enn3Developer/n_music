@@ -34,6 +34,8 @@ pub mod qobject {
         #[qproperty(QStringList, hidden_columns)]
         /// The folder picker lists hidden folders too; saved when changed.
         #[qproperty(bool, show_hidden_folders)]
+        /// Discord shows the track playing; saved and sent when changed.
+        #[qproperty(bool, discord_presence)]
         #[qproperty(i32, window_width)]
         #[qproperty(i32, window_height)]
         /// The window was maximized when it last closed, to reopen that way.
@@ -86,6 +88,7 @@ use n_music_core::messages::{
     SetResume,
 };
 use n_music_core::settings::OutputDevice;
+use n_music_discord::SetDiscordPresence;
 
 pub struct AppStateRust {
     theme: i32,
@@ -97,6 +100,7 @@ pub struct AppStateRust {
     reduce_motion: bool,
     hidden_columns: QStringList,
     show_hidden_folders: bool,
+    discord_presence: bool,
     window_width: i32,
     window_height: i32,
     window_maximized: bool,
@@ -124,6 +128,7 @@ impl Default for AppStateRust {
             reduce_motion: false,
             hidden_columns: QStringList::default(),
             show_hidden_folders: false,
+            discord_presence: true,
             window_width: size.width as i32,
             window_height: size.height as i32,
             window_maximized: size.maximized,
@@ -156,6 +161,7 @@ impl cxx_qt::Initialize for qobject::AppState {
         self.as_mut().set_reduce_motion(ui.reduce_motion);
         self.as_mut()
             .set_show_hidden_folders(ui.show_hidden_folders);
+        self.as_mut().set_discord_presence(ui.discord_presence);
         let mut hidden = QList::<QString>::default();
         for name in &ui.hidden_columns {
             hidden.append(QString::from(name));
@@ -268,6 +274,13 @@ impl cxx_qt::Initialize for qobject::AppState {
             .on_show_hidden_folders_changed(|app| {
                 let shown = *app.show_hidden_folders();
                 settings::ui().update(|ui| ui.show_hidden_folders = shown);
+            })
+            .release();
+        self.as_mut()
+            .on_discord_presence_changed(|app| {
+                let enabled = *app.discord_presence();
+                settings::ui().update(|ui| ui.discord_presence = enabled);
+                bus::emit(SetDiscordPresence(enabled));
             })
             .release();
         self.as_mut()

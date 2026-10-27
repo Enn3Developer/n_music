@@ -7,12 +7,14 @@ members = [
     "n_music_ffi/bindgen",
     "n_event_bus",
     "n_music_media_notification",
+    "n_music_discord",
 ]
 default-members = [
     "n_music_core",
     "n_music_desktop",
     "n_event_bus",
     "n_music_media_notification",
+    "n_music_discord",
 ]
 
 [workspace.package]

@@ -7,6 +7,7 @@ use n_music_core::engine::Engine;
 use n_music_core::settings::SettingsStorage;
 use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
 use n_music_core::source::{LocalProvider, Providers, WebProvider};
+use n_music_discord::DiscordPresence;
 use n_music_media_notification::MediaNotification;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
@@ -48,6 +49,9 @@ impl Bus {
         if let Some(media) = MediaNotification::new(writer.clone()) {
             app.register_subscriber(media);
         }
+        app.register_subscriber(DiscordPresence::new(
+            crate::settings::ui().get().discord_presence,
+        ));
         let thread = std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
             .spawn(move || {
