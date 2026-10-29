@@ -115,6 +115,7 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
     // UniFFI's bindings call the native core through JNA.
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose'
 }
 repositories {
     google()
