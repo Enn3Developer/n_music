@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// Downloaded at a time when completing a recording.
 const CHUNK: usize = 64 * 1024;
 
-pub(crate) struct StreamCache {
+pub struct StreamCache {
     /// Copies are named after their track's key; recordings end in `.part`.
     dir: PathBuf,
     settings: Options<StreamCacheSettings>,

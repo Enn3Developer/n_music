@@ -6,7 +6,7 @@
 //! [`StreamProvider`].
 
 mod ahead;
-pub(crate) mod cache;
+pub mod cache;
 mod local;
 pub mod telegram;
 mod web;
@@ -170,6 +170,35 @@ impl OpenedStream {
     }
 }
 
+/// Opens local tracks from their provider and remote ones only from their cached copy:
+/// it never downloads.
+pub struct NoDownload<'a> {
+    providers: &'a Providers,
+    cache: Option<&'a StreamCache>,
+}
+
+impl<'a> NoDownload<'a> {
+    pub fn new(providers: &'a Providers, cache: Option<&'a StreamCache>) -> Self {
+        Self { providers, cache }
+    }
+}
+
+impl StreamProvider for NoDownload<'_> {
+    fn open(&self, locator: &Locator) -> io::Result<OpenedStream> {
+        if !locator.is_remote() {
+            return self.providers.open(locator);
+        }
+        self.cache
+            .and_then(|cache| cache.open_copy(locator))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("No copy of {locator}")))
+    }
+
+    fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>> {
+        self.providers.list_tracks(root)
+    }
+}
+
+
 /// The set of backends available on this platform. Each [`Locator`] kind is served by one
 /// backend, so requests are routed by the locator alone. Remote tracks also go through the
 /// stream cache, once the engine adds it.
@@ -255,29 +284,6 @@ impl Providers {
                 format!("No provider for {locator} on this platform"),
             )
         })
-    }
-
-    pub fn open_copy(&self, locator: &Locator) -> Option<OpenedStream> {
-        self.cache.as_ref()?.open_copy(locator)
-    }
-
-    pub fn copies(&self) -> impl StreamProvider + '_ {
-        Copies(self)
-    }
-}
-
-struct Copies<'a>(&'a Providers);
-
-
-impl StreamProvider for Copies<'_> {
-    fn open(&self, locator: &Locator) -> io::Result<OpenedStream> {
-        self.0.open_copy(locator).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, format!("No copy of {locator}"))
-        })
-    }
-
-    fn list_tracks(&self, _root: &Locator) -> io::Result<Vec<TrackEntry>> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "Copies list no tracks"))
     }
 }
 

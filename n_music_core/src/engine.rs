@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// What frontends share with the core services.
 pub struct Engine {
     library: Library,
-    providers: Arc<Providers>,
+    stream_cache: Arc<StreamCache>,
 }
 
 impl Engine {
@@ -72,8 +72,8 @@ impl Engine {
         }
         app.register_subscriber(service);
         app.register_subscriber(player);
-        app.register_subscriber(StreamCacheService::new(cache, library.clone(), libraries));
-        Self { library, providers }
+        app.register_subscriber(StreamCacheService::new(cache.clone(), library.clone(), libraries));
+        Self { library, stream_cache: cache }
     }
 
     /// The library the services keep up to date.
@@ -81,5 +81,7 @@ impl Engine {
         self.library.clone()
     }
 
-    pub fn providers(&self) -> Arc<Providers> { self.providers.clone() }
+    pub fn stream_cache(&self) -> Arc<StreamCache> {
+        self.stream_cache.clone()
+    }
 }

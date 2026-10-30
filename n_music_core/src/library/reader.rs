@@ -9,7 +9,50 @@ use multitag::data::Picture;
 use multitag::Tag;
 use std::io;
 use symphonia::core::formats::TrackType;
-use symphonia_core::meta::{MetadataContainer, StandardTag, StandardVisualKey};
+use symphonia_core::meta::{MetadataContainer, StandardTag, StandardVisualKey, Visual};
+
+/// Keeps the first picture it is shown, until a front cover replaces it.
+#[derive(Default)]
+struct CoverPick(Option<(bool, Vec<u8>)>);
+
+impl CoverPick {
+    fn consider(&mut self, visuals: &[Visual]) {
+        for visual in visuals {
+            let front = visual.usage == Some(StandardVisualKey::FrontCover);
+            if self.0.as_ref().is_none_or(|(was_front, _)| front && !was_front) {
+                self.0 = Some((front, visual.data.to_vec()));
+            }
+        }
+    }
+
+    fn into_data(self) -> Option<Vec<u8>> {
+        self.0.map(|(_, data)| data)
+    }
+}
+
+/// The picture embedded in `locator`'s file, still encoded: the front cover if it has one,
+/// otherwise the first. It reads only the tags, not the audio properties.
+pub fn read_picture(
+    provider: &dyn StreamProvider,
+    locator: &Locator,
+) -> io::Result<Option<Vec<u8>>> {
+    let mut format = audio::open(provider, locator)?;
+    let track_id = format
+        .default_track(TrackType::Audio)
+        .ok_or_else(|| io::Error::other("No audio track"))?
+        .id;
+    let mut pick = CoverPick::default();
+    audio::for_each_container(format.as_mut(), track_id, |container| {
+        pick.consider(&container.visuals);
+    });
+    // Close the file before multitag may open it again.
+    drop(format);
+    let cover = match pick.into_data() {
+        Some(data) => Some(data),
+        None => read_tag(provider, locator).and_then(tag_cover),
+    };
+    Ok(cover.filter(|data| !data.is_empty()))
+}
 
 /// Everything the library keeps about a track, plus the embedded cover's encoded bytes.
 /// Symphonia reads tags and pictures in the same pass; the file is only opened a second time
@@ -44,24 +87,16 @@ pub fn read_info(
     }
 
     let mut tags = TagReader::default();
-    let mut cover: Option<(bool, Vec<u8>)> = None;
+    let mut pick = CoverPick::default();
     audio::for_each_container(format.as_mut(), track_id, |container| {
         tags.read_container(&mut info, container);
-        for visual in &container.visuals {
-            let front = visual.usage == Some(StandardVisualKey::FrontCover);
-            if cover
-                .as_ref()
-                .is_none_or(|(was_front, _)| front && !was_front)
-            {
-                cover = Some((front, visual.data.to_vec()));
-            }
-        }
+        pick.consider(&container.visuals);
     });
     info.fingerprint = fingerprint(format.as_mut(), track_id);
     // Close the file before multitag may open it again.
     drop(format);
     info.year = tags.year;
-    let mut cover = cover.map(|(_, data)| data);
+    let mut cover = pick.into_data();
 
     if info.title.is_empty() || info.artists.is_empty() || cover.is_none() {
         if let Some(tag) = read_tag(provider, locator) {
