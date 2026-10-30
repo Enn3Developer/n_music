@@ -256,6 +256,29 @@ impl Providers {
             )
         })
     }
+
+    pub fn open_copy(&self, locator: &Locator) -> Option<OpenedStream> {
+        self.cache.as_ref()?.open_copy(locator)
+    }
+
+    pub fn copies(&self) -> impl StreamProvider + '_ {
+        Copies(self)
+    }
+}
+
+struct Copies<'a>(&'a Providers);
+
+
+impl StreamProvider for Copies<'_> {
+    fn open(&self, locator: &Locator) -> io::Result<OpenedStream> {
+        self.0.open_copy(locator).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, format!("No copy of {locator}"))
+        })
+    }
+
+    fn list_tracks(&self, _root: &Locator) -> io::Result<Vec<TrackEntry>> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "Copies list no tracks"))
+    }
 }
 
 impl StreamProvider for Providers {

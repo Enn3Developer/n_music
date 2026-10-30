@@ -54,6 +54,7 @@ pub struct Core {
     paths: LibraryPaths,
     /// Reads the files of tracks for what the library keeps only small, like their covers.
     providers: Providers,
+    streams: Arc<OnceLock<Arc<Providers>>>,
 }
 
 /// The playback settings the core keeps and reports no event for.
@@ -174,11 +175,13 @@ impl Core {
     /// player to show larger than the library's thumbnails. `None` when it has none, or is a
     /// remote track, which it would download. It reads the file: call it off the main thread.
     pub fn cover_art(&self, locator: Locator) -> Option<Vec<u8>> {
-        if locator.is_remote() {
-            return None;
-        }
-        read_info(&self.providers, &locator)
-            .inspect_err(|error| log::debug!("Could not read the cover of {locator}: {error}"))
+        let read = if locator.is_remote() {
+            let copies = self.streams.get()?.copies();
+            read_info(&copies, &locator)
+        } else {
+            read_info(&self.providers, &locator)
+        };
+        read.inspect_err(|error| log::debug!("Could not read the cover of {locator}: {error}"))
             .ok()?
             .1
     }
@@ -364,6 +367,7 @@ impl Core {
 
         let (writer, rx) = EventWriter::channel();
         let (events, receiver) = flume::unbounded();
+        let streams = Arc::new(OnceLock::new());
         let library = Arc::new(OnceLock::new());
         let library_changed = Arc::new(AtomicBool::new(false));
         let scan_read = Arc::new(AtomicU64::new(0));
@@ -378,12 +382,14 @@ impl Core {
             events,
             library_changed: library_changed.clone(),
             scan_read: scan_read.clone(),
+            streams: streams.clone(),
         };
         std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
             .spawn(move || services.run(rx))
             .expect("failed to spawn event bus thread");
         Self {
+            streams,
             writer,
             events: receiver,
             library,
@@ -423,6 +429,7 @@ struct Services {
     events: flume::Sender<CoreEvent>,
     library_changed: Arc<AtomicBool>,
     scan_read: Arc<AtomicU64>,
+    streams: Arc<OnceLock<Arc<Providers>>>,
 }
 
 impl Services {
@@ -447,6 +454,7 @@ impl Services {
                 &self.cache_dir,
             );
             let library = engine.library();
+            let _ = self.streams.set(engine.providers());
             let _ = self.library.set(library.clone());
             // After the core services, so the library is up to date when Kotlin hears.
             app.register_subscriber(KotlinBridge::new(

@@ -482,6 +482,10 @@ impl StreamCache {
         self.dir.join(format!("{key:016x}"))
     }
 
+    pub(crate) fn open_copy(&self, locator: &Locator) -> Option<OpenedStream> {
+        self.copy(key(locator), locator)
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap()
     }
