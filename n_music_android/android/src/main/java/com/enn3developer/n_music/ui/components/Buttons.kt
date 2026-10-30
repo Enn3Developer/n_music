@@ -2,12 +2,15 @@ package com.enn3developer.n_music.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -32,13 +35,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -51,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ViewMode
@@ -58,6 +68,8 @@ import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** A button's surface: its shape, fill and ink, with a ripple and press state. */
 @Composable
@@ -291,36 +303,81 @@ fun SortControl(label: String, onClick: () -> Unit, modifier: Modifier = Modifie
 }
 
 /**
- * The switch between a list and a grid: both views, the current one filled, and a tap
+ * The switch between a list and a grid: both views, the current one filled, and a tap or drag
  * anywhere on it changes to the other. The thumb slides over as the icons swap colour.
  */
 @Composable
-fun ViewSwitch(mode: ViewMode, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+fun ViewSwitch(
+    mode: ViewMode,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val grid = mode == ViewMode.GRID
-    val thumb by animateDpAsState(if (grid) 26.dp else 0.dp, NMotion.spatialFast(), label = "thumb")
-    val listInk by animateColorAsState(
-        if (grid) colors.onSurfaceVariant else colors.onPrimary,
-        NMotion.effectsFast(),
-        label = "list",
-    )
-    val gridInk by animateColorAsState(
-        if (grid) colors.onPrimary else colors.onSurfaceVariant,
-        NMotion.effectsFast(),
-        label = "grid",
-    )
+    val density = LocalDensity.current
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val coroutineScope = rememberCoroutineScope()
+
+    val maxOffsetPx = with(density) { 26.dp.toPx() }
+    val targetOffsetPx = if (grid) maxOffsetPx else 0f
+    val velocityThresholdPx = with(density) { 125.dp.toPx() }
+
+    val thumb = remember { Animatable(targetOffsetPx) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(mode) {
+        if (!isDragging) {
+            thumb.animateTo(targetOffsetPx, NMotion.spatialFast())
+        }
+    }
+
+    val progress = (thumb.value / maxOffsetPx).coerceIn(0f, 1f)
+    val listInk = lerp(colors.onPrimary, colors.onSurfaceVariant, progress)
+    val gridInk = lerp(colors.onSurfaceVariant, colors.onPrimary, progress)
+
     val description = stringResource(if (grid) R.string.grid_view else R.string.list_view)
+
+    val draggableState = rememberDraggableState { delta ->
+        coroutineScope.launch {
+            val newOffset = (thumb.value + delta).coerceIn(0f, maxOffsetPx)
+            thumb.snapTo(newOffset)
+        }
+    }
+
     Box(
         modifier
             .size(58.dp, 36.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(colors.surfaceHigh)
+            .draggable(
+                state = draggableState,
+                orientation = Orientation.Horizontal,
+                reverseDirection = isRtl,
+                onDragStarted = { isDragging = true },
+                onDragStopped = { velocity ->
+                    isDragging = false
+
+                    val effectiveVelocity = if (isRtl) -velocity else velocity
+
+                    val targetMode = when {
+                        effectiveVelocity > velocityThresholdPx -> ViewMode.GRID
+                        effectiveVelocity < -velocityThresholdPx -> ViewMode.LIST
+                        else -> if (thumb.value > maxOffsetPx / 2f) ViewMode.GRID else ViewMode.LIST
+                    }
+
+                    if (targetMode != mode) {
+                        onToggle()
+                    } else {
+                        thumb.animateTo(targetOffsetPx, NMotion.spatialFast())
+                    }
+                }
+            )
             .clickable(role = Role.Button, onClick = onToggle)
             .semantics { contentDescription = description }
             .padding(3.dp),
     ) {
         Box(
             Modifier
-                .offset { IntOffset(thumb.roundToPx(), 0) }
+                .offset { IntOffset(thumb.value.roundToInt(), 0) }
                 .size(26.dp, 30.dp)
                 .background(colors.primary, RoundedCornerShape(15.dp))
         )
