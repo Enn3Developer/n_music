@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
@@ -71,14 +71,14 @@ jobs:
             qt-arch: linux_gcc_64
             qt-dir: gcc_64
             qt-archives: icu qtbase qtdeclarative qtwayland
-          - runner: windows-2022
+          - runner: windows-latest
             target: x86_64-pc-windows-msvc
             runtime: win-x64
             qt-host: windows
             qt-arch: win64_msvc2022_64
             qt-dir: msvc2022_64
             qt-archives: qtbase qtdeclarative
-          - runner: macos-14
+          - runner: macos-latest
             target: aarch64-apple-darwin
             runtime: osx-arm64
             qt-host: mac
@@ -232,7 +232,7 @@ jobs:
   publish:
     needs: [ plan, package, android ]
     if: github.event_name == 'push' && github.ref_type == 'tag'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -265,7 +265,7 @@ jobs:
   google-play:
     needs: [ plan, publish ]
     if: github.event_name == 'push' && github.ref_type == 'tag'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     concurrency:
       group: google-play-internal
       cancel-in-progress: false
