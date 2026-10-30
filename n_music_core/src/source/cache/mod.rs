@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// Downloaded at a time when completing a recording.
 const CHUNK: usize = 64 * 1024;
 
-pub(crate) struct StreamCache {
+pub struct StreamCache {
     /// Copies are named after their track's key; recordings end in `.part`.
     dir: PathBuf,
     settings: Options<StreamCacheSettings>,
@@ -480,6 +480,10 @@ impl StreamCache {
 
     fn copy_path(&self, key: u64) -> PathBuf {
         self.dir.join(format!("{key:016x}"))
+    }
+
+    pub(crate) fn open_copy(&self, locator: &Locator) -> Option<OpenedStream> {
+        self.copy(key(locator), locator)
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {

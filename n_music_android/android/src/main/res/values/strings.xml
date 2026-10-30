@@ -33,6 +33,7 @@
     <string name="no_artist">Tracks without an artist</string>
     <string name="no_genre">Tracks without a genre</string>
     <string name="playing">Playing</string>
+    <string name="paused">Paused</string>
 
     <!-- Sorting -->
     <string name="sort_artist_album">Artist, then album</string>

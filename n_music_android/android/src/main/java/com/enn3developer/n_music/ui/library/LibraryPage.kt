@@ -42,18 +42,17 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,7 +82,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.LibraryTab
 import com.enn3developer.n_music.R
@@ -99,6 +100,7 @@ import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
+import com.enn3developer.n_music.ui.CacheSlot
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.LocalPageMargins
@@ -123,16 +125,16 @@ import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBarContent
-import com.enn3developer.n_music.ui.components.ViewSwap
-import com.enn3developer.n_music.ui.components.barDrift
-import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.TrackTile
+import com.enn3developer.n_music.ui.components.ViewSwap
 import com.enn3developer.n_music.ui.components.ViewSwitch
 import com.enn3developer.n_music.ui.components.WavyProgress
+import com.enn3developer.n_music.ui.components.barDrift
+import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.collapsing
 import com.enn3developer.n_music.ui.components.inert
 import com.enn3developer.n_music.ui.components.rememberCollapsingBar
@@ -149,8 +151,15 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
-import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+class LibraryViewModel : ViewModel() {
+    val tracks = CacheSlot<List<TrackRow>?>(null)
+    val albums = CacheSlot<List<AlbumRow>?>(null)
+    val artists = CacheSlot<List<ArtistRow>?>(null)
+    val genres = CacheSlot<List<GenreRow>?>(null)
+}
 
 /** What plays now, for lists to mark. */
 data class NowPlaying(val track: TrackRow?, val playing: Boolean) {
@@ -177,7 +186,7 @@ fun rememberNowPlaying(): NowPlaying {
 
 /** The library: search, its four tabs, and the scan's progress while it is first built. */
 @Composable
-fun LibraryPage() {
+fun LibraryPage(vm: LibraryViewModel = viewModel()) {
     val app = LocalApp.current
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
     val pager = rememberPagerState { LibraryTab.entries.size }
@@ -201,7 +210,9 @@ fun LibraryPage() {
     val order = SortedList.TRACKS.trackOrder(ui.sorts)
     val filters = app.filters
     val query = Query(filters.filter(), order.keys())
-    val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
+    val tracks = rememberLibrary(null, query, cache = vm.tracks) {
+        CoreRepository.tracks(query)
+    }
     val selection = app.selection
     BackHandler(selection != null) { app.endSelection() }
     // Selecting belongs to the Tracks tab.
@@ -265,7 +276,7 @@ fun LibraryPage() {
 
                 LibraryTab.ALBUMS -> {
                     val order = SortedList.ALBUMS.groupOrder(ui.sorts)
-                    val albums = rememberLibrary<List<AlbumRow>?>(null, order) {
+                    val albums = rememberLibrary(null, order, cache = vm.albums) {
                         CoreRepository.albums(Filter.All(emptyList()), "", order.sort)
                     }
                     GroupTab(
@@ -295,7 +306,7 @@ fun LibraryPage() {
 
                 LibraryTab.ARTISTS -> {
                     val order = SortedList.ARTISTS.groupOrder(ui.sorts)
-                    val artists = rememberLibrary<List<ArtistRow>?>(null, order) {
+                    val artists = rememberLibrary(null, order, cache = vm.artists) {
                         CoreRepository.artists(Filter.All(emptyList()), "", order.sort)
                     }
                     GroupTab(
@@ -318,7 +329,7 @@ fun LibraryPage() {
 
                 LibraryTab.GENRES -> {
                     val order = SortedList.GENRES.groupOrder(ui.sorts)
-                    val genres = rememberLibrary<List<GenreRow>?>(null, order) {
+                    val genres = rememberLibrary(null, order, cache = vm.genres) {
                         CoreRepository.genres(Filter.All(emptyList()), "", order.sort)
                     }
                     GroupTab(
@@ -875,7 +886,6 @@ fun <T> GroupTab(
  * The first scan's card: every track found is listed already and plays; titles and covers fill
  * in as they are read.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BuildingCard(scan: ScanState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(

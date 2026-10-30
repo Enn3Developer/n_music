@@ -8,16 +8,33 @@ import com.enn3developer.n_music.CoreRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+class CacheSlot<T>(initial: T) {
+    internal var keys: List<Any?>? = null
+    internal var version: Long = -1
+    internal var value: T = initial
+}
+
 /**
  * What [load] reads from the library, read off the main thread and again whenever the library
  * changes or one of [keys] does; [initial] until the first read. A read that is outdated before
  * it ends gives way to the next.
  */
 @Composable
-fun <T> rememberLibrary(initial: T, vararg keys: Any?, load: () -> T): T {
+fun <T> rememberLibrary(initial: T, vararg keys: Any?, cache: CacheSlot<T>? = null, load: () -> T): T {
     val version by CoreRepository.version.collectAsStateWithLifecycle()
-    val value by produceState(initial, *keys, version) {
-        value = withContext(Dispatchers.IO) { load() }
+    val current = keys.toList()
+    val start = if (cache != null && cache.keys == current) cache.value else initial
+    val value by produceState(start, *keys, version) {
+        if (cache != null && cache.keys == current && cache.version == version) {
+            return@produceState
+        }
+        val loaded = withContext(Dispatchers.IO) { load() }
+        cache?.apply {
+            this.keys = current
+            this.version = version
+            this.value = loaded
+        }
+        value = loaded
     }
     return value
 }

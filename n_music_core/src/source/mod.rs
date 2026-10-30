@@ -6,7 +6,7 @@
 //! [`StreamProvider`].
 
 mod ahead;
-pub(crate) mod cache;
+pub mod cache;
 mod local;
 pub mod telegram;
 mod web;
@@ -169,6 +169,35 @@ impl OpenedStream {
         hint
     }
 }
+
+/// Opens local tracks from their provider and remote ones only from their cached copy:
+/// it never downloads.
+pub struct NoDownload<'a> {
+    providers: &'a Providers,
+    cache: Option<&'a StreamCache>,
+}
+
+impl<'a> NoDownload<'a> {
+    pub fn new(providers: &'a Providers, cache: Option<&'a StreamCache>) -> Self {
+        Self { providers, cache }
+    }
+}
+
+impl StreamProvider for NoDownload<'_> {
+    fn open(&self, locator: &Locator) -> io::Result<OpenedStream> {
+        if !locator.is_remote() {
+            return self.providers.open(locator);
+        }
+        self.cache
+            .and_then(|cache| cache.open_copy(locator))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("No copy of {locator}")))
+    }
+
+    fn list_tracks(&self, root: &Locator) -> io::Result<Vec<TrackEntry>> {
+        self.providers.list_tracks(root)
+    }
+}
+
 
 /// The set of backends available on this platform. Each [`Locator`] kind is served by one
 /// backend, so requests are routed by the locator alone. Remote tracks also go through the

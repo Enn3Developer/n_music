@@ -18,6 +18,9 @@ import com.enn3developer.n_music.core.defaultSourceName
 val Locator.isLocal: Boolean
     get() = this is Locator.Local || this is Locator.DocumentTree
 
+val Locator.isRemote: Boolean
+    get() = this !is Locator.Local && this !is Locator.Document && this !is Locator.DocumentTree
+
 /** What kind of source [root] is, as an icon: a folder, a link or Telegram's plane. */
 @DrawableRes
 fun sourceIcon(root: Locator): Int = when {

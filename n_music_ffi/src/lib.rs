@@ -24,17 +24,18 @@ use n_event_bus::{App, EventReceiver, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::{Filter, PlaylistId, Query};
-use n_music_core::library::reader::read_info;
+use n_music_core::library::reader::read_picture;
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::library::LibraryPaths;
 use n_music_core::settings::{JsonFileStorage, PlaybackSettings, Section, SettingsStorage};
 use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
-use n_music_core::source::{Locator, Providers};
+use n_music_core::source::{Locator, NoDownload, Providers};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use n_music_core::source::cache::StreamCache;
 
 uniffi::setup_scaffolding!();
 
@@ -54,6 +55,7 @@ pub struct Core {
     paths: LibraryPaths,
     /// Reads the files of tracks for what the library keeps only small, like their covers.
     providers: Providers,
+    stream_cache: Arc<OnceLock<Arc<StreamCache>>>,
 }
 
 /// The playback settings the core keeps and reports no event for.
@@ -170,17 +172,15 @@ impl Core {
             .map(|track| TrackDetails::new(track, &catalog))
     }
 
-    /// The picture embedded in the file of `locator` at its own size, still encoded, for the
-    /// player to show larger than the library's thumbnails. `None` when it has none, or is a
-    /// remote track, which it would download. It reads the file: call it off the main thread.
+    /// The picture embedded in `locator`'s file, at full size and still encoded.
+    /// A remote track is read from its cached copy and never downloaded.
+    /// `None` if there is no picture, or the remote track has no cached copy yet.
+    /// It reads the file: call it off the main thread.
     pub fn cover_art(&self, locator: Locator) -> Option<Vec<u8>> {
-        if locator.is_remote() {
-            return None;
-        }
-        read_info(&self.providers, &locator)
+        let provider = NoDownload::new(&self.providers, self.stream_cache.get().map(Arc::as_ref));
+        read_picture(&provider, &locator)
             .inspect_err(|error| log::debug!("Could not read the cover of {locator}: {error}"))
             .ok()?
-            .1
     }
 
     /// The albums of the tracks `filter` selects whose name or artist contains `search`.
@@ -367,6 +367,7 @@ impl Core {
         let library = Arc::new(OnceLock::new());
         let library_changed = Arc::new(AtomicBool::new(false));
         let scan_read = Arc::new(AtomicU64::new(0));
+        let stream_cache = Arc::new(OnceLock::new());
         let services = Services {
             writer: writer.clone(),
             storage: storage.clone(),
@@ -378,6 +379,7 @@ impl Core {
             events,
             library_changed: library_changed.clone(),
             scan_read: scan_read.clone(),
+            stream_cache: stream_cache.clone(),
         };
         std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
@@ -392,6 +394,7 @@ impl Core {
             storage,
             paths: LibraryPaths::new(data_dir, cache_dir),
             providers: providers(),
+            stream_cache: stream_cache.clone(),
         }
     }
 }
@@ -423,6 +426,8 @@ struct Services {
     events: flume::Sender<CoreEvent>,
     library_changed: Arc<AtomicBool>,
     scan_read: Arc<AtomicU64>,
+    stream_cache: Arc<OnceLock<Arc<StreamCache>>>,
+
 }
 
 impl Services {
@@ -447,6 +452,7 @@ impl Services {
                 &self.cache_dir,
             );
             let library = engine.library();
+            let _ = self.stream_cache.set(engine.stream_cache());
             let _ = self.library.set(library.clone());
             // After the core services, so the library is up to date when Kotlin hears.
             app.register_subscriber(KotlinBridge::new(
