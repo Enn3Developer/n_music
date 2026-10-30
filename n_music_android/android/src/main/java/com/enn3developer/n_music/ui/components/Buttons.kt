@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -315,7 +316,6 @@ fun ViewSwitch(
     val grid = mode == ViewMode.GRID
     val density = LocalDensity.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val coroutineScope = rememberCoroutineScope()
 
     val maxOffsetPx = with(density) { 26.dp.toPx() }
     val targetOffsetPx = if (grid) maxOffsetPx else 0f
@@ -323,6 +323,7 @@ fun ViewSwitch(
 
     val thumb = remember { Animatable(targetOffsetPx) }
     var isDragging by remember { mutableStateOf(false) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(mode) {
         if (!isDragging) {
@@ -330,17 +331,15 @@ fun ViewSwitch(
         }
     }
 
-    val progress = (thumb.value / maxOffsetPx).coerceIn(0f, 1f)
+    val currentOffset = if (isDragging) dragOffset else thumb.value
+    val progress = (currentOffset / maxOffsetPx).coerceIn(0f, 1f)
     val listInk = lerp(colors.onPrimary, colors.onSurfaceVariant, progress)
     val gridInk = lerp(colors.onSurfaceVariant, colors.onPrimary, progress)
 
     val description = stringResource(if (grid) R.string.grid_view else R.string.list_view)
 
     val draggableState = rememberDraggableState { delta ->
-        coroutineScope.launch {
-            val newOffset = (thumb.value + delta).coerceIn(0f, maxOffsetPx)
-            thumb.snapTo(newOffset)
-        }
+        dragOffset = (dragOffset + delta).coerceIn(0f, maxOffsetPx)
     }
 
     Box(
@@ -352,7 +351,10 @@ fun ViewSwitch(
                 state = draggableState,
                 orientation = Orientation.Horizontal,
                 reverseDirection = isRtl,
-                onDragStarted = { isDragging = true },
+                onDragStarted = {
+                    isDragging = true
+                    dragOffset = thumb.value
+                },
                 onDragStopped = { velocity ->
                     isDragging = false
 
@@ -361,14 +363,17 @@ fun ViewSwitch(
                     val targetMode = when {
                         effectiveVelocity > velocityThresholdPx -> ViewMode.GRID
                         effectiveVelocity < -velocityThresholdPx -> ViewMode.LIST
-                        else -> if (thumb.value > maxOffsetPx / 2f) ViewMode.GRID else ViewMode.LIST
+                        else -> if (dragOffset > maxOffsetPx / 2f) ViewMode.GRID else ViewMode.LIST
                     }
+
+                    thumb.snapTo(dragOffset)
 
                     if (targetMode != mode) {
                         onToggle()
-                    } else {
-                        thumb.animateTo(targetOffsetPx, NMotion.spatialFast())
                     }
+
+                    val destinationPx = if (targetMode == ViewMode.GRID) maxOffsetPx else 0f
+                    thumb.animateTo(destinationPx, NMotion.spatialFast())
                 }
             )
             .clickable(role = Role.Button, onClick = onToggle)
@@ -377,7 +382,7 @@ fun ViewSwitch(
     ) {
         Box(
             Modifier
-                .offset { IntOffset(thumb.value.roundToInt(), 0) }
+                .offset { IntOffset(currentOffset.roundToInt(), 0) }
                 .size(26.dp, 30.dp)
                 .background(colors.primary, RoundedCornerShape(15.dp))
         )
