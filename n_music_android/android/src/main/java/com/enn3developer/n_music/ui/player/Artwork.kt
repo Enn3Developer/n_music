@@ -12,7 +12,7 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.components.rememberCover
-import com.enn3developer.n_music.ui.sources.isLocal
+import com.enn3developer.n_music.ui.sources.isRemote
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
@@ -56,7 +56,7 @@ fun rememberArtwork(track: TrackRow?, size: Int): ImageBitmap? {
     val full by produceState(locator?.let(Artwork::cached), locator, hasCover, size) {
         value = locator?.let(Artwork::cached)
         if (locator == null || !hasCover || value != null || size <= 0) return@produceState
-        value = if (locator.isLocal) Artwork.load(locator, size)
+        value = if (locator.isRemote) Artwork.load(locator, size)
             else CoreRepository.streamCache
             .distinctUntilChangedBy { it?.used }
             .mapLatest { Artwork.load(locator, size) }
