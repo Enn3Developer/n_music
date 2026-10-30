@@ -40,7 +40,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +68,6 @@ import com.enn3developer.n_music.ui.theme.NMotion
 import com.enn3developer.n_music.ui.theme.NShapes
 import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.text
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** A button's surface: its shape, fill and ink, with a ripple and press state. */
@@ -358,11 +356,9 @@ fun ViewSwitch(
                 onDragStopped = { velocity ->
                     isDragging = false
 
-                    val effectiveVelocity = if (isRtl) -velocity else velocity
-
                     val targetMode = when {
-                        effectiveVelocity > velocityThresholdPx -> ViewMode.GRID
-                        effectiveVelocity < -velocityThresholdPx -> ViewMode.LIST
+                        velocity > velocityThresholdPx -> ViewMode.GRID
+                        velocity < -velocityThresholdPx -> ViewMode.LIST
                         else -> if (dragOffset > maxOffsetPx / 2f) ViewMode.GRID else ViewMode.LIST
                     }
 
