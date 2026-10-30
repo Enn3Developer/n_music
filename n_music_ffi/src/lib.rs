@@ -171,9 +171,10 @@ impl Core {
             .map(|track| TrackDetails::new(track, &catalog))
     }
 
-    /// The picture embedded in the file of `locator` at its own size, still encoded, for the
-    /// player to show larger than the library's thumbnails. `None` when it has none, or is a
-    /// remote track, which it would download. It reads the file: call it off the main thread.
+    /// The picture embedded in `locator`'s file, at full size and still encoded.
+    /// A remote track is read from its cached copy and never downloaded.
+    /// `None` if there is no picture, or the remote track has no cached copy yet.
+    /// It reads the file: call it off the main thread.
     pub fn cover_art(&self, locator: Locator) -> Option<Vec<u8>> {
         let read = if locator.is_remote() {
             let copies = self.streams.get()?.copies();
