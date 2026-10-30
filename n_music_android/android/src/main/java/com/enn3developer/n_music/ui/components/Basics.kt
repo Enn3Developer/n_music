@@ -154,25 +154,32 @@ fun PlayingBars(
             label = "phase",
         )
     } else {
-        remember { mutableFloatStateOf(0.35f) }
+        remember { mutableFloatStateOf(0f) }
     }
+
     Canvas(modifier.size(width = 13.dp, height = height)) {
         val bar = 3.dp.toPx()
         val gap = 2.dp.toPx()
+        val offsets = listOf(0f, 0.45f / 1.1f, 0.8f / 1.1f)
         // CSS's negative delays: the second and third bars run 0.45 s and 0.8 s ahead.
-        for ((index, offset) in listOf(0f, 0.45f / 1.1f, 0.8f / 1.1f).withIndex()) {
-            val t = (phase + offset) % 1f
-            val scale = if (t < 0.5f) {
-                0.3f + 0.7f * BarEasing.transform(t / 0.5f)
+        for ((index, offset) in offsets.withIndex()) {
+            val barHeight = if (animate) {
+                val t = (phase + offset) % 1f
+                val scale = if (t < 0.5f) {
+                    0.3f + 0.7f * BarEasing.transform(t / 0.5f)
+                } else {
+                    1f - 0.7f * BarEasing.transform((t - 0.5f) / 0.5f)
+                }
+                size.height * scale
             } else {
-                1f - 0.7f * BarEasing.transform((t - 0.5f) / 0.5f)
+                bar
             }
-            val barHeight = size.height * scale
+
             drawRoundRect(
                 color = color,
                 topLeft = Offset(index * (bar + gap), size.height - barHeight),
                 size = Size(bar, barHeight),
-                cornerRadius = CornerRadius(2.dp.toPx()),
+                cornerRadius = CornerRadius(bar / 2f),
             )
         }
     }
