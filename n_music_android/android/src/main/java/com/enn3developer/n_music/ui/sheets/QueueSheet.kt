@@ -68,7 +68,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.paneTitle
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
@@ -158,6 +157,8 @@ fun QueuePanel(
     modifier: Modifier = Modifier,
     progress: () -> Float = { 1f },
     header: @Composable () -> Unit = {},
+    queueDrag: Modifier = Modifier,
+    onClose: () -> Unit,
 ) {
     Box(modifier) {
         LiveQueue(onLeave = {}) { entries, current, playing, shuffle, loop, origin, actions ->
@@ -166,6 +167,7 @@ fun QueuePanel(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = ((progress() - 0.1f) / 0.3f).coerceIn(0f, 1f) },
+                queueDrag, onClose
             )
         }
         Box(
@@ -293,29 +295,73 @@ fun QueuePanel(
     origin: String?,
     actions: QueueActions,
     modifier: Modifier = Modifier,
+    queueDrag: Modifier = Modifier,
+    onClose: () -> Unit
 ) {
     val title = stringResource(R.string.queue)
     val index = entries.indexOfFirst { it.item == current }
     val upcoming = entries.drop(index + 1)
     val queued = upcoming.filter { it.queued }
     val shape = RoundedCornerShape(28.dp)
+    val onSurfaceVariant = colors.onSurfaceVariant
     Column(
-        modifier
-            .clip(shape)
-            .background(colors.surfaceLow, shape)
-            .semantics {
-                paneTitle = title
-                isTraversalGroup = true
-            }
+        modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        QueueHeader(title, queued, upcoming.size, shuffle, loop, origin, actions, panel = true)
         Box(
             Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.outlineVariant)
+                .padding(top = 10.dp)
+                .size(32.dp, 4.dp)
+                .background(
+                    colors.onSurfaceVariant.copy(alpha = 0.45f),
+                    RoundedCornerShape(2.dp)
+                ),
         )
-        QueueList(entries, current, playing, actions, Modifier.weight(1f), dense = true)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            NIcon(R.drawable.ic_collapse, size = 20.dp, tint = onSurfaceVariant)
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.surfaceLow, shape)
+                .semantics {
+                    paneTitle = title
+                    isTraversalGroup = true
+                }
+        ) {
+            Column(
+                Modifier
+                    .tappable(onClose)
+                    .then(queueDrag)
+            ) {
+                QueueHeader(
+                    title,
+                    queued,
+                    upcoming.size,
+                    shuffle,
+                    loop,
+                    origin,
+                    actions,
+                    panel = true
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(colors.outlineVariant)
+                )
+            }
+            QueueList(entries, current, playing, actions, Modifier.weight(1f), dense = true)
+        }
     }
 }
 
