@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,18 +43,18 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,16 +124,16 @@ import com.enn3developer.n_music.ui.components.NIconButton
 import com.enn3developer.n_music.ui.components.NamedPlayShuffle
 import com.enn3developer.n_music.ui.components.PlayShuffle
 import com.enn3developer.n_music.ui.components.SelectionBarContent
-import com.enn3developer.n_music.ui.components.ViewSwap
-import com.enn3developer.n_music.ui.components.barDrift
-import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.SortControl
 import com.enn3developer.n_music.ui.components.Tab
 import com.enn3developer.n_music.ui.components.TrackItem
 import com.enn3developer.n_music.ui.components.TrackState
 import com.enn3developer.n_music.ui.components.TrackTile
+import com.enn3developer.n_music.ui.components.ViewSwap
 import com.enn3developer.n_music.ui.components.ViewSwitch
 import com.enn3developer.n_music.ui.components.WavyProgress
+import com.enn3developer.n_music.ui.components.barDrift
+import com.enn3developer.n_music.ui.components.barSwap
 import com.enn3developer.n_music.ui.components.collapsing
 import com.enn3developer.n_music.ui.components.inert
 import com.enn3developer.n_music.ui.components.rememberCollapsingBar
@@ -149,8 +150,8 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
-import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /** What plays now, for lists to mark. */
 data class NowPlaying(val track: TrackRow?, val playing: Boolean) {
@@ -160,8 +161,8 @@ data class NowPlaying(val track: TrackRow?, val playing: Boolean) {
     fun album(album: AlbumRow): Boolean {
         val track = track ?: return false
         return album.name != null &&
-            album.name.equals(track.album, ignoreCase = true) &&
-            album.artist.equals(track.albumArtist, ignoreCase = true)
+                album.name.equals(track.album, ignoreCase = true) &&
+                album.artist.equals(track.albumArtist, ignoreCase = true)
     }
 
     fun artist(artist: ArtistRow): Boolean =
@@ -190,18 +191,12 @@ fun LibraryPage() {
     val facets by CoreRepository.facets.collectAsStateWithLifecycle()
     // A genre shows as the tracks filtered to it.
     fun showGenre(genre: GenreRow) = app.showTracks(TrackFilters(genres = listOf(genre.name.orEmpty())))
-    // Turns to the tracks whenever the app shows them, from this page or another.
-    val shown = rememberSaveable { mutableIntStateOf(app.tracksShown) }
-    LaunchedEffect(app.tracksShown) {
-        if (app.tracksShown != shown.intValue) {
-            shown.intValue = app.tracksShown
-            pager.animateScrollToPage(LibraryTab.TRACKS.ordinal, animationSpec = NMotion.noBounce())
-        }
-    }
     val order = SortedList.TRACKS.trackOrder(ui.sorts)
     val filters = app.filters
     val query = Query(filters.filter(), order.keys())
-    val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
+    val tracks = rememberLibrary(null, query) {
+        CoreRepository.tracks(query)
+    }
     val selection = app.selection
     BackHandler(selection != null) { app.endSelection() }
     // Selecting belongs to the Tracks tab.
@@ -263,80 +258,125 @@ fun LibraryPage() {
                     )
                 }
 
-                LibraryTab.ALBUMS -> {
-                    val order = SortedList.ALBUMS.groupOrder(ui.sorts)
-                    val albums = rememberLibrary<List<AlbumRow>?>(null, order) {
-                        CoreRepository.albums(Filter.All(emptyList()), "", order.sort)
-                    }
-                    GroupTab(
-                        items = albums,
-                        count = { pluralStringResource(R.plurals.albums_count, quantity(it), formatCount(it)) },
-                        view = ui.view(LibraryTab.ALBUMS),
-                        sortLabel = stringResource(order.label),
-                        minTile = 160.dp,
-                        columns = 2,
-                        rowGap = 18.dp,
-                        onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
-                        onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
-                        key = { "${it.name}\u0000${it.artist}" },
-                        onEmpty = { app.navigator.home(Tab.SOURCES) },
-                        section = { album ->
-                            when (order) {
-                                GroupOrder.ARTIST -> sectionLetter(album.artist)
-                                GroupOrder.NAME -> sectionLetter(album.name)
-                                GroupOrder.NEWEST, GroupOrder.OLDEST -> album.year?.toString() ?: "#"
-                                GroupOrder.MOST_TRACKS -> null
-                            }
-                        },
-                        item = { album -> AlbumItem(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
-                        tile = { album -> AlbumTile(album, nowPlaying.album(album), nowPlaying.playing, { app.open(Page.Album(album.name, album.artist)) }) },
-                    )
-                }
+                    LibraryTab.ALBUMS -> {
+                        val order = SortedList.ALBUMS.groupOrder(ui.sorts)
+                        val albums = rememberLibrary(null, order) {
+                            CoreRepository.albums(Filter.All(emptyList()), "", order.sort)
+                        }
+                        GroupTab(
+                            items = albums,
+                            count = {
+                                pluralStringResource(
+                                    R.plurals.albums_count,
+                                    quantity(it),
+                                    formatCount(it)
+                                )
+                            },
+                            view = ui.view(LibraryTab.ALBUMS),
+                            sortLabel = stringResource(order.label),
+                            minTile = 160.dp,
+                            columns = 2,
+                            rowGap = 18.dp,
+                            onToggleView = { UiPreferences.setView(LibraryTab.ALBUMS, it) },
+                            onSort = { app.show(Sheet.Sort(SortedList.ALBUMS)) },
+                            key = { "${it.name}\u0000${it.artist}" },
+                            onEmpty = { app.navigator.home(Tab.SOURCES) },
+                            section = { album ->
+                                when (order) {
+                                    GroupOrder.ARTIST -> sectionLetter(album.artist)
+                                    GroupOrder.NAME -> sectionLetter(album.name)
+                                    GroupOrder.NEWEST, GroupOrder.OLDEST -> album.year?.toString()
+                                        ?: "#"
 
-                LibraryTab.ARTISTS -> {
-                    val order = SortedList.ARTISTS.groupOrder(ui.sorts)
-                    val artists = rememberLibrary<List<ArtistRow>?>(null, order) {
-                        CoreRepository.artists(Filter.All(emptyList()), "", order.sort)
+                                    GroupOrder.MOST_TRACKS -> null
+                                }
+                            },
+                            item = { album ->
+                                AlbumItem(
+                                    album,
+                                    nowPlaying.album(album),
+                                    nowPlaying.playing,
+                                    { app.open(Page.Album(album.name, album.artist)) })
+                            },
+                            tile = { album ->
+                                AlbumTile(
+                                    album,
+                                    nowPlaying.album(album),
+                                    nowPlaying.playing,
+                                    { app.open(Page.Album(album.name, album.artist)) })
+                            },
+                        )
                     }
-                    GroupTab(
-                        items = artists,
-                        count = { pluralStringResource(R.plurals.artists_count, quantity(it), formatCount(it)) },
-                        view = ui.view(LibraryTab.ARTISTS),
-                        sortLabel = stringResource(order.label),
-                        minTile = 104.dp,
-                        columns = 3,
-                        rowGap = 16.dp,
-                        onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
-                        onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
-                        key = { it.name.toString() },
-                        onEmpty = { app.navigator.home(Tab.SOURCES) },
-                        section = { artist -> if (order == GroupOrder.NAME) sectionLetter(artist.name) else null },
-                        item = { artist -> ArtistItem(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
-                        tile = { artist -> ArtistTile(artist, nowPlaying.artist(artist), nowPlaying.playing, { app.open(Page.Artist(artist.name)) }) },
-                    )
-                }
 
-                LibraryTab.GENRES -> {
-                    val order = SortedList.GENRES.groupOrder(ui.sorts)
-                    val genres = rememberLibrary<List<GenreRow>?>(null, order) {
-                        CoreRepository.genres(Filter.All(emptyList()), "", order.sort)
+                    LibraryTab.ARTISTS -> {
+                        val order = SortedList.ARTISTS.groupOrder(ui.sorts)
+                        val artists = rememberLibrary(null, order) {
+                            CoreRepository.artists(Filter.All(emptyList()), "", order.sort)
+                        }
+                        GroupTab(
+                            items = artists,
+                            count = {
+                                pluralStringResource(
+                                    R.plurals.artists_count,
+                                    quantity(it),
+                                    formatCount(it)
+                                )
+                            },
+                            view = ui.view(LibraryTab.ARTISTS),
+                            sortLabel = stringResource(order.label),
+                            minTile = 104.dp,
+                            columns = 3,
+                            rowGap = 16.dp,
+                            onToggleView = { UiPreferences.setView(LibraryTab.ARTISTS, it) },
+                            onSort = { app.show(Sheet.Sort(SortedList.ARTISTS)) },
+                            key = { it.name.toString() },
+                            onEmpty = { app.navigator.home(Tab.SOURCES) },
+                            section = { artist -> if (order == GroupOrder.NAME) sectionLetter(artist.name) else null },
+                            item = { artist ->
+                                ArtistItem(
+                                    artist,
+                                    nowPlaying.artist(artist),
+                                    nowPlaying.playing,
+                                    { app.open(Page.Artist(artist.name)) })
+                            },
+                            tile = { artist ->
+                                ArtistTile(
+                                    artist,
+                                    nowPlaying.artist(artist),
+                                    nowPlaying.playing,
+                                    { app.open(Page.Artist(artist.name)) })
+                            },
+                        )
                     }
-                    GroupTab(
-                        items = genres,
-                        count = { pluralStringResource(R.plurals.genres_count, quantity(it), formatCount(it)) },
-                        view = ui.view(LibraryTab.GENRES),
-                        sortLabel = stringResource(order.label),
-                        minTile = 160.dp,
-                        columns = 2,
-                        rowGap = 18.dp,
-                        onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
-                        onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
-                        key = { it.name.toString() },
-                        onEmpty = { app.navigator.home(Tab.SOURCES) },
-                        section = { genre -> if (order == GroupOrder.NAME) sectionLetter(genre.name) else null },
-                        item = { genre -> GenreItem(genre, { showGenre(genre) }) },
-                        tile = { genre -> GenreTile(genre, { showGenre(genre) }) },
-                    )
+
+                    LibraryTab.GENRES -> {
+                        val order = SortedList.GENRES.groupOrder(ui.sorts)
+                        val genres = rememberLibrary(null, order) {
+                            CoreRepository.genres(Filter.All(emptyList()), "", order.sort)
+                        }
+                        GroupTab(
+                            items = genres,
+                            count = {
+                                pluralStringResource(
+                                    R.plurals.genres_count,
+                                    quantity(it),
+                                    formatCount(it)
+                                )
+                            },
+                            view = ui.view(LibraryTab.GENRES),
+                            sortLabel = stringResource(order.label),
+                            minTile = 160.dp,
+                            columns = 2,
+                            rowGap = 18.dp,
+                            onToggleView = { UiPreferences.setView(LibraryTab.GENRES, it) },
+                            onSort = { app.show(Sheet.Sort(SortedList.GENRES)) },
+                            key = { it.name.toString() },
+                            onEmpty = { app.navigator.home(Tab.SOURCES) },
+                            section = { genre -> if (order == GroupOrder.NAME) sectionLetter(genre.name) else null },
+                            item = { genre -> GenreItem(genre, { showGenre(genre) }) },
+                            tile = { genre -> GenreTile(genre, { showGenre(genre) }) },
+                        )
+                    }
                 }
             }
         }

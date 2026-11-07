@@ -4,7 +4,6 @@ import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -45,7 +44,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,13 +63,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.LibraryTab
 import com.enn3developer.n_music.PlayingFrom
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ScanState
@@ -187,16 +185,20 @@ private class Controller(
         override fun openSleepTimer() = show(Sheet.SleepTimer)
     }
 
-    override var filters by mutableStateOf(TrackFilters())
-
-    override var tracksShown by mutableIntStateOf(0)
+    override var libraryRequest by mutableStateOf<AppController.LibraryRequest?>(null)
         private set
+
+    override fun showLibrary(tab: LibraryTab) {
+        libraryRequest = AppController.LibraryRequest(tab, (libraryRequest?.seq ?: 0) + 1)
+    }
+
+    override var filters by mutableStateOf(TrackFilters())
 
     override fun showTracks(filters: TrackFilters) {
         leavePlayer()
         this.filters = filters
         navigator.home(Tab.LIBRARY)
-        tracksShown++
+        showLibrary(LibraryTab.TRACKS)
     }
 
     override var sheet by mutableStateOf<Sheet?>(null)
