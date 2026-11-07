@@ -54,7 +54,7 @@ fun rememberArtwork(track: TrackRow?, size: Int): ImageBitmap? {
     val full by produceState(locator?.let(Artwork::cached), locator, hasCover, size) {
         value = locator?.let(Artwork::cached)
         if (locator == null || !hasCover || value != null || size <= 0) return@produceState
-        // Cover is read from cache, that's include remote track once is fully downloaded
+        // A remote track shows its full cover only once its copy in the stream cache is complete.
         if (locator.isRemote) {
             CoreRepository.streamCache
                 .first { withContext(Dispatchers.IO) { CoreRepository.isReadableOffline(locator) } }
