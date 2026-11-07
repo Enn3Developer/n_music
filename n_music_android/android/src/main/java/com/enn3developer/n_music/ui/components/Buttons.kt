@@ -332,7 +332,7 @@ fun ViewSwitch(
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     val maxOffsetPx = with(density) { 26.dp.toPx() }
-    val velocityThresholdPx = with(density) { 125.dp.toPx() }
+    val velocityThresholdPx = with(density) { 400.dp.toPx() }
 
     val currentGrid by rememberUpdatedState(grid)
     val toggle by rememberUpdatedState(onToggle)
