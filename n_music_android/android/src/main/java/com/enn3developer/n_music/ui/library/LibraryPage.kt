@@ -58,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -153,6 +154,8 @@ import com.enn3developer.n_music.ui.theme.colors
 import com.enn3developer.n_music.ui.theme.delayed
 import com.enn3developer.n_music.ui.theme.text
 import com.enn3developer.n_music.ui.tracksCount
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -213,15 +216,15 @@ fun rememberNowPlaying(): NowPlaying {
 fun LibraryPage() {
     val app = LocalApp.current
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
-    var handledRequest by rememberSaveable { mutableIntStateOf(0) }
-    val pending = app.libraryRequest?.takeIf { it.seq != handledRequest }
-    val pager = rememberPagerState(pending?.tab?.ordinal ?: 0) { LibraryTab.entries.size }
+    val pager = rememberPagerState(app.libraryRequest?.tab?.ordinal ?: 0) { LibraryTab.entries.size }
 
-    LaunchedEffect(app.libraryRequest) {
-        val request = app.libraryRequest ?: return@LaunchedEffect
-        if (request.seq == handledRequest) return@LaunchedEffect
-        handledRequest = request.seq
-        pager.animateScrollToPage(request.tab.ordinal)
+    LaunchedEffect(Unit) {
+        snapshotFlow { app.libraryRequest }
+            .filterNotNull()
+            .collectLatest { request ->
+                app.consumeLibraryRequest()
+                pager.animateScrollToPage(request.tab.ordinal, animationSpec = NMotion.noBounce())
+            }
     }
     val pullRefreshing by CoreRepository.pullRefreshing.collectAsStateWithLifecycle()
     val scanning by CoreRepository.scanning.collectAsStateWithLifecycle()

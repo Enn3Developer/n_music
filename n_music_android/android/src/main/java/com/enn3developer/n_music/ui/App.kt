@@ -188,8 +188,12 @@ private class Controller(
     override var libraryRequest by mutableStateOf<AppController.LibraryRequest?>(null)
         private set
 
+    override fun consumeLibraryRequest() {
+        libraryRequest = null
+    }
+
     override fun showLibrary(tab: LibraryTab) {
-        libraryRequest = AppController.LibraryRequest(tab, (libraryRequest?.seq ?: 0) + 1)
+        libraryRequest = AppController.LibraryRequest(tab)
     }
 
     override var filters by mutableStateOf(TrackFilters())

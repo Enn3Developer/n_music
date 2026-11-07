@@ -51,9 +51,11 @@ interface AppController {
     /** The filters on the library's tracks. */
     var filters: TrackFilters
 
-    data class LibraryRequest(val tab: LibraryTab, val seq: Int)
+    data class LibraryRequest(val tab: LibraryTab)
 
     val libraryRequest: LibraryRequest?
+
+    fun consumeLibraryRequest()
 
     /** Shows the library's tracks filtered by [filters], on the Library tab's own page. */
     fun showTracks(filters: TrackFilters)
