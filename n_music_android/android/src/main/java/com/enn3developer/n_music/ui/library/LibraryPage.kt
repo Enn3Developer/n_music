@@ -45,6 +45,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -170,6 +173,35 @@ data class NowPlaying(val track: TrackRow?, val playing: Boolean) {
 }
 
 @Composable
+fun Refreshable(
+    enabled: Boolean,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val state = rememberPullToRefreshState()
+    if (enabled) {
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = onRefresh,
+            modifier = modifier,
+            state = state,
+            indicator = {
+                PullToRefreshDefaults.LoadingIndicator(
+                    state = state,
+                    isRefreshing = refreshing,
+                    modifier = Modifier.align(Alignment.TopCenter).size(48.dp),
+                )
+            },
+            content = content
+        )
+    } else {
+        Box(modifier, content = content)
+    }
+}
+
+@Composable
 fun rememberNowPlaying(): NowPlaying {
     val current by CoreRepository.current.collectAsStateWithLifecycle()
     val playing by CoreRepository.playing.collectAsStateWithLifecycle()
@@ -181,7 +213,18 @@ fun rememberNowPlaying(): NowPlaying {
 fun LibraryPage() {
     val app = LocalApp.current
     val ui by UiPreferences.settings.collectAsStateWithLifecycle()
-    val pager = rememberPagerState { LibraryTab.entries.size }
+    var handledRequest by rememberSaveable { mutableIntStateOf(0) }
+    val pending = app.libraryRequest?.takeIf { it.seq != handledRequest }
+    val pager = rememberPagerState(pending?.tab?.ordinal ?: 0) { LibraryTab.entries.size }
+
+    LaunchedEffect(app.libraryRequest) {
+        val request = app.libraryRequest ?: return@LaunchedEffect
+        if (request.seq == handledRequest) return@LaunchedEffect
+        handledRequest = request.seq
+        pager.animateScrollToPage(request.tab.ordinal)
+    }
+    val pullRefreshing by CoreRepository.pullRefreshing.collectAsStateWithLifecycle()
+    val scanning by CoreRepository.scanning.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
     val library by CoreRepository.library.collectAsStateWithLifecycle()
     val building by CoreRepository.building.collectAsStateWithLifecycle()
@@ -223,40 +266,55 @@ fun LibraryPage() {
             bar = header,
         )
         LibraryTabs(pager)
-        HorizontalPager(
-            state = pager,
+        Refreshable(
+            enabled = ui.pullToRefresh,
+            refreshing = pullRefreshing,
+            onRefresh = { CoreRepository.scan(fromPull = true) },
             modifier = Modifier.weight(1f),
-            key = { it },
-            userScrollEnabled = selection == null,
-            flingBehavior = PagerDefaults.flingBehavior(pager, snapAnimationSpec = NMotion.noBounce()),
-        ) { page ->
-            when (LibraryTab.entries[page]) {
-                LibraryTab.TRACKS -> {
-                    TracksTab(
-                        tracks = tracks,
-                        total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
-                        filters = filters,
-                        offered = offeredFields(facets, sources.size),
-                        sourceName = sourceName,
-                        onFilter = { app.show(Sheet.Filters(it)) },
-                        onClearFilter = { app.filters = app.filters.clear(it) },
-                        view = ui.view(LibraryTab.TRACKS),
-                        order = order,
-                        nowPlaying = nowPlaying,
-                        building = scan?.takeIf { building },
-                        compact = ui.compactRows,
-                        onToggleView = { UiPreferences.setView(LibraryTab.TRACKS, it) },
-                        selection = selection,
-                        onSelect = { track -> app.select(track.locator) },
-                        onPlay = { track -> app.play(query, Origin.Library, track.locator) },
-                        onPlayAll = { shuffle -> app.play(query, Origin.Library, shuffle = shuffle) },
-                        onMore = { track -> app.show(Sheet.TrackActions(track.locator)) },
-                        onSort = { app.show(Sheet.Sort(SortedList.TRACKS)) },
-                        onScan = { app.navigator.home(Tab.SOURCES) },
-                        held = (app.sheet as? Sheet.TrackActions)?.track,
-                        onClearFilters = { app.filters = TrackFilters() },
-                    )
-                }
+        ) {
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.fillMaxSize(),
+                key = { it },
+                userScrollEnabled = selection == null,
+                flingBehavior = PagerDefaults.flingBehavior(
+                    pager,
+                    snapAnimationSpec = NMotion.noBounce()
+                ),
+            ) { page ->
+                when (LibraryTab.entries[page]) {
+                    LibraryTab.TRACKS -> {
+                        TracksTab(
+                            tracks = tracks,
+                            total = if (filters.active.isEmpty()) library.tracks.toLong() else tracks.orEmpty().size.toLong(),
+                            filters = filters,
+                            offered = offeredFields(facets, sources.size),
+                            sourceName = sourceName,
+                            onFilter = { app.show(Sheet.Filters(it)) },
+                            onClearFilter = { app.filters = app.filters.clear(it) },
+                            view = ui.view(LibraryTab.TRACKS),
+                            order = order,
+                            nowPlaying = nowPlaying,
+                            building = scan?.takeIf { building },
+                            compact = ui.compactRows,
+                            onToggleView = { UiPreferences.setView(LibraryTab.TRACKS, it) },
+                            selection = selection,
+                            onSelect = { track -> app.select(track.locator) },
+                            onPlay = { track -> app.play(query, Origin.Library, track.locator) },
+                            onPlayAll = { shuffle ->
+                                app.play(
+                                    query,
+                                    Origin.Library,
+                                    shuffle = shuffle
+                                )
+                            },
+                            onMore = { track -> app.show(Sheet.TrackActions(track.locator)) },
+                            onSort = { app.show(Sheet.Sort(SortedList.TRACKS)) },
+                            onScan = { app.navigator.home(Tab.SOURCES) },
+                            held = (app.sheet as? Sheet.TrackActions)?.track,
+                            onClearFilters = { app.filters = TrackFilters() },
+                        )
+                    }
 
                     LibraryTab.ALBUMS -> {
                         val order = SortedList.ALBUMS.groupOrder(ui.sorts)
@@ -915,7 +973,6 @@ fun <T> GroupTab(
  * The first scan's card: every track found is listed already and plays; titles and covers fill
  * in as they are read.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BuildingCard(scan: ScanState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(

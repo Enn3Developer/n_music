@@ -166,6 +166,12 @@ object CoreRepository {
     /** The running scan; `null` while none runs. */
     val scanState: StateFlow<ScanState?> = _scanState.asStateFlow()
 
+    private val requested = MutableStateFlow(false)
+    private var requestTimeout: Job? = null
+
+    val scanning: StateFlow<Boolean> = combine(_scanState, requested) { state, asked -> state != null || asked }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
     /** The scan of the library just set up in Welcome: none, waiting for it, or running. */
     private enum class Build { NONE, WAITING, RUNNING }
 
@@ -397,6 +403,7 @@ object CoreRepository {
                     libraryChanged.trySend(Unit)
                 }
                 is CoreEvent.ScanProgress -> {
+                    requested.value = false
                     scan.value = if (event.libraries.isEmpty()) {
                         null
                     } else {
@@ -421,7 +428,11 @@ object CoreRepository {
                     event.used.toLong(),
                 )
                 is CoreEvent.OutputDevices -> _outputDevices.value = event.devices
-                is CoreEvent.ScanFinished -> _version.value++
+                is CoreEvent.ScanFinished -> {
+                    requested.value = false
+                    pulled.value = false
+                    _version.value++
+                }
                 is CoreEvent.TelegramStatusChanged -> {
                     val before = _telegram.value
                     val ended = (before?.ended ?: 0) + if (before?.busy == true && !event.busy) 1 else 0
@@ -452,6 +463,26 @@ object CoreRepository {
         _facets.value = core.facets()
         _ready.value = true
     }
+
+    private val pulled = MutableStateFlow(false)
+
+    val pullRefreshing: StateFlow<Boolean> = pulled.asStateFlow()
+
+    fun scan(root: Locator? = null, reload: Boolean = false, fromPull: Boolean = false): Boolean {
+        if (_scanState.value != null || !requested.compareAndSet(false, true)) return false
+        pulled.value = fromPull
+        send(Command.ScanRequested(root, checkCache = !reload))
+        requestTimeout?.cancel()
+        requestTimeout = scope.launch {
+            delay(10_000)
+            if (_scanState.value == null) {
+                requested.value = false
+                pulled.value = false
+            }
+        }
+        return true
+    }
+
     fun isReadableOffline(locator: Locator): Boolean = core.isReadableOffline(locator)
 }
 
@@ -488,3 +519,4 @@ fun decodeLocator(text: String): Locator? {
         else -> null
     }
 }
+

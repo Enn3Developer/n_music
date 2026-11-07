@@ -76,7 +76,7 @@ interface SourceActions {
     fun open(source: SourceRow)
 
     /** Reads [root] again, or every source while `null`; [reload] reads every file's tags again. */
-    fun scan(root: Locator?, reload: Boolean)
+    fun scan(root: Locator?, reload: Boolean): Boolean
 
     /** Asks for another name for [source]. */
     fun rename(source: SourceRow)
@@ -102,8 +102,7 @@ fun SourcesPage() {
         object : SourceActions {
             override fun open(source: SourceRow) = app.open(Page.Source(source.root))
 
-            override fun scan(root: Locator?, reload: Boolean) =
-                CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
+            override fun scan(root: Locator?, reload: Boolean) = CoreRepository.scan(root, reload)
 
             override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
 
@@ -246,7 +245,6 @@ fun groupShape(index: Int, count: Int, outer: Dp = 20.dp, inner: Dp = 4.dp): Rou
     )
 
 /** The scan's card: Updating library, how far it got, and its wave. */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdatingCard(scan: ScanState, modifier: Modifier = Modifier) {
     Column(
@@ -279,7 +277,6 @@ fun UpdatingCard(scan: ScanState, modifier: Modifier = Modifier) {
  * where it is, and its actions under ⋮. One that can't be reached [signedOut] of Telegram says
  * that instead.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SourceItem(
     source: SourceRow,
