@@ -504,7 +504,8 @@ private fun MainLayout(navigator: Navigator) {
                         // The plain AnimatedVisibility, not the Column's, for these sit in the Box.
                         androidx.compose.animation.AnimatedVisibility(
                             miniPlayer || actions,
-                            Modifier.align(Alignment.BottomCenter),
+                            Modifier.align(Alignment.BottomCenter)
+                                .graphicsLayer { alpha = 1f - app.player.expand.value.coerceIn(0f, 1f) },
                             enter = fadeIn(NMotion.effectsDefault()),
                             exit = fadeOut(NMotion.effectsFast()),
                         ) {
