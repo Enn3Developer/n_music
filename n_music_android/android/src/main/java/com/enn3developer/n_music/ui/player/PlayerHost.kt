@@ -69,7 +69,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,7 +82,6 @@ import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
-import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalWindowLayout
@@ -120,6 +118,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
+import com.enn3developer.n_music.LibraryQuery
 import com.enn3developer.n_music.ui.components.tappable
 
 /** How dark the scrim over the app gets behind the open player. */
@@ -386,7 +385,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     val position by CoreRepository.position.collectAsStateWithLifecycle()
     val queue by CoreRepository.queue.collectAsStateWithLifecycle()
     val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
-    val details = rememberLibrary<TrackDetails?>(null, track.locator) { CoreRepository.details(track.locator) }
+    val details = rememberLibrary(null, LibraryQuery.Details(track.locator))
     val clock = rememberPlaybackClock(position, playing)
     val skips = remember { SkipTracker() }
     skips.update(now.item, queue)

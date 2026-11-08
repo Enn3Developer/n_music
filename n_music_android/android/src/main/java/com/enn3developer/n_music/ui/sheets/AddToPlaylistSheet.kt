@@ -32,7 +32,6 @@ import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.PlaylistId
 import com.enn3developer.n_music.core.PlaylistRow
-import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.Snack
 import com.enn3developer.n_music.ui.components.CheckMark
@@ -65,7 +64,7 @@ fun AddToPlaylistSheet(tracks: List<Locator>, open: Boolean, onDismissRequest: (
         plain.associate { it.id to CoreRepository.playlistHolds(it.id, tracks) }
     }
     val single = tracks.singleOrNull()
-    val track = rememberLibrary<TrackRow?>(null, single) { single?.let(CoreRepository::track) }
+    val track = rememberLibrary(null, single) { single?.let(CoreRepository::track) }
     val undo = stringResource(R.string.undo)
     AddToPlaylistSheet(
         subtitle = track?.let { dotted(it.title, it.artist) } ?: tracksCount(tracks.size.toLong()),

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.LibraryQuery
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.ArtistRow
@@ -223,7 +224,7 @@ fun SmartPlaylistSheet(
     val app = LocalApp.current
     val facets by CoreRepository.facets.collectAsStateWithLifecycle()
     val sources by CoreRepository.sources.collectAsStateWithLifecycle()
-    val read = id?.let { rememberLibraryRead(it) { CoreRepository.playlist(it) } }
+    val read = id?.let { rememberLibraryRead(LibraryQuery.Playlist(it)) }
     val playlist = read?.value
     if (id != null) {
         // The sheet waits for the rules it opens on, and closes if the playlist went meanwhile.

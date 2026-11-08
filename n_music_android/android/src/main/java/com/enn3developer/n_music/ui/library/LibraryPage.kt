@@ -52,12 +52,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,6 +101,7 @@ import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.core.defaultSourceName
 import com.enn3developer.n_music.key
+import com.enn3developer.n_music.LibraryQuery
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.LocalPageMargins
@@ -227,7 +225,6 @@ fun LibraryPage() {
             }
     }
     val pullRefreshing by CoreRepository.pullRefreshing.collectAsStateWithLifecycle()
-    val scanning by CoreRepository.scanning.collectAsStateWithLifecycle()
     val scan by CoreRepository.scanState.collectAsStateWithLifecycle()
     val library by CoreRepository.library.collectAsStateWithLifecycle()
     val building by CoreRepository.building.collectAsStateWithLifecycle()
@@ -240,9 +237,7 @@ fun LibraryPage() {
     val order = SortedList.TRACKS.trackOrder(ui.sorts)
     val filters = app.filters
     val query = Query(filters.filter(), order.keys())
-    val tracks = rememberLibrary(null, query) {
-        CoreRepository.tracks(query)
-    }
+    val tracks = rememberLibrary(null, LibraryQuery.Tracks(query))
     val selection = app.selection
     BackHandler(selection != null) { app.endSelection() }
     // Selecting belongs to the Tracks tab.
@@ -321,9 +316,7 @@ fun LibraryPage() {
 
                     LibraryTab.ALBUMS -> {
                         val order = SortedList.ALBUMS.groupOrder(ui.sorts)
-                        val albums = rememberLibrary(null, order) {
-                            CoreRepository.albums(Filter.All(emptyList()), "", order.sort)
-                        }
+                        val albums = rememberLibrary(null, LibraryQuery.Albums(Filter.All(emptyList()), "", order.sort))
                         GroupTab(
                             items = albums,
                             count = {
@@ -371,9 +364,7 @@ fun LibraryPage() {
 
                     LibraryTab.ARTISTS -> {
                         val order = SortedList.ARTISTS.groupOrder(ui.sorts)
-                        val artists = rememberLibrary(null, order) {
-                            CoreRepository.artists(Filter.All(emptyList()), "", order.sort)
-                        }
+                        val artists = rememberLibrary(null, LibraryQuery.Artists(Filter.All(emptyList()), "", order.sort))
                         GroupTab(
                             items = artists,
                             count = {
@@ -412,9 +403,7 @@ fun LibraryPage() {
 
                     LibraryTab.GENRES -> {
                         val order = SortedList.GENRES.groupOrder(ui.sorts)
-                        val genres = rememberLibrary(null, order) {
-                            CoreRepository.genres(Filter.All(emptyList()), "", order.sort)
-                        }
+                        val genres = rememberLibrary(null, LibraryQuery.Genres(Filter.All(emptyList()), "", order.sort))
                         GroupTab(
                             items = genres,
                             count = {
