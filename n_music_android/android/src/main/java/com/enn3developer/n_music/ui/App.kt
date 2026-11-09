@@ -75,9 +75,9 @@ import com.enn3developer.n_music.R
 import com.enn3developer.n_music.ScanState
 import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
+import com.enn3developer.n_music.next
 import com.enn3developer.n_music.core.Command
 import com.enn3developer.n_music.core.Locator
-import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.PlaylistRow
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.components.BottomFade
@@ -296,15 +296,7 @@ object CorePlayback : PlaybackActions {
     override fun next() = CoreRepository.send(Command.PlayNext)
     override fun toggleShuffle() = CoreRepository.send(Command.ToggleShuffle)
     // Off, all, one, like the notification's button.
-    override fun cycleRepeat() = CoreRepository.send(
-        Command.SetLoopStatus(
-            when (CoreRepository.loopStatus.value) {
-                LoopStatus.OFF -> LoopStatus.PLAYLIST
-                LoopStatus.PLAYLIST -> LoopStatus.FILE
-                LoopStatus.FILE -> LoopStatus.OFF
-            }
-        )
-    )
+    override fun cycleRepeat() = CoreRepository.send(Command.SetLoopStatus(CoreRepository.loopStatus.value.next()))
     override fun openOutput() {}
     override fun openSleepTimer() {}
 }

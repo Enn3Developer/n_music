@@ -139,11 +139,7 @@ class PlaybackService : MediaLibraryService() {
                 when (customCommand) {
                     // Off, all, one, like the app's repeat button.
                     toggleRepeatCommand -> sessionPlayer.repeatMode =
-                        when (sessionPlayer.repeatMode) {
-                            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                            else -> Player.REPEAT_MODE_OFF
-                        }
+                        loopStatusOf(sessionPlayer.repeatMode).next().toRepeatMode()
 
                     toggleShuffleCommand ->
                         sessionPlayer.shuffleModeEnabled = !sessionPlayer.shuffleModeEnabled
