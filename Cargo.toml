@@ -37,3 +37,15 @@ opt-level = 3
 # library when it packages the app.
 [profile.release.package.n_music_ffi]
 strip = false
+
+# The macOS app's core: n_music_macos/scripts/build-core.sh builds n_music_ffi with it for
+# Release, with `-C target-cpu=apple-m1` (x86-64-v3 on Intel). Unwinding stays on, so a panic
+# is caught and logged at the FFI boundary instead of aborting.
+[profile.macos]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+# The Swift bindings are generated from the metadata symbols in the library; Xcode strips the
+# app when it links it.
+strip = false
