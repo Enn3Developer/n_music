@@ -14,6 +14,8 @@ struct State {
     device: Option<String>,
     /// The output may play from a deep hardware buffer.
     offload: bool,
+    /// The output runs at each track's rate, where the platform can switch the device.
+    match_rate: bool,
     paused: bool,
     reload_output: bool,
     seek: Option<(Time, u64)>,
@@ -53,11 +55,17 @@ pub(super) struct Controls {
 }
 
 impl PlaybackControl {
-    pub(super) fn new(volume: f32, device: Option<String>, offload: bool) -> Self {
+    pub(super) fn new(
+        volume: f32,
+        device: Option<String>,
+        offload: bool,
+        match_rate: bool,
+    ) -> Self {
         Self(Arc::new(Mutex::new(State {
             volume,
             device,
             offload,
+            match_rate,
             paused: false,
             reload_output: false,
             seek: None,
@@ -108,6 +116,15 @@ impl PlaybackControl {
     /// The output may play from a deep hardware buffer.
     pub(super) fn offload(&self) -> bool {
         self.0.lock().unwrap().offload
+    }
+
+    pub(super) fn set_match_rate(&self, match_rate: bool) {
+        self.update(|state| state.match_rate = match_rate);
+    }
+
+    /// The output runs at each track's rate, where the platform can switch the device.
+    pub(super) fn match_rate(&self) -> bool {
+        self.0.lock().unwrap().match_rate
     }
 
     pub(super) fn set_volume(&self, volume: f32) {

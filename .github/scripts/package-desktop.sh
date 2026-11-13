@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Packages the desktop app for one runtime, in two steps the release workflow runs in turn:
+# Packages the Qt desktop app for one runtime, Linux or Windows (Macs get the native app,
+# n_music_macos), in two steps the release workflow runs in turn:
 #   stage  copies the app built by `cargo build --release` and the Qt runtime it needs into
 #          target/velopack-stage/<runtime>, and names the file that starts the staged app
 #          (`launcher` in GITHUB_OUTPUT, when set);
@@ -10,7 +11,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
-usage="Usage: bash .github/scripts/package-desktop.sh stage|pack linux-x64|win-x64|osx-arm64"
+usage="Usage: bash .github/scripts/package-desktop.sh stage|pack linux-x64|win-x64"
 step=${1:-}
 runtime=${2:-}
 version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
@@ -25,10 +26,6 @@ case "$runtime" in
     target=x86_64-pc-windows-msvc
     executable=n_music_desktop.exe
     pack_dir=app
-    ;;
-  osx-arm64)
-    target=aarch64-apple-darwin
-    pack_dir=$pack_id.app
     ;;
   *) echo "$usage" >&2; exit 1 ;;
 esac
@@ -79,36 +76,6 @@ stage_windows() {
   launcher="$pack_dir/$executable"
 }
 
-stage_macos() {
-  mkdir -p "$stage/app"
-  cp "$binary" "$stage/app/$executable"
-  iconset="$stage/NMusic.iconset"
-  mkdir -p "$iconset"
-  for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$iconset" -o "$stage/NMusic.icns"
-  # The .app bundle `vpk pack` made before, which macdeployqt can then complete.
-  dotnet vpk bundle --packId "$pack_id" --packTitle "N Music" --packAuthors Enn3Developer \
-    --packVersion "$version" --packDir "$stage/app" --mainExe "$executable" \
-    --icon "$stage/NMusic.icns" --bundleId com.enn3developer.n-music \
-    --outputDir "$stage" --yes --skip-updates
-  cp LICENSE "$pack_dir/Contents/Resources/LICENSE"
-  "$QT_ROOT_DIR/bin/macdeployqt" "$pack_dir" -qmldir=n_music_desktop/qml
-  python3 .github/scripts/trim-qt-macos.py "$pack_dir" "$QT_ROOT_DIR" n_music_desktop/qml
-  # Deploying and trimming Qt's binaries breaks Qt's own signatures, and Apple silicon runs no
-  # code with a broken one. Sign everything again, ad hoc, the nested code before the bundle.
-  find "$pack_dir/Contents/PlugIns" -type f -exec codesign --force --sign - {} +
-  for framework in "$pack_dir"/Contents/Frameworks/*.framework; do
-    codesign --force --sign - "$framework"
-  done
-  codesign --force --sign - "$pack_dir"
-  codesign --verify --deep --strict "$pack_dir"
-  launcher="$pack_dir/Contents/MacOS/$executable"
-}
-
 stage() {
   : "${QT_ROOT_DIR:?Set QT_ROOT_DIR to the Qt installation the app was built with}"
   binary="target/$target/release/$executable"
@@ -122,7 +89,6 @@ stage() {
   case "$runtime" in
     linux-x64) stage_linux ;;
     win-x64) stage_windows ;;
-    osx-arm64) stage_macos ;;
   esac
   echo "Staged $launcher"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

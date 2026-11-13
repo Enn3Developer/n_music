@@ -50,7 +50,24 @@ glass_pumpkin = { version = "=2.0.0-rc0", optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 directories = "6.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "macos")))'.dependencies]
 cpal = { version = "0.18", features = ["pulseaudio"] }
+
+# macOS plays through Core Audio's HAL output unit directly: cpal's backend polls for device
+# changes, fixes the I/O buffer and can't run the device at the track's sample rate.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
+objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware", "HostTime"] }
+objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-audio-toolbox = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "AUComponent",
+    "AudioComponent",
+    "AudioOutputUnit",
+    "AudioUnitProperties",
+    "objc2-core-audio-types",
+] }
 
 # Android plays through AAudio directly: cpal's backend can't ask for power-saving or offloaded
 # streams. Usage and content type need API 28; the app's minimum is 30.

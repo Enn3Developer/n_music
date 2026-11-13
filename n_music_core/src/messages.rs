@@ -96,6 +96,10 @@ pub struct SetCrossfade(pub f64);
 /// Lets the platform play from a deep hardware buffer where it can, like offloaded playback on
 /// Android 16, so the processor sleeps between refills. The output opens again to apply it.
 pub struct SetOffload(pub bool);
+/// Runs the device at each track's sample rate, or a whole multiple of it, where the platform
+/// can switch it (macOS), so nothing is resampled; a track the device would switch for then
+/// starts after a short gap. The output opens again to apply it.
+pub struct SetMatchRate(pub bool);
 /// Fades playback out to silence as a sleep timer ends, or (`None`) plays at full volume again.
 /// The fade is applied as audio is queued, so it is heard on time however much the device holds;
 /// audio already queued is queued again when a change reaches it. Pausing stays the caller's.
@@ -331,6 +335,7 @@ messages!(
     SetResume,
     SetCrossfade,
     SetOffload,
+    SetMatchRate,
     SetSleepFade,
     PlaybackChanged,
     TrackChanged,

@@ -8,16 +8,32 @@
 mod android;
 mod bridge;
 mod commands;
+mod desktop;
 mod library;
+mod queue;
 mod rows;
+mod rules;
+mod state;
+mod telegram;
 mod types;
+mod ui;
 
 pub use bridge::CoreEvent;
 pub use commands::Command;
+pub use desktop::core_version;
 pub use library::{
-    AlbumRow, ArtistRow, Facet, Facets, GenreRow, GroupSort, PlaylistRow, SourceRow, Summary,
+    AlbumRow, ArtistRow, Facet, Facets, GenreRow, GroupSort, ListSummary, PlaylistRow, SourceInfo,
+    SourceRow, SourceStatus, SourceType, Summary, ValueField,
 };
-pub use rows::{QueueRow, TrackDetails, TrackRow};
+pub use queue::{queue_layout, queue_move, QueueLayout, QueueLayoutRow, QueueMove};
+pub use rows::{QueueRow, TrackDetails, TrackEntry, TrackRow};
+pub use rules::{
+    collection_filter, filter_spec, normalize_web_address, parse_filter, parse_sort, sort_string,
+    source_from_location, source_location, tracks_query, CollectionKind,
+};
+pub use state::{OutputChoice, ScanStatus, StreamCacheState, TelegramSignInState};
+pub use telegram::{telegram_chat_kind_key, telegram_error_text, TelegramErrorText};
+pub use ui::{default_desktop_ui, DesktopUi, UiTheme};
 
 use bridge::KotlinBridge;
 use n_event_bus::{App, EventReceiver, EventWriter, JobControl, ShutdownOutcome};
@@ -27,13 +43,16 @@ use n_music_core::library::query::{Filter, PlaylistId, Query};
 use n_music_core::library::reader::read_info;
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::library::LibraryPaths;
-use n_music_core::settings::{JsonFileStorage, PlaybackSettings, Section, SettingsStorage};
+use n_music_core::settings::{
+    JsonFileStorage, LibrarySettings, PlaybackSettings, Section, SettingsStorage,
+};
 use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
 use n_music_core::source::{Locator, Providers};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 uniffi::setup_scaffolding!();
@@ -54,6 +73,14 @@ pub struct Core {
     paths: LibraryPaths,
     /// Reads the files of tracks for what the library keeps only small, like their covers.
     providers: Providers,
+    /// What the core last reported, kept by the bridge.
+    state: state::Shared,
+    /// No sources were ever chosen when the core started.
+    first_run: Arc<AtomicBool>,
+    /// Where the settings and the logs are.
+    data_dir: PathBuf,
+    /// The bus thread, until [`Core::shutdown`] joined it.
+    bus: Mutex<Option<JoinHandle<()>>>,
 }
 
 /// The playback settings the core keeps and reports no event for.
@@ -66,6 +93,10 @@ pub struct PlaybackOptions {
     pub crossfade: f64,
     /// Playback may be offloaded to a hardware buffer, on Android 16 phones that have one.
     pub offload: bool,
+    /// The output device is switched to each track's sample rate where the platform can (Core
+    /// Audio on macOS); elsewhere the setting is kept but changes nothing.
+    #[uniffi(default = true)]
+    pub match_rate: bool,
 }
 
 /// An output AudioManager lists: AAudio can't list them itself.
@@ -107,6 +138,9 @@ impl Core {
 
     /// Sends `command` to the core. It never blocks, so the main thread can call it.
     pub fn send(&self, command: Command) {
+        if let Command::SetOutputDevice { device } = &command {
+            self.state.lock().chosen = device.clone();
+        }
         command.emit(&self.writer);
     }
 
@@ -288,6 +322,7 @@ impl Core {
             resume: settings.resume,
             crossfade: settings.crossfade,
             offload: settings.offload,
+            match_rate: settings.match_rate,
         }
     }
 
@@ -324,9 +359,42 @@ impl Core {
             Err(error) => log::error!("Not storing settings section {key}: {error}"),
         }
     }
+
+    /// Shuts the core down as the desktop app does on quit, and returns once it is down: the
+    /// services finish (the play session is saved) and the settings are on disk. Call it from
+    /// the app's termination, off the main thread when it can take a while (up to the bus's
+    /// 10 s shutdown timeout). Calling it again, from any thread, waits for the first call and
+    /// returns. Commands sent afterwards go nowhere and [`Core::next_event`] returns `None`.
+    pub fn shutdown(&self) {
+        let shutdown = std::panic::catch_unwind(AssertUnwindSafe(|| self.stop()));
+        if shutdown.is_err() {
+            log::error!("Shutting the core down panicked");
+        }
+        log::logger().flush();
+    }
 }
 
 impl Core {
+    /// Asks the services to shut down, waits for the bus thread, then writes the settings.
+    fn stop(&self) {
+        // Held until the bus is down, so a second caller waits for the first.
+        let mut bus = self
+            .bus
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(thread) = bus.take() {
+            log::debug!("Shutdown requested");
+            self.writer.shutdown();
+            if thread.thread().id() == std::thread::current().id() {
+                // The bus thread can't wait for itself: it stops once this returns.
+                log::error!("The core was shut down from its own bus thread");
+            } else if thread.join().is_err() {
+                log::error!("Event bus thread panicked");
+            }
+        }
+        self.storage.flush();
+    }
+
     /// Notes that Kotlin took `event`.
     fn taken(&self, event: CoreEvent) -> CoreEvent {
         match event {
@@ -361,6 +429,15 @@ impl Core {
         }
         // Read here, so the interface's own sections are there as soon as this returns.
         let storage = Arc::new(JsonFileStorage::open(settings_path(data_dir)));
+        // The library saves its sources once they are chosen: read before it starts.
+        let first_run = Arc::new(AtomicBool::new(
+            storage.load(LibrarySettings::KEY).is_none(),
+        ));
+        let state = state::Shared::default();
+        state.lock().chosen = storage
+            .load(PlaybackSettings::KEY)
+            .and_then(|value| serde_json::from_value::<PlaybackSettings>(value).ok())
+            .and_then(|settings| settings.output_device);
 
         let (writer, rx) = EventWriter::channel();
         let (events, receiver) = flume::unbounded();
@@ -378,8 +455,9 @@ impl Core {
             events,
             library_changed: library_changed.clone(),
             scan_read: scan_read.clone(),
+            state: state.clone(),
         };
-        std::thread::Builder::new()
+        let bus = std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
             .spawn(move || services.run(rx))
             .expect("failed to spawn event bus thread");
@@ -392,6 +470,10 @@ impl Core {
             storage,
             paths: LibraryPaths::new(data_dir, cache_dir),
             providers: providers(),
+            state,
+            first_run,
+            data_dir: data_dir.to_path_buf(),
+            bus: Mutex::new(Some(bus)),
         }
     }
 }
@@ -423,6 +505,7 @@ struct Services {
     events: flume::Sender<CoreEvent>,
     library_changed: Arc<AtomicBool>,
     scan_read: Arc<AtomicU64>,
+    state: state::Shared,
 }
 
 impl Services {
@@ -454,6 +537,7 @@ impl Services {
                 library,
                 self.library_changed,
                 self.scan_read,
+                self.state,
             ));
             app.run_loop(rx, Duration::from_secs(10))
         }));

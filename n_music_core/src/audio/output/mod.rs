@@ -93,15 +93,27 @@ const QUEUE: WallDuration = WallDuration::from_millis(500);
 /// The most a deep stream queues: what its device asks for at once, plus [`QUEUE`].
 const DEEP_QUEUE_LIMIT: WallDuration = WallDuration::from_secs(30);
 
+/// The platform can run the device at the rate of what plays, see [`Output::open`].
+pub(crate) const SWITCHES_RATE: bool = <Platform as Backend>::SWITCHES_RATE;
+
 /// The devices the output can play on, as the system lists them.
 pub(crate) fn output_devices() -> Vec<OutputDevice> {
     Platform::devices()
+}
+
+/// The rate `device` would run at if an output were opened now for audio at `wanted` Hz, on a
+/// platform that [`SWITCHES_RATE`]; `None` when it can't tell. It asks the system: not for every
+/// packet.
+pub(crate) fn rate_for(device: Option<&str>, wanted: u32) -> Option<u32> {
+    Platform::rate_for(device, wanted)
 }
 
 /// The stream to the output device. Writing never blocks: callers wait with
 /// [`Output::wait_for_room`], which the stream callback wakes up.
 pub struct Output {
     format: OutputFormat,
+    /// The audio rate it was opened for, see [`Output::wanted_rate`].
+    wanted_rate: Option<u32>,
     producer: Producer<f32>,
     stream: <Platform as Backend>::Stream,
     state: Arc<SharedState>,
@@ -123,11 +135,21 @@ impl Output {
     /// Opens `device`, an [`OutputDevice::id`], while it is there, else the default device, in
     /// its default configuration, playing at `volume`. `offload` lets the platform play from a
     /// deep hardware buffer where it can.
-    pub fn open(volume: f32, device: Option<&str>, offload: bool) -> Result<Self> {
+    ///
+    /// `rate` is the rate of the audio to play: a platform that [`SWITCHES_RATE`] runs the device
+    /// at it, or at a whole multiple of it, where the device can. The output's
+    /// [`Output::format`] says what the device runs at in the end.
+    pub fn open(
+        volume: f32,
+        device: Option<&str>,
+        offload: bool,
+        rate: Option<u32>,
+    ) -> Result<Self> {
         let state = Arc::new(SharedState::new(volume));
         let request = Request {
             device,
             offload,
+            rate,
             state: state.clone(),
         };
         let mut queue = None;
@@ -152,6 +174,7 @@ impl Output {
         let device = WallDuration::from_secs_f64(device_frames as f64 / f64::from(format.rate));
         let mut output = Self {
             format,
+            wanted_rate: rate,
             producer,
             stream: opened.stream,
             state,
@@ -168,6 +191,12 @@ impl Output {
             },
         };
         if !deep {
+            // The stall clock starts now, not when the state was made: opening may have waited
+            // for the device to switch its rate.
+            output
+                .state
+                .heartbeat_ns
+                .store(output.state.now_ns(), Ordering::Relaxed);
             output.stream.play()?;
         }
         log::info!(
@@ -185,6 +214,12 @@ impl Output {
 
     pub fn format(&self) -> OutputFormat {
         self.format
+    }
+
+    /// The audio rate it was opened for, whatever the device took: opening again for audio at
+    /// this rate gets the same.
+    pub fn wanted_rate(&self) -> Option<u32> {
+        self.wanted_rate
     }
 
     /// Makes the calling thread the one [`Self::wait_for_room`] parks and the callback wakes.

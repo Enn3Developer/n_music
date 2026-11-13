@@ -72,6 +72,11 @@ pub enum Command {
     SetOffload {
         enabled: bool,
     },
+    /// Switch the output device to each track's sample rate where the platform can (Core Audio
+    /// on macOS). Saved; the output opens again at once.
+    SetMatchRate {
+        enabled: bool,
+    },
     /// The sleep timer's fade ends `ends_in_ms` from now, after `fade_ms` of fading; `None` plays
     /// at full volume again. An end already past is now.
     SetSleepFade {
@@ -178,6 +183,7 @@ impl Command {
             Command::SetResume { enabled } => writer.emit(messages::SetResume(enabled)),
             Command::SetCrossfade { seconds } => writer.emit(messages::SetCrossfade(seconds)),
             Command::SetOffload { enabled } => writer.emit(messages::SetOffload(enabled)),
+            Command::SetMatchRate { enabled } => writer.emit(messages::SetMatchRate(enabled)),
             Command::SetSleepFade {
                 ends_in_ms,
                 fade_ms,

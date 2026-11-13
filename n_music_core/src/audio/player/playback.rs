@@ -8,6 +8,7 @@ use super::successor::Successor;
 use super::{Failure, Next, PlaybackEvent};
 use crate::library::track::ReplayGainMode;
 use crate::messages::SleepFade;
+use crate::queue::ItemId;
 use crate::TrackTime;
 use std::io;
 use std::time::{Duration, Instant};
@@ -94,6 +95,46 @@ struct Reporting {
     force: bool,
 }
 
+/// The rate to open the output at for `track`: its own, while the output follows each track's
+/// rate on a platform that can switch the device.
+fn wanted_rate(control: &PlaybackControl, track: &Decoding) -> Option<u32> {
+    if output::SWITCHES_RATE && control.match_rate() {
+        track.rate
+    } else {
+        None
+    }
+}
+
+/// Whether audio at `wanted` Hz (see [`wanted_rate`]) plays on `output` as it is.
+fn fits_rate(output: &Output, control: &PlaybackControl, wanted: Option<u32>) -> bool {
+    rate_fits(
+        wanted,
+        output.wanted_rate(),
+        output.format().rate,
+        |wanted| output::rate_for(control.output_device().as_deref(), wanted),
+    )
+}
+
+/// Whether audio at `wanted` Hz plays on an output opened for `opened_for` Hz and running at
+/// `running`, where `predict` tells what the device would run at for it on a new stream. Another
+/// stream only buys a gap unless the device would really end up at another rate: a device that
+/// has a single rate, refused to switch, or that another process holds, stays where it is, and
+/// one opened for this rate already got what it could.
+fn rate_fits(
+    wanted: Option<u32>,
+    opened_for: Option<u32>,
+    running: u32,
+    predict: impl FnOnce(u32) -> Option<u32>,
+) -> bool {
+    let Some(wanted) = wanted else {
+        return true;
+    };
+    if opened_for == Some(wanted) || running == wanted {
+        return true;
+    }
+    predict(wanted).is_none_or(|rate| rate == running)
+}
+
 /// The volume slider's curve.
 fn output_volume(volume: f32) -> f32 {
     let volume = volume.clamp(0.0, 1.0);
@@ -147,6 +188,9 @@ struct Playback<'a, E: FnMut(PlaybackEvent)> {
     sleep: Option<SleepFade>,
     /// A change of the sleep fade reached queued audio: it is decoded again from what is heard.
     requeue: bool,
+    /// Whether the successor (the queue item) plays on the output as it is, once asked: the
+    /// answer asks the system about the device. Forgotten whenever the output closes.
+    successor_fits: Option<(ItemId, bool)>,
 }
 
 impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
@@ -159,10 +203,17 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
         emit: &'a mut E,
     ) -> Self {
         if let Some(stream) = output.as_ref() {
-            if stream.check_health().is_ok() {
-                stream.attach();
-            } else {
+            let wanted = wanted_rate(&control, &current);
+            if stream.check_health().is_err() {
                 output.take();
+            } else if !fits_rate(stream, &control, wanted) {
+                log::info!(
+                    "The track is at {} Hz: opening the output again instead of resampling",
+                    wanted.unwrap_or_default()
+                );
+                output.take();
+            } else {
+                stream.attach();
             }
         }
         let paused = control.is_paused();
@@ -208,6 +259,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             crossfade: Duration::ZERO,
             sleep,
             requeue: false,
+            successor_fits: None,
         }
     }
 
@@ -319,6 +371,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             // Close before reopening: some backends require exclusive access. Rewind
             // rather than skipping what was queued.
             self.output.take();
+            self.successor_fits = None;
             self.reporting.force = true;
         }
         Ok(rewind)
@@ -416,9 +469,11 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             output_volume(volume),
             self.control.output_device().as_deref(),
             self.control.offload(),
+            wanted_rate(&self.control, &self.current),
         ) {
             Ok(opened) => {
                 opened.attach();
+                self.successor_fits = None;
                 self.volume = volume;
                 *self.output = Some(opened);
                 self.reporting.force = true;
@@ -426,6 +481,34 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             Err(error) => self.recovery.error = Some(error),
         }
         // Opening can take time; the caller re-reads the controls before playing.
+    }
+
+    /// Whether the successor, once open, plays on the output as it is (see [`fits_rate`]). One
+    /// that does not waits for the current track to end, and starts on an output opened for it:
+    /// a short gap rather than resampling it, or a switch in the middle of a handover.
+    fn successor_fits(&mut self) -> bool {
+        let Some(output) = self.output.as_ref() else {
+            return true;
+        };
+        let Some(next) = self.successor.as_mut().and_then(Successor::ready) else {
+            return true;
+        };
+        let item = next.item;
+        if let Some((cached, fits)) = self.successor_fits {
+            if cached == item {
+                return fits;
+            }
+        }
+        let wanted = wanted_rate(&self.control, next);
+        let fits = fits_rate(output, &self.control, wanted);
+        if !fits {
+            log::info!(
+                "The next track is at {} Hz, which the device would switch to: it starts on a new stream",
+                wanted.unwrap_or_default()
+            );
+        }
+        self.successor_fits = Some((item, fits));
+        fits
     }
 
     /// Publishes the position right away, as a discontinuity.
@@ -547,8 +630,9 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
     /// out. Returns whether the track ended. A successor still opening when the queue ran dry
     /// is waited for, a gap rather than a skip.
     fn drain(&mut self, timeout: Duration) -> bool {
-        if self.handover.is_none() {
+        if self.handover.is_none() && self.successor_fits() {
             if let Some(track) = self.successor.as_mut().and_then(Successor::take) {
+                log::debug!("Handing over to the next track without a gap");
                 self.successor = None;
                 let previous = std::mem::replace(&mut self.current, track);
                 self.handover = Some(Handover {
@@ -679,7 +763,7 @@ impl<'a, E: FnMut(PlaybackEvent)> Playback<'a, E> {
             fade
         };
         let frames = (fade.min(left) * rate) as usize;
-        if frames == 0 {
+        if frames == 0 || !self.successor_fits() {
             return;
         }
         let Some(track) = self.successor.as_mut().and_then(Successor::take) else {
@@ -791,6 +875,36 @@ mod tests {
         );
         assert!(gains[15..].iter().all(|&gain| gain == 0.0), "{gains:?}");
         assert!(samples.chunks(2).all(|frame| frame[0] == frame[1]));
+    }
+
+    #[test]
+    fn a_track_fits_unless_the_device_would_switch_for_it() {
+        let never = |_| -> Option<u32> { panic!("the device is not asked") };
+        // Not following the track's rate, or already at it.
+        assert!(rate_fits(None, None, 48_000, never));
+        assert!(rate_fits(Some(48_000), None, 48_000, never));
+        // Opened for this rate before: the device took what it could.
+        assert!(rate_fits(Some(44_100), Some(44_100), 48_000, never));
+        // A device that switches.
+        assert!(!rate_fits(Some(44_100), Some(48_000), 48_000, |_| Some(
+            44_100
+        )));
+        assert!(!rate_fits(Some(22_050), Some(48_000), 48_000, |_| Some(
+            44_100
+        )));
+        // A fixed-rate device, one that refused the rate or is held by another process, and
+        // one that can't tell: the device would stay where it is.
+        assert!(rate_fits(Some(44_100), Some(48_000), 48_000, |_| Some(
+            48_000
+        )));
+        assert!(rate_fits(Some(44_100), Some(48_000), 48_000, |_| None));
+        // A whole multiple the device runs at already, unless it has the rate itself.
+        assert!(rate_fits(Some(24_000), Some(48_000), 48_000, |_| Some(
+            48_000
+        )));
+        assert!(!rate_fits(Some(48_000), Some(96_000), 96_000, |_| Some(
+            48_000
+        )));
     }
 
     #[test]

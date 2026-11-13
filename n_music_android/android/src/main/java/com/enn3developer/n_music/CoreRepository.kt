@@ -216,7 +216,7 @@ object CoreRepository {
     /** What the last search for Telegram chats found. */
     val telegramChats: StateFlow<TelegramChats?> = _telegramChats.asStateFlow()
 
-    private val _options = MutableStateFlow(PlaybackOptions(ReplayGainMode.OFF, false, 0.0, true))
+    private val _options = MutableStateFlow(PlaybackOptions(ReplayGainMode.OFF, false, 0.0, true, true))
 
     /** ReplayGain, resuming, crossfade and offload. */
     val options: StateFlow<PlaybackOptions> = _options.asStateFlow()

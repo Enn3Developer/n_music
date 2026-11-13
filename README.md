@@ -9,6 +9,8 @@ Cross-platform music player written in Rust + Slint
 - Cover art
 - Music from local folders, web playlists and Telegram chats
 - Supports media control on all platforms (Windows, Mac, Linux and Android)
+- A native Mac app (SwiftUI and AppKit, Apple silicon) that plays through Core Audio at each
+  track's own sample rate
 - Extremely fast and resource efficient
 - Locale support
 
@@ -22,6 +24,16 @@ Cross-platform music player written in Rust + Slint
 - QoL:
     - [ ] Playlists
     - [ ] Auto updater (desktop only; opt-out)
+
+## Platforms
+
+- **Linux and Windows**: the Qt desktop app (`n_music_desktop`). Releases have it for these
+  two; it still builds from source on a Mac, but is not released for macOS.
+- **macOS**: the native app, `n_music_macos`, over the same core. Releases have it as
+  `N-Music-<version>-macos-arm64.dmg` and as a `.zip`. See
+  [n_music_macos/README.md](n_music_macos/README.md) for what is Mac-specific, building it,
+  and opening the ad-hoc signed app the first time.
+- **Android**: `n_music_android`; releases have its APK.
 
 ## Contribute
 
@@ -38,6 +50,8 @@ Build in release mode:
 ```shell
 cargo build --release --package n_music_desktop
 ```
+
+The macOS app builds with Xcode: see [n_music_macos/README.md](n_music_macos/README.md#building).
 
 ### Telegram
 
