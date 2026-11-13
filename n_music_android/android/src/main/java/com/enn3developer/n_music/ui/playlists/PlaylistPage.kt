@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.enn3developer.n_music.CoreRepository
+import com.enn3developer.n_music.LibraryQuery
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.Filter
@@ -123,10 +124,10 @@ fun playlistQuery(playlist: PlaylistRow): Query = Query(Filter.Playlist(playlist
 fun PlaylistPage(page: Page.Playlist) {
     val app = LocalApp.current
     val resources = LocalResources.current
-    val playlist = rememberLibrary<PlaylistRow?>(null, page.id) { CoreRepository.playlist(page.id) }
+    val playlist = rememberLibrary(null, LibraryQuery.Playlist(page.id))
     val order = playlist?.let(::playlistOrder) ?: TrackOrder(TrackSort.ADDED)
     val query = Query(Filter.Playlist(page.id), order.keys(page.id))
-    val read = rememberLibraryRead(query) { CoreRepository.tracks(query) }
+    val read = rememberLibraryRead(LibraryQuery.Tracks(query))
     // Tracks swiped out leave at once, though the core hears of it once their snackbar goes.
     val tracks = read?.let { (rows, version) ->
         rows.filterNot { app.removals.hides(PlaylistTrack(page.id, it.locator), version) }

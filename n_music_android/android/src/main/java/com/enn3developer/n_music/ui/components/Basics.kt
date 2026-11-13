@@ -25,8 +25,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,6 +133,8 @@ fun BottomFade(height: Dp, modifier: Modifier = Modifier, solidFrom: Float = 0.7
 
 private val BarEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 
+private val offsets = listOf(0f, 0.45f / 1.1f, 0.8f / 1.1f)
+
 /**
  * The three bars of the playing track, rising and falling out of step while [animate] is on;
  * still while paused.
@@ -146,7 +146,7 @@ fun PlayingBars(
     height: Dp = 14.dp,
     animate: Boolean = true,
 ) {
-    val phase by if (animate) {
+    val phase = if (animate) {
         rememberInfiniteTransition(label = "bars").animateFloat(
             initialValue = 0f,
             targetValue = 1f,
@@ -154,25 +154,32 @@ fun PlayingBars(
             label = "phase",
         )
     } else {
-        remember { mutableFloatStateOf(0.35f) }
+        null
     }
+
     Canvas(modifier.size(width = 13.dp, height = height)) {
         val bar = 3.dp.toPx()
         val gap = 2.dp.toPx()
+        val now = phase?.value
         // CSS's negative delays: the second and third bars run 0.45 s and 0.8 s ahead.
-        for ((index, offset) in listOf(0f, 0.45f / 1.1f, 0.8f / 1.1f).withIndex()) {
-            val t = (phase + offset) % 1f
-            val scale = if (t < 0.5f) {
-                0.3f + 0.7f * BarEasing.transform(t / 0.5f)
+        for ((index, offset) in offsets.withIndex()) {
+            val barHeight = if (now != null) {
+                val t = (now + offset) % 1f
+                val scale = if (t < 0.5f) {
+                    0.3f + 0.7f * BarEasing.transform(t / 0.5f)
+                } else {
+                    1f - 0.7f * BarEasing.transform((t - 0.5f) / 0.5f)
+                }
+                size.height * scale
             } else {
-                1f - 0.7f * BarEasing.transform((t - 0.5f) / 0.5f)
+                bar
             }
-            val barHeight = size.height * scale
+
             drawRoundRect(
                 color = color,
                 topLeft = Offset(index * (bar + gap), size.height - barHeight),
                 size = Size(bar, barHeight),
-                cornerRadius = CornerRadius(2.dp.toPx()),
+                cornerRadius = CornerRadius(bar / 2f),
             )
         }
     }

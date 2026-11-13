@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -52,9 +53,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -71,7 +69,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,7 +82,6 @@ import com.enn3developer.n_music.SleepTimer
 import com.enn3developer.n_music.UiPreferences
 import com.enn3developer.n_music.core.LoopStatus
 import com.enn3developer.n_music.core.QueueRow
-import com.enn3developer.n_music.core.TrackDetails
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalWindowLayout
@@ -122,6 +118,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
+import com.enn3developer.n_music.LibraryQuery
+import com.enn3developer.n_music.ui.components.tappable
 
 /** How dark the scrim over the app gets behind the open player. */
 private const val SCRIM = 0.5f
@@ -387,7 +385,7 @@ fun livePlayback(now: Current, close: () -> Unit): LivePlayback {
     val position by CoreRepository.position.collectAsStateWithLifecycle()
     val queue by CoreRepository.queue.collectAsStateWithLifecycle()
     val origin by PlayingFrom.origin.collectAsStateWithLifecycle()
-    val details = rememberLibrary<TrackDetails?>(null, track.locator) { CoreRepository.details(track.locator) }
+    val details = rememberLibrary(null, LibraryQuery.Details(track.locator))
     val clock = rememberPlaybackClock(position, playing)
     val skips = remember { SkipTracker() }
     skips.update(now.item, queue)
@@ -518,7 +516,6 @@ fun PlayerOverlay(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     var height by remember { mutableFloatStateOf(0f) }
-    val flick = with(density) { FlickSpeed.toPx() }
 
     val queueFling = AnchoredDraggableDefaults.flingBehavior(
         queue,
@@ -526,6 +523,7 @@ fun PlayerOverlay(
         animationSpec = NMotion.spatialDefault(PRECISION),
     )
     val queueDrag = Modifier.anchoredDraggable(queue, Orientation.Vertical, flingBehavior = queueFling)
+    val topMargin = with(density) { WindowInsets.statusBars.getTop(this) + 48.dp.toPx() }
 
     var overlayPos by remember { mutableStateOf(Offset.Zero) }
     var upNextInRoot by remember { mutableStateOf(Rect.Zero) }
@@ -534,7 +532,7 @@ fun PlayerOverlay(
         if (height > 0f && upNextInRoot != Rect.Zero) {
             queue.updateAnchors(
                 DraggableAnchors {
-                    QueueState.Open at 0f
+                    QueueState.Open at topMargin
                     QueueState.Closed at upNext.top
                 },
                 queue.targetValue,
@@ -546,28 +544,6 @@ fun PlayerOverlay(
         derivedStateOf {
             val closed = queue.anchors.positionOf(QueueState.Closed)
             !closed.isNaN() && queue.offset < closed - 0.5f
-        }
-    }
-
-    val queueScroll = remember(queue) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
-                if (source == NestedScrollSource.UserInput && available.y < 0f && queue.offset > 0f) {
-                    Offset(0f, queue.dispatchRawDelta(available.y))
-                } else Offset.Zero
-
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-                if (source == NestedScrollSource.UserInput && available.y > 0f) {
-                    Offset(0f, queue.dispatchRawDelta(available.y))
-                } else Offset.Zero
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (queue.offset <= 0f) return Velocity.Zero
-                val p = queue.progress(QueueState.Closed, QueueState.Open)
-                val open = available.y < -flick || (p > 0.3f && available.y < flick)
-                queue.animateTo(if (open) QueueState.Open else QueueState.Closed)
-                return available
-            }
         }
     }
     val queueP: () -> Float = {
@@ -583,6 +559,7 @@ fun PlayerOverlay(
     val nowPlaying = stringResource(R.string.now_playing)
     var slot by remember { mutableStateOf<Rect?>(null) }
     val upNextRadius = with(density) { 28.dp.toPx() }
+    val onClose: () -> Unit = { scope.launch { queue.animateTo(QueueState.Closed) } }
 
     BoxWithConstraints(
         Modifier
@@ -724,7 +701,10 @@ fun PlayerOverlay(
                 },
                 coverShown = { !transition.flying },
                 onCoverPlaced = { slot = it },
-                queue = { QueuePanel(it) },
+                queue = { QueuePanel(
+                    it,
+                    onClose = onClose
+                ) },
                 upNextDrag = queueDrag,
                 onUpNext = { scope.launch { queue.animateTo(QueueState.Open) } },
                 onUpNextPlaced = { upNextInRoot = it }
@@ -775,6 +755,7 @@ fun PlayerOverlay(
                     .fillMaxSize()
                     .graphicsLayer { alpha = 0.4f * queue.progress(QueueState.Closed, QueueState.Open) }
                     .background(Color.Black)
+                    .tappable(onClose)
             )
             QueuePanel(
                 Modifier
@@ -791,14 +772,15 @@ fun PlayerOverlay(
                                 right = lerp(upNext.right, size.width, p),
                                 bottom = lerp(upNext.bottom, size.height + off, p) - off,
                             ),
-                            radius = lerp(upNextRadius, 0f, p),
+                            radius = upNextRadius,
                         )
+
                     }
-                    .background(colors.surfaceLow)
-                    .then(queueDrag)
-                    .nestedScroll(queueScroll),
+                    .background(colors.surfaceLow),
                 progress = queueP,
                 header = { UpNextContent(ui.next, skip) },
+                queueDrag = queueDrag,
+                onClose = onClose
             )
         }
 

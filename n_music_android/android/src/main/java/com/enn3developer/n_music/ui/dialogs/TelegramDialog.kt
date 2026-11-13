@@ -261,7 +261,6 @@ private fun OtherNumber(onClick: () -> Unit, enabled: Boolean) {
  * The chats of the account called [name], narrowed by a search. Picking one adds it and closes
  * the dialog; those [taken] already are greyed.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ColumnScope.Chats(
     name: String,

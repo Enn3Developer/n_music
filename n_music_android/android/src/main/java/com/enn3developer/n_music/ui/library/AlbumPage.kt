@@ -33,7 +33,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.enn3developer.n_music.CoreRepository
 import com.enn3developer.n_music.R
 import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.Filter
@@ -45,6 +44,7 @@ import com.enn3developer.n_music.core.SortKey
 import com.enn3developer.n_music.core.Tag
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
+import com.enn3developer.n_music.LibraryQuery
 import com.enn3developer.n_music.ui.LocalApp
 import com.enn3developer.n_music.ui.LocalBottomSpace
 import com.enn3developer.n_music.ui.LocalPageMargins
@@ -111,9 +111,9 @@ fun AlbumPage(page: Page.Album) {
     val app = LocalApp.current
     val resources = LocalResources.current
     val filter = remember(page) { albumFilter(page.name, page.artist) }
-    val album = rememberLibrary<AlbumRow?>(null, filter) { CoreRepository.albums(filter, "", GroupSort.ARTIST).firstOrNull() }
+    val album = rememberLibrary(null, LibraryQuery.Albums(filter, "", GroupSort.ARTIST))?.firstOrNull()
     val query = remember(filter) { Query(filter, listOf(SortKey(SortField.Album, false))) }
-    val tracks = rememberLibrary<List<TrackRow>?>(null, query) { CoreRepository.tracks(query) }
+    val tracks = rememberLibrary(null, LibraryQuery.Tracks(query))
     val origin = Origin.Album(page.name, page.artist)
     val selection = app.selection
     BackHandler(selection != null) { app.endSelection() }

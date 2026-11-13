@@ -64,4 +64,9 @@ class NMusicApplication : Application() {
             }
         })
     }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_BACKGROUND) CoreRepository.forget()
+    }
 }

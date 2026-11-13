@@ -332,7 +332,7 @@ fun PlayingBadge(playing: Boolean, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         PlayingBars(color = colors.onPrimaryContainer, animate = playing)
-        Text(stringResource(R.string.playing), style = text(12, FontWeight.Bold), color = colors.onPrimaryContainer)
+        Text(stringResource(if(playing) R.string.playing else R.string.paused), style = text(12, FontWeight.Bold), color = colors.onPrimaryContainer)
     }
 }
 

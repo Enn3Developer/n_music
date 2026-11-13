@@ -33,6 +33,7 @@
     <string name="no_artist">Tracks without an artist</string>
     <string name="no_genre">Tracks without a genre</string>
     <string name="playing">Playing</string>
+    <string name="paused">Paused</string>
 
     <!-- Sorting -->
     <string name="sort_artist_album">Artist, then album</string>
@@ -501,6 +502,8 @@
     <string name="accent_rose">Rose</string>
     <string name="accent_hint">The first swatch takes its colours from your wallpaper, like the rest of Android.</string>
     <string name="compact_rows">Compact rows</string>
+    <string name="pull_to_refresh">Pull to update</string>
+    <string name="pull_to_refresh_hint">Pull the library down to update every source.</string>
     <string name="compact_rows_hint">Smaller covers and tighter rows, so more tracks fit.</string>
     <string name="mini_player_buttons">Mini player buttons</string>
     <string name="mini_previous">Previous</string>

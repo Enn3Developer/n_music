@@ -416,12 +416,7 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
     }
 
     override fun handleSetRepeatMode(repeatMode: Int): ListenableFuture<*> {
-        val status = when (repeatMode) {
-            Player.REPEAT_MODE_ONE -> LoopStatus.FILE
-            Player.REPEAT_MODE_ALL -> LoopStatus.PLAYLIST
-            else -> LoopStatus.OFF
-        }
-        CoreRepository.send(Command.SetLoopStatus(status))
+        CoreRepository.send(Command.SetLoopStatus(loopStatusOf(repeatMode)))
         this.repeatMode = repeatMode
         return Futures.immediateVoidFuture()
     }
@@ -450,8 +445,20 @@ class NPlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
         )
 }
 
-private fun LoopStatus.toRepeatMode(): Int = when (this) {
+internal fun LoopStatus.toRepeatMode(): Int = when (this) {
     LoopStatus.OFF -> Player.REPEAT_MODE_OFF
     LoopStatus.PLAYLIST -> Player.REPEAT_MODE_ALL
     LoopStatus.FILE -> Player.REPEAT_MODE_ONE
+}
+
+internal fun LoopStatus.next(): LoopStatus = when (this) {
+    LoopStatus.OFF -> LoopStatus.PLAYLIST
+    LoopStatus.PLAYLIST -> LoopStatus.FILE
+    LoopStatus.FILE -> LoopStatus.OFF
+}
+
+internal fun loopStatusOf(repeatMode: Int): LoopStatus = when (repeatMode) {
+    Player.REPEAT_MODE_ONE -> LoopStatus.FILE
+    Player.REPEAT_MODE_ALL -> LoopStatus.PLAYLIST
+    else -> LoopStatus.OFF
 }

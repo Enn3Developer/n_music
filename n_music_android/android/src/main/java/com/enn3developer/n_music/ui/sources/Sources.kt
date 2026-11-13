@@ -13,10 +13,14 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.SourceRow
 import com.enn3developer.n_music.core.TelegramStatus
 import com.enn3developer.n_music.core.defaultSourceName
+import com.enn3developer.n_music.core.locatorIsRemote
 
 /** A source on this phone, rather than one streamed from the web or Telegram. */
 val Locator.isLocal: Boolean
     get() = this is Locator.Local || this is Locator.DocumentTree
+
+val Locator.isRemote: Boolean
+    get() = locatorIsRemote(this)
 
 /** What kind of source [root] is, as an icon: a folder, a link or Telegram's plane. */
 @DrawableRes

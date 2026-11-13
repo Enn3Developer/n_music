@@ -4,6 +4,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.enn3developer.n_music.LibraryTab
 import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.Query
 import com.enn3developer.n_music.ui.dialogs.AppDialog
@@ -50,11 +51,14 @@ interface AppController {
     /** The filters on the library's tracks. */
     var filters: TrackFilters
 
+    data class LibraryRequest(val tab: LibraryTab)
+
+    val libraryRequest: LibraryRequest?
+
+    fun consumeLibraryRequest()
+
     /** Shows the library's tracks filtered by [filters], on the Library tab's own page. */
     fun showTracks(filters: TrackFilters)
-
-    /** How many times [showTracks] ran, for the library page to turn to its tracks. */
-    val tracksShown: Int
 
     /** The sheet over the app, while one shows. */
     val sheet: Sheet?
@@ -111,6 +115,7 @@ interface AppController {
 
     /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
     val scope: CoroutineScope
+    fun showLibrary(tab: LibraryTab)
 }
 
 val LocalApp = staticCompositionLocalOf<AppController> { error("No app") }
