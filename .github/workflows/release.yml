@@ -52,6 +52,7 @@ jobs:
               print(f'prerelease={str(prerelease).lower()}', file=output)
           PY
 
+  # The Qt app, for Linux and Windows. Macs get the native app, built by the macos job.
   package:
     # The name the job had before the Qt columns joined the matrix.
     name: package (${{ matrix.runner }}, ${{ matrix.target }}, ${{ matrix.runtime }})
@@ -77,13 +78,6 @@ jobs:
             qt-host: windows
             qt-arch: win64_msvc2022_64
             qt-dir: msvc2022_64
-            qt-archives: qtbase qtdeclarative
-          - runner: macos-latest
-            target: aarch64-apple-darwin
-            runtime: osx-arm64
-            qt-host: mac
-            qt-arch: clang_64
-            qt-dir: macos
             qt-archives: qtbase qtdeclarative
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -121,10 +115,6 @@ jobs:
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
             libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libwayland-client0 \
             libwayland-cursor0 libwayland-egl1
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        # vpk builds delta packages with zstd.
-        run: command -v zstd || brew install zstd
       - name: Restore Qt
         id: qt-cache
         uses: actions/cache@v6
@@ -215,6 +205,118 @@ jobs:
           path: target/velopack/${{ matrix.runtime }}/*
           if-no-files-found: error
 
+  # The native macOS app (n_music_macos), for Apple silicon: ad-hoc signed, in a .dmg and a .zip.
+  macos:
+    needs: plan
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: aarch64-apple-darwin-macos-app
+      - name: Install build tools
+        # opusic-sys builds Opus with CMake.
+        run: command -v cmake || brew install cmake
+      - name: Test the core
+        run: cargo test --locked --package n_music_core --package n_music_ffi
+      - name: Build app
+        env:
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          # Read by the core's build (scripts/build-core.sh, Xcode's pre-build phase). Without
+          # them, as in pull requests from forks, the app leaves Telegram out.
+          N_MUSIC_TELEGRAM_API_ID: ${{ secrets.N_MUSIC_TELEGRAM_API_ID }}
+          N_MUSIC_TELEGRAM_API_HASH: ${{ secrets.N_MUSIC_TELEGRAM_API_HASH }}
+        run: |
+          # CFBundleShortVersionString takes numbers only: 2.0.0-alpha.23 becomes 2.0.0. The
+          # whole version goes in N_MUSIC_VERSION, which the app compares with releases.
+          marketing=${RELEASE_VERSION%%[-+]*}
+          xcodebuild -project n_music_macos/NMusic.xcodeproj -scheme NMusic \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/xcode" -quiet \
+            ARCHS=arm64 \
+            MARKETING_VERSION="$marketing" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            N_MUSIC_VERSION="$RELEASE_VERSION" \
+            build
+          app="$RUNNER_TEMP/xcode/Build/Products/Release/N Music.app"
+          test -d "$app"
+          echo "APP=$app" >> "$GITHUB_ENV"
+      - name: Check the app
+        run: |
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
+          lipo -archs "$APP/Contents/MacOS/N Music"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' -c 'Print :CFBundleVersion' \
+            -c 'Print :NMusicVersion' "$APP/Contents/Info.plist"
+      - name: Check startup
+        timeout-minutes: 2
+        run: |
+          # A home of its own, so the app starts as on first run and writes nothing elsewhere.
+          home="$RUNNER_TEMP/smoke-home"
+          mkdir -p "$home"
+          CFFIXED_USER_HOME="$home" HOME="$home" "$APP/Contents/MacOS/N Music" > "$RUNNER_TEMP/smoke.log" 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2> /dev/null; then
+            kill "$pid"
+            wait "$pid" || true
+            cat "$RUNNER_TEMP/smoke.log"
+          else
+            status=0
+            wait "$pid" || status=$?
+            cat "$RUNNER_TEMP/smoke.log"
+            echo "The app quit within 15 seconds of starting (exit status $status)" >&2
+            exit 1
+          fi
+      - name: Package app
+        env:
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          output=target/macos-release
+          rm -rf "$output"
+          mkdir -p "$output"
+          name="N-Music-$RELEASE_VERSION-macos-arm64"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$output/$name.zip"
+          # The disk image shows the app next to a link to Applications, to drag it there.
+          volume="$RUNNER_TEMP/dmg"
+          rm -rf "$volume"
+          mkdir -p "$volume"
+          ditto "$APP" "$volume/N Music.app"
+          ln -s /Applications "$volume/Applications"
+          # hdiutil sometimes finds the device busy on hosted runners; try again.
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "N Music" -srcfolder "$volume" -fs HFS+ -format UDZO \
+              -ov "$output/$name.dmg"; then
+              break
+            fi
+            if [[ $attempt -eq 3 ]]; then
+              exit 1
+            fi
+            sleep 5
+          done
+          hdiutil verify "$output/$name.dmg"
+          ls -l "$output"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-arm64
+          path: target/macos-release/*
+          if-no-files-found: error
+
   android:
     needs: plan
     uses: ./.github/workflows/android.yml
@@ -230,7 +332,7 @@ jobs:
       N_MUSIC_TELEGRAM_API_HASH: ${{ secrets.N_MUSIC_TELEGRAM_API_HASH }}
 
   publish:
-    needs: [ plan, package, android ]
+    needs: [ plan, package, macos, android ]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -241,6 +343,10 @@ jobs:
           pattern: velopack-*
           path: artifacts
           merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: macos-arm64
+          path: artifacts
       - uses: actions/download-artifact@v8
         with:
           name: android-arm64

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-runtime=${1:?Usage: bash scripts/package-release.sh linux-x64|win-x64|osx-arm64}
+runtime=${1:?Usage: bash scripts/package-release.sh linux-x64|win-x64}
 version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
 executable=n_music_desktop
 options=()
@@ -13,7 +13,6 @@ case "$runtime" in
     executable=n_music_desktop.exe
     options+=(--icon n_music_desktop/assets/icons/icon.ico --framework vcredist143-x64)
     ;;
-  osx-arm64) target=aarch64-apple-darwin ;;
   *) echo "Unsupported runtime: $runtime" >&2; exit 1 ;;
 esac
 
@@ -78,18 +77,6 @@ EOF
 else
   cp "$binary" "$pack_dir/$executable"
   cp LICENSE "$pack_dir/LICENSE"
-fi
-
-if [[ "$runtime" == osx-arm64 ]]; then
-  iconset="$stage/NMusic.iconset"
-  mkdir -p "$iconset"
-  for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" n_music_desktop/assets/icons/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$iconset" -o "$stage/NMusic.icns"
-  options+=(--icon "$stage/NMusic.icns" --bundleId com.enn3developer.n-music)
 fi
 
 dotnet vpk pack --packId com.enn3developer.n_music --packTitle "N Music" \
