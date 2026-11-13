@@ -27,6 +27,8 @@ pub struct UiSettings {
     pub hidden_columns: Vec<String>,
     /// The folder picker lists hidden folders too.
     pub show_hidden_folders: bool,
+    /// Discord shows the track playing on the user's profile.
+    pub discord_presence: bool,
 }
 
 impl Default for UiSettings {
@@ -43,6 +45,7 @@ impl Default for UiSettings {
             reduce_motion: false,
             hidden_columns: Vec::new(),
             show_hidden_folders: false,
+            discord_presence: false,
         }
     }
 }

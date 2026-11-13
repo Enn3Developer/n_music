@@ -71,6 +71,8 @@
   "delete_playlist_message": "Its tracks stay in your library.",
   "delete_playlist_title": "Delete “%1”?",
   "device_missing": "%1 (not connected)",
+  "discord_presence": "Show on Discord",
+  "discord_presence_hint": "Your Discord profile shows the track playing, with its cover and time.",
   "dismiss": "Dismiss",
   "display_name": "Display name",
   "done": "Done",

@@ -1,0 +1,18 @@
+[package]
+name = "n_music_discord"
+version.workspace = true
+authors = ["Enn3Developer <arturpeshko39@gmail.com>", "C0MPL3XDEV <carminech@proton.me>"]
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Discord Rich Presence for N Music"
+homepage = "https://github.com/Enn3Developer/n_music"
+repository = "https://github.com/Enn3Developer/n_music"
+
+[dependencies]
+n_music_core = { path = "../n_music_core" }
+n_event_bus = { path = "../n_event_bus" }
+discord-rich-presence = "1.1"
+flume = "0.12"
+log = "0.4"
+serde_json = "1.0"
+ureq = "3.4"
