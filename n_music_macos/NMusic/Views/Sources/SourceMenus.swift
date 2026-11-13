@@ -79,10 +79,14 @@ enum SourceMenus {
     }
 
     /// macOS 27 hides menu item images unless asked (Qt's entries always show their icon).
+    /// The property is in the macOS 27 SDK only (Xcode 27, Swift 6.4): older SDKs, as CI's, build
+    /// without it.
     private static func showImage(_ item: NSMenuItem) {
+        #if compiler(>=6.4)
         if #available(macOS 27, *) {
             item.preferredImageVisibility = .visible
         }
+        #endif
     }
 
     /// Pops `entries` up under `view`, its right edge on the view's (Qt's right-aligned menus),
