@@ -6,8 +6,8 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     LoopStatusChanged, MoveCurrent, MoveUpcoming, OutputDeviceChanged, OutputDevices, Pause, Play,
     PlayFrom, PlayNext, PlayPrevious, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetSleepFade,
-    SetVolume, ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle,
+    SetLoopStatus, SetMatchRate, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle,
+    SetSleepFade, SetVolume, ShuffleChanged, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle,
     TrackMetadataLoaded, TracksEnumerated, VolumeChanged,
 };
 use crate::source::Locator;
@@ -355,6 +355,15 @@ impl Handle<SetOffload> for QueuePlayer {
         if !ctx.shutting_down {
             self.player.set_offload(msg.0);
             self.settings.update(|settings| settings.offload = msg.0);
+        }
+    }
+}
+
+impl Handle<SetMatchRate> for QueuePlayer {
+    fn handle(&mut self, msg: &SetMatchRate, ctx: &Ctx, _out: &mut Outbox) {
+        if !ctx.shutting_down {
+            self.player.set_match_rate(msg.0);
+            self.settings.update(|settings| settings.match_rate = msg.0);
         }
     }
 }

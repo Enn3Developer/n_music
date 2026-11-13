@@ -14,8 +14,8 @@ use crate::messages::{
     AppVisibilityChanged, ClearQueued, Enqueue, LibraryRootsChanged, ListOutputDevices,
     MoveCurrent, MoveUpcoming, OutputDeviceChanged, Pause, Play, PlayFrom, PlayNext, PlayPrevious,
     PlaybackChanged, PositionChanged, QueueChanged, RemoveQueued, ScanFinished, Seek, SetCrossfade,
-    SetLoopStatus, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle, SetSleepFade,
-    SetVolume, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged,
+    SetLoopStatus, SetMatchRate, SetOffload, SetOutputDevice, SetReplayGain, SetResume, SetShuffle,
+    SetSleepFade, SetVolume, SkipBack, TogglePause, ToggleRepeat, ToggleShuffle, TrackChanged,
     TrackMetadataLoaded, TrackPlayed, TracksEnumerated,
 };
 use crate::settings::{Options, PlaybackSettings};
@@ -111,7 +111,17 @@ impl QueuePlayer {
         library: Library,
         paths: LibraryPaths,
     ) -> Self {
-        let (volume, loop_status, shuffle, replay_gain, device, resume, crossfade, offload) = {
+        let (
+            volume,
+            loop_status,
+            shuffle,
+            replay_gain,
+            device,
+            resume,
+            crossfade,
+            offload,
+            match_rate,
+        ) = {
             let saved = settings.get();
             (
                 saved.volume.clamp(0.0, 1.0),
@@ -122,12 +132,14 @@ impl QueuePlayer {
                 saved.resume,
                 saved.crossfade,
                 saved.offload,
+                saved.match_rate,
             )
         };
         let mut player = Player::new(volume as f32, replay_gain, device);
         player.set_progress_interval(Some(PROGRESS_INTERVAL));
         player.set_crossfade(crossfade_duration(crossfade));
         player.set_offload(offload);
+        player.set_match_rate(match_rate);
 
         let (session, restored, finished) = resume
             .then(|| restore(&paths))
@@ -504,6 +516,7 @@ impl Subscriber for QueuePlayer {
         reg.on::<SetResume>();
         reg.on::<SetCrossfade>();
         reg.on::<SetOffload>();
+        reg.on::<SetMatchRate>();
         reg.on::<SetSleepFade>();
         reg.on::<AppVisibilityChanged>();
         reg.on::<ShutdownRequested>();

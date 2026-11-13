@@ -2,20 +2,25 @@
 //! on one that renders through the [`Renderer`] the shared side makes once the stream's format is
 //! known.
 //!
-//! Each target compiles in one backend, picked below: AAudio on Android, cpal everywhere else. A
-//! platform with a backend of its own gets a module and a `cfg` line here.
+//! Each target compiles in one backend, picked below: AAudio on Android, Core Audio on macOS,
+//! cpal everywhere else. A platform with a backend of its own gets a module and a `cfg` line
+//! here.
 
 #[cfg(target_os = "android")]
 mod aaudio;
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "macos")]
+mod coreaudio;
+#[cfg(not(any(target_os = "android", target_os = "macos")))]
 mod cpal;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "macos")))]
 pub(super) use self::cpal::Cpal as Platform;
 #[cfg(target_os = "android")]
 pub(super) use aaudio::AAudio as Platform;
 #[cfg(target_os = "android")]
 pub use aaudio::{set_devices, AndroidOutput};
+#[cfg(target_os = "macos")]
+pub(super) use coreaudio::CoreAudio as Platform;
 
 use super::callback::{Renderer, SharedState};
 use super::OutputFormat;
@@ -27,8 +32,19 @@ use std::sync::Arc;
 pub(super) trait Backend {
     type Stream: Stream;
 
+    /// [`Request::rate`] runs the device at that rate, or a whole multiple of it, where the
+    /// device has one.
+    const SWITCHES_RATE: bool = false;
+
     /// The devices there are to play on.
     fn devices() -> Vec<OutputDevice>;
+
+    /// The rate `device` (an [`OutputDevice::id`]; the default when `None` or not there) would
+    /// actually run at if a stream were opened now for audio at `wanted` Hz, for a backend that
+    /// [`Self::SWITCHES_RATE`]. `None` when it can't tell.
+    fn rate_for(_device: Option<&str>, _wanted: u32) -> Option<u32> {
+        None
+    }
 
     /// Opens a stream as `request` asks, paused. `renderer` makes what the stream's callback
     /// renders with once the stream's [`Shape`] is known; it is called once, for the stream
@@ -62,9 +78,14 @@ pub(super) trait Stream: Send {
 pub(super) struct Request<'a> {
     /// The device asked for, an [`OutputDevice::id`]; the default plays while it is not there.
     pub(super) device: Option<&'a str>,
-    /// Offloaded playback may be used where the platform and the device have it.
-    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    /// Offloaded playback may be used where the platform and the device have it. On macOS, a
+    /// larger I/O buffer instead, which wakes the processor less often.
+    #[cfg_attr(not(any(target_os = "android", target_os = "macos")), allow(dead_code))]
     pub(super) offload: bool,
+    /// The rate of the audio to play: a backend that [`Backend::SWITCHES_RATE`] runs the device
+    /// at it where it can, so nothing is resampled. `None` keeps the device's rate.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(super) rate: Option<u32>,
     /// Where the stream's callbacks report glitches and failures.
     pub(super) state: Arc<SharedState>,
 }

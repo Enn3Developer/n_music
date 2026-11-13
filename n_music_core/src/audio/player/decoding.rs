@@ -38,6 +38,8 @@ pub(super) struct Decoding {
     track_id: u32,
     time_base: TimeBase,
     pub(super) length: f64,
+    /// The rate the track is coded at, when its parameters tell.
+    pub(super) rate: Option<u32>,
     /// ReplayGain, as a linear factor.
     gain: f32,
     converter: Option<Converter>,
@@ -92,6 +94,7 @@ impl Decoding {
         let decoder = CODEC_REGISTRY
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(io::Error::other)?;
+        let rate = params.sample_rate.filter(|&rate| rate > 0);
         let trims = params.codec == CODEC_ID_OPUS;
         let start_trim = if trims {
             track.delay.unwrap_or(0) as usize
@@ -107,6 +110,7 @@ impl Decoding {
             track_id,
             time_base,
             length,
+            rate,
             gain,
             converter: None,
             seek_target: None,

@@ -25,6 +25,8 @@ pub struct Player {
     device: Option<String>,
     /// The output may play from a deep hardware buffer, see [`Output::open`].
     offload: bool,
+    /// The output runs at each track's rate, see [`Player::set_match_rate`].
+    match_rate: bool,
     control: Option<PlaybackControl>,
     progress_interval: Option<Duration>,
     crossfade: Duration,
@@ -40,6 +42,7 @@ impl Player {
             replay_gain,
             device,
             offload: true,
+            match_rate: true,
             control: None,
             progress_interval: None,
             crossfade: Duration::ZERO,
@@ -83,6 +86,20 @@ impl Player {
         self.offload = offload;
         if let Some(control) = &self.control {
             control.set_offload(offload);
+        }
+        self.reload_output();
+    }
+    /// Runs the output at each track's sample rate where the platform can switch the device, so
+    /// nothing is resampled. A track the device would run at another rate for then starts on a
+    /// new stream, after a short gap, instead of following gaplessly or fading in. The output
+    /// opens again to apply it.
+    pub fn set_match_rate(&mut self, match_rate: bool) {
+        if match_rate == self.match_rate {
+            return;
+        }
+        self.match_rate = match_rate;
+        if let Some(control) = &self.control {
+            control.set_match_rate(match_rate);
         }
         self.reload_output();
     }
@@ -163,7 +180,12 @@ impl Player {
         item: ItemId,
     ) -> PlaybackTask {
         self.end_current();
-        let control = PlaybackControl::new(self.volume, self.device.clone(), self.offload);
+        let control = PlaybackControl::new(
+            self.volume,
+            self.device.clone(),
+            self.offload,
+            self.match_rate,
+        );
         control.set_progress_interval(self.progress_interval);
         control.set_crossfade(self.crossfade);
         control.set_sleep_fade(self.sleep);

@@ -125,6 +125,9 @@ pub struct PlaybackSettings {
     /// The platform may play from a deep hardware buffer where it can, like offloaded playback
     /// on Android 16.
     pub offload: bool,
+    /// The device runs at each track's sample rate (or a whole multiple of it) where the
+    /// platform can switch it, so nothing is resampled.
+    pub match_rate: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -138,6 +141,7 @@ impl Default for PlaybackSettings {
             resume: false,
             crossfade: 0.0,
             offload: true,
+            match_rate: true,
         }
     }
 }
@@ -229,6 +233,22 @@ mod tests {
                 b: String::new()
             }
         );
+    }
+
+    #[test]
+    fn rate_matching_is_on_unless_turned_off() {
+        let storage = Arc::new(MemoryStorage::default());
+        storage.store(PlaybackSettings::KEY, serde_json::json!({ "volume": 0.5 }));
+        assert!(
+            Options::<PlaybackSettings>::load(storage.clone())
+                .get()
+                .match_rate
+        );
+        storage.store(
+            PlaybackSettings::KEY,
+            serde_json::json!({ "volume": 0.5, "match_rate": false }),
+        );
+        assert!(!Options::<PlaybackSettings>::load(storage).get().match_rate);
     }
 
     #[test]
