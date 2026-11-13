@@ -1,9 +1,21 @@
 use super::*;
+use bridge::KotlinBridge;
+use n_event_bus::EventWriter;
+use n_music_core::library::catalog::Library;
 use n_music_core::library::query::{Filter, SortField};
+use n_music_core::library::query::{PlaylistId, Query};
+use n_music_core::library::LibraryPaths;
 use n_music_core::queue::ItemId;
+use n_music_core::settings::JsonFileStorage;
 use n_music_core::settings::OutputDevice;
+use n_music_core::source::telegram::TelegramCredentials;
 use n_music_core::source::telegram::{TelegramError, TelegramStatus};
 use n_music_core::source::Locator;
+use n_music_core::source::Providers;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use std::time::Instant;
 
 const WAIT: Duration = Duration::from_secs(30);
@@ -169,6 +181,7 @@ fn library_changes_come_one_at_a_time() {
         first_run: Arc::new(AtomicBool::new(false)),
         data_dir: data.path().to_path_buf(),
         bus: Mutex::new(None),
+        stream_cache: Arc::new(Default::default()),
     };
 
     bridge.library_changed();
@@ -310,6 +323,7 @@ fn idle_core(dir: &Path) -> Core {
         first_run: Arc::new(AtomicBool::new(true)),
         data_dir: dir.to_path_buf(),
         bus: Mutex::new(None),
+        stream_cache: Arc::new(Default::default()),
     }
 }
 

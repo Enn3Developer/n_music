@@ -40,14 +40,15 @@ use n_event_bus::{App, EventReceiver, EventWriter, JobControl, ShutdownOutcome};
 use n_music_core::engine::Engine;
 use n_music_core::library::catalog::Library;
 use n_music_core::library::query::{Filter, PlaylistId, Query};
-use n_music_core::library::reader::read_info;
+use n_music_core::library::reader::read_picture;
 use n_music_core::library::track::ReplayGainMode;
 use n_music_core::library::LibraryPaths;
 use n_music_core::settings::{
     JsonFileStorage, LibrarySettings, PlaybackSettings, Section, SettingsStorage,
 };
+use n_music_core::source::cache::StreamCache;
 use n_music_core::source::telegram::{TelegramAccount, TelegramCredentials};
-use n_music_core::source::{Locator, Providers};
+use n_music_core::source::{Locator, NoDownload, Providers};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -81,6 +82,7 @@ pub struct Core {
     data_dir: PathBuf,
     /// The bus thread, until [`Core::shutdown`] joined it.
     bus: Mutex<Option<JoinHandle<()>>>,
+    stream_cache: Arc<OnceLock<Arc<StreamCache>>>,
 }
 
 /// The playback settings the core keeps and reports no event for.
@@ -204,17 +206,15 @@ impl Core {
             .map(|track| TrackDetails::new(track, &catalog))
     }
 
-    /// The picture embedded in the file of `locator` at its own size, still encoded, for the
-    /// player to show larger than the library's thumbnails. `None` when it has none, or is a
-    /// remote track, which it would download. It reads the file: call it off the main thread.
+    /// The picture embedded in `locator`'s file, at full size and still encoded.
+    /// A remote track is read from its cached copy and never downloaded.
+    /// `None` if there is no picture, or the remote track has no cached copy yet.
+    /// It reads the file: call it off the main thread.
     pub fn cover_art(&self, locator: Locator) -> Option<Vec<u8>> {
-        if locator.is_remote() {
-            return None;
-        }
-        read_info(&self.providers, &locator)
+        let provider = NoDownload::new(&self.providers, self.stream_cache.get().map(Arc::as_ref));
+        read_picture(&provider, &locator)
             .inspect_err(|error| log::debug!("Could not read the cover of {locator}: {error}"))
             .ok()?
-            .1
     }
 
     /// The albums of the tracks `filter` selects whose name or artist contains `search`.
@@ -360,17 +360,13 @@ impl Core {
         }
     }
 
-    /// Shuts the core down as the desktop app does on quit, and returns once it is down: the
-    /// services finish (the play session is saved) and the settings are on disk. Call it from
-    /// the app's termination, off the main thread when it can take a while (up to the bus's
-    /// 10 s shutdown timeout). Calling it again, from any thread, waits for the first call and
-    /// returns. Commands sent afterwards go nowhere and [`Core::next_event`] returns `None`.
-    pub fn shutdown(&self) {
-        let shutdown = std::panic::catch_unwind(AssertUnwindSafe(|| self.stop()));
-        if shutdown.is_err() {
-            log::error!("Shutting the core down panicked");
-        }
-        log::logger().flush();
+    /// Always true for local tracks, but for remote ones once their copy is complete.
+    pub fn is_readable_offline(&self, locator: Locator) -> bool {
+        !locator.is_remote()
+            || self
+                .stream_cache
+                .get()
+                .is_some_and(|cache| cache.has_copy(&locator))
     }
 }
 
@@ -444,6 +440,7 @@ impl Core {
         let library = Arc::new(OnceLock::new());
         let library_changed = Arc::new(AtomicBool::new(false));
         let scan_read = Arc::new(AtomicU64::new(0));
+        let stream_cache = Arc::new(OnceLock::new());
         let services = Services {
             writer: writer.clone(),
             storage: storage.clone(),
@@ -456,6 +453,7 @@ impl Core {
             library_changed: library_changed.clone(),
             scan_read: scan_read.clone(),
             state: state.clone(),
+            stream_cache: stream_cache.clone(),
         };
         let bus = std::thread::Builder::new()
             .name(String::from("n_event_bus loop"))
@@ -474,6 +472,7 @@ impl Core {
             first_run,
             data_dir: data_dir.to_path_buf(),
             bus: Mutex::new(Some(bus)),
+            stream_cache: stream_cache.clone(),
         }
     }
 }
@@ -492,6 +491,12 @@ pub fn web_source(address: String) -> Option<Locator> {
     Locator::web(&address)
 }
 
+/// Streamed from elsewhere rather than read on this device
+#[uniffi::export]
+pub fn locator_is_remote(locator: Locator) -> bool {
+    locator.is_remote()
+}
+
 /// What the bus thread starts the core services with.
 struct Services {
     writer: EventWriter,
@@ -506,6 +511,7 @@ struct Services {
     library_changed: Arc<AtomicBool>,
     scan_read: Arc<AtomicU64>,
     state: state::Shared,
+    stream_cache: Arc<OnceLock<Arc<StreamCache>>>,
 }
 
 impl Services {
@@ -530,6 +536,7 @@ impl Services {
                 &self.cache_dir,
             );
             let library = engine.library();
+            let _ = self.stream_cache.set(engine.stream_cache());
             let _ = self.library.set(library.clone());
             // After the core services, so the library is up to date when Kotlin hears.
             app.register_subscriber(KotlinBridge::new(
