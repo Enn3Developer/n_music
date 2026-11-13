@@ -529,6 +529,202 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&decoded).into_owned()
 }
 
+/// What kind of source a library root is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SourceType {
+    /// A folder; on Android, a document tree too.
+    Folder,
+    /// A web playlist.
+    Web,
+    /// A Telegram chat.
+    Telegram,
+}
+
+/// What is wrong with a source, or happening to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SourceStatus {
+    /// Up to date.
+    Ready,
+    /// Scanned, or waiting for a scan: "Updating…".
+    Updating,
+    /// A folder that is gone: "Not found".
+    Missing,
+    /// A playlist or chat the last scan could not reach: "Can't be reached".
+    Unreachable,
+    /// A Telegram chat while not signed in: "Signed out of Telegram".
+    SignedOut,
+}
+
+/// A library root as the desktop's Sources page shows it.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct SourceInfo {
+    pub root: Locator,
+    /// Where it is, as the library writes it: the value of a `source` rule.
+    pub location: String,
+    pub kind: SourceType,
+    /// What it is called: `display_name`, else `default_name`.
+    pub name: String,
+    /// The name it was given.
+    pub display_name: Option<String>,
+    /// Its folder's or playlist's name, or Telegram for a chat.
+    pub default_name: String,
+    /// The tracks of the library it listed.
+    pub tracks: u32,
+    pub length: f64,
+    /// The cover of the first of them with one.
+    pub cover: Option<String>,
+    /// Up to four covers of its tracks, each once, for a mosaic.
+    pub covers: Vec<String>,
+    /// False when the folder is gone, or the playlist or chat could not be reached.
+    pub available: bool,
+    /// Scanned, or waiting for a scan.
+    pub updating: bool,
+    pub status: SourceStatus,
+}
+
+/// A tag the filter rules suggest values of as they are typed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ValueField {
+    Artist,
+    AlbumArtist,
+    Album,
+    Genre,
+    Codec,
+}
+
+/// What a track list holds, for its header.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct ListSummary {
+    /// The tracks listed.
+    pub tracks: u32,
+    /// The tracks of the whole library: "%1 of %2 tracks" when fewer are listed.
+    pub total: u32,
+    /// In seconds.
+    pub length: f64,
+    /// Up to four covers of the listed tracks, each once, in their order: a mosaic once there
+    /// are four.
+    pub covers: Vec<String>,
+}
+
+pub fn source_type(root: &Locator) -> SourceType {
+    match root {
+        Locator::Web(_) => SourceType::Web,
+        Locator::TelegramChat(_) | Locator::TelegramAudio { .. } => SourceType::Telegram,
+        Locator::Local(_) | Locator::DocumentTree(_) | Locator::Document { .. } => {
+            SourceType::Folder
+        }
+    }
+}
+
+/// Up to four covers of `tracks`, each once.
+pub fn first_covers<'a>(tracks: impl IntoIterator<Item = &'a Track>) -> Vec<String> {
+    let mut covers = vec![];
+    for path in tracks.into_iter().filter_map(cover) {
+        if !covers.contains(&path) {
+            covers.push(path);
+            if covers.len() == MOSAIC {
+                break;
+            }
+        }
+    }
+    covers
+}
+
+/// `tracks`, of `total` in the library, for a list's header.
+pub fn list_summary(tracks: &[Track], total: usize) -> ListSummary {
+    ListSummary {
+        tracks: count(tracks.len()),
+        total: count(total),
+        length: tracks.iter().map(|track| track.length).sum(),
+        covers: first_covers(tracks),
+    }
+}
+
+/// `root` with what it holds. `updating` while it is scanned; `signed_in` to Telegram.
+pub fn source_info(
+    catalog: &Catalog,
+    root: &Locator,
+    updating: bool,
+    signed_in: bool,
+) -> SourceInfo {
+    let listed = catalog.listed(root);
+    let mut tracks = vec![];
+    if let Some(listed) = listed {
+        tracks.extend(
+            catalog
+                .tracks()
+                .iter()
+                .filter(|track| listed.tracks.contains(&track.locator)),
+        );
+    }
+    let kind = source_type(root);
+    let available = match root {
+        Locator::Local(path) => Path::new(path).is_dir(),
+        // Unknown before its first listing.
+        Locator::Web(_) | Locator::TelegramChat(_) | Locator::TelegramAudio { .. } => {
+            listed.is_none_or(|listed| listed.reachable)
+        }
+        Locator::DocumentTree(_) | Locator::Document { .. } => true,
+    };
+    let status = match (available, kind) {
+        (false, SourceType::Telegram) if !signed_in => SourceStatus::SignedOut,
+        (false, SourceType::Folder) => SourceStatus::Missing,
+        (false, _) => SourceStatus::Unreachable,
+        (true, _) if updating => SourceStatus::Updating,
+        (true, _) => SourceStatus::Ready,
+    };
+    let display_name = catalog.library_name(root).map(String::from);
+    let default_name = default_name(root);
+    SourceInfo {
+        root: root.clone(),
+        location: root.to_string(),
+        kind,
+        name: display_name.clone().unwrap_or_else(|| default_name.clone()),
+        display_name,
+        default_name,
+        tracks: count(tracks.len()),
+        length: tracks.iter().map(|track| track.length).sum(),
+        cover: tracks.iter().find_map(|track| cover(track)),
+        covers: first_covers(tracks.iter().copied()),
+        available,
+        updating,
+        status,
+    }
+}
+
+/// The library's values of `field`, each once whatever its case, sorted.
+pub fn field_values(catalog: &Catalog, field: ValueField) -> Vec<String> {
+    // Keyed by lower case, so `J-Pop` and `j-pop` show once.
+    let mut values = std::collections::BTreeMap::<String, String>::new();
+    let mut add = |value: &str| {
+        let value = value.trim();
+        if !value.is_empty() {
+            values
+                .entry(value.to_lowercase())
+                .or_insert_with(|| value.to_string());
+        }
+    };
+    for track in catalog.tracks() {
+        match field {
+            ValueField::Artist => track.artists.iter().for_each(|artist| add(artist)),
+            ValueField::AlbumArtist => track.album_artist.iter().for_each(|artist| add(artist)),
+            ValueField::Album => track.album.iter().for_each(|album| add(album)),
+            ValueField::Genre => track.genres.iter().for_each(|genre| add(genre)),
+            ValueField::Codec => track.codec.iter().for_each(|codec| add(codec)),
+        }
+    }
+    values.into_values().collect()
+}
+
+/// The playlists holding `track` as a track added to them, in the library's order.
+pub fn playlists_with(catalog: &Catalog, track: &Locator) -> Vec<PlaylistId> {
+    catalog
+        .playlists()
+        .filter(|playlist| playlist.items.contains_key(track))
+        .map(|playlist| playlist.id)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

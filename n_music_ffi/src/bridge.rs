@@ -3,6 +3,7 @@
 //! `Core::next_event`, so the bus thread never waits on Kotlin.
 
 use crate::rows::{QueueRow, TrackRow};
+use crate::state::{Shared, StreamCacheState, TelegramSignInState};
 use n_event_bus::{Ctx, Handle, Outbox, Registrar, Subscriber};
 use n_music_core::library::catalog::Library;
 use n_music_core::messages::{
@@ -114,6 +115,8 @@ pub struct KotlinBridge {
     library_changed: Arc<AtomicBool>,
     /// See [`CoreEvent::LibraryChanged`].
     scan_read: Arc<AtomicU64>,
+    /// What the core last reported, for the queries.
+    state: Shared,
 }
 
 impl KotlinBridge {
@@ -122,12 +125,14 @@ impl KotlinBridge {
         library: Library,
         library_changed: Arc<AtomicBool>,
         scan_read: Arc<AtomicU64>,
+        state: Shared,
     ) -> Self {
         Self {
             events,
             library,
             library_changed,
             scan_read,
+            state,
         }
     }
 
@@ -272,6 +277,7 @@ impl Handle<TracksEnumerated> for KotlinBridge {
 
 impl Handle<TrackMetadataLoaded> for KotlinBridge {
     fn handle(&mut self, _: &TrackMetadataLoaded, _: &Ctx, _: &mut Outbox) {
+        self.state.lock().track_read();
         self.scan_read.fetch_add(1, Ordering::AcqRel);
         self.library_changed();
     }
@@ -285,6 +291,9 @@ impl Handle<LibraryRenamed> for KotlinBridge {
 
 impl Handle<ScanProgress> for KotlinBridge {
     fn handle(&mut self, msg: &ScanProgress, _: &Ctx, _: &mut Outbox) {
+        self.state
+            .lock()
+            .scan_progress(&msg.libraries, msg.found as u64, msg.pending as u64);
         // `pending` counts what is left to read from here. The count goes on rather than
         // starting over, so a `LibraryChanged` Kotlin takes after this but queued before it
         // cannot count against the new report.
@@ -299,6 +308,9 @@ impl Handle<ScanProgress> for KotlinBridge {
 
 impl Handle<ScanFinished> for KotlinBridge {
     fn handle(&mut self, msg: &ScanFinished, _: &Ctx, _: &mut Outbox) {
+        self.state
+            .lock()
+            .scan_finished(&msg.libraries, msg.complete);
         self.send(CoreEvent::ScanFinished {
             libraries: msg.libraries.clone(),
             complete: msg.complete,
@@ -308,6 +320,7 @@ impl Handle<ScanFinished> for KotlinBridge {
 
 impl Handle<LibraryRootsChanged> for KotlinBridge {
     fn handle(&mut self, msg: &LibraryRootsChanged, _: &Ctx, _: &mut Outbox) {
+        self.state.lock().roots = Some(msg.0.clone());
         self.send(CoreEvent::LibraryRootsChanged {
             roots: msg.0.clone(),
         });
@@ -316,6 +329,11 @@ impl Handle<LibraryRootsChanged> for KotlinBridge {
 
 impl Handle<StreamCacheChanged> for KotlinBridge {
     fn handle(&mut self, msg: &StreamCacheChanged, _: &Ctx, _: &mut Outbox) {
+        self.state.lock().cache = Some(StreamCacheState {
+            enabled: msg.enabled,
+            limit: msg.limit,
+            used: msg.used,
+        });
         self.send(CoreEvent::StreamCacheChanged {
             enabled: msg.enabled,
             limit: msg.limit,
@@ -326,6 +344,7 @@ impl Handle<StreamCacheChanged> for KotlinBridge {
 
 impl Handle<OutputDevices> for KotlinBridge {
     fn handle(&mut self, msg: &OutputDevices, _: &Ctx, _: &mut Outbox) {
+        self.state.lock().devices = Some(msg.0.clone());
         self.send(CoreEvent::OutputDevices {
             devices: msg.0.clone(),
         });
@@ -334,6 +353,11 @@ impl Handle<OutputDevices> for KotlinBridge {
 
 impl Handle<TelegramStatusChanged> for KotlinBridge {
     fn handle(&mut self, msg: &TelegramStatusChanged, _: &Ctx, _: &mut Outbox) {
+        self.state.lock().telegram = Some(TelegramSignInState {
+            status: msg.status.clone(),
+            busy: msg.busy,
+            error: msg.error.clone(),
+        });
         self.send(CoreEvent::TelegramStatusChanged {
             status: msg.status.clone(),
             busy: msg.busy,

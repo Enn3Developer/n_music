@@ -1,6 +1,7 @@
 //! Flat copies of what the screens show, so Kotlin never holds the core's shared tracks.
 
 use n_music_core::library::catalog::Catalog;
+use n_music_core::library::query::PlaylistId;
 use n_music_core::queue::{ItemId, QueueEntry};
 use n_music_core::source::Locator;
 use n_music_core::TrackInfo;
@@ -118,6 +119,62 @@ impl QueueRow {
             item: entry.item,
             queued: entry.queued,
             track,
+        }
+    }
+}
+
+/// A track as the desktop's track table and player show it: its row with every column.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct TrackEntry {
+    pub track: TrackRow,
+    /// Where it is, as the library writes it: a path, an address.
+    pub location: String,
+    pub genres: Vec<String>,
+    /// The genres on one line, as the Genre column shows them; empty when there is none.
+    pub genre: String,
+    /// Short codec name, e.g. `flac`.
+    pub codec: Option<String>,
+    /// The codec in capitals, as the Format column shows it; empty when unknown.
+    pub format: String,
+    /// In Hz.
+    pub sample_rate: Option<u32>,
+    /// `None` when unknown or not fixed (lossy codecs).
+    pub bits_per_sample: Option<u32>,
+    pub channels: Option<u32>,
+    /// ReplayGain in dB.
+    pub track_gain: Option<f64>,
+    pub album_gain: Option<f64>,
+    /// Unix seconds; `None` when it was never played.
+    pub last_played: Option<i64>,
+    /// When it was added to the playlist listed, in Unix seconds; `None` outside one, or for
+    /// a smart playlist's track.
+    pub added: Option<i64>,
+}
+
+impl TrackEntry {
+    /// `track` with its plays from `catalog`, and when it was added to `playlist`.
+    pub fn new(track: &TrackInfo, catalog: &Catalog, playlist: Option<PlaylistId>) -> Self {
+        let stats = catalog.stats(&track.locator);
+        let added = playlist
+            .and_then(|id| catalog.playlist(id))
+            .and_then(|playlist| playlist.items.get(&track.locator))
+            .map(|item| item.added);
+        let mut row = TrackRow::from(track);
+        row.plays = stats.map_or(0, |stats| stats.plays);
+        Self {
+            track: row,
+            location: track.locator.to_string(),
+            genres: track.genres.clone(),
+            genre: track.genres.join(", "),
+            codec: track.codec.clone(),
+            format: track.codec.as_deref().unwrap_or_default().to_uppercase(),
+            sample_rate: track.sample_rate,
+            bits_per_sample: track.bits_per_sample,
+            channels: track.channels,
+            track_gain: track.replay_gain.track_gain.map(f64::from),
+            album_gain: track.replay_gain.album_gain.map(f64::from),
+            last_played: stats.map(|stats| stats.last_played),
+            added,
         }
     }
 }
