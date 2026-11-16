@@ -1,6 +1,6 @@
 # N Music
 
-Cross-platform music player written in Rust + Slint
+Cross-platform music player written in Rust
 
 <img src="readme_preview.png" height="450" alt="App Preview"/>
 
