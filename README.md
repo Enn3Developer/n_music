@@ -6,24 +6,18 @@ Cross-platform music player written in Rust + Slint
 
 ## Features
 
-- Cover art
+- Fully featured music player
 - Music from local folders, web playlists and Telegram chats
 - Supports media control on all platforms (Windows, Mac, Linux and Android)
-- A native Mac app (SwiftUI and AppKit, Apple silicon) that plays through Core Audio at each
-  track's own sample rate
 - Extremely fast and resource efficient
 - Locale support
+- Auto updates (desktop only)
 
 ## Coming
 
 - Streaming:
-    - [ ] Simple web streaming
     - [ ] Youtube streaming
     - [ ] Deezer streaming
-
-- QoL:
-    - [ ] Playlists
-    - [ ] Auto updater (desktop only; opt-out)
 
 ## Platforms
 
