@@ -41,7 +41,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,7 +48,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -167,11 +165,9 @@ object CoreRepository {
     /** The running scan; `null` while none runs. */
     val scanState: StateFlow<ScanState?> = _scanState.asStateFlow()
 
+    private val pulled = MutableStateFlow(false)
     private val requested = MutableStateFlow(false)
     private var requestTimeout: Job? = null
-
-    val scanning: StateFlow<Boolean> = combine(_scanState, requested) { state, asked -> state != null || asked }
-        .stateIn(scope, SharingStarted.Eagerly, false)
 
     /** The scan of the library just set up in Welcome: none, waiting for it, or running. */
     private enum class Build { NONE, WAITING, RUNNING }
@@ -464,9 +460,6 @@ object CoreRepository {
         _facets.value = core.facets()
         _ready.value = true
     }
-
-    private val pulled = MutableStateFlow(false)
-
     val pullRefreshing: StateFlow<Boolean> = pulled.asStateFlow()
 
     fun scan(root: Locator? = null, reload: Boolean = false, fromPull: Boolean = false): Boolean {
