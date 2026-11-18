@@ -483,9 +483,9 @@ object CoreRepository {
 
     /** Kept reads, weighed in rows so one read of the whole library doesn't count as one. */
     private val kept = object : LruCache<LibraryQuery<*>, LibraryRead<*>>(
-        (Runtime.getRuntime().maxMemory() / 8).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        (Runtime.getRuntime().maxMemory() / 8 / 512).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
     ) {
-        override fun sizeOf(key: LibraryQuery<*>, value: LibraryRead<*>) = value.bytes()
+        override fun sizeOf(key: LibraryQuery<*>, value: LibraryRead<*>) = value.weights()
     }
 
     /** What [query] last read, maybe at an older version; `null` if it isn't kept. */
@@ -519,90 +519,7 @@ val Locator.key: String
         is Locator.TelegramAudio -> uri
     }
 
-private fun align(n: Int) = (n + 7) and 7.inv()
-
-/** A string on ART, worst case: header, count and hash, then two bytes a char. */
-private fun String?.bytes(): Int = if (this == null) 0 else align(16 + length * 2)
-
-/** A boxed Int or UInt: its header and the value. */
-private fun Any?.boxBytes(): Int = if (this == null) 0 else 16
-
-/** A list from the core: the ArrayList, its array of references, then [item] for each. */
-private inline fun <E> List<E>.bytes(item: (E) -> Int): Int = 24 + align(12 + 4 * size) + sumOf(item)
-
-/** A locator: its header with one or two references, then its strings. */
-private fun Locator.bytes(): Int = 16 + when (this) {
-    is Locator.Local -> v1.bytes()
-    is Locator.DocumentTree -> v1.bytes()
-    is Locator.Document -> uri.bytes() + name.bytes()
-    is Locator.Web -> v1.bytes()
-    is Locator.TelegramChat -> v1.bytes()
-    is Locator.TelegramAudio -> uri.bytes() + name.bytes()
-}
-
-// The locator, 5 strings, the artists and 3 boxes; then length, plays and loaded.
-private fun TrackRow.bytes(): Int = align(8 + 10 * 4 + 8 + 4 + 1) +
-        locator.bytes() + title.bytes() + artist.bytes() + artists.bytes { it.bytes() } +
-        album.bytes() + albumArtist.bytes() + cover.bytes() +
-        year.boxBytes() + trackNumber.boxBytes() + discNumber.boxBytes()
-
-// name, artist, cover and the year's box; then length and tracks.
-private fun AlbumRow.bytes(): Int = align(8 + 4 * 4 + 8 + 4) +
-        name.bytes() + artist.bytes() + cover.bytes() + year.boxBytes()
-
-// name and cover; then length and tracks.
-private fun ArtistRow.bytes(): Int = align(8 + 2 * 4 + 8 + 4) + name.bytes() + cover.bytes()
-
-// name and covers; then tracks.
-private fun GenreRow.bytes(): Int = align(8 + 2 * 4 + 4) +
-        name.bytes() + covers.bytes { it.bytes() }
-
-// codec, 3 boxed UInts, genres and the boxed lastPlayed; then plays.
-private fun TrackDetails.bytes(): Int = align(8 + 6 * 4 + 4) +
-        codec.bytes() + sampleRate.boxBytes() + bitsPerSample.boxBytes() + channels.boxBytes() +
-        genres.bytes { it.bytes() } + lastPlayed.boxBytes()
-
-private fun Filter?.bytes(): Int = if (this == null) 0 else 16 + when (this) {
-    is Filter.All -> v1.bytes { it.bytes() }
-    is Filter.Any -> v1.bytes { it.bytes() }
-    is Filter.Not -> v1.bytes()
-    is Filter.Artist -> v1.bytes()
-    is Filter.AlbumArtist -> v1.bytes()
-    is Filter.Album -> v1.bytes()
-    is Filter.Genre -> v1.bytes()
-    is Filter.Codec -> v1.bytes()
-    is Filter.Search -> v1.bytes()
-    is Filter.Folder -> v1.bytes()
-    is Filter.Library -> v1.bytes()
-    is Filter.Year -> from.boxBytes() + to.boxBytes()
-    is Filter.Plays -> min.boxBytes() + max.boxBytes()
-    is Filter.Playlist, is Filter.Untagged, is Filter.PlayedWithin, is Filter.NotPlayedWithin -> 0
-}
-
-// id, name, rule, sort and covers; then tracks, length, created and modified.
-private fun PlaylistRow.bytes(): Int = align(8 + 4 * 4 + 8 + 4 + 3 * 8) +
-        name.bytes() + rule.bytes() + sort.bytes { 16 } + covers.bytes { it.bytes() }
-
-// tracks and length.
-private fun Summary.bytes(): Int = align(8 + 4 + 8)
-
-private fun Any?.rowBytes(): Int = when (this) {
-    null -> 0
-    is TrackRow -> bytes()
-    is AlbumRow -> bytes()
-    is ArtistRow -> bytes()
-    is GenreRow -> bytes()
-    is PlaylistRow -> bytes()
-    is TrackDetails -> bytes()
-    is Summary -> bytes()
-    else -> 64
-}
-
-/** What a kept read holds on the heap, worst case: itself (header, value, version) and its value. */
-private fun CoreRepository.LibraryRead<*>.bytes(): Int = align(8 + 4 + 8) + when (val v = value) {
-    is List<*> -> v.bytes { it.rowBytes() }
-    else -> v.rowBytes()
-}
+private fun CoreRepository.LibraryRead<*>.weights(): Int = (value as? List<*>)?.size ?: 1
 
 /** [Locator] as one line of text, which [decodeLocator] reads back: for saved state. */
 fun Locator.encode(): String = when (this) {
