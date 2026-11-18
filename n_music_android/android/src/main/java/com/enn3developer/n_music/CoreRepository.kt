@@ -462,8 +462,8 @@ object CoreRepository {
     }
     val pullRefreshing: StateFlow<Boolean> = pulled.asStateFlow()
 
-    fun scan(root: Locator? = null, reload: Boolean = false, fromPull: Boolean = false): Boolean {
-        if (_scanState.value != null || !requested.compareAndSet(false, true)) return false
+    fun scan(root: Locator? = null, reload: Boolean = false, fromPull: Boolean = false) {
+        if (_scanState.value != null || !requested.compareAndSet(false, true)) return
         pulled.value = fromPull
         send(Command.ScanRequested(root, checkCache = !reload))
         requestTimeout?.cancel()
@@ -474,7 +474,6 @@ object CoreRepository {
                 pulled.value = false
             }
         }
-        return true
     }
 
     fun isReadableOffline(locator: Locator): Boolean = core.isReadableOffline(locator)

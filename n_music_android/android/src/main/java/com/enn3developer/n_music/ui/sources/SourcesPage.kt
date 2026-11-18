@@ -76,7 +76,7 @@ interface SourceActions {
     fun open(source: SourceRow)
 
     /** Reads [root] again, or every source while `null`; [reload] reads every file's tags again. */
-    fun scan(root: Locator?, reload: Boolean): Boolean
+    fun scan(root: Locator?, reload: Boolean)
 
     /** Asks for another name for [source]. */
     fun rename(source: SourceRow)
