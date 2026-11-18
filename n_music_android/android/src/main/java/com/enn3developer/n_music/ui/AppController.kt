@@ -51,9 +51,14 @@ interface AppController {
     /** The filters on the library's tracks. */
     var filters: TrackFilters
 
+    /** Data class type for Library section */
     data class LibraryRequest(val tab: LibraryTab)
 
+    /** Store the last registered tab viewed of Library section */
     val libraryRequest: LibraryRequest?
+
+    /** Navigate to the requested tab of Library section */
+    fun showLibrary(tab: LibraryTab)
 
     fun consumeLibraryRequest()
 
@@ -115,7 +120,6 @@ interface AppController {
 
     /** Runs work that outlives the page or sheet that started it, like an undo's preparation. */
     val scope: CoroutineScope
-    fun showLibrary(tab: LibraryTab)
 }
 
 val LocalApp = staticCompositionLocalOf<AppController> { error("No app") }
