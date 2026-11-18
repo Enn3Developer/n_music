@@ -519,7 +519,7 @@ val Locator.key: String
         is Locator.TelegramAudio -> uri
     }
 
-private fun CoreRepository.LibraryRead<*>.weights(): Int = (value as? List<*>)?.size ?: 1
+private fun CoreRepository.LibraryRead<*>.weights(): Int = (value as? List<*>)?.size?.plus(1) ?: 1
 
 /** [Locator] as one line of text, which [decodeLocator] reads back: for saved state. */
 fun Locator.encode(): String = when (this) {
