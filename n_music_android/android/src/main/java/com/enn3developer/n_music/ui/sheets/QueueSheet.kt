@@ -305,7 +305,7 @@ fun QueuePanel(
     val shape = RoundedCornerShape(28.dp)
     val onSurfaceVariant = colors.onSurfaceVariant
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(shape)
             .background(colors.surfaceLow, shape)
@@ -315,7 +315,8 @@ fun QueuePanel(
             }
     ) {
         Column(
-            modifier.fillMaxWidth()
+            Modifier
+                .fillMaxWidth()
                 .tappable(onClose)
                 .then(queueDrag),
             horizontalAlignment = Alignment.CenterHorizontally
