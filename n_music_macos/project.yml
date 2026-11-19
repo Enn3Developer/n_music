@@ -10,9 +10,9 @@ options:
 settings:
   base:
     MARKETING_VERSION: 2.0.0
-    CURRENT_PROJECT_VERSION: 23
+    CURRENT_PROJECT_VERSION: 24
     # The workspace version (Cargo.toml), shown in Settings › Updates and compared with releases.
-    N_MUSIC_VERSION: 2.0.0-alpha.23
+    N_MUSIC_VERSION: 2.0.0-alpha.24
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
