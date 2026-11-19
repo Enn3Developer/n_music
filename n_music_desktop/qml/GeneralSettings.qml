@@ -282,6 +282,17 @@ ColumnLayout {
                 }
             }
             SettingRow {
+                title: Tr.t.discord_presence
+                description: Tr.t.discord_presence_hint
+                divider: true
+
+                ToggleSwitch {
+                    checked: AppState.discordPresence
+                    Accessible.name: Tr.t.discord_presence
+                    onToggled: AppState.discordPresence = checked
+                }
+            }
+            SettingRow {
                 title: Tr.t.track_columns
                 description: Tr.t.track_columns_hint
                 divider: true
