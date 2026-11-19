@@ -102,8 +102,7 @@ fun SourcePage(page: Page.Source) {
         object : SourceActions {
             override fun open(source: SourceRow) {}
 
-            override fun scan(root: Locator?, reload: Boolean) =
-                CoreRepository.send(Command.ScanRequested(root, checkCache = !reload))
+            override fun scan(root: Locator?, reload: Boolean) = CoreRepository.scan(root, reload)
 
             override fun rename(source: SourceRow) = app.show(AppDialog.RenameSource(source.root, source.name))
 

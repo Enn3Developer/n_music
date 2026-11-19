@@ -54,6 +54,7 @@ data class UiSettings(
     val welcomed: Boolean = false,
     /** A tablet's rail is widened into the drawer, which stays open beside the pages. */
     val drawer: Boolean = false,
+    val pullToRefresh: Boolean = false,
 ) {
     fun view(tab: LibraryTab): ViewMode = views[tab] ?: DEFAULT_VIEWS.getValue(tab)
 
@@ -83,6 +84,7 @@ object UiPreferences {
     fun load() {
         val section = stored() ?: return
         _settings.value = UiSettings(
+            pullToRefresh = section.optBoolean("pullToRefresh", false),
             theme = Theme.entries.find { it.stored == section.optString("theme") } ?: Theme.SYSTEM,
             accent = Accent.entries.find { it.stored == section.optString("accent") } ?: Accent.AMBER,
             compactRows = section.optBoolean("compactRows", false),
@@ -104,6 +106,8 @@ object UiPreferences {
             drawer = section.optBoolean("drawer", false),
         )
     }
+
+    fun setPullToRefresh(enabled: Boolean) = update { it.copy(pullToRefresh = enabled) }
 
     fun setTheme(theme: Theme) = update { it.copy(theme = theme) }
 
@@ -136,6 +140,7 @@ object UiPreferences {
         section.put("sorts", JSONObject(settings.sorts))
         section.put("welcomed", settings.welcomed)
         section.put("drawer", settings.drawer)
+        section.put("pullToRefresh", settings.pullToRefresh)
         CoreRepository.setSetting(KEY, section.toString())
     }
 

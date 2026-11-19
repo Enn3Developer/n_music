@@ -12,7 +12,9 @@ import com.enn3developer.n_music.core.Locator
 import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.key
 import com.enn3developer.n_music.ui.components.rememberCover
+import com.enn3developer.n_music.ui.sources.isRemote
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -51,7 +53,13 @@ fun rememberArtwork(track: TrackRow?, size: Int): ImageBitmap? {
     val hasCover = track?.cover != null
     val full by produceState(locator?.let(Artwork::cached), locator, hasCover, size) {
         value = locator?.let(Artwork::cached)
-        if (locator != null && hasCover && value == null && size > 0) value = Artwork.load(locator, size)
+        if (locator == null || !hasCover || value != null || size <= 0) return@produceState
+        // A remote track shows its full cover only once its copy in the stream cache is complete.
+        if (locator.isRemote) {
+            CoreRepository.streamCache
+                .first { withContext(Dispatchers.IO) { CoreRepository.isReadableOffline(locator) } }
+        }
+        value = Artwork.load(locator, size)
     }
     return full ?: thumbnail
 }

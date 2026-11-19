@@ -147,6 +147,7 @@ interface SettingsActions {
     fun setTheme(theme: Theme)
     fun setAccent(accent: Accent)
     fun setCompactRows(compact: Boolean)
+    fun setPullToRefresh(enabled: Boolean)
     fun setMiniButtons(buttons: List<MiniButton>)
     fun signInToTelegram()
     fun signOutOfTelegram()
@@ -201,6 +202,7 @@ fun SettingsPage() {
             override fun setTheme(theme: Theme) = UiPreferences.setTheme(theme)
             override fun setAccent(accent: Accent) = UiPreferences.setAccent(accent)
             override fun setCompactRows(compact: Boolean) = UiPreferences.setCompactRows(compact)
+            override fun setPullToRefresh(enabled: Boolean) = UiPreferences.setPullToRefresh(enabled)
             override fun setMiniButtons(buttons: List<MiniButton>) = UiPreferences.setMiniButtons(buttons)
             override fun signInToTelegram() = app.show(AppDialog.Telegram(signInOnly = true))
             override fun signOutOfTelegram() = app.show(AppDialog.TelegramSignOut)
@@ -290,6 +292,9 @@ fun SettingsContent(state: SettingsState, actions: SettingsActions, list: LazyLi
             item(key = "accent") { AccentCard(state.ui.accent, state.wallpaper, actions::setAccent) }
             item(key = "compact") {
                 SwitchCard(R.string.compact_rows, R.string.compact_rows_hint, state.ui.compactRows, actions::setCompactRows)
+            }
+            item(key = "pull to refresh") {
+                SwitchCard(R.string.pull_to_refresh, R.string.pull_to_refresh_hint, state.ui.pullToRefresh, actions::setPullToRefresh)
             }
             item(key = "mini player") {
                 MiniPlayerCard(state.ui.miniButtons, state.preview, state.progress, miniOpen, { miniOpen = !miniOpen }, actions::setMiniButtons)
@@ -383,6 +388,7 @@ private fun TabletSettings(state: SettingsState, actions: SettingsActions) {
                     ThemeCard(state.ui.theme, actions::setTheme)
                     AccentCard(state.ui.accent, state.wallpaper, actions::setAccent)
                     SwitchCard(R.string.compact_rows, R.string.compact_rows_hint, state.ui.compactRows, actions::setCompactRows)
+                    SwitchCard(R.string.pull_to_refresh, R.string.pull_to_refresh_hint, state.ui.pullToRefresh, actions::setPullToRefresh)
                     RowCard(R.drawable.ic_language, stringResource(R.string.language), state.language ?: stringResource(R.string.language_system), actions::openLanguage) {
                         NIcon(R.drawable.ic_open, tint = colors.onSurfaceVariant)
                     }

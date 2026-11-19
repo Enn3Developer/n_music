@@ -49,7 +49,7 @@ class Navigator(tab: Tab, saved: Map<Tab, List<Entry>>, private var nextId: Long
 
     private val stacks = Tab.entries.associateWith { tab ->
         mutableStateListOf<Entry>().apply {
-            addAll(saved[tab].orEmpty().ifEmpty { listOf(Entry(root(tab), 0)) })
+            addAll(saved[tab].orEmpty().ifEmpty { listOf(Entry(root(tab), rootId(tab))) })
         }
     }
 
@@ -118,6 +118,8 @@ class Navigator(tab: Tab, saved: Map<Tab, List<Entry>>, private var nextId: Long
             Tab.SOURCES -> Page.Sources
         }
 
+        fun rootId(tab: Tab): Long = -1L - tab.ordinal
+
         /** Keeps the stacks as text through a configuration change or the process's death. */
         val Saver: Saver<Navigator, List<String>> = Saver(
             save = { navigator ->
@@ -137,7 +139,7 @@ class Navigator(tab: Tab, saved: Map<Tab, List<Entry>>, private var nextId: Long
                     val owner = Tab.entries.find { it.name == parts.getOrNull(0) } ?: return@mapNotNull null
                     val id = parts.getOrNull(1)?.toLongOrNull() ?: return@mapNotNull null
                     val page = parts.getOrNull(2)?.let(::decodePage) ?: return@mapNotNull null
-                    owner to Entry(page, id)
+                    owner to Entry(page, if (id == 0L) rootId(owner) else id)
                 }.groupBy({ it.first }, { it.second })
                 Navigator(tab, stacks, nextId)
             },

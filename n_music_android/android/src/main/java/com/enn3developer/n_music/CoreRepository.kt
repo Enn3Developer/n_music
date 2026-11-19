@@ -2,6 +2,7 @@ package com.enn3developer.n_music
 
 import android.content.Context
 import android.os.SystemClock
+import androidx.collection.LruCache
 import com.enn3developer.n_music.core.AlbumRow
 import com.enn3developer.n_music.core.AndroidOutput
 import com.enn3developer.n_music.core.ArtistRow
@@ -33,6 +34,7 @@ import com.enn3developer.n_music.core.TrackRow
 import com.enn3developer.n_music.core.libraryQuery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -162,6 +164,10 @@ object CoreRepository {
 
     /** The running scan; `null` while none runs. */
     val scanState: StateFlow<ScanState?> = _scanState.asStateFlow()
+
+    private val pulled = MutableStateFlow(false)
+    private val requested = MutableStateFlow(false)
+    private var requestTimeout: Job? = null
 
     /** The scan of the library just set up in Welcome: none, waiting for it, or running. */
     private enum class Build { NONE, WAITING, RUNNING }
@@ -394,6 +400,7 @@ object CoreRepository {
                     libraryChanged.trySend(Unit)
                 }
                 is CoreEvent.ScanProgress -> {
+                    requested.value = false
                     scan.value = if (event.libraries.isEmpty()) {
                         null
                     } else {
@@ -418,7 +425,11 @@ object CoreRepository {
                     event.used.toLong(),
                 )
                 is CoreEvent.OutputDevices -> _outputDevices.value = event.devices
-                is CoreEvent.ScanFinished -> _version.value++
+                is CoreEvent.ScanFinished -> {
+                    requested.value = false
+                    pulled.value = false
+                    _version.value++
+                }
                 is CoreEvent.TelegramStatusChanged -> {
                     val before = _telegram.value
                     val ended = (before?.ended ?: 0) + if (before?.busy == true && !event.busy) 1 else 0
@@ -449,6 +460,52 @@ object CoreRepository {
         _facets.value = core.facets()
         _ready.value = true
     }
+    val pullRefreshing: StateFlow<Boolean> = pulled.asStateFlow()
+
+    fun scan(root: Locator? = null, reload: Boolean = false, fromPull: Boolean = false) {
+        if (_scanState.value != null || !requested.compareAndSet(false, true)) return
+        pulled.value = fromPull
+        send(Command.ScanRequested(root, checkCache = !reload))
+        requestTimeout?.cancel()
+        requestTimeout = scope.launch {
+            delay(10_000)
+            if (_scanState.value == null) {
+                requested.value = false
+                pulled.value = false
+            }
+        }
+    }
+
+    fun isReadableOffline(locator: Locator): Boolean = core.isReadableOffline(locator)
+
+    /** A read of the library, and the library's version as it began. */
+    data class LibraryRead<T>(val value: T, val version: Long)
+
+    /** Kept reads, weighed in rows so one read of the whole library doesn't count as one. */
+    private val kept = object : LruCache<LibraryQuery<*>, LibraryRead<*>>(
+        (Runtime.getRuntime().maxMemory() / 8 / 512).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+    ) {
+        override fun sizeOf(key: LibraryQuery<*>, value: LibraryRead<*>) = value.weights()
+    }
+
+    /** What [query] last read, maybe at an older version; `null` if it isn't kept. */
+    @Suppress("UNCHECKED_CAST")
+    fun <T> kept(query: LibraryQuery<T>): LibraryRead<T>? = kept.get(query) as LibraryRead<T>?
+
+    /**
+     * [query] as the library is now: what an earlier read kept if the library hasn't changed since,
+     * or a new read, kept at the version it began at. Call it off the main thread.
+     */
+    fun <T> read(query: LibraryQuery<T>): T {
+        val at = _version.value
+        kept(query)?.takeIf { it.version == at }?.let { return it.value }
+        val value = query.run()
+        kept.put(query, LibraryRead(value, at))
+        return value
+    }
+
+    /** Lets every kept read go, as when the system runs low on memory. */
+    fun forget() = kept.evictAll()
 }
 
 /** Tells tracks apart in lists: what a locator points at. */
@@ -461,6 +518,8 @@ val Locator.key: String
         is Locator.TelegramChat -> v1
         is Locator.TelegramAudio -> uri
     }
+
+private fun CoreRepository.LibraryRead<*>.weights(): Int = (value as? List<*>)?.size?.plus(1) ?: 1
 
 /** [Locator] as one line of text, which [decodeLocator] reads back: for saved state. */
 fun Locator.encode(): String = when (this) {
@@ -484,3 +543,4 @@ fun decodeLocator(text: String): Locator? {
         else -> null
     }
 }
+
